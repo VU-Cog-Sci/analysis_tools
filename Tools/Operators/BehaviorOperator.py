@@ -31,6 +31,12 @@ class BehaviorOperator(Operator):
 		"""
 		super(BehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
+		if self.inputObject.__class__.__name__ == 'str':
+			self.inputFileName = self.inputObject
+			self.logger.info(self.__repr__() + ' initialized with file ' + os.path.split(self.inputFileName)[-1])
+			if not os.path.isfile(self.inputFileName):
+				self.logger.warning('inputFileName is not a file at initialization')
+			
 		# first thing is to change the wildcard to an actual filename that contains the date and timestamp of the run
 		fileNameList = subprocess.Popen('ls ' + self.inputFileName, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		if len(fileNameList) > 1:

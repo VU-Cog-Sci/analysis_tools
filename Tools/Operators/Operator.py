@@ -32,19 +32,6 @@ class Operator( object ):
 		loggingLevelSetup()
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
-		
-		if self.inputObject.__class__.__name__ == 'NiftiImage':
-			self.inputFileName = self.inputObject.filename
-			self.logger.info(self.__repr__() + ' initialized with ' + os.path.split(self.inputFileName)[-1])
-		elif self.inputObject.__class__.__name__ == 'str':
-			self.inputFileName = self.inputObject
-			self.logger.info(self.__repr__() + ' initialized with file ' + os.path.split(self.inputFileName)[-1])
-			if not os.path.isfile(self.inputFileName):
-				self.logger.warning('inputFileName is not a file at initialization')
-		elif self.inputObject.__class__.__name__ == 'list':
-			# if there's a list of input objects, this 
-			self.inputList = self.inputObject
-			self.logger.info(self.__repr__() + ' initialized with list of files')
 	
 	def configure(self):
 		"""
@@ -58,18 +45,3 @@ class Operator( object ):
 		placeholder for execute
 		to be filled in by subclasses
 		"""
-
-
-# leave the mp part for after understanding how to use processing queues in pp.
-class MultiOperator( Operator ):
-	def __init__(self):
-		"""docstring for __init__"""
-		pass
-		
-	def prepare(self):
-		"""docstring for prepare"""
-		pass
-		
-	def runAll(self):
-		pass
-		

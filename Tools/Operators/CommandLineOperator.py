@@ -35,6 +35,16 @@ class CommandLineOperator( Operator ):
 		CommandLineOperator can take a Nii file as input but will use only the variable inputFileName
 		"""
 		super(CommandLineOperator, self).__init__(inputObject = inputObject, **kwargs)
+		
+		if self.inputObject.__class__.__name__ == 'NiftiImage':
+			self.inputFileName = self.inputObject.filename
+			self.logger.info(self.__repr__() + ' initialized with ' + os.path.split(self.inputFileName)[-1])
+		elif self.inputObject.__class__.__name__ == 'str':
+			self.inputFileName = self.inputObject
+			self.logger.info(self.__repr__() + ' initialized with file ' + os.path.split(self.inputFileName)[-1])
+			if not os.path.isfile(self.inputFileName):
+				self.logger.warning('inputFileName is not a file at initialization')
+		
 		self.cmd = cmd
 	
 	def configure(self):

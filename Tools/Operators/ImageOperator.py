@@ -9,6 +9,7 @@ Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 
 import os, sys, subprocess
 import tempfile, logging
+import pickle
 
 import scipy as sp
 import scipy.fftpack
@@ -35,7 +36,7 @@ class ImageOperator( Operator ):
 		
 
 class ImageMaskingOperator( ImageOperator ):
-	def __init__(self, inputObject, maskObject = None, thresholds = [0.0], **kwargs):
+	def __init__(self, inputObject, maskObject = None, thresholds = [0.0], nrVoxels = [False], outputFileName = False, **kwargs):
 		super(ImageMaskingOperator, self).__init__(inputObject = inputObject, **kwargs)
 		if maskObject == None:
 			raise IOError('mask file not given - without a mask no masking operation')
@@ -52,9 +53,24 @@ class ImageMaskingOperator( ImageOperator ):
 		# if all thresholds for all mask volumes will be equal:
 		if len(thresholds) < self.maskObject.data.shape[0]:
 			self.thresholds = [thresholds[0] for t in range(self.maskObject.data.shape[0])]
-		else:
+		elif len(thresholds) == self.maskObject.data.shape[0]:
 			self.thresholds = thresholds
+		else:
+			self.logger.error('dimensions of thresholds argument do not fit with nr of masks in maskobject.')
 			
+		# if all nrVoxels for all mask volumes will be equal:
+		if len(nrVoxels) < self.maskObject.data.shape[0]:
+			self.nrVoxels = [nrVoxels[0] for t in range(self.maskObject.data.shape[0])]
+		elif len(nrVoxels) == self.maskObject.data.shape[0]:
+			self.nrVoxels = nrVoxels
+		else:
+			self.logger.error('dimensions of nrVoxels argument do not fit with nr of masks in maskobject.')
+			
+		if not outputFileName:
+			self.outputFileName = os.path.splitext(self.inputObject.filename)[0] + '_' + os.path.split(self.maskObject.filename)[-1]
+		else:
+			self.outputFileName = outputFileName
+		
 		self.buildData()
 	
 	def buildData(self):
@@ -91,8 +107,16 @@ class ImageMaskingOperator( ImageOperator ):
 		
 		self.logger.debug('mask and input data dimensions: %s, %s', str(self.inputData.shape), str(self.maskData.shape) )
 	
-	def applySingleMask(self, whichMask = 0, maskThreshold = 0.0, maskFunction = '__gt__', flat = False):
+	def applySingleMask(self, whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = False):
 		"""docstring for applySingleMask"""
+		
+		if nrVoxels:	# if nrVoxels we'll need to set the threshold to reach that nr of Voxels.
+			if maskFunction == '__gt__':
+				maskThreshold = self.maskData[whichMask].ravel().sort()[-(nrVoxels+1)]
+			elif maskFunction == '__lt__':
+				maskThreshold = self.maskData[whichMask].ravel().sort()[(nrVoxels+1)]
+				
+		# this piece must be done regardless of nrVoxels or manual threshold setting
 		mask = eval('self.maskData[whichMask].' + maskFunction + '(' + str(maskThreshold) + ')')
 		self.logger.debug('mask dimensions: %s', str(mask.shape) )
 		if flat:
@@ -101,19 +125,32 @@ class ImageMaskingOperator( ImageOperator ):
 			maskedData = np.zeros(self.inputData.shape)
 			for i in range(self.inputData.shape[0]):
 				maskedData[i] = mask * self.inputData[i]
+				
 		return maskedData
 	
-	def applyAllMasks(self, save = True):
+	def applyAllMasks(self, save = True, maskFunction = '__gt__', flat = False):
 		"""docstring for applyAllMasks"""
-		allMaskedData = np.zeros(np.concatenate(([self.maskData.shape[0]],self.inputData.shape)))
-		for i in range(self.maskData.shape[0]):
-			allMaskedData[i] = self.applySingleMask(i, self.thresholds[i])
+		if not flat:	# output is in nii file format and shape
+			allMaskedData = np.zeros(np.concatenate(([self.maskData.shape[0]],self.inputData.shape)))
+			for i in range(self.maskData.shape[0]):
+				allMaskedData[i] = self.applySingleMask(i, self.thresholds[i], self.nrVoxels[i], maskFunction, flat = flat)
 		
-		if save:
-			fileName = os.path.splitext(self.inputObject.filename)[0] + '_' + os.path.split(self.maskObject.filename)[-1]
-			maskedDataFile = NiftiImage(allMaskedData, self.inputObject.header)
-			maskedDataFile.save(fileName)
+			if save:
+				fileName = self.outputFileName + standardMRIExtension
+				maskedDataFile = NiftiImage(allMaskedData, self.inputObject.header)
+				maskedDataFile.save(fileName)
 		
+		elif flat:	# flatten output arrays into voxels by time
+			allMaskedData = []
+			for i in range(self.maskData.shape[0]):
+				allMaskedData.append(self.applySingleMask(i, self.thresholds[i], self.nrVoxels[i], maskFunction, flat = flat))
+			
+			if save:
+				fileName = self.outputFileName + '.pickle'
+				maskedDataFile = open(fileName)
+				pickle.dump(allMaskedData)
+				maskedDataFile.close()
+			
 		return allMaskedData
 	
 	def execute(self):
@@ -140,6 +177,8 @@ class PercentSignalChangeOperator(ImageOperator):
 		outputFile.save(self.outputFileName)
 		
 	
+
+# GLM type code..
 
 def doubleGamma(timepoints, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35):
 	d1 = a1 * b1
