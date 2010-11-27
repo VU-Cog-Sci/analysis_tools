@@ -322,7 +322,7 @@ class RetMapOperator( CommandLineOperator ):
 		for (rmRun, fp) in zip(self.inputList, inputFileNames):
 			thisRun = retMapRun(	
 						ID = rmRun.indexInSession,
-						stimType = rmRun.condition,
+						stimType = rmRun.mappingType,
 						direction = rmRun.direction,
 						nrCycles = rmRun.nrCycles,
 						TR = rmRun.TR,
@@ -348,7 +348,7 @@ class VolToSurfOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_vol2surf', **kwargs):
 		super(VolToSurfOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 		
-	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'noise-sd': 6,'sigf':0, 'sig2':1, 'sig3':2}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  ):
+	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'noise_sd': 6,'sigf':0, 'sig2':1, 'sig3':2}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  ):
 		"""docstring for configure"""
 		# don't feel like calling splitext twice
 		if outputFileName[-7:] == standardMRIExtension:

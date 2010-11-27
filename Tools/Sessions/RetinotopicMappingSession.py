@@ -10,6 +10,14 @@ Copyright (c) 2009 TK. All rights reserved.
 import * from Session
 
 class RetinotopicMappingSession(Session):
+	def parcelateConditions(self):
+		super(RetinotopicMappingSession, self).__init__()
+		
+		self.mappingTypes = np.unique(np.array([r.mappingType for r in self.runList]))
+		self.mappingTypeDict = {}
+		for mt in self.mappingTypes:
+			self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
+		
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
 		runs retinotopic mapping on all runs in self.conditionDict['polar'] and self.conditionDict['eccen']
@@ -25,43 +33,24 @@ class RetinotopicMappingSession(Session):
 		if useMC:
 			postFix.append('mcf')
 		if perCondition:
-			# set up a list of retinotopic mapping operator objects for the different conditions
-			if len(self.conditionDict['polar']) > 0:
-				# analyze polar runs
-				prOperator = RetMapOperator([self.runList[pC] for pC in self.conditionDict['polar']], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict['polar']]
-				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'polar')
+			for c in self.conditionDict:
+				rmO = RetMapOperator([self.runList[pC] for pC in self.conditionDict[c]], cmd = presentCommand)
+				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict[c]]
+				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[c][0]]), self.runList[pC].mappingType)
 				opfNameList.append(outputFileName)
 				prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
 				rmOperatorList.append(prOperator)
-			if len(self.conditionDict['eccen']) > 0:
-				# analyze eccen runs
-				erOperator = RetMapOperator([self.runList[eC] for eC in self.conditionDict['eccen']], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[eC], postFix = postFix) for eC in self.conditionDict['eccen']]
-				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['eccen'][0]]), 'eccen')
-				opfNameList.append(outputFileName)
-				erOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
-				rmOperatorList.append(erOperator)
-				
+			
 		if perRun:
-			# set up a list of retinotopic mapping operator objects for the different runs
-			for i in self.conditionDict['polar']:
-				# analyze polar runs
-				prOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
-				outputFileName = os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[i]), 'polar')
-				opfNameList.append(outputFileName)
-				prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
-				rmOperatorList.append(prOperator)
-			for i in self.conditionDict['eccen']:
-				# analyze eccen runs
-				erOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
-				outputFileName = os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[i]), 'eccen')
-				opfNameList.append(outputFileName)
-				erOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
-				rmOperatorList.append(erOperator)
-		
+			for c in self.conditionDict:
+				for i in self.conditionDict[c]:
+					prOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
+					inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
+					outputFileName = os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[i]), self.runList[i].mappingType)
+					opfNameList.append(outputFileName)
+					prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
+					rmOperatorList.append(prOperator)
+			
 		if runMapping:
 			opfString = ''
 			for opf in opfNameList:
@@ -88,13 +77,15 @@ class RetinotopicMappingSession(Session):
 					opex()
 					
 				job_server.print_stats()
-				
-		if toSurf:
+		
+		opfNameList = self.opfNameList
+		
+	def convertResultsToSurface(self, surfSmoothingFWHM = 0.0):
 			# now we need to be able to view the results on the surfaces.
 			vtsList = []
-			for opf in opfNameList:
+			for opf in self.opfNameList:
 				vtsOp = VolToSurfOperator(inputObject = opf + standardMRIExtension)
-				vtsOp.configure(register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/') )
+				vtsOp.configure(register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/'), surfSmoothingFWHM = surfSmoothingFWHM )
 				vtsList.append(vtsOp)
 				
 			if not self.parallelize:
@@ -115,6 +106,38 @@ class RetinotopicMappingSession(Session):
 				for vtsex in ppResults:
 					vtsex()
 				job_server.print_stats()
+				
+				
+	def convertSurfaceToVolume(self):
+			# now we need to be able to view the results on the surfaces.
+			vtsList = []
+			for opf in self.opfNameList:
+				surfaceFilesFromOpf = subprocess.Popen('ls ' + os.path.join(os.path.split(opf)[0], 'surf', '*.w'), shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+				for sf in surfaceFilesFromOpf:
+					vtsOp = SurfToOperator(inputObject = opf + standardMRIExtension)
+					vtsOp.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/') )
+					vtsList.append(vtsOp)
+
+			if not self.parallelize:
+				self.logger.info("run serial reverse surface projection of retinotopic mapping results")
+				for vts in vtsList:
+					vts.execute()
+
+			if self.parallelize:
+				# tryout parallel implementation - later, this should be abstracted out of course. 
+				ppservers = ()
+				job_server = pp.Server(ppservers=ppservers)
+				self.logger.info("run parallel reverse surface projection")
+				self.logger.info("Starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+				ppResults = []
+				for vts in vtsList:
+					vtsex = job_server.submit(vts.execute)
+					ppResults.append(vtsex)
+				for vtsex in ppResults:
+					vtsex()
+				job_server.print_stats()
+	
+	
 	
 	def runQC(self, rois = ['V1','V2','V3']):
 		"""

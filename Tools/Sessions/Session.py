@@ -158,7 +158,7 @@ class Session(PathConstructor):
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
 		for c in self.conditions:
-			self.conditionDict.update({c:[hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]})
+			self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 	
 	def setupFiles(self, rawBase):
 		"""
@@ -329,7 +329,7 @@ class Session(PathConstructor):
 				hemi = 'rh'
 			lvo = LabelToVolOperator(lf)
 			# we convert the label files to the space of the first EPI run of the session.
-			lvo.configure(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = lfx[:-7] ), threshold = 0.5, surfType = 'label')
+			lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = lfx[:-7] ), threshold = 0.5, surfType = 'label')
 			lvo.execute()
 		
 		
