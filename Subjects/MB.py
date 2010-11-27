@@ -10,5 +10,5 @@ standardFSID = 'MB_051110_12'
 birthdate = datetime.date( 1988, 6, 9 )
 labelFolderOfPreference = ''
 
-presentSubject = Subject( initials, firstName, birthdate, standardFSID )
+presentSubject = Subject( initials, firstName, birthdate, standardFSID, labelFolderOfPreference )
 

@@ -348,7 +348,7 @@ class VolToSurfOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_vol2surf', **kwargs):
 		super(VolToSurfOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 		
-	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'sigf':0, 'sig2':1, 'sig3':2}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5):
+	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'noise-sd': 6,'sigf':0, 'sig2':1, 'sig3':2}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  ):
 		"""docstring for configure"""
 		# don't feel like calling splitext twice
 		if outputFileName[-7:] == standardMRIExtension:
@@ -356,6 +356,7 @@ class VolToSurfOperator( CommandLineOperator ):
 		else:
 			self.outputFileName = outputFileName
 		self.register = register
+		self.surfType = surfType
 		if hemispheres == None:
 			hemispheres = ['lh','rh']
 		if register == None:
@@ -367,11 +368,48 @@ class VolToSurfOperator( CommandLineOperator ):
 				self.runcmd += self.cmd + ' --srcvol ' + self.inputFileName
 				self.runcmd += ' --src_type nii.gz'
 				self.runcmd += ' --srcreg ' + self.register
-				self.runcmd += ' --surf  smoothwm'
+				self.runcmd += ' --surf smoothwm'
 				self.runcmd += ' --hemi  ' + hemi
 				self.runcmd += " --projfrac " + str(threshold)
 				self.runcmd += ' --frame ' + str(frames[frame])
-				self.runcmd += ' --out_type paint --float2int round --mapmethod nnf '
+				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
+				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.w'
+				self.runcmd += ' --surf-fwhm ' + str(surfSmoothingFWHM)
+				self.runcmd += ' &\n'
+		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
+		self.runcmd = self.runcmd[:-2]
+	
+
+class SurfToVolOperator( CommandLineOperator ):
+	"""docstring for SurfToVolOperator"""
+	def __init__(self, inputObject, cmd = 'mri_surf2vol', **kwargs):
+		super(SurfToVolOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, templateFileName, hemispheres = None, register = None, fsSubject = '', outputFileName = None, threshold = 0.5, surfType = 'paint' ):
+		"""docstring for configure"""
+		# don't feel like calling splitext twice
+		if outputFileName[-7:] == standardMRIExtension:
+			self.outputFileName = outputFileName[:-7]
+		else:
+			self.outputFileName = outputFileName
+		self.templateFileName = templateFileName
+		self.register = register
+		self.surfType = surfType
+		if hemispheres == None:
+			hemispheres = ['lh','rh']
+		if register == None:
+			self.logger.warning('no registration file given. this negligence will not stand.')
+
+		self.runcmd = ''
+		for hemi in hemispheres:
+			for frame in frames.keys():
+				self.runcmd += self.cmd + ' --surfval ' + self.inputFileName + ' ' + self.surfType 
+				self.runcmd += ' --reg ' + self.register
+				self.runcmd += ' --surf smoothwm'
+				self.runcmd += ' --hemi  ' + hemi
+				self.runcmd += ' --template '+ self.templateFileName
+#				self.runcmd += ' --subject ' + fsSubject	# no need to use this if using a correct register file
+				self.runcmd += " --projfrac " + str(threshold)
 				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.w'
 				self.runcmd += ' &\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.

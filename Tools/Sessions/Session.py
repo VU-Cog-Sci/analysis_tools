@@ -145,18 +145,14 @@ class Session(PathConstructor):
 		# but these are the principal types of runs. For EPI runs conditions will depend on the experiment.
 		self.scanTypeDict = {}
 		if 'epi_bold' in self.scanTypeList:
-			self.scanTypeDict.update({'epi_runs': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'epi_bold', [r for r in self.runList])]})
+			self.scanTypeDict.update({'epi_bold': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'epi_bold', [r for r in self.runList])]})
 		if 'inplane_anat' in self.scanTypeList:
-#			self.inplane_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'inplane_anat', [r for r in self.runList])]
 			self.scanTypeDict.update({'inplane_anat': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'inplane_anat', [r for r in self.runList])]})
 		if '3d_anat' in self.scanTypeList:
-#			self.anat_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == '3d_anat', [r for r in self.runList])]
 			self.scanTypeDict.update({'3d_anat': [hit.indexInSession for hit in filter(lambda x: x.scanType == '3d_anat', [r for r in self.runList])]})
 		if 'dti' in self.scanTypeList:
-#			self.dti_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]
 			self.scanTypeDict.update({'dti': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]})
 		if 'spectro' in self.scanTypeList:
-#			self.spectro_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]
 			self.scanTypeDict.update({'spectro': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]})
 		
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
@@ -181,7 +177,7 @@ class Session(PathConstructor):
 					prc = ParRecConversionOperator( self.runFile(stage = 'raw/mri', postFix = [str(r.ID)], base = rawBase, extension = '.PAR' ) )
 					prc.configure()
 					prc.execute()
-					if r.indexInSession in self.epi_runs:
+					if r.indexInSession in self.scanTypeDict['epi_bold']:
 						# address slope and intercept issues
 						f = open(self.runFile(stage = 'raw/mri', postFix = [str(r.ID)], base = rawBase, extension = '.PAR' ), 'r')
 						fr = f.readlines()
@@ -228,7 +224,7 @@ class Session(PathConstructor):
 			else:
 				# we have to make do with epi volumes. so, we motion correct the first epi_bold run
 				# prepare the motion corrected first functional	
-				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.epi_runs[0]] ) )
+				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]] ) )
 				mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
 				mcFirst.execute()
 				#  and average it over time. 
@@ -258,7 +254,7 @@ class Session(PathConstructor):
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
 			# set up the first mean functional in the registration folder anyway for making masks. note that it's necessary to have run the moco first...
-			ExecCommandLine('cp ' + self.runFile(stage = 'processed/mri', run = self.runList[self.epi_runs[0]], postFix = ['mcf', 'meanvol'] ) + ' ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' ) )
+			ExecCommandLine('cp ' + self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf', 'meanvol'] ) + ' ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' ) )
 			
 			for mask in maskList:
 				for hemi in ['lh','rh']:
@@ -281,7 +277,7 @@ class Session(PathConstructor):
 		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration' )
 		# set up a list of motion correction operator objects for the runs
 		mcOperatorList = [];	stdOperatorList = [];
-		for er in self.epi_runs:
+		for er in self.scanTypeDict['epi_bold']:
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ), target = self.referenceFunctionalFileName )
 		 	mcf.configure()
 			mcOperatorList.append(mcf)
@@ -318,3 +314,22 @@ class Session(PathConstructor):
 				fMcf()
 			
 			job_server.print_stats()
+			
+	def createMasksFromFreeSurferLabels(self):
+		"""createMasksFromFreeSurferLabels looks in the subject's 
+		freesurfer subject folder and reads label files 
+		out of the subject's label folder of preference. 
+		(empty string if none given)"""
+		labelFiles = subprocess.Popen('ls ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', self.subject.labelFolderOfPreference) + '*.label', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		for lf in labelFiles:
+			lfx = os.path.split(lf][-1]
+			if 'lh' in lfx:
+				hemi = 'lh'
+			elif 'rh' in lfx:
+				hemi = 'rh'
+			lvo = LabelToVolOperator(lf)
+			# we convert the label files to the space of the first EPI run of the session.
+			lvo.configure(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = lfx[:-7] ), threshold = 0.5, surfType = 'label')
+			lvo.execute()
+		
+		

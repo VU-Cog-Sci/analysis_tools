@@ -9,18 +9,7 @@ Copyright (c) 2009 TK. All rights reserved.
 
 import * from Session
 
-class RetinotopicMapperSession(Session):
-	def parcelateConditions(self):
-		super(RetinotopicMapperSession, self).parcelateConditions()
-#		self.conditionDict['polar'] = []
-#		self.conditionDict['eccen'] = []
-		if 'polar' in self.conditionList:
-#			self.conditionDict['polar'] = [hit.indexInSession for hit in filter(lambda x: x.condition == 'polar', [r for r in self.runList])]
-			self.conditionDict.update({'polar': [hit.indexInSession for hit in filter(lambda x: x.condition == 'polar', [r for r in self.runList])]})
-		if 'eccen'  in self.conditionList:
-#			self.conditionDict['eccen'] = [hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]
-			self.conditionDict.update({'eccen': [hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]})
-	
+class RetinotopicMappingSession(Session):
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
 		runs retinotopic mapping on all runs in self.conditionDict['polar'] and self.conditionDict['eccen']
@@ -136,8 +125,8 @@ class RetinotopicMapperSession(Session):
 		
 		if len(self.conditionDict['polar']) > 0:
 			# polar files
-			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.epi_runs]
-			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.epi_runs]
+			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.scanTypeDict['epi_bold']]
+			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.scanTypeDict['epi_bold']]
 			distilledInputFileNamesFull = [os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'polar'),os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'eccen')]
 			
 			for (pd, rd) in zip(distilledInputFileNames, rawInputFileNames):
@@ -145,7 +134,7 @@ class RetinotopicMapperSession(Session):
 				rdIm = NiftiImage(rd)
 				pdIm = NiftiImage(pd)
 				
-				pp = PdfPages(self.runFile(stage = 'processed/mri', run = self.runList[self.epi_runs[rawInputFileNames.index(rd)]], extension = '.pdf' ))
+				pp = PdfPages(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][rawInputFileNames.index(rd)]], extension = '.pdf' ))
 				
 				for roi in rois:
 					for hemi in ['lh','rh']:

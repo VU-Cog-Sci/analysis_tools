@@ -155,7 +155,7 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.openData()
 		self.separateEventsFromData()
 		
-	def joinButtonDownAndUps(self):
+	def joinButtonDownAndUps(self, answers = [1,2]):	# buttons when the thumb button is broken: [2,3]
 		"""
 		convert button ups to the right format because first sessions didn't do that
 		then, create events that may be percepts or transitions. these are stored in lists
@@ -177,7 +177,7 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 				thisPercept = RivalryPercept(lastReport, bE)
 				thisPercept.type = 0
 				percepts.append(thisPercept)
-			elif (lastReport[0] == -1 and bE[0] == 2) or (lastReport[0] == -2 and bE[0] == 1):	# the present buttonpress ends a (prolonged) transition
+			elif (lastReport[0] == -answers[0] and bE[0] == answers[1]) or (lastReport[0] == -answers[1] and bE[0] == answers[0]):	# the present buttonpress ends a (prolonged) transition
 				thisTransition = RivalryPercept(lastReport, bE)
 				thisTransition.type = 0
 				transitions.append(thisTransition)

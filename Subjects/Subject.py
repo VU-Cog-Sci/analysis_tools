@@ -17,9 +17,9 @@ from math import *
 from itertools import *
 
 class Subject(object):
-	def __init__(self, initials, firstName, birthdate, standardFSID ):
+	def __init__(self, initials, firstName, birthdate, standardFSID, labelFolderOfPreference ):
 		self.initials = initials
 		self.firstName = firstName
 		self.birthdate = birthdate
 		self.standardFSID = standardFSID
-		
+		self.labelFolderOfPreference = labelFolderOfPreference

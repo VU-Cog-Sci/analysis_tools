@@ -10,20 +10,9 @@ Copyright (c) 2009 TK. All rights reserved.
 from Session import *
 
 class RivalrySession(Session):
-	def parcelateConditions(self):
-		super(RivalrySession, self).parcelateConditions()
-		self.rivalry_runs = []
-		self.disparity_runs = []
-		if 'rivalry' in self.conditionList:
-#			self.rivalry_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'rivalry', [r for r in self.runList])]
-			self.conditionDict.update({'rivalry': [hit.indexInSession for hit in filter(lambda x: x.condition == 'rivalry', [r for r in self.runList])]})
-		if 'disparity' in self.conditionList:
-#			self.disparity_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'disparity', [r for r in self.runList])]
-			self.conditionDict.update({'disparity': [hit.indexInSession for hit in filter(lambda x: x.condition == 'disparity', [r for r in self.runList])]})
-	
 	def analyzeBehavior(self):
 		"""docstring for analyzeBehaviorPerRun"""
-		for r in self.epi_runs:
+		for r in self.scanTypeDict['epi_bold']:
 			# do principal analysis
 			self.runList[r].behavior()
 			# put in the right place
