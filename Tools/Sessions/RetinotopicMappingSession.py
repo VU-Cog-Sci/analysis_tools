@@ -12,19 +12,21 @@ import * from Session
 class RetinotopicMapperSession(Session):
 	def parcelateConditions(self):
 		super(RetinotopicMapperSession, self).parcelateConditions()
-		self.polar_runs = []
-		self.eccen_runs = []
+#		self.conditionDict['polar'] = []
+#		self.conditionDict['eccen'] = []
 		if 'polar' in self.conditionList:
-			self.polar_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'polar', [r for r in self.runList])]
+#			self.conditionDict['polar'] = [hit.indexInSession for hit in filter(lambda x: x.condition == 'polar', [r for r in self.runList])]
+			self.conditionDict.update({'polar': [hit.indexInSession for hit in filter(lambda x: x.condition == 'polar', [r for r in self.runList])]})
 		if 'eccen'  in self.conditionList:
-			self.eccen_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]
+#			self.conditionDict['eccen'] = [hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]
+			self.conditionDict.update({'eccen': [hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]})
 	
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
-		runs retinotopic mapping on all runs in self.polar_runs and self.eccen_runs
+		runs retinotopic mapping on all runs in self.conditionDict['polar'] and self.conditionDict['eccen']
 		"""
 		self.logger.info('run retinotopic mapping')
-		if len(self.polar_runs) == 0 and len(self.eccen_runs) == 0:
+		if len(self.conditionDict['polar']) == 0 and len(self.conditionDict['eccen']) == 0:
 			self.logger.warning('no retinotopic mapping runs to be run...')
 			
 		presentCommand = '/Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/analysis/other_scripts/selfreqavg_noinfs.csh'
@@ -35,26 +37,26 @@ class RetinotopicMapperSession(Session):
 			postFix.append('mcf')
 		if perCondition:
 			# set up a list of retinotopic mapping operator objects for the different conditions
-			if len(self.polar_runs) > 0:
+			if len(self.conditionDict['polar']) > 0:
 				# analyze polar runs
-				prOperator = RetMapOperator([self.runList[pC] for pC in self.polar_runs], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.polar_runs]
-				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.polar_runs[0]]), 'polar')
+				prOperator = RetMapOperator([self.runList[pC] for pC in self.conditionDict['polar']], cmd = presentCommand)
+				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict['polar']]
+				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'polar')
 				opfNameList.append(outputFileName)
 				prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
 				rmOperatorList.append(prOperator)
-			if len(self.eccen_runs) > 0:
+			if len(self.conditionDict['eccen']) > 0:
 				# analyze eccen runs
-				erOperator = RetMapOperator([self.runList[eC] for eC in self.eccen_runs], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[eC], postFix = postFix) for eC in self.eccen_runs]
-				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.eccen_runs[0]]), 'eccen')
+				erOperator = RetMapOperator([self.runList[eC] for eC in self.conditionDict['eccen']], cmd = presentCommand)
+				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[eC], postFix = postFix) for eC in self.conditionDict['eccen']]
+				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['eccen'][0]]), 'eccen')
 				opfNameList.append(outputFileName)
 				erOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
 				rmOperatorList.append(erOperator)
 				
 		if perRun:
 			# set up a list of retinotopic mapping operator objects for the different runs
-			for i in self.polar_runs:
+			for i in self.conditionDict['polar']:
 				# analyze polar runs
 				prOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
 				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
@@ -62,7 +64,7 @@ class RetinotopicMapperSession(Session):
 				opfNameList.append(outputFileName)
 				prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
 				rmOperatorList.append(prOperator)
-			for i in self.eccen_runs:
+			for i in self.conditionDict['eccen']:
 				# analyze eccen runs
 				erOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
 				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
@@ -132,11 +134,11 @@ class RetinotopicMapperSession(Session):
 		"""
 		fs = 10
 		
-		if len(self.polar_runs) > 0:
+		if len(self.conditionDict['polar']) > 0:
 			# polar files
 			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.epi_runs]
 			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.epi_runs]
-			distilledInputFileNamesFull = [os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.polar_runs[0]]), 'polar'),os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.polar_runs[0]]), 'eccen')]
+			distilledInputFileNamesFull = [os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'polar'),os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'eccen')]
 			
 			for (pd, rd) in zip(distilledInputFileNames, rawInputFileNames):
 				# setting up the data files

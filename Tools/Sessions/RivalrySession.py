@@ -15,9 +15,11 @@ class RivalrySession(Session):
 		self.rivalry_runs = []
 		self.disparity_runs = []
 		if 'rivalry' in self.conditionList:
-			self.rivalry_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'rivalry', [r for r in self.runList])]
+#			self.rivalry_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'rivalry', [r for r in self.runList])]
+			self.conditionDict.update({'rivalry': [hit.indexInSession for hit in filter(lambda x: x.condition == 'rivalry', [r for r in self.runList])]})
 		if 'disparity' in self.conditionList:
-			self.disparity_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'disparity', [r for r in self.runList])]
+#			self.disparity_runs = [hit.indexInSession for hit in filter(lambda x: x.condition == 'disparity', [r for r in self.runList])]
+			self.conditionDict.update({'disparity': [hit.indexInSession for hit in filter(lambda x: x.condition == 'disparity', [r for r in self.runList])]})
 	
 	def analyzeBehavior(self):
 		"""docstring for analyzeBehaviorPerRun"""

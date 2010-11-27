@@ -143,16 +143,26 @@ class Session(PathConstructor):
 	def parcelateConditions(self):
 		# conditions will vary across experiments - this one will be amenable in subclasses,
 		# but these are the principal types of runs. For EPI runs conditions will depend on the experiment.
+		self.scanTypeDict = {}
 		if 'epi_bold' in self.scanTypeList:
-			self.epi_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'epi_bold', [r for r in self.runList])]
+			self.scanTypeDict.update({'epi_runs': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'epi_bold', [r for r in self.runList])]})
 		if 'inplane_anat' in self.scanTypeList:
-			self.inplane_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'inplane_anat', [r for r in self.runList])]
+#			self.inplane_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'inplane_anat', [r for r in self.runList])]
+			self.scanTypeDict.update({'inplane_anat': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'inplane_anat', [r for r in self.runList])]})
 		if '3d_anat' in self.scanTypeList:
-			self.anat_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == '3d_anat', [r for r in self.runList])]
+#			self.anat_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == '3d_anat', [r for r in self.runList])]
+			self.scanTypeDict.update({'3d_anat': [hit.indexInSession for hit in filter(lambda x: x.scanType == '3d_anat', [r for r in self.runList])]})
 		if 'dti' in self.scanTypeList:
-			self.dti_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]
+#			self.dti_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]
+			self.scanTypeDict.update({'dti': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]})
 		if 'spectro' in self.scanTypeList:
-			self.spectro_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]
+#			self.spectro_runs = [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]
+			self.scanTypeDict.update({'spectro': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]})
+		
+		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
+		self.conditionDict = {}
+		for c in self.conditions:
+			self.conditionDict.update({c:[hit.indexInSession for hit in filter(lambda x: x.condition == 'eccen', [r for r in self.runList])]})
 	
 	def setupFiles(self, rawBase):
 		"""
