@@ -7,8 +7,8 @@ Created by Tomas HJ Knapen on 2009-11-26.
 Copyright (c) 2009 TK. All rights reserved.
 """
 
-import * from Session
-import * from RetinotopicMappingSession
+from Session import * 
+from RetinotopicMappingSession import *
 
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):

@@ -15,14 +15,13 @@ import numpy as np
 import matplotlib.pylab as pl
 
 thisFolder = '/Users/tk/Documents/research/experiments/rivalry_fMRI/Learning'
-analysisFolder = os.path.join(thisFolder, 'analysis')
-sys.path.append( analysisFolder )
+sys.path.append( os.environ['ANALYSIS_HOME'] )
 
-import Tools.Session as Session
+from Tools.Sessions import *
 import Tools.Project as Project
 
 # importing this file creates the presentSubject variable
-from Subjects.JB import * 
+from Tools.Subjects.JB import * 
 from Tools.Run import *
 
 # project information - not really informative but still, useful for creating paths and the like
@@ -33,7 +32,7 @@ sessions = []
 # session information 
 sessionDate = datetime.date(2010, 11, 5)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 
 runArray = [
 	{'ID' : 3, 'scanType': '3d_anat', 'condition': '3d_anat', 'rawDataFilePath': presentSession.runFile('raw/mri', postFix = ['3'], base = presentSubject.initials)},
@@ -120,7 +119,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 10)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -161,7 +160,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 11)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -202,7 +201,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 12)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -243,7 +242,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 16)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -284,7 +283,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 17)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -325,7 +324,7 @@ sessions.append(presentSession)
 #________________________________________________________________________
 sessionDate = datetime.date(2010, 11, 18)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 runArray = [
 	{'ID' : 0, 'condition': 'rivalry', 'scanType': 'epi_bold', 
 	'behaviorFile':presentSession.runFile('raw/behavior', postFix = ['BR_all'], base = presentSubject.initials + '_0_*', extension = '.pickle')},
@@ -367,7 +366,7 @@ sessions.append(presentSession)
 # session information 
 sessionDate = datetime.date(2010, 11, 22)
 sessionID = 'rivalry_learning_' + presentSubject.initials
-presentSession = Session.RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
+presentSession = RivalrySession(sessionID, sessionDate, presentProject, presentSubject)
 
 runArray = [
 	{'ID' : 3, 'scanType': '3d_anat', 'condition': '3d_anat', 'rawDataFilePath': presentSession.runFile('raw/mri', postFix = ['3'], base = presentSubject.initials)},
@@ -447,7 +446,7 @@ for r in runArray:
 
 # functional analysis must happen next.
 # first we need to analyze the behavior - most important...
-presentSession.analyzeBehavior( )
+# presentSession.analyzeBehavior( )
 
 sessions.append(presentSession)
 

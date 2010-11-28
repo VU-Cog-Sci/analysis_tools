@@ -19,13 +19,13 @@ from nifti import *
 import pp
 import logging, logging.handlers, logging.config
 
-from log import *
-from Run import *
-from Subjects.Subject import *
-from Operators.Operator import *
-from Operators.CommandLineOperator import *
-from Operators.ImageOperator import *
-from Operators.BehaviorOperator import *
+from ..log import *
+from ..Run import *
+from ..Subjects.Subject import *
+from ..Operators.Operator import *
+from ..Operators.CommandLineOperator import *
+from ..Operators.ImageOperator import *
+from ..Operators.BehaviorOperator import *
 
 class PathConstructor(object):
 	"""
@@ -102,6 +102,8 @@ class PathConstructor(object):
 					if pf == 'processed/mri':
 						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'surf')):
 							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'surf'))
+						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'masked')):
+							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'masked'))
 	
 
 class Session(PathConstructor):
@@ -328,7 +330,7 @@ class Session(PathConstructor):
 			labelFolder = self.subject.labelFolderOfPreference
 		labelFiles = subprocess.Popen('ls ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', labelFolder) + '*.label', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		for lf in labelFiles:
-			lfx = os.path.split(lf][-1]
+			lfx = os.path.split(lf)[-1]
 			if 'lh' in lfx:
 				hemi = 'lh'
 			elif 'rh' in lfx:
@@ -347,4 +349,17 @@ class Session(PathConstructor):
 				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = annotFile[:-6] ), threshold = 0.05, surfType = 'annot')
 				lvo.execute()
 		
+	def maskFunctionalData(self, maskThreshold = 0.0):
+		"""docstring for maskFunctionalData"""
+		self.logger.info('')
+		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		rois = []
+		for roi in roiFileNames:
+			rois.append(NiftiImage(roi))
+		
+		for r in self.scanTypeDict['epi_bold']:
+			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
+			for roi in rois:
+				imo = ImageMaskingOperator(funcFile, maskObject = roi, thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(roi.filename)[1], extension = '' ))
+				imo.applyAllMasks(save = True, maskFunction = '__gt__', flat = True)
 		

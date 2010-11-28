@@ -7,7 +7,7 @@ Created by Tomas HJ Knapen on 2009-11-26.
 Copyright (c) 2009 TK. All rights reserved.
 """
 
-import * from Session
+from Session import * 
 
 class RetinotopicMappingSession(Session):
 	def parcelateConditions(self):

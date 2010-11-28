@@ -126,6 +126,8 @@ class ImageMaskingOperator( ImageOperator ):
 			for i in range(self.inputData.shape[0]):
 				maskedData[i] = mask * self.inputData[i]
 				
+		self.logger.debug('data masked, mask # %s, threshold %s resultant array is shaped: %s', str(whichMask), str(maskThreshold), str(maskedData.shape))
+		
 		return maskedData
 	
 	def applyAllMasks(self, save = True, maskFunction = '__gt__', flat = False):

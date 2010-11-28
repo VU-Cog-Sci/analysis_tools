@@ -13,13 +13,16 @@ class RivalrySession(Session):
 	def analyzeBehavior(self):
 		"""docstring for analyzeBehaviorPerRun"""
 		for r in self.scanTypeDict['epi_bold']:
-			# do principal analysis
-			self.runList[r].behavior()
+			# do principal analysis, keys vary across dates
+			if self.date == datetime.date(2010, 11, 22):
+				self.runList[r].behavior([2,3])
+			else:
+				self.runList[r].behavior([1,2])
 			# put in the right place
 			ExecCommandLine( 'cp ' + self.runList[r].bO.inputFileName + ' ' + self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' ) )
 			self.runList[r].behaviorFile = self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' )
 			
-		if len(self.conditionDict['disparity']) > 0:
+		if 'disparity' in self.conditionDict:
 			self.disparityPsychophysics = []
 			for r in self.conditionDict['disparity']:
 				self.disparityPsychophysics.append([self.runList[r].bO.disparities ,self.runList[r].bO.answersPerStimulusValue, self.runList[r].bO.meanAnswersPerStimulusValue, self.runList[r].bO.fit])
@@ -35,7 +38,7 @@ class RivalrySession(Session):
 			GoodnessOfFit(pf)
 		
 		
-		if len(self.conditionDict['rivalry']) > 0:
+		if 'rivalry' in self.conditionDict:
 			self.rivalryBehavior = []
 			for r in self.conditionDict['rivalry']:
 				self.rivalryBehavior.append([self.runList[r].bO.meanPerceptDuration, self.runList[r].bO.meanTransitionDuration,self.runList[r].bO.meanPerceptsNoTransitionsDuration, self.runList[r].bO.perceptEventsAsArray, self.runList[r].bO.transitionEventsAsArray, self.runList[r].bO.perceptsNoTransitionsAsArray])
@@ -53,8 +56,6 @@ class RivalrySession(Session):
 			pl.scatter(np.arange(6)+0.5, [self.rivalryBehavior[i][2] for i in range(6)], c = 'b', alpha = 0.75, marker = 's')
 
 			# all percept events, plotted on top of this
-	#		with (first) and without (second) taking into account the transitions that were reported.
-	#		pl.plot(np.concatenate([(self.rivalryBehavior[rb][3][:,0]/150.0) + rb for rb in range(6)]), np.concatenate([self.rivalryBehavior[rb][3][:,1] for rb in range(6)]), c = 'b', alpha = 0.35)
 			pl.plot(np.concatenate([(self.rivalryBehavior[rb][5][:,0]/150.0) + rb for rb in range(6)]), np.concatenate([self.rivalryBehavior[rb][5][:,1] for rb in range(6)]), c = 'b', alpha = 0.25)
 			# second series of EPI runs
 	#		with (first) and without (second) taking into account the transitions that were reported.
@@ -62,12 +63,13 @@ class RivalrySession(Session):
 			pl.scatter(np.arange(6,12)+0.5, [self.rivalryBehavior[i][2] for i in range(6,12)], c = 'g', alpha = 0.75, marker = 's')
 			# all percept events, plotted on top of this
 	#		with (first) and without (second) taking into account the transitions that were reported.
-	#		pl.plot(np.concatenate([(self.rivalryBehavior[rb][3][:,0]/150.0) + rb - 6 for rb in range(6,12)]), np.concatenate([self.rivalryBehavior[rb][3][:,1] for rb in range(6,12)]), c = 'g', alpha = 0.35)
 			pl.plot(np.concatenate([(self.rivalryBehavior[rb][5][:,0]/150.0) + rb for rb in range(6,12)]), np.concatenate([self.rivalryBehavior[rb][5][:,1] for rb in range(6,12)]), c = 'g', alpha = 0.25)
 			s.axis([-1,13,0,12])
 		
-	#		fig.add_subplot(2,1,2)
-	#		for i in range(len(self.disparityPsychophysics)):
-	#			pl.plot(self.disparityPsychophysics[i][0],self.disparityPsychophysics[i][2])
 			pl.savefig(self.runFile(stage = 'processed/behavior', extension = '.pdf', base = 'duration_summary' ))
-		
+	
+	def deconvolveEvents(self, rois):
+		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
+		for r in self.conditionDict['rivalry']:
+			thisFile = NiftiImage(self.runFile(stage = 'processed/mri', self.runFileList[r], postFix = ['mcf']))
+			theseTransitions = self.runList[r].bO.transitionEventsAsArray
