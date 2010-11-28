@@ -92,14 +92,16 @@ class PathConstructor(object):
 			for c in conditionFolders:
 				 if not os.path.isdir(self.stageFolder(pf+'/'+c)):
 					os.mkdir(self.stageFolder(pf+'/'+c))
-					if not os.path.isdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf')):
-						os.mkdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf'))
+					if pf == 'processed/mri':
+						if not os.path.isdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf')):
+							os.mkdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf'))
 			# create folders for each of the runs in the session and their surfs
 			for rl in self.runList:
 				if not os.path.isdir(self.runFolder(pf, run = rl)):
 					os.mkdir(self.runFolder(pf, run = rl))
-					if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'surf')):
-						os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'surf'))
+					if pf == 'processed/mri':
+						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'surf')):
+							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'surf'))
 	
 
 class Session(PathConstructor):
@@ -316,11 +318,12 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
-	def createMasksFromFreeSurferLabels(self, labelFolder = None):
+	def createMasksFromFreeSurferLabels(self, labelFolder = None, annot = True):
 		"""createMasksFromFreeSurferLabels looks in the subject's 
 		freesurfer subject folder and reads label files 
 		out of the subject's label folder of preference. 
 		(empty string if none given)"""
+		self.logger.info('creating masks from labels folder %s', os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', labelFolder))
 		if labelFolder == None:
 			labelFolder = self.subject.labelFolderOfPreference
 		labelFiles = subprocess.Popen('ls ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', labelFolder) + '*.label', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
@@ -332,7 +335,16 @@ class Session(PathConstructor):
 				hemi = 'rh'
 			lvo = LabelToVolOperator(lf)
 			# we convert the label files to the space of the first EPI run of the session.
-			lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = lfx[:-7] ), threshold = 0.5, surfType = 'label')
+			lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 			lvo.execute()
+		
+		# extract standard annotation to functional space
+		if annot:
+			self.logger.info('create masks based on anatomical parcelation as in aparc.annot')
+			for hemi in ['lh','rh']:
+				annotFile = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', hemi + '.aparc.annot')
+				lvo = LabelToVolOperator(lf)
+				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks', base = annotFile[:-6] ), threshold = 0.05, surfType = 'annot')
+				lvo.execute()
 		
 		

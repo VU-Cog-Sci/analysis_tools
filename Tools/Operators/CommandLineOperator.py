@@ -433,6 +433,7 @@ class LabelToVolOperator( CommandLineOperator ):
 			self.outputFileName = outputFileName 
 		self.templateFileName = templateFileName
 		self.register = register
+		self.surfType = surfType
 		if hemispheres == None:
 			hemispheres = ['lh','rh']
 		if register == None:
@@ -441,7 +442,10 @@ class LabelToVolOperator( CommandLineOperator ):
 		self.runcmd = ''
 		for hemi in hemispheres:
 			self.runcmd += self.cmd
-			self.runcmd += ' --label '+ self.inputFileName
+			if self.surfType == 'label':
+				self.runcmd += ' --label '+ self.inputFileName
+			elif self.surfType == 'annot':
+				self.runcmd += ' --annot '+ self.inputFileName
 			self.runcmd += ' --temp '+ self.templateFileName
 			self.runcmd += ' --reg '+ self.register
 			self.runcmd += ' --fillthresh ' + str(threshold)

@@ -42,12 +42,12 @@ class Run(object):
 			self.dateTime = datetime.date.today()
 		elif hasattr(self, 'eyelinkFile'):
 			self.dateTime = os.path.getctime(self.eyelinkFile)
-		
+	
 	def addTrial(self, trial):
 		"""docstring for addTrial"""
 		trial.indexInRun = trialList.len()
 		self.trialList.append(trial)
-		
+	
 	def behavior(self):
 		"""docstring for behavior"""
 		# First we'll have to set up the basic data extraction and the like
