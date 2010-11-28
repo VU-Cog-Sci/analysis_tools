@@ -11,7 +11,7 @@ import os, sys, datetime
 from subprocess import *
 #from volumesAndSurfaces import *
 
-from Tools.Session import *
+from Tools.Sessions import *
 from Tools.Trial import *
 from Operators.BehaviorOperator import *
 
@@ -31,6 +31,9 @@ class Run(object):
 		# datetime of this run is the creation time of the raw data file
 		for k,v in kwargs.items():
 			setattr(self, k, v)
+			
+		if not hasattr(self, 'condition'):
+			self.condition = ''
 		
 		if hasattr(self, 'rawDataFilePath'):
 			self.dateTime = os.path.getctime(self.rawDataFilePath)

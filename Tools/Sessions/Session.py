@@ -158,7 +158,8 @@ class Session(PathConstructor):
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
 		for c in self.conditions:
-			self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
+			if c != '':
+				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 	
 	def setupFiles(self, rawBase):
 		"""
@@ -315,12 +316,14 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
-	def createMasksFromFreeSurferLabels(self):
+	def createMasksFromFreeSurferLabels(self, labelFolder = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's 
 		freesurfer subject folder and reads label files 
 		out of the subject's label folder of preference. 
 		(empty string if none given)"""
-		labelFiles = subprocess.Popen('ls ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', self.subject.labelFolderOfPreference) + '*.label', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		if labelFolder == None:
+			labelFolder = self.subject.labelFolderOfPreference
+		labelFiles = subprocess.Popen('ls ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', labelFolder) + '*.label', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		for lf in labelFiles:
 			lfx = os.path.split(lf][-1]
 			if 'lh' in lfx:

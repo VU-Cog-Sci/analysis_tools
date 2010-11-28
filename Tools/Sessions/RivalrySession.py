@@ -19,9 +19,9 @@ class RivalrySession(Session):
 			ExecCommandLine( 'cp ' + self.runList[r].bO.inputFileName + ' ' + self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' ) )
 			self.runList[r].behaviorFile = self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' )
 			
-		if len(self.disparity_runs) > 0:
+		if len(self.conditionDict['disparity']) > 0:
 			self.disparityPsychophysics = []
-			for r in self.disparity_runs:
+			for r in self.conditionDict['disparity']:
 				self.disparityPsychophysics.append([self.runList[r].bO.disparities ,self.runList[r].bO.answersPerStimulusValue, self.runList[r].bO.meanAnswersPerStimulusValue, self.runList[r].bO.fit])
 				# back up behavior analysis in pickle file
 				f = open(self.runFile(stage = 'processed/behavior', run = self.runList[r], postFix = ['behaviorAnalyzer'], extension = '.pickle' ), 'w')
@@ -35,9 +35,9 @@ class RivalrySession(Session):
 			GoodnessOfFit(pf)
 		
 		
-		if len(self.rivalry_runs) > 0:
+		if len(self.conditionDict['rivalry']) > 0:
 			self.rivalryBehavior = []
-			for r in self.rivalry_runs:
+			for r in self.conditionDict['rivalry']:
 				self.rivalryBehavior.append([self.runList[r].bO.meanPerceptDuration, self.runList[r].bO.meanTransitionDuration,self.runList[r].bO.meanPerceptsNoTransitionsDuration, self.runList[r].bO.perceptEventsAsArray, self.runList[r].bO.transitionEventsAsArray, self.runList[r].bO.perceptsNoTransitionsAsArray])
 				# back up behavior analysis in pickle file
 				f = open(self.runFile(stage = 'processed/behavior', run = self.runList[r], postFix = ['behaviorAnalyzer'], extension = '.pickle' ), 'w')

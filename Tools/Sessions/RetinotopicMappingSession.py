@@ -16,7 +16,8 @@ class RetinotopicMappingSession(Session):
 		self.mappingTypes = np.unique(np.array([r.mappingType for r in self.runList]))
 		self.mappingTypeDict = {}
 		for mt in self.mappingTypes:
-			self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
+			if mt != '':
+				self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
 		
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""

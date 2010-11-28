@@ -92,6 +92,13 @@ class DisparityLocalizerBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.buttonDownEvents = self.buttonEvents[self.buttonEvents[:,0] > 0]
 		self.inputEventTimes = [self.disparityEvents[:,0] == d for d in self.disparities]	# don't make an np.array of this 'cos it may be irregularly shaped.
 		
+		# self.buttonDownEvents depends on the types of buttons pushed. we may correct for this.
+		minmax = np.array([self.buttonDownEvents[:,0].min(),self.buttonDownEvents[:,0].max()])
+		minmaxPositions = np.array([self.buttonDownEvents[:,0] == minmax[0], self.buttonDownEvents[:,0] == minmax[1]])
+		minmaxNormalized = (minmax - minmax[0])/(minmax[1] - minmax[0])
+		self.buttonDownEvents[minmaxPositions[0],0] = minmaxNormalized[0]
+		self.buttonDownEvents[minmaxPositions[1],0] = minmaxNormalized[1]
+		
 	def joinResponsesAndStimPresentations(self, disparityEvents, buttonDownEvents, responseInterval = [0.5,2.0]):
 		"""docstring for joinResponsesAndStimPresentations"""
 		stimResponsePairs = []
@@ -104,7 +111,7 @@ class DisparityLocalizerBehaviorOperator(RivalryLearningBehaviorOperator):
 #				noResponseTrials.append(dE)
 				answer = 0.5
 			else:	# one or many answers - take the last answer
-				answer = buttonDownEvents[responseTimeIndices][-1,0] - 1.0
+				answer = buttonDownEvents[responseTimeIndices][-1,0]
 				
 			stimResponsePairs.append([dE[0],answer,dE[1]])	# stim value, answer, time
 		return np.array(stimResponsePairs)
