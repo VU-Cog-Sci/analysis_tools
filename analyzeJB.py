@@ -436,17 +436,17 @@ for r in runArray:
 	thisRun = Run( **r )
 	presentSession.addRun(thisRun)
 
-# presentSession.setupFiles(rawBase = presentSubject.initials)
+presentSession.setupFiles(rawBase = presentSubject.initials)
 
 # check whether the inplane_anat has a t2 or t1 - like contrast. t2 is standard. else add contrast = 't1'
-# presentSession.registerSession()
+presentSession.registerSession()
 
 # after registration of the entire run comes motion correction
-# presentSession.motionCorrectFunctionals()
+presentSession.motionCorrectFunctionals()
 
 # functional analysis must happen next.
 # first we need to analyze the behavior - most important...
-# presentSession.analyzeBehavior( )
+presentSession.analyzeBehavior( )
 
 sessions.append(presentSession)
 
