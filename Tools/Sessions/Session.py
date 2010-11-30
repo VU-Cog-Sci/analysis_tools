@@ -365,17 +365,16 @@ class Session(PathConstructor):
 				for rn in range(len(rois)):
 						imo = ImageMaskingOperator(statMaskFile, maskObject = rois[rn], outputFileName = self.runFile(stage = 'processed/mri/masks/', base = os.path.split(rois[rn].filename)[1][:-7] + '_' + statMask, extension = '' ))
 						imo.applyAllMasks()
+				vtsO = VolToSurfOperator(statMaskFile)
+				vtsO.configure(frames = {statMask:0}, register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = self.runFile(stage = 'processed/mri/masks/surf/', base = '' ), threshold = 0.5, surfSmoothingFWHM = 2.0)
 		else:	# in this case copy the anatomical masks to the masks folder where they'll be used for the following extraction of functional data
 			os.system('cp ' + self.runFile(stage = 'processed/mri/masks/anat/', base = '*' ) + ' ' + self.stageFolder(stage = 'processed/mri/masks/') )
 			
 				
 		
-	def maskFunctionalData(self, maskThreshold = 3.0):
+	def maskFunctionalData(self, maskThreshold = 0.0):
 		"""
 		maskFunctionalData will mask each bold file with the masks present in the masks folder.
-		some of these masks will be anatomical, i.e. have values of 0 and 1, others will be functional and will have float-values.
-		I separate functionally and anatomically defined by requiring that functional masks have the word 'stat' occurring in their filename.
-		Only functional masks have the argument maskThreshold applied.
 		"""
 		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		self.logger.info('masking functional data from files %s', str([os.path.split(f)[1] for f in roiFileNames]))
