@@ -91,7 +91,9 @@ class ImageMaskingOperator( ImageOperator ):
 		if len(self.maskObject.data.shape) == 3:
 			# only one volume of mask data
 			self.maskData = self.maskObject.data.reshape(np.concatenate(([1],self.maskObject.data.shape)))
-		else:
+		elif len(self.maskObject.data.shape) == 5:
+			self.maskData = self.maskObject.data.reshape(list(self.maskObject.data.shape)[1:])
+		elif len(self.maskObject.data.shape) == 4:
 			self.maskData = self.maskObject.data
 			
 		if len(self.inputObject.data.shape) == 3:
@@ -105,7 +107,7 @@ class ImageMaskingOperator( ImageOperator ):
 			# the mask has more than one volume of 3D binary masks but doesn't fit with the naming
 			self.logger.warning('mask and input data dimensions do not match')
 		
-		self.logger.debug('mask and input data dimensions: %s, %s', str(self.inputData.shape), str(self.maskData.shape) )
+		self.logger.debug('input and mask data dimensions: %s, %s', str(self.inputData.shape), str(self.maskData.shape) )
 	
 	def applySingleMask(self, whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = False):
 		"""docstring for applySingleMask"""

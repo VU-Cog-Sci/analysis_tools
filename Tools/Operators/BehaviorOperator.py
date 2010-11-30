@@ -99,6 +99,8 @@ class DisparityLocalizerBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.buttonDownEvents[minmaxPositions[0],0] = minmaxNormalized[0]
 		self.buttonDownEvents[minmaxPositions[1],0] = minmaxNormalized[1]
 		
+#		self.logger.debug('self.buttonDownEvents = %s, self.buttonEvents = %s', str(self.buttonDownEvents), str(self.buttonEvents))
+		
 	def joinResponsesAndStimPresentations(self, disparityEvents, buttonDownEvents, responseInterval = [0.5,2.0]):
 		"""docstring for joinResponsesAndStimPresentations"""
 		stimResponsePairs = []

@@ -59,7 +59,7 @@ class CommandLineOperator( Operator ):
 		placeholder for execute
 		to be filled in by subclasses
 		"""
-		self.logger.info(self.__repr__() + 'executing command \n' + self.runcmd)
+		self.logger.debug(self.__repr__() + 'executing command \n' + self.runcmd)
 		# print self.runcmd
 		# subprocess.call( self.runcmd, shell=True, bufsize=0, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 		ExecCommandLine(self.runcmd)
