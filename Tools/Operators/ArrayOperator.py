@@ -37,19 +37,25 @@ class EventDataOperator(ArrayOperator):
 	def __init__(self, inputObject, eventObject, TR = 2.0, **kwargs):
 		super(EventDataOperator, self).__init__(inputObject, **kwargs)
 		
+		self.eventObject = eventObject
+		
 		# eventArray is a 1D array of timepoints
 		if self.eventObject.__class__.__name__ == 'ndarray':
 			self.eventArray = self.eventObject
 			# or the input object could be a numpy file
 		elif self.eventObject.__class__.__name__ == 'str':
 			self.eventArray = np.load(self.eventObject)
+			# or a regular list
+		elif self.eventObject.__class__.__name__ == 'list':
+			self.eventArray = self.eventObject
+			
 			
 		self.TR = TR
 	
 
 class DeconvolutionOperator(EventDataOperator):
 	"""docstring for DeconvolutionOperator"""
-	def __init__(self, inputObject, eventObject, TR = 2.0, deconvolutionSampleDuration = 0.5, deconvolutionInterval = 16.0, **kwargs):
+	def __init__(self, inputObject, eventObject, TR = 2.0, deconvolutionSampleDuration = 0.25, deconvolutionInterval = 12.0, **kwargs):
 		super(DeconvolutionOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
 		
 		self.deconvolutionSampleDuration = deconvolutionSampleDuration
@@ -66,7 +72,9 @@ class DeconvolutionOperator(EventDataOperator):
 		"""upsampleDataTimeSeries takes a timeseries of data points
 		 and upsamples them according to 
 		the ratio between TR and deconvolutionSampleDuration."""
-		self.workingDataTimeSeries = np.array([self.dataTimeSeries for i in range(int(self.ratio))]).transpose().ravel()
+		self.workingDataArray = (np.ones((int(self.ratio),self.dataArray.shape[0])) * self.dataArray).T.ravel()
+#		self.workingDataArray = np.array([self.dataArray for i in range(int(self.ratio))]).transpose().ravel()
+		self.logger.debug('upsampled from %s to %s according to ratio %s', str(self.dataArray.shape), str(self.workingDataArray.shape), str(self.ratio))
 	
 	def designMatrixFromVector(self, eventTimesVector):
 		"""designMatrixFromVector creates a deconvolution design matrix from 
@@ -74,9 +82,9 @@ class DeconvolutionOperator(EventDataOperator):
 		deconvolutionSampleDuration interval and thus discretizes them. 
 		Afterwards, it creates a matrix by shifting the discretized array
 		nrSamplesInInterval times. """
-		startArray = np.zeros(self.workingDataTimeSeries.shape[0])
-		startArray[np.array((eventTimesVector * self.ratio).round(),dtype = int)] = 1.0
-		allArray = np.zeros((self.nrSamplesInInterval,self.workingDataTimeSeries.shape[0]))
+		startArray = np.zeros(self.workingDataArray.shape[0])
+		startArray[np.array((eventTimesVector * self.deconvolutionSampleDuration).round(),dtype = int)] = 1.0
+		allArray = np.zeros((self.nrSamplesInInterval,self.workingDataArray.shape[0]))
 		allArray[0] = startArray
 		for i in range(1,int(self.nrSamplesInInterval)):
 			allArray[i,i:] = startArray[:-i]
@@ -87,15 +95,15 @@ class DeconvolutionOperator(EventDataOperator):
 		and creates a design timecourse matrix
 		by discretizing the events per deconvolutionSampleDuration period."""
 		m = []
-		for i in range(len(self.eventTimesArray)):
-			m.append(self.designMatrixFromVector(self.eventTimesArray[i]))
+		for i in range(len(self.eventArray)):
+			m.append(self.designMatrixFromVector(self.eventArray[i]))
 		self.designMatrix = np.mat(np.concatenate(m,axis = 0)).T
 	
 	def h(self):
 		"""
 		run the actual deconvolution least-squares approximation
 		"""
-		return ((self.designMatrix.T * self.designMatrix).I * self.designMatrix.T) * np.mat(self.workingDataTimeSeries).T
+		return ((self.designMatrix.T * self.designMatrix).I * self.designMatrix.T) * np.mat(self.workingDataArray).T
 	
 
 class EventRelatedAverageOperator(EventDataOperator):
@@ -127,6 +135,6 @@ class EventRelatedAverageOperator(EventDataOperator):
 	
 	def run(self, binWidth = 2.0, stepSize = 0.5):
 		self.averagingIntervals = np.array([[t, t + binWidth] for t in np.arange(self.interval[0], self.interval[1] - binWidth, stepSize)])
-		self.output = np.array([self.averageEventsInTime(i) for i in self.averagingIntervals])
+		self.output = np.array([self.averageEventsInTimeInterval(i) for i in self.averagingIntervals])
 		return self.output
 	

@@ -26,6 +26,7 @@ from ..Operators.Operator import *
 from ..Operators.CommandLineOperator import *
 from ..Operators.ImageOperator import *
 from ..Operators.BehaviorOperator import *
+from ..Operators.ArrayOperator import *
 
 class PathConstructor(object):
 	"""
@@ -320,6 +321,35 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
+	def rescaleFunctionals(self, operations = ['highpass', 'percentsignalchange']):
+		"""
+		rescaleFunctionals operates on motion corrected functionals
+		and does high/low pass filtering, percent signal change or zscoring of the data
+		"""
+		self.logger.info('rescaling functionals with options %s', str(operations))
+		for er in self.scanTypeDict['epi_bold']:
+			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
+			if 'highpass' in operations:
+				ifO = ImageTimeFilterOperator(funcFile, , filterType = 'highPass')
+				ifO.configure(frequency = 1.0/60.0)
+				ifO.execute()
+				funcFile = NiftiImage(ifO.outputFileName)
+			if 'lowpass' in operations:
+				ifO = ImageTimeFilterOperator(funcFile, , filterType = 'lowPass')
+				ifO.configure(frequency = 1.0/6.0)
+				ifO.execute()
+				funcFile = NiftiImage(ifO.outputFileName)
+			if 'percentsignalchange' in operations:
+				pscO = PercentSignalChangeOperator(funcFile)
+				pscO.execute()
+				funcFile = NiftiImage(pscO.outputFileName)
+			if 'zscore' in operations:
+				zscO = ZScoreOperator(funcFile)
+				zscO.execute()
+				funcFile = NiftiImage(zscO.outputFileName)
+		
+	
+
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc', statMasks = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
@@ -365,8 +395,10 @@ class Session(PathConstructor):
 				for rn in range(len(rois)):
 						imo = ImageMaskingOperator(statMaskFile, maskObject = rois[rn], outputFileName = self.runFile(stage = 'processed/mri/masks/', base = os.path.split(rois[rn].filename)[1][:-7] + '_' + statMask, extension = '' ))
 						imo.applyAllMasks()
+				# convert the statistical masks to surfaces
 				vtsO = VolToSurfOperator(statMaskFile)
 				vtsO.configure(frames = {statMask:0}, register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = self.runFile(stage = 'processed/mri/masks/surf/', base = '' ), threshold = 0.5, surfSmoothingFWHM = 2.0)
+				vtsO.execute()
 		else:	# in this case copy the anatomical masks to the masks folder where they'll be used for the following extraction of functional data
 			os.system('cp ' + self.runFile(stage = 'processed/mri/masks/anat/', base = '*' ) + ' ' + self.stageFolder(stage = 'processed/mri/masks/') )
 			
@@ -392,3 +424,21 @@ class Session(PathConstructor):
 				imo = ImageMaskingOperator(funcFile, maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))
 				imo.applyAllMasks(save = True, maskFunction = '__gt__', flat = True)
 		
+	def gatherRIOData(self, roi, whichRuns, whichMask = 'thresh_z_stat'):
+		data = []
+		for r in whichRuns:
+			# get ROI
+			if roi[:2] in ['lh','rh']:	# single - hemisphere roi
+				roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(roi) + '_' + whichMask, extension = '.pickle'), 'r')
+				thisRoiData = pickle.load(roiFile)[0]
+				roiFile.close()
+			else: # both hemispheres in one roi
+				roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + roi + '_' + whichMask, extension = '.pickle'), 'r')
+				roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + roi + '_' + whichMask, extension = '.pickle'), 'r')
+				thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
+				roiFileL.close()
+				roiFileR.close()
+
+			data.append(thisRoiData)
+		return np.vstack(data)
+	

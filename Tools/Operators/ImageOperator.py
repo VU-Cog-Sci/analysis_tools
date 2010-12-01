@@ -181,6 +181,25 @@ class PercentSignalChangeOperator(ImageOperator):
 		outputFile.save(self.outputFileName)
 		
 	
+class ZScoreOperator(ImageOperator):
+	"""
+	PercentSignalChangeOperator
+	does exactly what its name implies
+	"""
+	def __init__(self, inputObject, outputFileName = None, **kwargs):
+		super(PercentSignalChangeOperator, self).__init__(inputObject = inputObject, **kwargs)
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.join(self.inputObject.filename[:-7], '_Z.nii.gz')
+
+	def execute(self):
+		meanImage = self.inputObject.data.mean(axis = 0)
+		stdImage = self.inputObject.data.std(axis = 0)
+		outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
+		outputFile.save(self.outputFileName)
+
+
 
 # GLM type code..
 
@@ -325,9 +344,10 @@ class ImageTimeFilterOperator(ImageOperator):
 		"""docstring for execute"""
 		super(ImageFilterOperator, self).execute()
 		filteredData = (sp.fftpack.ifft((sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)), axis = 0).T * self.f).T) * sqrt(self.inputObject.timepoints)).reshape(self.inputObject.data.shape).astype(np.float32)
-		if outputFileName == None:
+		if self.outputFileName == None:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)	# data type will be according to the datatype of the input array
-			outputFile.save(os.path.splitext(self.inputObject.filename)[0] + 'f' + str(self.frequency) + '_' + self.filterType[0] + '.nii.gz')
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputObject.filename))[0] + '_f_' + str(self.frequency) + '_' + self.filterType[0] + '.nii.gz'
+			outputFile.save(self.outputFileName)
 		else:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)
 			outputFile.save(self.outputFileName)
