@@ -71,7 +71,7 @@ class RivalrySession(Session):
 			pl.savefig(self.runFile(stage = 'processed/behavior', extension = '.pdf', base = 'duration_summary' ))
 		
 	
-	def gatherBehavioralData(self, whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray']):
+	def gatherBehavioralData(self, whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray'], sampleInterval = [0,0]):
 		data = dict([(we, []) for we in whichEvents])
 		timeOffset = 0.0
 		for r in whichRuns:
@@ -80,15 +80,17 @@ class RivalrySession(Session):
 			behData = pickle.load(behFile)
 			behFile.close()
 			
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
+			TR = niiFile.rtime
+			nrTRs = niiFile.timepoints
+
 			for we in whichEvents:
+				# take data from the time in which we can reliably sample the ERAs
+				behData[we] = behData[we][ (behData[we][:,0] > -sampleInterval[0]) * (behData[we][:,0] < -sampleInterval[1] + (TR * nrTRs)) ]
 				# implement time offset. 
 				behData[we][:,0] = behData[we][:,0] + timeOffset
 				data[we].append(behData[we])
 				
-			
-			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
-			TR = niiFile.rtime
-			nrTRs = niiFile.timepoints
 			
 			timeOffset += TR * nrTRs
 			
@@ -119,6 +121,7 @@ class RivalrySession(Session):
 		
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
 		# mean data over voxels for this analysis
+		colors = ['k','r','g','b']
 		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray)
 		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T)
 		
@@ -136,6 +139,42 @@ class RivalrySession(Session):
 		
 		pl.show()
 		
-		
-		
-		
+	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray'):
+		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
+		self.logger.info('starting eventRelatedAverage for roi %s', roi)
+
+		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] )
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'], sampleInterval = [-5,21] )
+		# split out two types of events
+		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
+#		all types of transition/percept events split up, both types and beginning/end separately
+		eventArray = [eventData[eventType][ones,0], eventData[eventType][ones,0] + eventData[eventType][ones,1], eventData[eventType][twos,0], eventData[eventType][twos,0] + eventData[eventType][twos,1]]
+
+#		combine across percepts types, but separate onsets/offsets
+#		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
+
+#		separate out different percepts - looking at onsets
+#		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
+
+		self.logger.debug('eventRelatedAverage analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
+		colors = ['k','r','g','b']
+		# mean data over voxels for this analysis
+		roiData = roiData.mean(axis = 1)
+		for e in range(len(eventArray)):
+			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e])
+			pl.plot(eraOp.run()[:,0], c = colors[e])
+
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal'], eventType = 'perceptEventsAsArray'):
+
+		fig = pl.figure(figsize = (6,10))
+		fig.subplots_adjust(top = 0.95)
+		fig.subplots_adjust(bottom = 0.05)
+		fig.subplots_adjust(hspace = 0.35)
+
+		for r in range(len(roiArray)):
+			s = fig.add_subplot(len(roiArray),1,r+1)
+			self.eventRelatedAverageEvents(roiArray[r], eventType = eventType)
+			s.set_xlabel(roiArray[r], fontsize=10)
+
+		pl.show()
+

@@ -327,26 +327,27 @@ class Session(PathConstructor):
 		and does high/low pass filtering, percent signal change or zscoring of the data
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
-		for r in self.scanTypeDict['epi_bold']:
+		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
-			if 'highpass' in operations:
-				ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
-				ifO.configure(frequency = filterFreqs['highpass'])
-				ifO.execute()
-				funcFile = NiftiImage(ifO.outputFileName)
-			if 'lowpass' in operations:
-				ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
-				ifO.configure(frequency = filterFreqs['lowpass'])
-				ifO.execute()
-				funcFile = NiftiImage(ifO.outputFileName)
-			if 'percentsignalchange' in operations:
-				pscO = PercentSignalChangeOperator(funcFile)
-				pscO.execute()
-				funcFile = NiftiImage(pscO.outputFileName)
-			if 'zscore' in operations:
-				zscO = ZScoreOperator(funcFile)
-				zscO.execute()
-				funcFile = NiftiImage(zscO.outputFileName)
+			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
+				if op == 'highpass':
+					ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
+					ifO.configure(frequency = filterFreqs['highpass'])
+					ifO.execute()
+					funcFile = NiftiImage(ifO.outputFileName)
+				if op == 'lowpass':
+					ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
+					ifO.configure(frequency = filterFreqs['lowpass'])
+					ifO.execute()
+					funcFile = NiftiImage(ifO.outputFileName)
+				if op == 'percentsignalchange':
+					pscO = PercentSignalChangeOperator(funcFile)
+					pscO.execute()
+					funcFile = NiftiImage(pscO.outputFileName)
+				if op == 'zscore':
+					zscO = ZScoreOperator(funcFile)
+					zscO.execute()
+					funcFile = NiftiImage(zscO.outputFileName)
 		
 	
 

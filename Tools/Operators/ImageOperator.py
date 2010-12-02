@@ -187,7 +187,7 @@ class ZScoreOperator(ImageOperator):
 	does exactly what its name implies
 	"""
 	def __init__(self, inputObject, outputFileName = None, **kwargs):
-		super(PercentSignalChangeOperator, self).__init__(inputObject = inputObject, **kwargs)
+		super(ZScoreOperator, self).__init__(inputObject = inputObject, **kwargs)
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
@@ -346,10 +346,12 @@ class ImageTimeFilterOperator(ImageOperator):
 		self.filteredData = (sp.fftpack.ifft((sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)), axis = 0).T * self.f).T) * sqrt(self.inputObject.timepoints)).reshape(self.inputObject.data.shape).astype(np.float32)
 		if self.outputFileName == None:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)	# data type will be according to the datatype of the input array
-			self.outputFileName = self.inputObject.filename[:-7] + '_f_' + str(self.frequency)[:5] + '_' + self.filterType[0] + '.nii.gz'
+			self.outputFileName = self.inputObject.filename[:-7] + '_' + self.filterType[0] + 'p.nii.gz'
+			outputFile.setDescription('filtered with ImageTimeFilterOperator: cutoff = ' + str(self.frequency)[:5])
 			outputFile.save(self.outputFileName)
 		else:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)
+			outputFile.setDescription('filtered with ImageTimeFilterOperator: cutoff = ' + str(self.frequency)[:5])
 			outputFile.save(self.outputFileName)
 	
 

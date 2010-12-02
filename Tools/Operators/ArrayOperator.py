@@ -107,30 +107,36 @@ class DeconvolutionOperator(EventDataOperator):
 	
 
 class EventRelatedAverageOperator(EventDataOperator):
-	"""Event related averages for all voxel elements in the input data array.
+	"""Event related averages for all voxel/ROI elements in the input data array.
 	In most cases, one can save time by averaging across voxels before construction."""
 	def __init__(self, inputObject, eventObject, TR = 2.0, interval = [-5.0,21.0], **kwargs):
-		super(DeconvolutionOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
+		super(EventRelatedAverageOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
 		
-		self.interval = interval
+		self.interval = np.array(interval)
 		self.intervalInTRs = np.array(self.interval)/self.TR
 		self.intervalRange = np.arange(self.interval[0], self.interval[1], self.TR)
 		self.TRTimes = np.arange(self.TR / 2.0, self.dataArray.shape[-1] * self.TR + self.TR / 2.0, self.TR)
 		
-		# throw out events that happen too near the beginning and end of the run to fit in the averaging interval
-		self.selectedEventArray = self.eventArray[( self.eventArray > self.interval[0] ) * ( self.eventArray < (self.dataArray.shape[-1] - self.interval[-1]) )]
+		# throw out events that happen too near the beginning and end of the run to fit in the averaging interval -- this has already been done in gatherBehavioralData in session
+		self.selectedEventArray = self.eventArray # [( self.eventArray > self.interval[0] ) * ( self.eventArray < (self.dataArray.shape[-1] - self.interval[-1]) )]
 		
 		self.prepareEventData()
 	
 	def prepareEventData(self):
-		self.sampleTimes = np.zeros(np.concatenate([[self.dataArray.shape[0]],self.intervalRange.shape]))
-		self.eventData = np.zeros(np.concatenate([[self.dataArray.shape[0]],self.intervalRange.shape]))
+		self.eventSampleTimes = np.zeros(np.concatenate([[self.selectedEventArray.shape[0]],self.intervalRange.shape]))
+		self.eventData = np.zeros(np.concatenate([[self.dataArray.shape[0],self.selectedEventArray.shape[0]],self.intervalRange.shape]))
+		self.logger.debug('eventSampleTimes array shape: %s, eventData array shape: %s, dataArray shape: %s',self.eventSampleTimes.shape, self.eventData.shape, self.dataArray.shape )
 		for i in range(self.selectedEventArray.shape[0]):
 			self.eventSampleTimes[i] = self.intervalRange + self.selectedEventArray[i]
-			self.eventData[:,i] = self.dataArray[:,( self.TRTimes > sampleTimes[0] ) * ( self.TRTimes <= sampleTimes[-1] )]
+#			print self.TRTimes.shape
+#			print self.eventSampleTimes[i], self.TRTimes[( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
+			self.eventData[:,i] = self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
+			# set back the times of the recorded TRs
+			zeroTime = np.fmod(np.fmod(self.selectedEventArray[i], self.TR) + self.TR, self.TR) - self.TR
+			self.eventSampleTimes[i] = np.arange(self.interval[0], self.interval[1], self.TR) - zeroTime
 	
 	def averageEventsInTimeInterval(self, averagingInterval):
-		theseData = self.eventData[( self.sampleTimes > averagingInterval[0] ) * ( self.sampleTimes <= averagingInterval[1] )].ravel()
+		theseData = self.eventData[:,( self.eventSampleTimes > averagingInterval[0] ) * ( self.eventSampleTimes <= averagingInterval[1] )].ravel()
 		return [theseData.mean(), theseData.std(), theseData.shape[0]]
 	
 	def run(self, binWidth = 2.0, stepSize = 0.5):
