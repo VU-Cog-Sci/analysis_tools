@@ -321,22 +321,22 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
-	def rescaleFunctionals(self, operations = ['highpass', 'percentsignalchange']):
+	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 1.0/60.0, 'lowpass': 1.0/6.0}):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
-		for er in self.scanTypeDict['epi_bold']:
+		for r in self.scanTypeDict['epi_bold']:
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
 			if 'highpass' in operations:
-				ifO = ImageTimeFilterOperator(funcFile, , filterType = 'highPass')
-				ifO.configure(frequency = 1.0/60.0)
+				ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
+				ifO.configure(frequency = filterFreqs['highpass'])
 				ifO.execute()
 				funcFile = NiftiImage(ifO.outputFileName)
 			if 'lowpass' in operations:
-				ifO = ImageTimeFilterOperator(funcFile, , filterType = 'lowPass')
-				ifO.configure(frequency = 1.0/6.0)
+				ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
+				ifO.configure(frequency = filterFreqs['lowpass'])
 				ifO.execute()
 				funcFile = NiftiImage(ifO.outputFileName)
 			if 'percentsignalchange' in operations:
@@ -404,7 +404,7 @@ class Session(PathConstructor):
 			
 				
 		
-	def maskFunctionalData(self, maskThreshold = 0.0):
+	def maskFunctionalData(self, maskThreshold = 0.0, postFixFunctional = ['mcf']):
 		"""
 		maskFunctionalData will mask each bold file with the masks present in the masks folder.
 		"""
@@ -419,7 +419,7 @@ class Session(PathConstructor):
 			self.logger.info("removing older masked data: %s", 'rm ' + self.runFile(stage = 'processed/mri/', run = self.runList[r], base = 'masked/*', postFix = ['*'], extension = '' )) 
 			os.system('rm ' + self.runFile(stage = 'processed/mri/', run = self.runList[r], base = 'masked/*', postFix = ['*'], extension = '' ) )
 			
-			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
+			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFixFunctional ))
 			for rn in range(len(rois)):
 				imo = ImageMaskingOperator(funcFile, maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))
 				imo.applyAllMasks(save = True, maskFunction = '__gt__', flat = True)

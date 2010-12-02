@@ -173,7 +173,7 @@ class PercentSignalChangeOperator(ImageOperator):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.join(self.inputObject.filename[:-7], '_PSC.nii.gz')
+			self.outputFileName = self.inputObject.filename[:-7] + '_PSC.nii.gz'
 	
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
@@ -191,7 +191,7 @@ class ZScoreOperator(ImageOperator):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.join(self.inputObject.filename[:-7], '_Z.nii.gz')
+			self.outputFileName = self.inputObject.filename[:-7] + '_Z.nii.gz'
 
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
@@ -297,14 +297,14 @@ class Filter1D(object):
 		self.signalNrSamples = signalNrSamples
 		self.cutoff = cutoff
 		
-		self.representedFrequencies = np.fft.fftfreq(np.ones((signalNrSamples)), d = self.sampleInterval)[:floor(self.signalNrSamples/2.0)]
+		self.representedFrequencies = np.fft.fftfreq(n = int(self.signalNrSamples), d = int(self.sampleInterval))[:floor(self.signalNrSamples/2.0)]
 		self.f = np.ones(self.signalNrSamples)
 		self.thres = max(np.arange(self.f.shape[0])[self.representedFrequencies < self.cutoff])
 	
 
 class HighPassFilter1D(Filter1D):
 	def __init__(self, sampleInterval, signalNrSamples, cutoff):
-		super(HighPassFilter, self).__init__(sampleInterval, signalNrSamples, cutoff)
+		super(HighPassFilter1D, self).__init__(sampleInterval, signalNrSamples, cutoff)
 		self.f[:self.thres] = 0.0
 		self.f[-self.thres:] = 0.0
 		
@@ -313,7 +313,7 @@ class HighPassFilter1D(Filter1D):
 
 class LowPassFilter1D(Filter1D):
 	def __init__(self, sampleInterval, signalNrSamples, cutoff):
-		super(LowPassFilter, self).__init__(sampleInterval, signalNrSamples, cutoff)
+		super(LowPassFilter1D, self).__init__(sampleInterval, signalNrSamples, cutoff)
 		self.f[self.thres:-self.thres] = 0.0
 		
 		self.f = self.f / self.f.sum()
@@ -326,27 +326,27 @@ class ImageTimeFilterOperator(ImageOperator):
 	execute returns the filtered functional data
 	Uses fft for filtering
 	"""
-	def __init__(self, inputObject, filterType = 'highPass', **kwargs):
+	def __init__(self, inputObject, filterType = 'highpass', **kwargs):
 		"""docstring for __init__"""
-		super(ImageFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
+		super(ImageTimeFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
 		self.filterType = filterType
 	
 	def configure(self, frequency, outputFileName = None):
 		"""docstring for configure"""
 		self.frequency = frequency
-		if self.filterType == 'highPass':
+		if self.filterType == 'highpass':
 			self.f = HighPassFilter1D(self.inputObject.rtime, self.inputObject.timepoints, self.frequency).f
-		elif self.filterType == 'lowPass':
+		elif self.filterType == 'lowpass':
 			self.f = LowPassFilter1D(self.inputObject.rtime, self.inputObject.timepoints, self.frequency).f
 		self.outputFileName = outputFileName
 	
 	def execute(self):
 		"""docstring for execute"""
-		super(ImageFilterOperator, self).execute()
-		filteredData = (sp.fftpack.ifft((sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)), axis = 0).T * self.f).T) * sqrt(self.inputObject.timepoints)).reshape(self.inputObject.data.shape).astype(np.float32)
+		super(ImageTimeFilterOperator, self).execute()
+		self.filteredData = (sp.fftpack.ifft((sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)), axis = 0).T * self.f).T) * sqrt(self.inputObject.timepoints)).reshape(self.inputObject.data.shape).astype(np.float32)
 		if self.outputFileName == None:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)	# data type will be according to the datatype of the input array
-			self.outputFileName = os.path.splitext(os.path.splitext(self.inputObject.filename))[0] + '_f_' + str(self.frequency) + '_' + self.filterType[0] + '.nii.gz'
+			self.outputFileName = self.inputObject.filename[:-7] + '_f_' + str(self.frequency)[:5] + '_' + self.filterType[0] + '.nii.gz'
 			outputFile.save(self.outputFileName)
 		else:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)

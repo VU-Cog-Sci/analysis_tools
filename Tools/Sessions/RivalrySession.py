@@ -100,7 +100,7 @@ class RivalrySession(Session):
 		return data
 		
 	
-	def deconvolveEvents(self, roi, eventType = 'transitionEventsAsArray'):
+	def deconvolveEvents(self, roi, eventType = 'perceptEventsAsArray'):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
@@ -108,18 +108,29 @@ class RivalrySession(Session):
 		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] )
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
+#		all types of transition/percept events split up, both types and beginning/end separately
 		eventArray = [eventData[eventType][ones,0], eventData[eventType][ones,0] + eventData[eventType][ones,1], eventData[eventType][twos,0], eventData[eventType][twos,0] + eventData[eventType][twos,1]]
+		
+#		combine across percepts types, but separate onsets/offsets
+#		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
+	
+#		separate out different percepts - looking at onsets
+#		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
 		
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
 		# mean data over voxels for this analysis
 		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray)
 		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T)
 		
-	def deconvolveEventsFromRois(self, roiArray = ['V1','V2','MT'], eventType = 'transitionEventsAsArray'):
+	def deconvolveEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal'], eventType = 'perceptEventsAsArray'):
 		
-		fig = pl.figure()
+		fig = pl.figure(figsize = (6,10))
+		fig.subplots_adjust(top = 0.95)
+		fig.subplots_adjust(bottom = 0.05)
+		fig.subplots_adjust(hspace = 0.35)
+		
 		for r in range(len(roiArray)):
-			s = fig.add_subplot(len(roiArray),1,r)
+			s = fig.add_subplot(len(roiArray),1,r+1)
 			self.deconvolveEvents(roiArray[r], eventType = eventType)
 			s.set_xlabel(roiArray[r], fontsize=10)
 		
