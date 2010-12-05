@@ -114,7 +114,7 @@ class EventRelatedAverageOperator(EventDataOperator):
 		
 		self.interval = np.array(interval)
 		self.intervalInTRs = np.array(self.interval)/self.TR
-		self.intervalRange = np.arange(self.interval[0], self.interval[1], self.TR)
+		self.intervalRange = np.arange(self.interval[0] + self.TR / 2.0, self.interval[1], self.TR)
 		self.TRTimes = np.arange(self.TR / 2.0, self.dataArray.shape[-1] * self.TR + self.TR / 2.0, self.TR)
 		
 		# throw out events that happen too near the beginning and end of the run to fit in the averaging interval -- this has already been done in gatherBehavioralData in session
@@ -127,17 +127,17 @@ class EventRelatedAverageOperator(EventDataOperator):
 		self.eventData = np.zeros(np.concatenate([[self.dataArray.shape[0],self.selectedEventArray.shape[0]],self.intervalRange.shape]))
 		self.logger.debug('eventSampleTimes array shape: %s, eventData array shape: %s, dataArray shape: %s',self.eventSampleTimes.shape, self.eventData.shape, self.dataArray.shape )
 		for i in range(self.selectedEventArray.shape[0]):
-			self.eventSampleTimes[i] = self.intervalRange + self.selectedEventArray[i]
-#			print self.TRTimes.shape
-#			print self.eventSampleTimes[i], self.TRTimes[( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
-			self.eventData[:,i] = self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
 			# set back the times of the recorded TRs
 			zeroTime = np.fmod(np.fmod(self.selectedEventArray[i], self.TR) + self.TR, self.TR) - self.TR
-			self.eventSampleTimes[i] = np.arange(self.interval[0], self.interval[1], self.TR) - zeroTime
+			self.eventSampleTimes[i] = self.intervalRange - zeroTime
+#			print zeroTime, self.eventSampleTimes[i], self.intervalRange, self.selectedEventArray[i]
+#			print self.TRTimes[( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[1] + self.selectedEventArray[i] )]
+#			print self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
+			self.eventData[:,i] = self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
 	
 	def averageEventsInTimeInterval(self, averagingInterval):
 		theseData = self.eventData[:,( self.eventSampleTimes > averagingInterval[0] ) * ( self.eventSampleTimes <= averagingInterval[1] )].ravel()
-		return [theseData.mean(), theseData.std(), theseData.shape[0]]
+		return [averagingInterval[0] + (averagingInterval[1] - averagingInterval[0]) / 2.0, theseData.mean(), theseData.std(), theseData.shape[0]]
 	
 	def run(self, binWidth = 2.0, stepSize = 0.5):
 		self.averagingIntervals = np.array([[t, t + binWidth] for t in np.arange(self.interval[0], self.interval[1] - binWidth, stepSize)])

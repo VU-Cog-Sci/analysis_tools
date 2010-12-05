@@ -13,13 +13,13 @@ class RivalrySession(Session):
 	def analyzeBehavior(self):
 		"""docstring for analyzeBehaviorPerRun"""
 		for r in self.scanTypeDict['epi_bold']:
-			# do principal analysis, keys vary across dates
-			if self.date == datetime.date(2010, 11, 22):
-				self.runList[r].behavior([2,3])
-			else:
-				self.runList[r].behavior([1,2])
+			# do principal analysis, keys vary across dates but taken care of within behavior function
+			self.runList[r].behavior()
 			# put in the right place
-			ExecCommandLine( 'cp ' + self.runList[r].bO.inputFileName + ' ' + self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' ) )
+			try:
+				ExecCommandLine( 'cp ' + self.runList[r].bO.inputFileName + ' ' + self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' ) )
+			except ValueError:
+				pass
 			self.runList[r].behaviorFile = self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' )
 			
 		if 'disparity' in self.conditionDict:
@@ -127,10 +127,7 @@ class RivalrySession(Session):
 		
 	def deconvolveEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'perceptEventsAsArray'):
 		
-		fig = pl.figure(figsize = (6,10))
-		fig.subplots_adjust(top = 0.95)
-		fig.subplots_adjust(bottom = 0.05)
-		fig.subplots_adjust(hspace = 0.35)
+		fig = pl.figure(figsize = (3.5,10))
 		
 		for r in range(len(roiArray)):
 			s = fig.add_subplot(len(roiArray),1,r+1)
@@ -141,38 +138,41 @@ class RivalrySession(Session):
 	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
-
+		
 		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] )
-		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'], sampleInterval = [-5,20] )
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'], sampleInterval = [-5,30] )
+		
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
 #		all types of transition/percept events split up, both types and beginning/end separately
 #		eventArray = [eventData[eventType][ones,0], eventData[eventType][ones,0] + eventData[eventType][ones,1], eventData[eventType][twos,0], eventData[eventType][twos,0] + eventData[eventType][twos,1]]
-
+	
 #		combine across percepts types, but separate onsets/offsets
-		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
-
+#		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
+		
 #		separate out different percepts - looking at onsets
-#		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
+		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
+		
+		# just all the onsets
+#		eventArray = [eventData[eventType][:,0]+eventData[eventType][:,1]]
 
 		self.logger.debug('eventRelatedAverage analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
 		colors = ['k','r','g','b']
 		# mean data over voxels for this analysis
 		roiData = roiData.mean(axis = 1)
 		for e in range(len(eventArray)):
-			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-5.0,17.0])
-			pl.plot(eraOp.run()[:,0], c = colors[e])
+			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
+			d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
+			pl.plot(d[:,0], d[:,1], c = colors[e])
 
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'perceptEventsAsArray'):
-
-		fig = pl.figure(figsize = (6,10))
-		fig.subplots_adjust(top = 0.95)
-		fig.subplots_adjust(bottom = 0.05)
-		fig.subplots_adjust(hspace = 0.35)
-
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray'):
+		
+		fig = pl.figure(figsize = (3.5,10))
+		
 		for r in range(len(roiArray)):
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			self.eventRelatedAverageEvents(roiArray[r], eventType = eventType)
 			s.set_xlabel(roiArray[r], fontsize=10)
+			s.axis([-5,15,-0.1,0.1])
 
 

@@ -199,7 +199,7 @@ class Session(PathConstructor):
 					ExecCommandLine('cp ' + self.runFile(stage = 'raw/mri', postFix = [str(r.ID)], base = rawBase ) + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
 			# behavioral files will be copied during analysis
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
+	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -252,10 +252,11 @@ class Session(PathConstructor):
 			bbR.execute()
 			# after registration, see bbregister log file for reg check
 					
-			# actual registration - Flirt to MNI brain
-			flR = FlirtOperator( self.referenceFunctionalFileName )
-			flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', extension = '.mtx' ) )
-			flR.execute()
+			if flirt:
+				# actual registration - Flirt to MNI brain
+				flR = FlirtOperator( self.referenceFunctionalFileName )
+				flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', extension = '.mtx' ) )
+				flR.execute()
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
@@ -274,7 +275,7 @@ class Session(PathConstructor):
 									threshold = 0.001 )
 					stV.execute()
 	
-	def motionCorrectFunctionals(self, registerNoMC = True):
+	def motionCorrectFunctionals(self, registerNoMC = False):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		how we do this depends on whether we have parallel processing turned on or not

@@ -164,7 +164,7 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.openData()
 		self.separateEventsFromData()
 		
-	def joinButtonDownAndUps(self, answers = [1,2]):	# buttons when the thumb button is broken: [2,3]
+	def joinButtonDownAndUps(self):	# buttons when the thumb button is broken: [2,3]
 		"""
 		convert button ups to the right format because first sessions didn't do that
 		then, create events that may be percepts or transitions. these are stored in lists
@@ -174,6 +174,17 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 		# once the presentation software is corrected for this, these statements will just pass
 		self.buttonEvents[self.buttonEvents[:,0] == -98.,0] = -1.
 		self.buttonEvents[self.buttonEvents[:,0] == -121.,0] = -2.
+		
+		# 1 and 2 for normal sessions, 2 and 3 (or different things, equally shitty) for fucked up button sessions
+		mm = [np.min(abs(self.buttonEvents[:,0])),np.max(abs(self.buttonEvents[:,0]))]
+		if mm != [1.,2.]:
+			self.buttonEvents[self.buttonEvents[:,0] == mm[0],0] = 1.
+			self.buttonEvents[self.buttonEvents[:,0] == -mm[0],0] = -1.
+			self.buttonEvents[self.buttonEvents[:,0] == mm[1],0] = 2.
+			self.buttonEvents[self.buttonEvents[:,0] == -mm[1],0] = -2.
+			
+		# from now on we can be sure of this
+		answers = [1,2]
 		
 		# report types
 		# every report chimes in a period of a certain type - a transition, a definite percept, a double-percept (both at the same time)

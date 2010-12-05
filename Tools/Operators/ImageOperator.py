@@ -308,7 +308,7 @@ class HighPassFilter1D(Filter1D):
 		self.f[:self.thres] = 0.0
 		self.f[-self.thres:] = 0.0
 		
-		self.f = self.f / self.f.sum()
+#		self.f = self.f / self.f.sum()
 	
 
 class LowPassFilter1D(Filter1D):
@@ -316,7 +316,7 @@ class LowPassFilter1D(Filter1D):
 		super(LowPassFilter1D, self).__init__(sampleInterval, signalNrSamples, cutoff)
 		self.f[self.thres:-self.thres] = 0.0
 		
-		self.f = self.f / self.f.sum()
+#		self.f = self.f / self.f.sum()
 	
 
 class ImageTimeFilterOperator(ImageOperator):
@@ -343,7 +343,10 @@ class ImageTimeFilterOperator(ImageOperator):
 	def execute(self):
 		"""docstring for execute"""
 		super(ImageTimeFilterOperator, self).execute()
-		self.filteredData = (sp.fftpack.ifft((sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)), axis = 0).T * self.f).T) * sqrt(self.inputObject.timepoints)).reshape(self.inputObject.data.shape).astype(np.float32)
+		self.fourierData = sp.fftpack.fft(self.inputObject.data.reshape((self.inputObject.timepoints, -1)), axis = 0)
+		self.fourierFilteredData = (self.fourierData.T * self.f).T
+		self.backFourierFilteredData = sp.fftpack.ifft(self.fourierFilteredData, axis = 0)
+		self.filteredData = self.backFourierFilteredData.reshape(self.inputObject.data.shape).astype(np.float32)
 		if self.outputFileName == None:
 			outputFile = NiftiImage(self.filteredData, self.inputObject.header)	# data type will be according to the datatype of the input array
 			self.outputFileName = self.inputObject.filename[:-7] + '_' + self.filterType[0] + 'p.nii.gz'

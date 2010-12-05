@@ -48,13 +48,13 @@ class Run(object):
 		trial.indexInRun = trialList.len()
 		self.trialList.append(trial)
 	
-	def behavior(self, keys = [1,2]):
+	def behavior(self):
 		"""docstring for behavior"""
 		# First we'll have to set up the basic data extraction and the like
 		# self.behaviorFile is a wildcard, the operator knows what to do with it.
 		if self.condition == 'rivalry':
 			self.bO = RivalryTrackingBehaviorOperator(self.behaviorFile)
-			self.bO.joinButtonDownAndUps(keys)
+			self.bO.joinButtonDownAndUps()
 		elif self.condition == 'disparity':
 			self.bO = DisparityLocalizerBehaviorOperator(self.behaviorFile)
 			self.bO.separateConditions()
