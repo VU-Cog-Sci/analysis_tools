@@ -27,7 +27,7 @@ def removeRepetitions(array, position = 0):
 class BehaviorOperator(Operator):
 	def __init__(self, inputObject, **kwargs):
 		"""
-		BehaviorOperator will receive a filenam/wildcard combo as inputobject. 
+		BehaviorOperator will receive a filename/wildcard combo as inputobject. 
 		"""
 		super(BehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
@@ -234,3 +234,52 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.meanPerceptsNoTransitionsDuration = self.perceptsNoTransitionsAsArray.mean(axis = 0)[1]
 	
 
+
+class RivalryReplayBehaviorOperator(BehaviorOperator):
+	"""
+	This behavior operator parses the outputs of Jan's behavioral output format in order to take out event timings.
+	"""
+	def __init__(self, inputObject, **kwargs):
+		super(RivalryReplayBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+		self.openData()
+		self.separateEventsFromData()
+		
+	def openData(self):
+		"""docstring for openData"""
+		self.rawData = np.loadtxt(self.inputFileName)
+		self.parameters = self.rawData[self.rawData[:,0] == 4.0]
+		
+		# rescale and remean time column
+		self.rawData[4:,1] = (self.rawData[4:,1] - self.rawData[0,1]) * 10000
+		
+	def separateEventsFromData(self, reactionTime = 0.4, timeRange = [0,130]):
+		"""docstring for separateEventsFromData"""
+		self.yokedRawEvents = self.rawData[self.rawData[:,0] == 5.0]
+		self.buttonRawEvents = self.rawData[self.rawData[:,0] == 2.0]
+		
+		# take all button events, take their time and identity at each row. then remove repetitions from this new list
+		# order for button presses is = [0,0,0] -> [green, red, transition]
+		# this is corrected in order to correspond to the yoked conditions by shuffling the order of columns to [2,4,3], see below
+		self.allButtonEvents = np.array([self.buttonRawEvents[4:,1], self.buttonRawEvents[4:,[2,4,3]] * [1,2,3]).sum(axis = 1)]).T
+		self.buttonEvents = removeRepetitions(self.allButtonEvents, position = 1)
+		# we're interested in the period the subject was reporting actual rivalry
+		self.rivalryButtonEvents = self.buttonEvents[(self.buttonEvents[:,0] < timeRange[1]) * (self.buttonEvents[:,0] > timeRange[0])]
+		# and from this period we want to know when and for how long events of what type were occurring
+		self.rivalryButtonPeriods = np.array([[self.rivalryButtonEvents[ev][0] - reactionTime, self.rivalryButtonEvents[ev+1][0] - self.rivalryButtonEvents[ev][0], self.rivalryButtonEvents[ev][1]]  for ev in range(self.rivalryButtonEvents.shape[0]-1)])
+		# throw out percepts and transitions too short to be bothered with
+		self.rivalryButtonPeriods = self.rivalryButtonPeriods[self.rivalryButtonPeriods[:,1] > reactionTime]
+		# take actual percepts
+		rawPercepts = self.rivalryButtonPeriods[(self.rivalryButtonPeriods[:,2] == 1.) + (self.rivalryButtonPeriods[:,2] == 3.)]
+		
+		
+		# yoked events - coded as [green, transition, red] - don't ask me why this is different from the earlier one
+		yokedStartEvents = np.arange(self.yokedRawEvents.shape[0])[self.yokedRawEvents[:,2] == 4.]
+		yokedEndEvents = yokedStartEvents + 1
+		self.startYokedEventOnsets = self.yokedRawEvents[yokedStartEvents]
+		self.startYokedEventOffsets = self.yokedRawEvents[yokedEndEvents]
+		
+		self.yokedEvents = np.vstack((self.startYokedEventOnsets[:,1],self.startYokedEventOffsets[:,1]-self.startYokedEventOnsets[:,1],self.startYokedEventOffsets[:,2])).T
+		
+		
+		
+		

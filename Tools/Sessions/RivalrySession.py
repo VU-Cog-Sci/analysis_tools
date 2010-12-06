@@ -49,23 +49,24 @@ class RivalrySession(Session):
 				pickle.dump(behAnalysisResults, f)
 				f.close()
 			
+			firstHalfLength = floor(len(self.conditionDict['rivalry']) / 2.0)
 		
 			fig = pl.figure()
 			s = fig.add_subplot(1,1,1)
 			# first series of EPI runs for rivalry learning
 	#		with (first) and without (second) taking into account the transitions that were reported.
-			pl.scatter(np.arange(6)+0.5, [self.rivalryBehavior[i][0] for i in range(6)], c = 'b', alpha = 0.85)
-			pl.scatter(np.arange(6)+0.5, [self.rivalryBehavior[i][2] for i in range(6)], c = 'b', alpha = 0.75, marker = 's')
+			pl.scatter(np.arange(firstHalfLength)+0.5, [self.rivalryBehavior[i][0] for i in range(firstHalfLength)], c = 'b', alpha = 0.85)
+			pl.scatter(np.arange(firstHalfLength)+0.5, [self.rivalryBehavior[i][2] for i in range(firstHalfLength)], c = 'b', alpha = 0.75, marker = 's')
 
 			# all percept events, plotted on top of this
-			pl.plot(np.concatenate([(self.rivalryBehavior[rb][5][:,0]/150.0) + rb for rb in range(6)]), np.concatenate([self.rivalryBehavior[rb][5][:,1] for rb in range(6)]), c = 'b', alpha = 0.25)
+			pl.plot(np.concatenate([(self.rivalryBehavior[rb][5][:,0]/150.0) + rb for rb in range(firstHalfLength)]), np.concatenate([self.rivalryBehavior[rb][5][:,1] for rb in range(firstHalfLength)]), c = 'b', alpha = 0.25)
 			# second series of EPI runs
 	#		with (first) and without (second) taking into account the transitions that were reported.
-			pl.scatter(np.arange(6,12)+0.5, [self.rivalryBehavior[i][0] for i in range(6,12)], c = 'g', alpha = 0.85)
-			pl.scatter(np.arange(6,12)+0.5, [self.rivalryBehavior[i][2] for i in range(6,12)], c = 'g', alpha = 0.75, marker = 's')
+			pl.scatter(np.arange(firstHalfLength,len(self.conditionDict['rivalry']))+0.5, [self.rivalryBehavior[i][0] for i in range(firstHalfLength,len(self.conditionDict['rivalry']))], c = 'g', alpha = 0.85)
+			pl.scatter(np.arange(firstHalfLength,len(self.conditionDict['rivalry']))+0.5, [self.rivalryBehavior[i][2] for i in range(firstHalfLength,len(self.conditionDict['rivalry']))], c = 'g', alpha = 0.75, marker = 's')
 			# all percept events, plotted on top of this
 	#		with (first) and without (second) taking into account the transitions that were reported.
-			pl.plot(np.concatenate([(self.rivalryBehavior[rb][3][:,0]/150.0) + rb for rb in range(6,12)]), np.concatenate([self.rivalryBehavior[rb][3][:,1] for rb in range(6,12)]), c = 'g', alpha = 0.25)
+			pl.plot(np.concatenate([(self.rivalryBehavior[rb][3][:,0]/150.0) + rb for rb in range(firstHalfLength,len(self.conditionDict['rivalry']))]), np.concatenate([self.rivalryBehavior[rb][3][:,1] for rb in range(firstHalfLength,len(self.conditionDict['rivalry']))]), c = 'g', alpha = 0.25)
 			s.axis([-1,13,0,12])
 		
 			pl.savefig(self.runFile(stage = 'processed/behavior', extension = '.pdf', base = 'duration_summary' ))
@@ -135,12 +136,12 @@ class RivalrySession(Session):
 			s.set_xlabel(roiArray[r], fontsize=10)
 		
 		
-	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray'):
+	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, color = 'k'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] )
-		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'], sampleInterval = [-5,30] )
+		roiData = self.gatherRIOData(roi, whichRuns = whichRuns )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,30] )
 		
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -151,28 +152,68 @@ class RivalrySession(Session):
 #		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
 		
 #		separate out different percepts - looking at onsets
-		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
+# 		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
 		
 		# just all the onsets
-#		eventArray = [eventData[eventType][:,0]+eventData[eventType][:,1]]
+		eventArray = [eventData[eventType][:,0]]
 	
 		self.logger.debug('eventRelatedAverage analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
-		colors = ['k','r','g','b']
 		# mean data over voxels for this analysis
 		roiData = roiData.mean(axis = 1)
 		for e in range(len(eventArray)):
 			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
 			d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
-			pl.plot(d[:,0], d[:,1], c = colors[e])
+			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.75)
 
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray'):
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray', learningPartitions = None):
 		
 		fig = pl.figure(figsize = (3.5,10))
 		
 		for r in range(len(roiArray)):
 			s = fig.add_subplot(len(roiArray),1,r+1)
-			self.eventRelatedAverageEvents(roiArray[r], eventType = eventType)
+			self.eventRelatedAverageEvents(roiArray[r], eventType = eventType, whichRuns = self.conditionDict['rivalry'])
 			s.set_xlabel(roiArray[r], fontsize=10)
-			s.axis([-5,15,-0.1,0.1])
+			s.axis([-5,17,-0.1,0.1])
+			
+		# now, for learning...
+		# in learning, there were twelve rivalry runs - there were two sequences of six across which there was 'learning', or at least they were of the same type.
+		# we'll make 6 separate ERAs for 
+		if learningPartitions:
+			colors = [(i/float(len(learningPartitions)), 1.0 - i/float(len(learningPartitions)), 0.0) for i in range(len(learningPartitions))]
+			
+			fig = pl.figure(figsize = (3.5,10))
+			pl.subplots_adjust(hspace=0.4)
+			for r in range(len(roiArray)):
+				s = fig.add_subplot(len(roiArray),1,r+1)
+				for (ind, lp) in zip(range(len(learningPartitions)), learningPartitions):
+					self.eventRelatedAverageEvents(roiArray[r], eventType = eventType, whichRuns = [self.conditionDict['rivalry'][i] for i in lp], color = colors[ind])
+				s.set_xlabel(roiArray[r], fontsize=9)
+				s.axis([-5,17,-0.1,0.1])
+				
+	def prepareTransitionGLM(self, functionals = False):
+		"""
+		Take all transition events and use them as event regressors
+		Make one big nii file that contains all the motion corrected and zscored rivalry data
+		Run FSL on this
+		"""
+		
+		if functionals:
+			# make nii file
+			niiFiles = [NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf','hp','Z'])) for r in self.conditionDict['rivalry'] ]
+			allNiiFile = NiftiImage(np.concatenate([nf.data for nf in niiFiles]), header = niiFiles[0].header)
+			allNiiFile.save( os.path.join( self.conditionFolder( stage = 'processed/mri', run = self.runList[self.conditionDict['rivalry'][0]]), 'all_rivalry.nii.gz') )
+		
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] )
+		
+		perceptDataForFSL = np.ones((eventData['perceptEventsAsArray'].shape[0],3)) * [1.0,0.1,1]
+		perceptDataForFSL[:,0] = eventData['perceptEventsAsArray'][:,0]
+		np.savetxt(os.path.join( self.conditionFolder( stage = 'processed/mri', run = self.runList[self.conditionDict['rivalry'][0]]), 'all_rivalry_percept' + '.evt'), perceptDataForFSL, fmt='%4.2f')
+		
+		transDataForFSL = np.ones((eventData['transitionEventsAsArray'].shape[0],3)) * [1.0,0.1,1]
+		transDataForFSL[:,0] = eventData['transitionEventsAsArray'][:,0]
+		np.savetxt(os.path.join( self.conditionFolder( stage = 'processed/mri', run = self.runList[self.conditionDict['rivalry'][0]]), 'all_rivalry_trans' + '.evt'), transDataForFSL, fmt='%4.2f' )
+		
+		
+		
 
 
