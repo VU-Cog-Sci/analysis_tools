@@ -155,7 +155,7 @@ class RivalrySession(Session):
 		
 		# just all the onsets
 #		eventArray = [eventData[eventType][:,0]+eventData[eventType][:,1]]
-
+	
 		self.logger.debug('eventRelatedAverage analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
 		colors = ['k','r','g','b']
 		# mean data over voxels for this analysis

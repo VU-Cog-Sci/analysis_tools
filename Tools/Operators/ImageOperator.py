@@ -323,7 +323,7 @@ class ImageTimeFilterOperator(ImageOperator):
 	"""
 	class for filtering functional data
 	takes a functional data file and creates a filter for it
-	execute returns the filtered functional data
+	execute returns the filtered functional data 
 	Uses fft for filtering
 	"""
 	def __init__(self, inputObject, filterType = 'highpass', **kwargs):
