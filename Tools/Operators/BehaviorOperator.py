@@ -232,6 +232,8 @@ class RivalryTrackingBehaviorOperator(RivalryLearningBehaviorOperator):
 		self.meanPerceptDuration = self.perceptEventsAsArray.mean(axis = 0)[1]
 		self.meanTransitionDuration = self.transitionEventsAsArray.mean(axis = 0)[1]
 		self.meanPerceptsNoTransitionsDuration = self.perceptsNoTransitionsAsArray.mean(axis = 0)[1]
+		
+		self.yokedPeriods = []
 	
 
 
@@ -243,7 +245,7 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		super(RivalryReplayBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
 		self.openData()
 		self.separateEventsFromData()
-		
+	
 	def openData(self):
 		"""docstring for openData"""
 		self.rawData = np.loadtxt(self.inputFileName)
@@ -251,7 +253,7 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		
 		# rescale and remean time column
 		self.rawData[4:,1] = (self.rawData[4:,1] - self.rawData[0,1]) * 10000
-		
+	
 	def separateEventsFromData(self, reactionTime = 0.4, timeRange = [10,130]):
 		"""docstring for separateEventsFromData"""
 		self.yokedRawEvents = self.rawData[self.rawData[:,0] == 5.0]
@@ -270,7 +272,7 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		self.rivalryPeriods = self.rivalryButtonPeriods[self.rivalryButtonPeriods[:,1] > reactionTime]
 		# take actual percepts
 		self.percepts = self.rivalryButtonPeriods[(self.rivalryButtonPeriods[:,2] == 1.) + (self.rivalryButtonPeriods[:,2] == 3.)]
-		
+		self.transitions = self.rivalryButtonPeriods[(self.rivalryButtonPeriods[:,2] == 2.)]
 		
 		# yoked events - coded as [green, transition, red] - don't ask me why this is different from the earlier one
 		instantYokedStartEvents = np.arange(self.yokedRawEvents.shape[0])[self.yokedRawEvents[:,2] == 4.]
@@ -281,7 +283,47 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		
 		self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
 		
+		# information for fsl event files and further analyses
+		self.transitionEventsAsArray = np.array(self.transitions)
+		self.perceptEventsAsArray = np.array(removeRepetitions(self.percepts, position = 2))
+		self.perceptsNoTransitionsAsArray = np.array(self.percepts)
 		
+		self.meanPerceptDuration = self.perceptEventsAsArray.mean(axis = 0)[1]
+		self.meanTransitionDuration = self.transitionEventsAsArray.mean(axis = 0)[1]
+		self.meanPerceptsNoTransitionsDuration = self.meanPerceptDuration
+	
+
+class ApparentMotionBehaviorOperator(BehaviorOperator):
+	"""
+	This behavior operator parses the outputs of by own AM behavioral output format in order to take out event timings.
+	"""
+	def __init__(self, inputObject, **kwargs):
+		super(ApparentMotionBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+		self.openData()
+		self.separateEventsFromData()
+	
+	def openData(self):
+		"""docstring for openData"""
+		self.rawData = np.loadtxt(self.inputFileName)
+		self.parameters = self.rawData[:6]
+	
+	def separateEventsFromData(self, reactionTime = 0.4, timeRange = [10,130]):
+		"""docstring for separateEventsFromData"""
 		
+		self.rawEvents = self.rawData[6:]
+		self.rawEvents = self.rawEvents.reshape((self.rawEvents.shape[0]/2, 2))
 		
+		self.buttonEvents = self.rawEvents[(self.rawEvents[:,0] > 0) * (self.rawEvents[:,0] < 999)]
+		self.TREvents = self.rawEvents[self.rawEvents[:,0] == 0]
+		# we're interested in the period the subject was reporting actual rivalry
+		self.rivalryButtonEvents = self.buttonEvents[(self.buttonEvents[:,1] < timeRange[1]) * (self.buttonEvents[:,1] > timeRange[0])]
+		# and from this period we want to know when and for how long events of what type were occurring
+		self.rivalryButtonPeriods = np.array([[self.rivalryButtonEvents[ev][1] - reactionTime, self.rivalryButtonEvents[ev+1][1] - self.rivalryButtonEvents[ev][1], self.rivalryButtonEvents[ev][0]]  for ev in range(self.rivalryButtonEvents.shape[0]-1)])
+		# throw out percepts and transitions too short to be bothered with
+		self.rivalryPeriods = self.rivalryButtonPeriods[self.rivalryButtonPeriods[:,1] > reactionTime]
+		# take actual percepts
+		self.percepts = self.rivalryButtonPeriods[(self.rivalryButtonPeriods[:,2] == 1.) + (self.rivalryButtonPeriods[:,2] == 3.)]
 		
+		self.yokedPeriods = []
+		
+	

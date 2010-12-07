@@ -48,6 +48,7 @@ class Run(object):
 		trial.indexInRun = trialList.len()
 		self.trialList.append(trial)
 	
+class RivalryLearningRun(Run):
 	def behavior(self):
 		"""docstring for behavior"""
 		# First we'll have to set up the basic data extraction and the like
@@ -59,4 +60,8 @@ class Run(object):
 			self.bO = DisparityLocalizerBehaviorOperator(self.behaviorFile)
 			self.bO.separateConditions()
 			self.bO.analyzePsychophysics()
-		
+			
+class RivalryReplayRun(Run):
+	def behavior(self):
+		self.bO = RivalryTrackingBehaviorOperator(self.behaviorFile)
+		self.bO.joinButtonDownAndUps()
