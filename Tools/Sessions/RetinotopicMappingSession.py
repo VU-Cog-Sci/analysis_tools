@@ -81,7 +81,7 @@ class RetinotopicMappingSession(Session):
 		
 		opfNameList = self.opfNameList
 		
-	def convertResultsToSurface(self, surfSmoothingFWHM = 0.0):
+	def convertVolumeToSurface(self, surfSmoothingFWHM = 0.0):
 			# now we need to be able to view the results on the surfaces.
 			vtsList = []
 			for opf in self.opfNameList:
