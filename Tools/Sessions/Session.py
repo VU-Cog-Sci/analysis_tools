@@ -196,7 +196,7 @@ class Session(PathConstructor):
 				self.logger.info('place nii files in hierarchy')
 				# copy raw files
 				for r in self.runList:
-					ExecCommandLine('cp ' + self.runFile(stage = 'raw/mri', postFix = [str(r.ID)], base = rawBase ) + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
+					ExecCommandLine('cp ' + r.rawDataFilePath + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
 			# behavioral files will be copied during analysis
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):

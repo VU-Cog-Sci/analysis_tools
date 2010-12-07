@@ -177,7 +177,7 @@ class PercentSignalChangeOperator(ImageOperator):
 	
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
-		outputFile = NiftiImage((100.0 * (self.inputObject.data - meanImage) / meanImage).astype(np.float32), self.inputObject.header)
+		outputFile = NiftiImage((100.0 * ((self.inputObject.data / meanImage) - 1.0 )).astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
 		
 	
