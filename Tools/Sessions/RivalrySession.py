@@ -75,7 +75,7 @@ class RivalryReplaySession(Session):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] )
+		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'], whichMask = 'rivalry_Z' )
 		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] )
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -108,7 +108,7 @@ class RivalryReplaySession(Session):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = whichRuns )
+		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = 'rivalry_Z' )
 		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,30] )
 		
 		# split out two types of events

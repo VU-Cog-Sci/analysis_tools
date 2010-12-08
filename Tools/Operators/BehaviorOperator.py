@@ -277,11 +277,16 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		# yoked events - coded as [green, transition, red] - don't ask me why this is different from the earlier one
 		instantYokedStartEvents = np.arange(self.yokedRawEvents.shape[0])[self.yokedRawEvents[:,2] == 4.]
 		instantYokedEndEvents = instantYokedStartEvents + 1
-		self.startInstantYokedEventOnsets = self.yokedRawEvents[instantYokedStartEvents]
-		self.startInstantYokedEventOffsets = self.yokedRawEvents[instantYokedEndEvents]
-		self.yokedEvents = np.vstack((self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,1]-self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,2])).T
-		
-		self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
+		if instantYokedStartEvents.shape[0] > 0:
+			self.startInstantYokedEventOnsets = self.yokedRawEvents[instantYokedStartEvents]
+			self.startInstantYokedEventOffsets = self.yokedRawEvents[instantYokedEndEvents]
+			self.yokedEvents = np.vstack((self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,1]-self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,2])).T
+			self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
+		else:
+			self.startInstantYokedEventOnsets = []
+			self.startInstantYokedEventOffsets = []
+			self.yokedEvents = []
+			self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
 		
 		# information for fsl event files and further analyses
 		self.transitionEventsAsArray = np.array(self.transitions)

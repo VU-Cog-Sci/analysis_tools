@@ -63,5 +63,4 @@ class RivalryLearningRun(Run):
 			
 class RivalryReplayRun(Run):
 	def behavior(self):
-		self.bO = RivalryTrackingBehaviorOperator(self.behaviorFile)
-		self.bO.joinButtonDownAndUps()
+		self.bO = RivalryReplayBehaviorOperator(self.behaviorFile)
