@@ -283,10 +283,10 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 			self.yokedEvents = np.vstack((self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,1]-self.startInstantYokedEventOnsets[:,1],self.startInstantYokedEventOffsets[:,2])).T
 			self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
 		else:
-			self.startInstantYokedEventOnsets = []
-			self.startInstantYokedEventOffsets = []
-			self.yokedEvents = []
-			self.yokedPeriods = [[self.yokedRawEvents[ev][1],self.yokedRawEvents[ev+1][1]-self.yokedRawEvents[ev][1], self.yokedRawEvents[ev][2]] for ev in range(1, self.yokedRawEvents.shape[0]-1)]
+			self.startInstantYokedEventOnsets = np.zeros((1,3))
+			self.startInstantYokedEventOffsets = np.zeros((1,3))
+			self.yokedEvents = np.zeros((1,3))
+			self.yokedPeriods = np.zeros((1,3))
 		
 		# information for fsl event files and further analyses
 		self.transitionEventsAsArray = np.array(self.transitions)

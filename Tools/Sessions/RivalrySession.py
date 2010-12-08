@@ -56,7 +56,8 @@ class RivalryReplaySession(Session):
 			
 			for we in whichEvents:
 				# take data from the time in which we can reliably sample the ERAs
-				behData[we] = behData[we][ (behData[we][:,0] > -sampleInterval[0]) * (behData[we][:,0] < -sampleInterval[1] + (TR * nrTRs)) ]
+				timeIndices = (behData[we][:,0] > -sampleInterval[0]) * (behData[we][:,0] < -sampleInterval[1] + (TR * nrTRs))
+				behData[we] = behData[we][ timeIndices ]
 				# implement time offset. 
 				behData[we][:,0] = behData[we][:,0] + timeOffset
 				data[we].append(behData[we])
@@ -109,7 +110,7 @@ class RivalryReplaySession(Session):
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
 		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,30] )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray'], sampleInterval = [-5,20] )
 		
 		# split out two types of events
 #		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -130,21 +131,26 @@ class RivalryReplaySession(Session):
 		roiData = roiData.mean(axis = 1)
 		for e in range(len(eventArray)):
 			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
-			d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
-			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.75)
+			d = eraOp.run(binWidth = 4.0, stepSize = 0.5)
+			pl.plot(d[:,0], d[:,1]-50.0, c = color, alpha = 0.75)
+			
 	
 	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray', learningPartitions = None):
 		
 		fig = pl.figure(figsize = (3.5,10))
 		
+		pl.subplots_adjust(hspace=0.4)
 		for r in range(len(roiArray)):
 			s = fig.add_subplot(len(roiArray),1,r+1)
+			if r == 0:
+				s.set_title(self.subject.initials, fontsize=12)
 			self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'r')
-			self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'b')
+			self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'g')
 			self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], color = 'b')
-			s.set_xlabel(roiArray[r], fontsize=10)
-			s.axis([-5,17,-0.1,0.1])
-			
+			s.set_xlabel(roiArray[r], fontsize=9)
+#			s.axis([-5,17,-2.1,3.8])
+		
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related.pdf'))
 	
 
 

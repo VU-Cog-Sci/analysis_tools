@@ -429,18 +429,24 @@ class Session(PathConstructor):
 	def gatherRIOData(self, roi, whichRuns, whichMask = 'thresh_z_stat'):
 		data = []
 		for r in whichRuns:
-			# get ROI
-			if roi[:2] in ['lh','rh']:	# single - hemisphere roi
-				roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(roi) + '_' + whichMask, extension = '.pickle'), 'r')
-				thisRoiData = pickle.load(roiFile)[0]
-				roiFile.close()
-			else: # both hemispheres in one roi
-				roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + roi + '_' + whichMask, extension = '.pickle'), 'r')
-				roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + roi + '_' + whichMask, extension = '.pickle'), 'r')
-				thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
-				roiFileL.close()
-				roiFileR.close()
-
-			data.append(thisRoiData)
+			# roi is either a list or a string. if it's a list, we iterate across different rois. if it's a string, we make it into a 1-member list first before entering the for loop.
+			if roi.__class__.__name__ == 'str':
+				roi = [roi]
+			runData = []
+			for thisRoi in roi:
+				# get ROI
+				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
+					roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(thisRoi) + '_' + whichMask, extension = '.pickle'), 'r')
+					thisRoiData = pickle.load(roiFile)[0]
+					roiFile.close()
+				else: # combine both hemispheres in one roi
+					roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+					roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+					thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
+					roiFileL.close()
+					roiFileR.close()
+				if thisRoiData.shape[0] > 0:
+					runData.append(thisRoiData)
+			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
