@@ -59,9 +59,10 @@ class DeconvolutionOperator(EventDataOperator):
 		super(DeconvolutionOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
 		
 		self.deconvolutionSampleDuration = deconvolutionSampleDuration
+		self.deconvolutionInterval = deconvolutionInterval
 		
 		self.ratio = TR / deconvolutionSampleDuration
-		self.nrSamplesInInterval = deconvolutionInterval / deconvolutionSampleDuration
+		self.nrSamplesInInterval = self.deconvolutionInterval / deconvolutionSampleDuration
 		
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()

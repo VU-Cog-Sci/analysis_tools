@@ -72,42 +72,44 @@ class RivalryReplaySession(Session):
 		
 		return data
 	
-	def deconvolveEvents(self, roi, eventType = 'perceptEventsAsArray'):
+	def deconvolveEvents(self, roi):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'], whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] )
-		# split out two types of events
-		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
-#		all types of transition/percept events split up, both types and beginning/end separately
-#		eventArray = [eventData[eventType][ones,0], eventData[eventType][ones,0] + eventData[eventType][ones,1], eventData[eventType][twos,0], eventData[eventType][twos,0] + eventData[eventType][twos,1]]
+		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], whichMask = 'rivalry_Z' )
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray'] )
 		
-#		combine across percepts types, but separate onsets/offsets
-		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
+		eventArray = [eventData['perceptEventsAsArray'][:,0], eventData['transitionEventsAsArray'][:,0], eventData['yokedEventsAsArray'][:,0]]
 		
-#		separate out different percepts - looking at onsets
-#		eventArray = [eventData[eventType][ones,0], eventData[eventType][twos,0]]
-		
-		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
+		self.logger.debug('deconvolution analysis with input data shaped: %s', str(roiData.shape))
 		# mean data over voxels for this analysis
-		colors = ['k','r','g','b']
 		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray)
+#		pl.plot(decOp.deconvolvedTimeCoursesPerEventType[0], c = 'r', alpha = 0.75)
+#		pl.plot(decOp.deconvolvedTimeCoursesPerEventType[1], c = 'g', alpha = 0.75)
+#		pl.plot(decOp.deconvolvedTimeCoursesPerEventType[2], c = 'b', alpha = 0.75)
 		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T)
+		
+		return decOp.deconvolvedTimeCoursesPerEventType
+		
 		
 	
 	def deconvolveEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'perceptEventsAsArray'):
-		
+		res = []
 		fig = pl.figure(figsize = (3.5,10))
-		
+		pl.subplots_adjust(hspace=0.4)
 		for r in range(len(roiArray)):
 			s = fig.add_subplot(len(roiArray),1,r+1)
-			self.deconvolveEvents(roiArray[r], eventType = eventType)
-			s.set_xlabel(roiArray[r], fontsize=10)
+			if r == 0:
+				s.set_title(self.subject.initials + ' deconvolution', fontsize=12)
+			res.append(self.deconvolveEvents(roiArray[r]))
+			s.set_xlabel(roiArray[r], fontsize=9)
+		return res
 	
 	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, color = 'k'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
+		
+		res = []
 		
 		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = 'rivalry_Z' )
 		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray'], sampleInterval = [-5,20] )
@@ -133,24 +135,28 @@ class RivalryReplaySession(Session):
 			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
 			d = eraOp.run(binWidth = 4.0, stepSize = 0.5)
 			pl.plot(d[:,0], d[:,1]-50.0, c = color, alpha = 0.75)
+			res.append(d)
+		return res
 			
 	
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray', learningPartitions = None):
-		
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula']):
+		evRes = []
 		fig = pl.figure(figsize = (3.5,10))
 		
 		pl.subplots_adjust(hspace=0.4)
 		for r in range(len(roiArray)):
+			evRes.append([])
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			if r == 0:
-				s.set_title(self.subject.initials, fontsize=12)
-			self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'r')
-			self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'g')
-			self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], color = 'b')
+				s.set_title(self.subject.initials + ' averaged', fontsize=12)
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'r'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'g'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], color = 'b'))
 			s.set_xlabel(roiArray[r], fontsize=9)
 #			s.axis([-5,17,-2.1,3.8])
 		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related.pdf'))
+		return evRes
 	
 
 
