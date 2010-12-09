@@ -293,6 +293,9 @@ class RivalryReplayBehaviorOperator(BehaviorOperator):
 		self.perceptEventsAsArray = np.array(removeRepetitions(self.percepts, position = 2))
 		self.perceptsNoTransitionsAsArray = np.array(self.percepts)
 		
+		
+		self.halfwayTransitionsAsArray = np.array([[e[0] + e[1]/2.0, e[1], e[2]] for e in self.transitionEventsAsArray])
+		
 		self.meanPerceptDuration = self.perceptEventsAsArray.mean(axis = 0)[1]
 		self.meanTransitionDuration = self.transitionEventsAsArray.mean(axis = 0)[1]
 		self.meanPerceptsNoTransitionsDuration = self.meanPerceptDuration

@@ -7,7 +7,7 @@ Created by Tomas HJ Knapen on 2009-11-26.
 Copyright (c) 2009 TK. All rights reserved.
 """
 
-import os, sys, pickle
+import os, sys, pickle, math
 from subprocess import *
 
 import scipy as sp
