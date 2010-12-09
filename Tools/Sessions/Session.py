@@ -436,7 +436,7 @@ class Session(PathConstructor):
 			for thisRoi in roi:
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
-					roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(thisRoi) + '_' + whichMask, extension = '.pickle'), 'r')
+					roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
 					thisRoiData = pickle.load(roiFile)[0]
 					roiFile.close()
 				else: # combine both hemispheres in one roi

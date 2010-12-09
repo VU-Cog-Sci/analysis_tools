@@ -133,8 +133,8 @@ class RivalryReplaySession(Session):
 		roiData = roiData.mean(axis = 1)
 		for e in range(len(eventArray)):
 			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
-			d = eraOp.run(binWidth = 4.0, stepSize = 0.5)
-			pl.plot(d[:,0], d[:,1]-50.0, c = color, alpha = 0.75)
+			d = eraOp.run(binWidth = 4.0, stepSize = 0.25)
+			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.75)
 			res.append(d)
 		return res
 			
