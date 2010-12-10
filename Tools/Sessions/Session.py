@@ -436,15 +436,21 @@ class Session(PathConstructor):
 			for thisRoi in roi:
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
-					roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
-					thisRoiData = pickle.load(roiFile)[0]
-					roiFile.close()
+					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle')):
+						roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+						thisRoiData = pickle.load(roiFile)[0]
+						roiFile.close()
+					else:
+						thisRoiData = np.array([])
 				else: # combine both hemispheres in one roi
-					roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
-					roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
-					thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
-					roiFileL.close()
-					roiFileR.close()
+					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle')):
+						roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+						roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+						thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
+						roiFileL.close()
+						roiFileR.close()
+					else:
+						thisRoiData = np.array([])
 				if thisRoiData.shape[0] > 0:
 					runData.append(thisRoiData)
 			data.append(np.hstack(runData))

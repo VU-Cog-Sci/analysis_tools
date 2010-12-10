@@ -40,6 +40,14 @@ class RivalryReplaySession(Session):
 				f = open(self.runFile(stage = 'processed/behavior', run = self.runList[r], postFix = ['behaviorAnalyzer'], extension = '.pickle' ), 'w')
 				pickle.dump(behAnalysisResults, f)
 				f.close()
+			for r in self.conditionDict['replay2']:
+				self.rivalryBehavior.append([self.runList[r].bO.meanPerceptDuration, self.runList[r].bO.meanTransitionDuration,self.runList[r].bO.meanPerceptsNoTransitionsDuration, self.runList[r].bO.perceptEventsAsArray, self.runList[r].bO.transitionEventsAsArray, self.runList[r].bO.perceptsNoTransitionsAsArray])
+				# back up behavior analysis in pickle file
+				behAnalysisResults = {'meanPerceptDuration': self.runList[r].bO.meanPerceptDuration, 'meanTransitionDuration': self.runList[r].bO.meanTransitionDuration, 'perceptEventsAsArray': self.runList[r].bO.perceptEventsAsArray, 'transitionEventsAsArray': self.runList[r].bO.transitionEventsAsArray,'perceptsNoTransitionsAsArray':self.runList[r].bO.perceptsNoTransitionsAsArray, 'buttonEvents': self.runList[r].bO.buttonEvents, 'yokedEventsAsArray': np.array(self.runList[r].bO.yokedPeriods), 'halfwayTransitionsAsArray': np.array(self.runList[r].bO.halfwayTransitionsAsArray) }
+
+				f = open(self.runFile(stage = 'processed/behavior', run = self.runList[r], postFix = ['behaviorAnalyzer'], extension = '.pickle' ), 'w')
+				pickle.dump(behAnalysisResults, f)
+				f.close()
 	
 	def gatherBehavioralData(self, whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray'], sampleInterval = [0,0]):
 		data = dict([(we, []) for we in whichEvents])
@@ -76,8 +84,8 @@ class RivalryReplaySession(Session):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'] )
+		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = 'rivalry_Z' )
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'] )
 		
 		eventArray = [eventData['perceptEventsAsArray'][:,0], eventData['transitionEventsAsArray'][:,0], eventData['yokedEventsAsArray'][:,0], eventData['halfwayTransitionsAsArray'][:,0]]
 		
@@ -112,7 +120,7 @@ class RivalryReplaySession(Session):
 		res = []
 		
 		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'], sampleInterval = [-5,16] )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'], sampleInterval = [-6,15] )
 		
 		# split out two types of events
 #		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -139,7 +147,7 @@ class RivalryReplaySession(Session):
 		# mean data over voxels for this analysis
 		roiData = roiData.mean(axis = 1)
 		for e in range(len(eventArray)):
-			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
+			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-2.0,14.0])
 			d = eraOp.run(binWidth = 4.0, stepSize = 0.25)
 			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.25)
 			pl.plot(d[:,0], np.convolve(f/f.sum(), d[:,1], 'same'), c = color, alpha = 0.6)
@@ -157,10 +165,10 @@ class RivalryReplaySession(Session):
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			if r == 0:
 				s.set_title(self.subject.initials + ' averaged', fontsize=12)
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'r'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'g'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'r'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'g'))
 			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], color = 'b'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'], color = 'k'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'k'))
 			s.set_xlabel(roiArray[r], fontsize=9)
 #			s.axis([-5,17,-2.1,3.8])
 		
