@@ -85,9 +85,12 @@ class RivalryReplaySession(Session):
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
 		roiData = self.gatherRIOData(roi, whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'] )
 		
-		eventArray = [eventData['perceptEventsAsArray'][:,0], eventData['transitionEventsAsArray'][:,0], eventData['yokedEventsAsArray'][:,0], eventData['halfwayTransitionsAsArray'][:,0]]
+#		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'] )
+#		eventArray = [eventData['perceptEventsAsArray'][:,0], eventData['transitionEventsAsArray'][:,0], eventData['yokedEventsAsArray'][:,0], eventData['halfwayTransitionsAsArray'][:,0]]
+		eventData = self.gatherBehavioralData( whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray'] )
+		eventArray = [eventData['perceptEventsAsArray'][:,0], eventData['transitionEventsAsArray'][:,0], eventData['yokedEventsAsArray'][:,0]]
+
 		
 		self.logger.debug('deconvolution analysis with input data shaped: %s', str(roiData.shape))
 		# mean data over voxels for this analysis
@@ -113,14 +116,14 @@ class RivalryReplaySession(Session):
 			s.set_xlabel(roiArray[r], fontsize=9)
 		return res
 	
-	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, color = 'k'):
+	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, whichMask = 'transStateGTdomState', color = 'k'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
 		res = []
 		
-		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = 'rivalry_Z' )
-		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray','halfwayTransitionsAsArray'], sampleInterval = [-6,15] )
+		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = whichMask )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray', 'halfwayTransitionsAsArray'], sampleInterval = [-6,15] )
 		
 		# split out two types of events
 #		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -155,7 +158,7 @@ class RivalryReplaySession(Session):
 		return res
 			
 	
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula']):
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], whichMask = 'transStateGTdomState'):
 		evRes = []
 		fig = pl.figure(figsize = (3.5,10))
 		
@@ -165,15 +168,57 @@ class RivalryReplaySession(Session):
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			if r == 0:
 				s.set_title(self.subject.initials + ' averaged', fontsize=12)
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'r'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'g'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], color = 'b'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], color = 'k'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'r'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'g'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], whichMask = whichMask, color = 'b'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'k'))
 			s.set_xlabel(roiArray[r], fontsize=9)
 #			s.axis([-5,17,-2.1,3.8])
 		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related.pdf'))
 		return evRes
+	
+	def prepareTransitionGLM(self):
+		"""
+		Take all transition events and use them as event regressors
+		Run FSL on this
+		"""
+		for condition in ['rivalry', 'replay', 'replay2']:
+			for run in self.conditionDict[condition]:
+				# create the event files
+				for eventType in ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray']:
+					eventData = self.gatherBehavioralData( whichEvents = [eventType], whichRuns = [run] )
+					eventName = eventType.split('EventsAsArray')[0]
+					dfFSL = np.ones((eventData[eventType].shape[0],3)) * [1.0,0.1,1]
+					dfFSL[:,0] = eventData[eventType][:,0]
+					np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, extension = '.evt'), dfFSL, fmt='%4.2f')
+					# also make files for the end of each event.
+					dfFSL[:,0] = eventData[eventType][:,0] + eventData[eventType][:,1]
+					np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, postFix = ['end'], extension = '.evt'), dfFSL, fmt='%4.2f')
+				# remove previous feat directories
+				try:
+					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.fsf'))
+				except OSError:
+					pass
+				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+				thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/transition.fsf'
+				REDict = {
+				'---NR_FRAMES---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'])).timepoints),
+				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf']), 
+				'---ANAT_FILE---':os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'bet', 'T1_bet' ), 
+				'---TRANS_ON_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', extension = '.evt'),
+				'---TRANS_OFF_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', postFix = ['end'], extension = '.evt')
+				}
+				featFileName = self.runFile(stage = 'processed/mri', run = self.runList[run], extension = '.fsf')
+				featOp = FEATOperator(inputObject = thisFeatFile)
+				if run == self.conditionDict['replay2'][-1]:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+				else:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+				# run feat
+				featOp.execute()
 	
 
 

@@ -9,6 +9,7 @@ Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 
 import os, sys, subprocess
 import tempfile, logging
+import re
 
 import scipy as sp
 import numpy as np
@@ -17,6 +18,7 @@ import matplotlib.pylab as pl
 from nifti import *
 from Operator import *
 from ..log import *
+
 
 ### Execute program in shell:
 def ExecCommandLine(cmdline):
@@ -502,4 +504,36 @@ class ParRecConversionOperator( CommandLineOperator ):
 		self.runcmd += ' -f y'
 		self.runcmd += ' ' + self.inputFileName
 		
+
+class FEATOperator( CommandLineOperator ):
+	"""docstring for MCFlirtOperator"""
+	def __init__(self, inputObject, **kwargs):
+		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'source ~/.bash_profile_fsl ; feat ', **kwargs)
 		
+		self.featFile = self.inputObject
+
+	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
+		"""
+		configure will run feat on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+		
+		self.featFileName = featFileName
+		
+		sf = open(self.featFile,'r')
+		workingString = sf.read()
+		sf.close()
+		for e in REDict:
+			rS = re.compile(e)
+			workingString = re.sub(rS, REDict[e], workingString)
+		
+		of = open(self.featFileName, 'w')
+		of.write(workingString)
+		of.close()
+		
+		runcmd = self.cmd
+		runcmd += self.featFileName
+		if not waitForExecute:
+			runcmd += ' & '
+		self.runcmd = runcmd
+
