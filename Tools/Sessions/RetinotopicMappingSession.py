@@ -11,7 +11,7 @@ from Session import *
 
 class RetinotopicMappingSession(Session):
 	def parcelateConditions(self):
-		super(RetinotopicMappingSession, self).__init__()
+		super(RetinotopicMappingSession, self).parcelateConditions()
 		
 		self.mappingTypes = np.unique(np.array([r.mappingType for r in self.runList]))
 		self.mappingTypeDict = {}
@@ -27,7 +27,7 @@ class RetinotopicMappingSession(Session):
 		if len(self.conditionDict['polar']) == 0 and len(self.conditionDict['eccen']) == 0:
 			self.logger.warning('no retinotopic mapping runs to be run...')
 			
-		presentCommand = '/Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/analysis/other_scripts/selfreqavg_noinfs.csh'
+		presentCommand = os.environ[''] + 'other_scripts/selfreqavg_noinfs.csh'
 		rmOperatorList = []
 		opfNameList = []
 		postFix = []
@@ -71,7 +71,7 @@ class RetinotopicMappingSession(Session):
 				self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 				ppResults = []
 				for op in rmOperatorList:
-					opex = job_server.submit(op.execute)
+					opex = job_server.submit(op.execute, (), (), ("subprocess",))
 					ppResults.append(opex)
 					
 				for opex in ppResults:
@@ -102,7 +102,7 @@ class RetinotopicMappingSession(Session):
 				self.logger.info("Starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 				ppResults = []
 				for vts in vtsList:
-					vtsex = job_server.submit(vts.execute)
+					vtsex = job_server.submit(vts.execute, (), (), ("subprocess",))
 					ppResults.append(vtsex)
 				for vtsex in ppResults:
 					vtsex()
@@ -132,7 +132,7 @@ class RetinotopicMappingSession(Session):
 				self.logger.info("Starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 				ppResults = []
 				for vts in vtsList:
-					vtsex = job_server.submit(vts.execute)
+					vtsex = job_server.submit(vts.execute, (), (), ("subprocess",))
 					ppResults.append(vtsex)
 				for vtsex in ppResults:
 					vtsex()

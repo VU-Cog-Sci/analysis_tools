@@ -357,6 +357,8 @@ class VolToSurfOperator( CommandLineOperator ):
 			self.outputFileName = outputFileName[:-7]
 		else:
 			self.outputFileName = outputFileName
+		self.outputFileName += '_' + str(surfSmoothingFWHM)
+		
 		self.register = register
 		self.surfType = surfType
 		if hemispheres == None:
