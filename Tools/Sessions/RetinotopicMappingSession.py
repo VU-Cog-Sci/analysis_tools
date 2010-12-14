@@ -24,7 +24,7 @@ class RetinotopicMappingSession(Session):
 		runs retinotopic mapping on all runs in self.conditionDict['polar'] and self.conditionDict['eccen']
 		"""
 		self.logger.info('run retinotopic mapping')
-		if len(self.conditionDict['polar']) == 0 and len(self.conditionDict['eccen']) == 0:
+		if not self.mappingTypeDict.has_key('polar') and not self.mappingTypeDict.has_key('eccen'):
 			self.logger.warning('no retinotopic mapping runs to be run...')
 			
 		presentCommand = os.environ[''] + 'other_scripts/selfreqavg_noinfs.csh'

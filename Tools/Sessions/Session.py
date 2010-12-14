@@ -315,7 +315,7 @@ class Session(PathConstructor):
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 			ppResults = []
 			for mcf in mcOperatorList:
-				fMcf = job_server.submit(mcf.execute)
+				fMcf = job_server.submit(mcf.execute, (), (), ("subprocess",))
 				ppResults.append(fMcf)
 			for fMcf in ppResults:
 				fMcf()
