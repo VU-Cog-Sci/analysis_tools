@@ -77,3 +77,5 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pp.close()
 #		pl.show()
 	
+	def 
+	

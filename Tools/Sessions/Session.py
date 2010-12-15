@@ -304,7 +304,7 @@ class Session(PathConstructor):
 		
 		if not self.parallelize:
 			# first, code for serial implementation
-			self.logger.info("run serial")
+			self.logger.info("run serial moco")
 			for mcf in mcOperatorList:
 				mcf.execute()
 		

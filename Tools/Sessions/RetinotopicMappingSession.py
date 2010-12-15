@@ -27,7 +27,7 @@ class RetinotopicMappingSession(Session):
 		if not self.mappingTypeDict.has_key('polar') and not self.mappingTypeDict.has_key('eccen'):
 			self.logger.warning('no retinotopic mapping runs to be run...')
 			
-		presentCommand = os.environ[''] + 'other_scripts/selfreqavg_noinfs.csh'
+		presentCommand = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'selfreqavg_noinfs.csh')
 		rmOperatorList = []
 		opfNameList = []
 		postFix = []
@@ -35,7 +35,7 @@ class RetinotopicMappingSession(Session):
 			postFix.append('mcf')
 		if perCondition:
 			for c in self.conditionDict:
-				rmO = RetMapOperator([self.runList[pC] for pC in self.conditionDict[c]], cmd = presentCommand)
+				prOperator = RetMapOperator([self.runList[pC] for pC in self.conditionDict[c]], cmd = presentCommand)
 				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict[c]]
 				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[c][0]]), self.runList[pC].mappingType)
 				opfNameList.append(outputFileName)
@@ -79,8 +79,11 @@ class RetinotopicMappingSession(Session):
 					
 				job_server.print_stats()
 		
-		opfNameList = self.opfNameList
+		self.opfNameList = opfNameList
+		if toSurf:
+			self.convertVolumeToSurface()
 		
+	
 	def convertVolumeToSurface(self, surfSmoothingFWHM = 0.0):
 			# now we need to be able to view the results on the surfaces.
 			vtsList = []
@@ -107,8 +110,8 @@ class RetinotopicMappingSession(Session):
 				for vtsex in ppResults:
 					vtsex()
 				job_server.print_stats()
-				
-				
+		
+	
 	def convertSurfaceToVolume(self):
 			# now we need to be able to view the results on the surfaces.
 			vtsList = []
@@ -137,8 +140,6 @@ class RetinotopicMappingSession(Session):
 				for vtsex in ppResults:
 					vtsex()
 				job_server.print_stats()
-	
-	
 	
 	def runQC(self, rois = ['V1','V2','V3']):
 		"""

@@ -46,7 +46,9 @@ class CommandLineOperator( Operator ):
 			self.logger.info(self.__repr__() + ' initialized with file ' + os.path.split(self.inputFileName)[-1])
 			if not os.path.isfile(self.inputFileName):
 				self.logger.warning('inputFileName is not a file at initialization')
-		
+		elif self.inputObject.__class__.__name__ == 'list':
+			self.inputList = self.inputObject
+			self.logger.info(self.__repr__() + ' initialized with files ' + str(self.inputList))
 		self.cmd = cmd
 	
 	def configure(self):
@@ -307,7 +309,7 @@ class RetMapOperator( CommandLineOperator ):
 	the runlist items, from the session which calls the retmapoperator, dictate 
 	mapping parameters for the retinotopic mapping analyses.
 	"""
-	def __init__(self, inputObject, cmd = 'other_scripts/selfreqavg_noinfs.csh', **kwargs):
+	def __init__(self, inputObject, cmd = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'selfreqavg_noinfs.csh'), **kwargs):
 		super(RetMapOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 	
 	def configure(self, inputFileNames, outputFileName):
@@ -350,14 +352,14 @@ class VolToSurfOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_vol2surf', **kwargs):
 		super(VolToSurfOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 		
-	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'noise_sd': 6,'sigf':0, 'sig2':1, 'sig3':2}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  ):
+	def configure(self, frames = {'sig-0':0, 'map-real':1, 'map-imag':2, 'phase':9, 'noise_sd': 6,'sigf':0, 'sig2':1, 'sig3':2, 'F':3}, hemispheres = None, register = None, outputFileName = None, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  ):
 		"""docstring for configure"""
 		# don't feel like calling splitext twice
 		if outputFileName[-7:] == standardMRIExtension:
 			self.outputFileName = outputFileName[:-7]
 		else:
 			self.outputFileName = outputFileName
-		self.outputFileName += '_' + str(surfSmoothingFWHM)
+#		self.outputFileName += '_' + str(surfSmoothingFWHM)
 		
 		self.register = register
 		self.surfType = surfType
@@ -379,9 +381,10 @@ class VolToSurfOperator( CommandLineOperator ):
 				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
 				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.w'
 				self.runcmd += ' --surf-fwhm ' + str(surfSmoothingFWHM)
-				self.runcmd += ' &\n'
+				self.runcmd += ' ;\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
 		self.runcmd = self.runcmd[:-2]
+		self.runcmd += ' &'
 	
 
 class SurfToVolOperator( CommandLineOperator ):
@@ -406,18 +409,18 @@ class SurfToVolOperator( CommandLineOperator ):
 
 		self.runcmd = ''
 		for hemi in hemispheres:
-			for frame in frames.keys():
-				self.runcmd += self.cmd + ' --surfval ' + self.inputFileName + ' ' + self.surfType 
-				self.runcmd += ' --reg ' + self.register
-				self.runcmd += ' --surf smoothwm'
-				self.runcmd += ' --hemi  ' + hemi
-				self.runcmd += ' --template '+ self.templateFileName
-#				self.runcmd += ' --subject ' + fsSubject	# no need to use this if using a correct register file
-				self.runcmd += " --projfrac " + str(threshold)
-				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.w'
-				self.runcmd += ' &\n'
+			self.runcmd += self.cmd + ' --surfval ' + self.inputFileName + ' ' + self.surfType 
+			self.runcmd += ' --reg ' + self.register
+			self.runcmd += ' --surf smoothwm'
+			self.runcmd += ' --hemi ' + hemi
+			self.runcmd += ' --template '+ self.templateFileName
+#			self.runcmd += ' --subject ' + fsSubject	# no need to use this if using a correct register file
+			self.runcmd += " --projfrac " + str(threshold)
+			self.runcmd += ' --o ' + self.outputFileName + '-' + hemi + standardMRIExtension
+			self.runcmd += ' ;\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
 		self.runcmd = self.runcmd[:-2]
+		self.runcmd += ' &'
 	
 
 class LabelToVolOperator( CommandLineOperator ):
