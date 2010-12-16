@@ -91,6 +91,7 @@ class ImageMaskingOperator( ImageOperator ):
 		if len(self.maskObject.data.shape) == 3:
 			# only one volume of mask data
 			self.maskData = self.maskObject.data.reshape(np.concatenate(([1],self.maskObject.data.shape)))
+			self.logger.debug('too small mask - reshaped.')
 		elif len(self.maskObject.data.shape) == 5:
 			self.maskData = self.maskObject.data.reshape(list(self.maskObject.data.shape)[1:])
 		elif len(self.maskObject.data.shape) == 4:

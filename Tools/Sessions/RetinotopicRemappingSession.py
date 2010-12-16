@@ -10,6 +10,7 @@ Copyright (c) 2009 TK. All rights reserved.
 from Session import * 
 from RetinotopicMappingSession import *
 
+
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):
 		"""
@@ -77,5 +78,124 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pp.close()
 #		pl.show()
 	
-	def 
+	def createFunctionalMask(self, exclusionThreshold = 4.0, maskFrame = 3):
+		"""
+		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
+		results in creation of a mask file which can be accessed later
+		"""
+		# F-value mask from eccen experiment
+		eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')
+		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
+		imO = ImageMaskingOperator(inputObject = eccenFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
+		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
+		maskImage = NiftiImage(maskedDataArray)
+		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen_mask-' + str(exclusionThreshold) + '.nii.gz')
+		maskImage.save()
 	
+	def collectConditionFiles(self):
+		"""
+		Returns the highest-level selfreqavg output files for the conditions in conditionDict
+		"""
+		images = []
+		for condition in self.conditionDict.keys():
+			thisConditionFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[condition][0]]), 'polar.nii.gz')
+			images.append(NiftiImage(thisConditionFile))
+		return images
+	
+	def maskConditionFiles(self, conditionFiles, maskFile = None, maskThreshold = 4.0, maskFrame = 0, flat = False):
+		# anatomical or statistical mask?
+		if os.path.split(maskFile)[0].split('/')[-1] == 'anat':
+			if os.path.split(maskFile)[-1][:2] in ['lh','rh']:	# single hemisphere roi
+				pass
+			else:	# combine two anatomical rois
+				lhFile = os.path.join(os.path.split(maskFile)[0], 'lh.' + os.path.split(maskFile)[1])
+				rhFile = os.path.join(os.path.split(maskFile)[0], 'rh.' + os.path.split(maskFile)[1])
+				maskFile = NiftiImage(NiftiImage(lhFile).data + NiftiImage(rhFile).data)
+		# if not anatomical we assume it's just fine.
+		maskedConditionFiles = []
+		for conditionFile in conditionFiles:
+			imO = ImageMaskingOperator(conditionFile, maskObject = maskFile, thresholds = [maskThreshold])
+			if flat == True:
+				maskedConditionFiles.append(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat))
+			else:
+				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
+		return maskedConditionFiles
+	
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'eccen_mask-4.0.nii.gz', maskThreshold = 6.0 ):
+		"""
+		Produce phase-phase correlation plots across conditions.
+		"""
+		self.rois = regions
+		maskedFiles = self.maskConditionFiles(conditionFiles = self.collectConditionFiles(), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
+		maskedRoiData = []
+		for roi in regions:
+			thisRoiData = self.maskConditionFiles(conditionFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, flat = True)
+			maskedRoiData.append(thisRoiData)
+		self.maskedRoiData = maskedRoiData
+		
+	def phasePhasePlots(self):
+		if not hasattr(self, 'maskedRoiData'):
+			self.dataForRegions()
+		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
+		from itertools import combinations
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1
+		for comb in combinations(range(len(self.conditionDict)),2):
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(list(combinations(range(len(self.conditionDict)),2))),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][comb[0]][9] + self.maskedRoiData[i][comb[1]][9] == 0.0 )
+				# pl.scatter(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
+				pl.hexbin(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], gridsize = 20)
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=10)
+				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
+				plotNr += 1
+	
+	def phaseDistributionPlots(self):
+		if not hasattr(self, 'maskedRoiData'):
+			self.dataForRegions()
+		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
+		from itertools import combinations
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1
+		for condition in range(len(self.conditionDict)):
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(self.conditionDict),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][condition][9] == 0.0 )
+				# pl.scatter(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
+				pl.hist(self.maskedRoiData[i][condition][9][summedArray])
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_ylabel(self.conditionDict.keys()[condition], fontsize=10)
+#				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
+				plotNr += 1
+	
+	def significanceSignificancePlots(self):
+		if not hasattr(self, 'maskedRoiData'):
+			self.dataForRegions()
+		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
+		from itertools import combinations
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1
+		for comb in combinations(range(len(self.conditionDict)),2):
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(list(combinations(range(len(self.conditionDict)),2))),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][comb[0]][0] + self.maskedRoiData[i][comb[1]][0] == 0.0 )
+				pl.scatter(self.maskedRoiData[i][comb[0]][0][summedArray], self.maskedRoiData[i][comb[1]][0][summedArray], c = 'r', alpha = 0.1)
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=10)
+				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
+				sbp.axis([-10,10,-10,10])
+				plotNr += 1
+
+		
+		
+		
+		
+		
+		
