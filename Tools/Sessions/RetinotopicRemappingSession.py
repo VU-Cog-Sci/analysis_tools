@@ -78,7 +78,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pp.close()
 #		pl.show()
 	
-	def createFunctionalMask(self, exclusionThreshold = 4.0, maskFrame = 3):
+	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 3):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
 		results in creation of a mask file which can be accessed later
@@ -90,6 +90,14 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
 		maskImage = NiftiImage(maskedDataArray)
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen_mask-' + str(exclusionThreshold) + '.nii.gz')
+		maskImage.save()
+		# F-value mask from polar - fix map experiment
+		polarFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar.nii.gz')
+		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
+		imO = ImageMaskingOperator(inputObject = polarFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
+		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
+		maskImage = NiftiImage(maskedDataArray)
+		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar_mask-' + str(exclusionThreshold) + '.nii.gz')
 		maskImage.save()
 	
 	def collectConditionFiles(self):
@@ -121,9 +129,10 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'eccen_mask-4.0.nii.gz', maskThreshold = 6.0 ):
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4','inferiorparietal', 'superiorparietal','precuneus','lingual','fusiform','lateraloccipital'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 3.0 ):
 		"""
 		Produce phase-phase correlation plots across conditions.
+		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
 		"""
 		self.rois = regions
 		maskedFiles = self.maskConditionFiles(conditionFiles = self.collectConditionFiles(), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
@@ -138,7 +147,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			self.dataForRegions()
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
 		from itertools import combinations
-		f = pl.figure(figsize = (10,10))
+		f = pl.figure(figsize = (1.5 * len(self.maskedRoiData), 1.5 *len(list(combinations(range(len(self.conditionDict)),2)))))
 		pl.subplots_adjust(hspace=0.4)
 		pl.subplots_adjust(wspace=0.4)
 		plotNr = 1
@@ -147,10 +156,10 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp = f.add_subplot(len(list(combinations(range(len(self.conditionDict)),2))),len(self.maskedRoiData),plotNr)
 				summedArray = - ( self.maskedRoiData[i][comb[0]][9] + self.maskedRoiData[i][comb[1]][9] == 0.0 )
 				# pl.scatter(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
-				pl.hexbin(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], gridsize = 20)
-				sbp.set_title(self.rois[i], fontsize=10)
-				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=10)
-				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
+				pl.hexbin(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], gridsize = 10)
+				sbp.set_title(self.rois[i] + '\t\t\t\t', fontsize=11)
+				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=9)
+				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=9)
 				plotNr += 1
 	
 	def phaseDistributionPlots(self):
