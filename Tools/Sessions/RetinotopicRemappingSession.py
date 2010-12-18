@@ -9,7 +9,7 @@ Copyright (c) 2009 TK. All rights reserved.
 
 from Session import * 
 from RetinotopicMappingSession import *
-
+from ..circularTools import *
 
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):
@@ -141,6 +141,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			thisRoiData = self.maskConditionFiles(conditionFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, flat = True)
 			maskedRoiData.append(thisRoiData)
 		self.maskedRoiData = maskedRoiData
+		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
 		
 	def phasePhasePlots(self):
 		if not hasattr(self, 'maskedRoiData'):
@@ -165,7 +166,6 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def phaseDistributionPlots(self):
 		if not hasattr(self, 'maskedRoiData'):
 			self.dataForRegions()
-		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
 		from itertools import combinations
 		f = pl.figure(figsize = (10,10))
 		pl.subplots_adjust(hspace=0.4)
@@ -185,7 +185,6 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def significanceSignificancePlots(self):
 		if not hasattr(self, 'maskedRoiData'):
 			self.dataForRegions()
-		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
 		from itertools import combinations
 		f = pl.figure(figsize = (10,10))
 		pl.subplots_adjust(hspace=0.4)
@@ -201,10 +200,25 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
 				sbp.axis([-10,10,-10,10])
 				plotNr += 1
-
-		
-		
-		
+	
+	def phaseDifferences(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']]):
+		if not hasattr(self, 'maskedRoiData'):
+			self.dataForRegions()
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1		
+		for cond in comparisons:
+			cond1 = self.conditionDict.keys().index(cond[0])
+			cond2 = self.conditionDict.keys().index(cond[1])
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
+				pl.hist(phaseDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray]))
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
+				sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
+				plotNr += 1
 		
 		
 		
