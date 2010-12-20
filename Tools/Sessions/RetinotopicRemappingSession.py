@@ -129,10 +129,11 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4','inferiorparietal', 'superiorparietal','precuneus','lingual','fusiform','lateraloccipital'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 3.0 ):
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 10.0 ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
+		['inferiorparietal', 'superiorparietal','precuneus','lingual','fusiform','lateraloccipital']
 		"""
 		self.rois = regions
 		maskedFiles = self.maskConditionFiles(conditionFiles = self.collectConditionFiles(), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
@@ -196,8 +197,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				summedArray = - ( self.maskedRoiData[i][comb[0]][0] + self.maskedRoiData[i][comb[1]][0] == 0.0 )
 				pl.scatter(self.maskedRoiData[i][comb[0]][0][summedArray], self.maskedRoiData[i][comb[1]][0][summedArray], c = 'r', alpha = 0.1)
 				sbp.set_title(self.rois[i], fontsize=10)
-				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=10)
-				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
+				if i == 1:
+					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
+					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
 				sbp.axis([-10,10,-10,10])
 				plotNr += 1
 	
@@ -214,11 +216,44 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			for i in range(len(self.maskedRoiData)):
 				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
 				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
-				pl.hist(phaseDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray]))
+				pl.hist(circularDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray]), range = (-pi,pi), normed = True)
 				sbp.set_title(self.rois[i], fontsize=10)
-				sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
-				sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
+				if i == 0:
+					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
+					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
 				plotNr += 1
 		
-		
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
+		if not hasattr(self, 'maskedRoiData'):
+			self.dataForRegions()
+			
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1		
+		for cond in comparisons:
+			cond1 = self.conditionDict.keys().index(cond[0])
+			cond2 = self.conditionDict.keys().index(cond[1])
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
+				baseData = self.maskedRoiData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
+				baseOrder = np.argsort(baseData)
+				binnedData = []
+				for bin in range(baseOrder.shape[0] - binSize):
+					d1 = self.maskedRoiData[i][cond1][9][summedArray][baseOrder[bin:bin+binSize]]
+					d2 = self.maskedRoiData[i][cond2][9][summedArray][baseOrder[bin:bin+binSize]]
+					if d1.shape[0] > 0:
+						binnedData.append( [ circularMean(baseData[baseOrder[bin:bin+binSize]]), circularMean(circularDifference(d1,d2)) ] )
+				binnedData = np.array(binnedData)
+				if baseData.shape[0] > 0:
+					pl.plot(binnedData[:,0],binnedData[:,1])
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.axis([-pi,pi,-pi,pi])
+				if i == 0:
+					sbp.set_ylabel(cond[0] + '-' + cond[1], fontsize=10)
+					sbp.set_xlabel(baseCondition, fontsize=10)
+				plotNr += 1
+
+	
 		
