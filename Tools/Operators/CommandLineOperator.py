@@ -514,7 +514,6 @@ class FEATOperator( CommandLineOperator ):
 	"""docstring for MCFlirtOperator"""
 	def __init__(self, inputObject, **kwargs):
 		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'source ~/.bash_profile_fsl ; feat ', **kwargs)
-		
 		self.featFile = self.inputObject
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
@@ -542,3 +541,29 @@ class FEATOperator( CommandLineOperator ):
 			runcmd += ' & '
 		self.runcmd = runcmd
 
+class EDF2ASCOperator( CommandLineOperator ):
+	"""docstring for EDF2ASCOperator"""
+	def __init__(self, inputObject, **kwargs):
+		super(EDF2ASCOperator, self).__init__(inputObject = inputObject, cmd = '/Applications/EyeLink/EDF_Access_API/Example/edf2asc', **kwargs)
+		
+	def configure(self, gazeOutputFileName = None, messageOutputFileName = None, settings = ''):
+		if gazeOutputFileName == None:
+			self.gazeOutputFileName = os.path.splitext(self.inputFileName)[0] + '.gaz'
+		else:
+			self.gazeOutputFileName = gazeOutputFileName
+		if messageOutputFileName == None:
+			self.messageOutputFileName = os.path.splitext(self.inputFileName)[0] + '.msg'
+		else:
+			self.messageOutputFileName = messageOutputFileName
+		standardOutputFileName = os.path.splitext(self.inputFileName)[0] + '.asc'
+		
+		self.intermediatecmd = self.cmd
+		if settings == '':
+			self.intermediatecmd += ' -t -miss 0.0001 -ftime'
+		else:
+			self.intermediatecmd += settings
+		
+		self.gazcmd = self.intermediatecmd + ' -s "'+inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.gazeOutputFileName
+		self.msgcmd = self.intermediatecmd + ' -e "'+inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.messageOutputFileName
+		
+		self.runcmd = self.gazcmd + '; ' + self.msgcmd
