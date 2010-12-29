@@ -100,7 +100,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar_mask-' + str(exclusionThreshold) + '.nii.gz')
 		maskImage.save()
 	
-	def collectConditionFiles(self):
+	def collectConditionFiles(self, add_eccen = False):
 		"""
 		Returns the highest-level selfreqavg output files for the conditions in conditionDict
 		"""
@@ -108,6 +108,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		for condition in self.conditionDict.keys():
 			thisConditionFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[condition][0]]), 'polar.nii.gz')
 			images.append(NiftiImage(thisConditionFile))
+		if add_eccen:
+			images.append(NiftiImage(eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')))
 		return images
 	
 	def maskConditionFiles(self, conditionFiles, maskFile = None, maskThreshold = 4.0, maskFrame = 0, flat = False):
@@ -129,7 +131,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 10.0 ):
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -143,7 +145,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			maskedRoiData.append(thisRoiData)
 		self.maskedRoiData = maskedRoiData
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRoiData)) + ' ' + str(len(self.maskedRoiData[0])) + ' ' + str(self.maskedRoiData[0][0].shape))
-		
+	
 	def phasePhasePlots(self):
 		if not hasattr(self, 'maskedRoiData'):
 			self.dataForRegions()
@@ -222,8 +224,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
 					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
 				plotNr += 1
-		
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
+	
+	def phaseDifferencesPerPolarPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
 		if not hasattr(self, 'maskedRoiData'):
 			self.dataForRegions()
 			
@@ -244,7 +246,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 					d1 = self.maskedRoiData[i][cond1][9][summedArray][baseOrder[bin:bin+binSize]]
 					d2 = self.maskedRoiData[i][cond2][9][summedArray][baseOrder[bin:bin+binSize]]
 					if d1.shape[0] > 0:
-						binnedData.append( [ circularMean(baseData[baseOrder[bin:bin+binSize]]), circularMean(circularDifference(d1,d2)) ] )
+						binnedData.append( [ baseData[baseOrder[bin:bin+binSize]].mean(), abs(circularDifference(d1,d2)).mean() ] )
 				binnedData = np.array(binnedData)
 				if baseData.shape[0] > 0:
 					pl.plot(binnedData[:,0],binnedData[:,1])
@@ -254,6 +256,39 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 					sbp.set_ylabel(cond[0] + '-' + cond[1], fontsize=10)
 					sbp.set_xlabel(baseCondition, fontsize=10)
 				plotNr += 1
+		
+	
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
+		self.dataForRegions(add_eccen = True)
+		
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4)
+		pl.subplots_adjust(wspace=0.4)
+		plotNr = 1		
+		for cond in comparisons:
+			cond1 = self.conditionDict.keys().index(cond[0])
+			cond2 = self.conditionDict.keys().index(cond[1])
+			
+			for i in range(len(self.maskedRoiData)):
+				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
+				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
+				# base phase data based on eccen which is the last data file in maskedRoiData
+				if baseCondition == 'eccen':
+					baseData = self.maskedRoiData[i][-1][9][summedArray]
+				else:
+				 	baseData = self.maskedRoiData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
+				circDiffData = circularDifference(self.maskedRoiData[i][cond1][9][summedArray],self.maskedRoiData[i][cond2][9][summedArray])
+				s = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
+				s.set_title(self.rois[i], fontsize=8)
+				s.set_xlabel('phase difference', fontsize=12)
+				s.set_ylabel(baseCondition + ' phase', fontsize=12)
+				s.set_xticks([-pi,-pi/2.0,0,pi/2.0,pi])
+				s.set_xticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
+				s.set_yticks([-pi,-pi/2.0,0,pi/2.0,pi])
+				s.set_yticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
+				pl.imshow(np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,10),np.linspace(-pi,pi,10)])[0], extent = (-pi,pi,-pi,pi))
+				plotNr += 1
+
 
 	
 		
