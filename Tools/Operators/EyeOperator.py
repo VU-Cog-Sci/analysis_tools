@@ -70,19 +70,38 @@ class ASLEyeOperator( EyeOperator ):
 		self.pupilRecogn = np.array(self.rawDataFile['pupil_recogn'][self.firstTR['index']: self.firstTR['index'] + self.TR * self.nrVolumes * self.sampleFrequency ], dtype = bool)
 		self.pupilRecognPerTR = self.pupilRecogn.reshape(self.gazeData.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
+		self.horVelocities = np.concatenate((self.gazeData[:-1]-self.gazeData[1:], [[0]]))
+		self.horVelocitiesPerTR = self.horVelocities.reshape(self.horVelocities.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+		
+		self.hVRunningSD = np.concatenate((np.ones((3)), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)], np.ones((3))))
+		self.hVRunningSDPerTR = self.hVRunningSD.reshape(self.hVRunningSD.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+		
+		
 		if makeFigure:
 			f = pl.figure(figsize = (10,5))
-			sbp = f.add_subplot(1,1,1)
+			sbp = f.add_subplot(2,1,1)
 			for (g,p,i) in zip(self.gazeDataPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataPerTR.T.shape[0])):
 				if i >= delay:
-					nrStimDesignatorElements = 30
-					desSign = '|'
-					pl.plot( np.arange(g.shape[0])[p], g[p], c = 'k', alpha = 1.0, linewidth=0.15 )
-					pl.plot([0.25 * self.sampleFrequency for l in range(nrStimDesignatorElements)],np.linspace(0,250,nrStimDesignatorElements), desSign, c = 'r')
-					pl.plot([0.5 * self.sampleFrequency for l in range(nrStimDesignatorElements)],np.linspace(0,250,nrStimDesignatorElements), desSign, c = 'r') 
-					pl.plot([1.25 * self.sampleFrequency for l in range(nrStimDesignatorElements)],np.linspace(0,250,nrStimDesignatorElements), desSign, c = 'r') 
-					pl.plot([1.5 * self.sampleFrequency for l in range(nrStimDesignatorElements)],np.linspace(0,250,nrStimDesignatorElements), desSign, c = 'r') 
-			sbp.axis([0, self.TR * self.sampleFrequency, 0, 250])
+					pl.plot( np.arange(g.shape[0])[p], g[p], c = 'k', alpha = 0.75, linewidth=0.25 )
+			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			
+			gazeMean = [g[p].mean() for (g,p) in zip(self.gazeDataPerTR, self.pupilRecognPerTR)]
+			pl.plot( np.arange(self.TR * self.sampleFrequency), gazeMean, 'o', c = 'k', alpha = 1.0, linewidth = 4.0 )
+			
+			sbp.axis([0, self.TR * self.sampleFrequency, 50, 210])
+			
+			sbp = f.add_subplot(2,1,2)
+			for (v,p,sd) in zip(self.horVelocitiesPerTR.T, self.pupilRecognPerTR.T, self.hVRunningSDPerTR.T):
+				if i >= delay:
+					pl.plot( np.arange(v.shape[0])[p], v[p], c = 'k', alpha = 0.75, linewidth=0.25 )
+					pl.plot( np.arange(sd.shape[0])[p], sd[p], '+', c = 'b', alpha = 0.75, linewidth=0.5 )
+					
+			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
+			
+			
 		
 class EyelinkOperator( EyeOperator ):
 	"""docstring for EyelinkOperator"""
