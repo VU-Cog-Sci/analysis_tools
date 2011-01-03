@@ -40,8 +40,8 @@ class Run(object):
 		elif hasattr(self, 'behaviorFile'):
 #			self.dateTime = os.path.getctime(self.behaviorFile)
 			self.dateTime = datetime.date.today()
-		elif hasattr(self, 'eyelinkFile'):
-			self.dateTime = os.path.getctime(self.eyelinkFile)
+		elif hasattr(self, 'eyeFile'):
+			self.dateTime = os.path.getctime(self.eyeFile)
 	
 	def addTrial(self, trial):
 		"""docstring for addTrial"""

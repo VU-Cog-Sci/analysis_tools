@@ -119,6 +119,8 @@ class EyelinkOperator( EyeOperator ):
 				eac = EDF2ASCOperator(self.inputFileName)
 				eac.configure()
 				eac.execute()
+				self.messageFile = eac.messageOutputFileName
+				self.gazeFile = eac.gazeOutputFileName
 		else:
 			self.logger.warning('Input object is not an edf file')
 	

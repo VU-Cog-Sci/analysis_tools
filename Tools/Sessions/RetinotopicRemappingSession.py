@@ -286,9 +286,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				s.set_xticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
 				s.set_yticks([-pi,-pi/2.0,0,pi/2.0,pi])
 				s.set_yticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
-				pl.imshow(np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,10),np.linspace(-pi,pi,10)])[0], extent = (-pi,pi,-pi,pi))
+				pl.imshow(np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)])[0], extent = (-pi,pi,-pi,pi))
 				plotNr += 1
-
+		print len(self.maskedRoiData), len(self.maskedRoiData[0]), len(self.maskedRoiData[0][0])
 
 	
-		
