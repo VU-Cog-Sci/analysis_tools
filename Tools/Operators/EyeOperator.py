@@ -73,7 +73,7 @@ class ASLEyeOperator( EyeOperator ):
 		self.horVelocities = np.concatenate((self.gazeData[:-1]-self.gazeData[1:], [[0]]))
 		self.horVelocitiesPerTR = self.horVelocities.reshape(self.horVelocities.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
-		self.hVRunningSD = np.concatenate((np.ones((3)), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)], np.ones((3))))
+		self.hVRunningSD = np.concatenate((np.ones((6)) * self.horVelocities.std(), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)]))
 		self.hVRunningSDPerTR = self.hVRunningSD.reshape(self.hVRunningSD.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
 		
