@@ -76,3 +76,15 @@ def circularStandardDeviationFromNoiseSD( real, imag, noiseSD ):
 	# these are replaced by the sdForZeroAmplitude defined above
 	resultInfToZero = np.nan_to_num(result * np.isfinite(result))
 	return np.clip( np.nan_to_num( np.isinf( result ) * result ), 0, sdForZeroAmplitude ) + resultInfToZero
+
+def fitVonMises( data, initial = [0,1] ):
+	from scipy.stats import vonmises
+	from scipy.optimize import fmin
+	
+	# negative log likelihood sum is to be minimized, this maximized the likelihood
+	vmL = lambda v : -np.sum(np.log( vonmises.pdf(v[0] ,v[1] , data) ))
+	
+	return fmin(vmL, initial)
+	
+	
+		

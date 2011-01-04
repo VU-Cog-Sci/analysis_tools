@@ -78,7 +78,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pp.close()
 #		pl.show()
 	
-	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 3):
+	def createFunctionalMask(self, exclusionThreshold = 1.5, maskFrame = 3):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
 		results in creation of a mask file which can be accessed later
@@ -112,7 +112,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			images.append(NiftiImage(eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')))
 		return images
 	
-	def maskConditionFiles(self, conditionFiles, maskFile = None, maskThreshold = 4.0, maskFrame = 0, flat = False):
+	def maskConditionFiles(self, conditionFiles, maskFile = None, maskThreshold = 5.0, maskFrame = 0, flat = False):
 		# anatomical or statistical mask?
 		if os.path.split(maskFile)[0].split('/')[-1] == 'anat':
 			if os.path.split(maskFile)[-1][:2] in ['lh','rh']:	# single hemisphere roi
@@ -131,11 +131,12 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, add_eccen = False ):
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
-		['inferiorparietal', 'superiorparietal','precuneus','lingual','fusiform','lateraloccipital']
+		['V1', 'V2', 'V3', 'V3AB', 'V4']
+		['pericalcarine','lateraloccipital','lingual','fusiform','cuneus','precuneus','inferiorparietal', 'superiorparietal']
 		"""
 		self.rois = regions
 		maskedFiles = self.maskConditionFiles(conditionFiles = self.collectConditionFiles(), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
@@ -179,7 +180,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp = f.add_subplot(len(self.conditionDict),len(self.maskedRoiData),plotNr)
 				summedArray = - ( self.maskedRoiData[i][condition][9] == 0.0 )
 				# pl.scatter(self.maskedRoiData[i][comb[0]][9][summedArray], self.maskedRoiData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
-				pl.hist(self.maskedRoiData[i][condition][9][summedArray])
+				pl.hist(self.maskedRoiData[i][condition][9][summedArray], normed = True)
 				sbp.set_title(self.rois[i], fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[condition], fontsize=10)
 #				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
@@ -205,60 +206,54 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.axis([-10,10,-10,10])
 				plotNr += 1
 	
-	def phaseDifferences(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']]):
-		if not hasattr(self, 'maskedRoiData'):
-			self.dataForRegions()
-		f = pl.figure(figsize = (10,10))
-		pl.subplots_adjust(hspace=0.4)
-		pl.subplots_adjust(wspace=0.4)
-		plotNr = 1		
-		for cond in comparisons:
-			cond1 = self.conditionDict.keys().index(cond[0])
-			cond2 = self.conditionDict.keys().index(cond[1])
-			for i in range(len(self.maskedRoiData)):
-				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
-				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
-				pl.hist(circularDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray]), range = (-pi,pi), normed = True)
-				sbp.set_title(self.rois[i], fontsize=10)
-				if i == 0:
-					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
-					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
-				plotNr += 1
-	
-	def phaseDifferencesPerPolarPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
+	def phaseDifferences(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']]):
 		if not hasattr(self, 'maskedRoiData'):
 			self.dataForRegions()
 			
-		f = pl.figure(figsize = (10,10))
-		pl.subplots_adjust(hspace=0.4)
-		pl.subplots_adjust(wspace=0.4)
+		if False:
+			f = pl.figure(figsize = (10,10))
+			pl.subplots_adjust(hspace=0.4, wspace=0.4)
+			plotNr = 1		
+			for cond in comparisons:
+				cond1 = self.conditionDict.keys().index(cond[0])
+				cond2 = self.conditionDict.keys().index(cond[1])
+				for i in range(len(self.maskedRoiData)):
+					sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr, polar = True)
+					summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
+					pl.hist(circularDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray]), range = (-pi,pi), normed = True, bins = 40)
+					sbp.set_title(self.rois[i], fontsize=10)
+					if i == 0:
+						sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
+						# sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
+					plotNr += 1
+		
+		fitResults = []
+		f = pl.figure(figsize = (3.5,12))
+		pl.subplots_adjust(hspace=0.4, wspace=0.4)
 		plotNr = 1		
-		for cond in comparisons:
-			cond1 = self.conditionDict.keys().index(cond[0])
-			cond2 = self.conditionDict.keys().index(cond[1])
-			for i in range(len(self.maskedRoiData)):
-				sbp = f.add_subplot(len(comparisons),len(self.maskedRoiData),plotNr)
+		for i in range(len(self.maskedRoiData)):
+			sbp = f.add_subplot(len(self.maskedRoiData),1,plotNr)
+			fitResults.append([])
+			for (c,cond) in zip(range(len(comparisons)), comparisons):
+				cond1 = self.conditionDict.keys().index(cond[0])
+				cond2 = self.conditionDict.keys().index(cond[1])
 				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
-				baseData = self.maskedRoiData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
-				baseOrder = np.argsort(baseData)
-				binnedData = []
-				for bin in range(baseOrder.shape[0] - binSize):
-					d1 = self.maskedRoiData[i][cond1][9][summedArray][baseOrder[bin:bin+binSize]]
-					d2 = self.maskedRoiData[i][cond2][9][summedArray][baseOrder[bin:bin+binSize]]
-					if d1.shape[0] > 0:
-						binnedData.append( [ baseData[baseOrder[bin:bin+binSize]].mean(), abs(circularDifference(d1,d2)).mean() ] )
-				binnedData = np.array(binnedData)
-				if baseData.shape[0] > 0:
-					pl.plot(binnedData[:,0],binnedData[:,1])
+				diffs = circularDifference(self.maskedRoiData[i][cond1][9][summedArray], self.maskedRoiData[i][cond2][9][summedArray])
+				diffs.sort()
+				[mu, kappa] =  fitVonMises(-diffs)
+				pl.plot(diffs, np.linspace(0,1,diffs.shape[0]), ['ro','go','bo'][c], alpha = 0.15)
+				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.cdf(mu, kappa, np.linspace(pi,-pi,100)) - scipy.stats.vonmises.cdf(mu, kappa, pi), ['r-','g-','b-'][c])
 				sbp.set_title(self.rois[i], fontsize=10)
-				sbp.axis([-pi,pi,-pi,pi])
-				if i == 0:
-					sbp.set_ylabel(cond[0] + '-' + cond[1], fontsize=10)
-					sbp.set_xlabel(baseCondition, fontsize=10)
-				plotNr += 1
+				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
+				fitResults[-1].append([mu, kappa])
+			plotNr += 1	
+		
+		self.fitResults = np.array(fitResults)
+		return np.array(fitResults)
+		
 		
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['sacc_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 10):
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 10):
 		self.dataForRegions(add_eccen = True)
 		
 		f = pl.figure(figsize = (10,10))
