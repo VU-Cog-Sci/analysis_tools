@@ -131,7 +131,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = False, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, add_eccen = False ):
+	def dataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 2.50, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -228,13 +228,13 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 					plotNr += 1
 		
 		fitResults = []
-		f = pl.figure(figsize = (3.5,12))
+		f = pl.figure(figsize = (7,12))
 		pl.subplots_adjust(hspace=0.4, wspace=0.4)
 		plotNr = 1		
 		for i in range(len(self.maskedRoiData)):
-			sbp = f.add_subplot(len(self.maskedRoiData),1,plotNr)
 			fitResults.append([])
 			for (c,cond) in zip(range(len(comparisons)), comparisons):
+				sbp = f.add_subplot(len(self.maskedRoiData),2,plotNr)
 				cond1 = self.conditionDict.keys().index(cond[0])
 				cond2 = self.conditionDict.keys().index(cond[1])
 				summedArray = - ( self.maskedRoiData[i][cond1][0] + self.maskedRoiData[i][cond2][0] == 0.0 )
@@ -246,7 +246,14 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_title(self.rois[i], fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
 				fitResults[-1].append([mu, kappa])
-			plotNr += 1	
+				sbp = f.add_subplot(len(self.maskedRoiData),2,plotNr+1)
+				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][c], histtype = 'stepfilled', alpha = 0.15)
+				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][c])
+				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
+				
+			
+			plotNr += 2	
 		
 		self.fitResults = np.array(fitResults)
 		return np.array(fitResults)
