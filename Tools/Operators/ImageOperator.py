@@ -114,10 +114,11 @@ class ImageMaskingOperator( ImageOperator ):
 		"""docstring for applySingleMask"""
 		
 		if nrVoxels:	# if nrVoxels we'll need to set the threshold to reach that nr of Voxels.
+			sortedData = np.sort(self.maskData[whichMask].ravel())
 			if maskFunction == '__gt__':
-				maskThreshold = self.maskData[whichMask].ravel().sort()[-(nrVoxels+1)]
+				maskThreshold = sortedData[-(nrVoxels+1)]
 			elif maskFunction == '__lt__':
-				maskThreshold = self.maskData[whichMask].ravel().sort()[(nrVoxels+1)]
+				maskThreshold = sortedData[(nrVoxels+1)]
 				
 		# this piece must be done regardless of nrVoxels or manual threshold setting
 		mask = eval('self.maskData[whichMask].' + maskFunction + '(' + str(maskThreshold) + ')')

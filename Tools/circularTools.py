@@ -84,7 +84,7 @@ def fitVonMises( data, initial = [0,1] ):
 	# negative log likelihood sum is to be minimized, this maximized the likelihood
 	vmL = lambda v : -np.sum(np.log( vonmises.pdf(v[0] ,v[1] , data) ))
 	
-	return fmin(vmL, initial)
+	return fmin(vmL, initial, xtol=0.000001, ftol=0.000001)
 	
 	
 		
