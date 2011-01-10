@@ -178,47 +178,76 @@ class RivalryReplaySession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related.pdf'))
 		return evRes
 	
-	def prepareTransitionGLM(self):
+	def runTransitionGLM(self, perRun = False, acrossRuns = True):
 		"""
 		Take all transition events and use them as event regressors
 		Run FSL on this
 		"""
-		for condition in ['rivalry', 'replay', 'replay2']:
-			for run in self.conditionDict[condition]:
-				# create the event files
-				for eventType in ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray']:
-					eventData = self.gatherBehavioralData( whichEvents = [eventType], whichRuns = [run] )
-					eventName = eventType.split('EventsAsArray')[0]
-					dfFSL = np.ones((eventData[eventType].shape[0],3)) * [1.0,0.1,1]
-					dfFSL[:,0] = eventData[eventType][:,0]
-					np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, extension = '.evt'), dfFSL, fmt='%4.2f')
-					# also make files for the end of each event.
-					dfFSL[:,0] = eventData[eventType][:,0] + eventData[eventType][:,1]
-					np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, postFix = ['end'], extension = '.evt'), dfFSL, fmt='%4.2f')
-				# remove previous feat directories
-				try:
-					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.fsf'))
-				except OSError:
-					pass
-				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-				thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/transition.fsf'
-				REDict = {
-				'---NR_FRAMES---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'])).timepoints),
-				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf']), 
-				'---ANAT_FILE---':os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'bet', 'T1_bet' ), 
-				'---TRANS_ON_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', extension = '.evt'),
-				'---TRANS_OFF_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', postFix = ['end'], extension = '.evt')
-				}
-				featFileName = self.runFile(stage = 'processed/mri', run = self.runList[run], extension = '.fsf')
-				featOp = FEATOperator(inputObject = thisFeatFile)
-				if run == self.conditionDict['replay2'][-1]:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-				else:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-				# run feat
-				featOp.execute()
+		if perRun:
+			for condition in ['rivalry', 'replay', 'replay2']:
+				for run in self.conditionDict[condition]:
+					# create the event files
+					for eventType in ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray']:
+						eventData = self.gatherBehavioralData( whichEvents = [eventType], whichRuns = [run] )
+						eventName = eventType.split('EventsAsArray')[0]
+						dfFSL = np.ones((eventData[eventType].shape[0],3)) * [1.0,0.1,1]
+						dfFSL[:,0] = eventData[eventType][:,0]
+						np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, extension = '.evt'), dfFSL, fmt='%4.2f')
+						# also make files for the end of each event.
+						dfFSL[:,0] = eventData[eventType][:,0] + eventData[eventType][:,1]
+						np.savetxt(self.runFile( stage = 'processed/mri', run = self.runList[run], base = eventName, postFix = ['end'], extension = '.evt'), dfFSL, fmt='%4.2f')
+					# remove previous feat directories
+					try:
+						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.fsf'))
+					except OSError:
+						pass
+					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+					thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/transition.fsf'
+					REDict = {
+					'---NR_FRAMES---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'])).timepoints),
+					'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf']), 
+					'---ANAT_FILE---':os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'bet', 'T1_bet' ), 
+					'---TRANS_ON_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', extension = '.evt'),
+					'---TRANS_OFF_FILE---':self.runFile( stage = 'processed/mri', run = self.runList[run], base = 'transition', postFix = ['end'], extension = '.evt')
+					}
+					featFileName = self.runFile(stage = 'processed/mri', run = self.runList[run], extension = '.fsf')
+					featOp = FEATOperator(inputObject = thisFeatFile)
+					if run == self.conditionDict['replay2'][-1]:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+					else:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+					# run feat
+					featOp.execute()
+		# group GLM
+		if acrossRuns:
+			nrFeats = len(self.scanTypeDict['epi_bold'])
+			inputFeats = [self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf'], extension = '.feat') for run in self.scanTypeDict['epi_bold']]
+			inputRules = '';	evRules = '';	groupRules = '';
+			for i in range(nrFeats):
+				inputRules += 'set feat_files(' + str(i+1) + ') "' + inputFeats[i] + '"\n' 
+				evRules += 'set fmri(evg' + str(i+1) + '.1) 1\n'
+				groupRules += 'set fmri(groupmem.' + str(i+1) + ') 1\n'
+				
+			try:
+				os.mkdir(self.stageFolder(stage = 'processed/mri/feat'))
+			except OSError:
+				pass
+			# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+			thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/acrossRuns.fsf'
+			REDict = {
+			'---NR_RUNS---':str(i+1),
+			'---INPUT_RULES---':inputRules, 
+			'---OUTPUT_FOLDER---': os.path.join(self.stageFolder(stage = 'processed/mri/feat'), 'acrossRuns'), 
+			'---EV_RULES---':evRules,
+			'---GROUP_RULES---':groupRules
+			}
+			featFileName = os.path.join( self.stageFolder(stage = 'processed/mri/feat'), 'acrossRuns.fsf')
+			featOp = FEATOperator(inputObject = thisFeatFile)
+			featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+			featOp.execute()
+			
 	
 
 
