@@ -242,20 +242,20 @@ class Session(PathConstructor):
 				self.logger.info('using firstFunc as a registration target')
 				self.originalReferenceFunctionalVolume = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' )
 				self.logger.info('registration target is firstFunc, ' + self.originalReferenceFunctionalVolume)
-			self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration' )
+			self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
 			ExecCommandLine('cp ' + self.originalReferenceFunctionalVolume + ' ' + self.referenceFunctionalFileName )
 		
 			# register to both freesurfer anatomical and fsl MNI template
 			# actual registration - BBRegister to freesurfer subject
 			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), flirtOutputFile = False )
+			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = False )
 			bbR.execute()
 			# after registration, see bbregister log file for reg check
 					
 			if flirt:
 				# actual registration - Flirt to MNI brain
 				flR = FlirtOperator( self.referenceFunctionalFileName )
-				flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', extension = '.mtx' ) )
+				flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ) )
 				flR.execute()
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
@@ -269,7 +269,7 @@ class Session(PathConstructor):
 					stV = LabelToVolOperator(maskFileName)
 					stV.configure( 	templateFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' ), 
 									hemispheres = [hemi], 
-									register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), 
+									register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), 
 									fsSubject = self.FSsubject,
 									outputFileName = self.runFile(stage = 'processed/mri/masks', base = hemi + '.' + mask ), 
 									threshold = 0.001 )
@@ -281,7 +281,7 @@ class Session(PathConstructor):
 		how we do this depends on whether we have parallel processing turned on or not
 		"""
 		self.logger.info('run motion correction')
-		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration' )
+		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
 		# set up a list of motion correction operator objects for the runs
 		mcOperatorList = [];	stdOperatorList = [];
 		for er in self.scanTypeDict['epi_bold']:
@@ -379,7 +379,7 @@ class Session(PathConstructor):
 					hemi = 'rh'
 				lvo = LabelToVolOperator(lf)
 				# we convert the label files to the space of the first EPI run of the session, moving them into masks/anat.
-				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
+				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()
 		
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
@@ -399,7 +399,7 @@ class Session(PathConstructor):
 						imo.applyAllMasks()
 				# convert the statistical masks to surfaces
 				vtsO = VolToSurfOperator(statMaskFile)
-				vtsO.configure(frames = {statMask:0}, register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = self.runFile(stage = 'processed/mri/masks/surf/', base = '' ), threshold = 0.5, surfSmoothingFWHM = 2.0)
+				vtsO.configure(frames = {statMask:0}, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = self.runFile(stage = 'processed/mri/masks/surf/', base = '' ), threshold = 0.5, surfSmoothingFWHM = 2.0)
 				vtsO.execute()
 		else:	# in this case copy the anatomical masks to the masks folder where they'll be used for the following extraction of functional data
 			os.system('cp ' + self.runFile(stage = 'processed/mri/masks/anat/', base = '*' ) + ' ' + self.stageFolder(stage = 'processed/mri/masks/') )

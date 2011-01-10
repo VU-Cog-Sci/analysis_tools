@@ -194,7 +194,7 @@ class BETOperator( CommandLineOperator ):
 		else:
 			runcmd += ' ' + os.path.splitext(self.inputFileName)[0] + '_NB'
 		# configure parameters - will perhaps make this amenable
-		runcmd += ' -f 0.4 -g 0 -m '
+		runcmd += ' -f 0.5 -g 0 -m '
 		self.runcmd = runcmd
 	
 

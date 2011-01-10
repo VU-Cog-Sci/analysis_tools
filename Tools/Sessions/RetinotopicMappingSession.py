@@ -89,7 +89,7 @@ class RetinotopicMappingSession(Session):
 			vtsList = []
 			for opf in self.opfNameList:
 				vtsOp = VolToSurfOperator(inputObject = opf + standardMRIExtension)
-				vtsOp.configure(register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/'), surfSmoothingFWHM = surfSmoothingFWHM )
+				vtsOp.configure(register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/'), surfSmoothingFWHM = surfSmoothingFWHM )
 				vtsList.append(vtsOp)
 				
 			if not self.parallelize:
@@ -119,7 +119,7 @@ class RetinotopicMappingSession(Session):
 				surfaceFilesFromOpf = subprocess.Popen('ls ' + os.path.join(os.path.split(opf)[0], 'surf', '*.w'), shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 				for sf in surfaceFilesFromOpf:
 					vtsOp = SurfToOperator(inputObject = opf + standardMRIExtension)
-					vtsOp.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), register = self.runFile(stage = 'processed/mri/reg', base = 'register', extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/') )
+					vtsOp.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(os.path.split(opf)[0], 'surf/') )
 					vtsList.append(vtsOp)
 
 			if not self.parallelize:

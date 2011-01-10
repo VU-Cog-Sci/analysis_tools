@@ -161,7 +161,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
 	
 		
-	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
+	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -276,7 +276,6 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				cond1 = self.conditionDict.keys().index(cond[0])
 				cond2 = self.conditionDict.keys().index(cond[1])
 				summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
-				print 'summedArray zeros amount for ' + self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2] + ' is ' + str((-summedArray).sum())
 				diffs = circularDifference(self.maskedConditionData[i][cond1][9][summedArray], self.maskedConditionData[i][cond2][9][summedArray])
 				diffs.sort()
 				[mu, kappa] =  fitVonMises(-diffs)
@@ -336,13 +335,16 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		return outputData
 	
 		
-	def combinationsPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False):
-		self.runDataForRegions()
+	def combinationsPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 3.0, nrVoxels = False):
+		self.runDataForRegions( maskThreshold = maskThreshold )
+		fitResults = []
+		
 		f = pl.figure(figsize = (7,12))
 		pl.subplots_adjust(hspace=0.4, wspace=0.4)
 		plotNr = 1
 		for i in range(len(self.rois)):
 			sbp = f.add_subplot(len(self.rois),1,plotNr)
+			fitResults.append([])
 			for (j, cond) in zip(range(len(comparisons)), comparisons):
 				cond1 = self.conditionDict.keys().index(cond[0])
 				cond2 = self.conditionDict.keys().index(cond[1])
@@ -356,9 +358,10 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				# allCircularDifferencesThisRoi = np.array(allCircularDifferencesThisRoi)
 				diffs = diffs[diffs != 0.0]
 				[mu, kappa] =  fitVonMises(-diffs)
+				fitResults[-1].append([mu, kappa])
 				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][j], histtype = 'stepfilled', alpha = 0.15)
 				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][j])
 				sbp.set_title(self.rois[i], fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2] + ' ' + str(diffs.shape[0]), fontsize=10)
 			plotNr += 1	
-		
+		self.combinationFitResults = np.array(fitResults)
