@@ -224,7 +224,7 @@ set fmri(reginitial_highres_yn) 0
 # 0   : No search
 # 90  : Normal search
 # 180 : Full search
-set fmri(reginitial_highres_search) 90
+set fmri(reginitial_highres_search) 180
 
 # Degrees of Freedom for registration to initial structural
 set fmri(reginitial_highres_dof) 3
@@ -236,10 +236,10 @@ set fmri(reghighres_yn) 1
 # 0   : No search
 # 90  : Normal search
 # 180 : Full search
-set fmri(reghighres_search) 90
+set fmri(reghighres_search) 180
 
 # Degrees of Freedom for registration to main structural
-set fmri(reghighres_dof) 6
+set fmri(reghighres_dof) 12
 
 # Registration to standard image?
 set fmri(regstandard_yn) 1
@@ -251,7 +251,7 @@ set fmri(regstandard) "/usr/local/fsl/data/standard/MNI152_T1_2mm_brain"
 # 0   : No search
 # 90  : Normal search
 # 180 : Full search
-set fmri(regstandard_search) 90
+set fmri(regstandard_search) 180
 
 # Degrees of Freedom for registration to standard space
 set fmri(regstandard_dof) 12
