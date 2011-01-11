@@ -456,3 +456,12 @@ class Session(PathConstructor):
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
+	def gatherRIOData(self, rois, dataFiles, whichMask = 'thresh_z_stat'):
+		"""
+		A more general method for gathering roi data that takes in both arrays of filenames and numpy arrays
+		"""
+		# get the roi data arrays
+		
+		
+		
+		

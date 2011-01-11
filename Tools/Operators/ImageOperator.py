@@ -24,15 +24,25 @@ class ImageOperator( Operator ):
 	"""docstring for ImageOperator"""
 	def __init__(self, inputObject, **kwargs):
 		"""
-		image operator takes a filename or a niftiImage file object
+		image operator takes a filename, an ndarray, or a niftiImage file object
+		and creates internal variable inputObject to always be a nifti image object.
+		its data accessible through inputObject.data, and filename inputFileName 
 		"""
 		super(ImageOperator, self).__init__(inputObject = inputObject, **kwargs)
 		# convert inputObject to NiftiImage while generating inputFileName from it, if necessary.
 		if self.inputObject.__class__.__name__ == 'str':
 			dataFile = NiftiImage(self.inputObject)
 			self.inputObject = dataFile
-		self.inputFileName = self.inputObject.filename
-		self.logger.info('started with ' +os.path.split(self.inputFileName)[-1])
+			self.logger.info('started with ' +os.path.split(self.inputFileName)[-1])
+		if self.inputObject.__class__.__name__ == 'ndarray':
+		# don't care about file name. will be added for saving, later
+		# we will use an in-memory nifti file object as a data container here.
+			self.inputObject = NiftiImage(self.inputObject)
+			self.logger.info('started with ndarray of shape ' + self.inputObject.data.shape)
+			# inputFileName has to be set in the **kwargs now, or it will be the empty string
+			if not hasattr(self, inputFileName):
+				self.inputFileName = ''
+		
 		
 
 class ImageMaskingOperator( ImageOperator ):
@@ -103,7 +113,7 @@ class ImageMaskingOperator( ImageOperator ):
 		else:
 			self.inputData = self.inputObject.data
 			
-		# test for voxel shape here
+		# test for data shape here
 		if self.inputData.shape[-3:] != self.maskData.shape[-3:]:
 			# the mask has more than one volume of 3D binary masks but doesn't fit with the naming
 			self.logger.warning('mask and input data dimensions do not match')
