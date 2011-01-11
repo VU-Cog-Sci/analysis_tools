@@ -12,6 +12,9 @@ import numpy as np
 import matplotlib.pylab as pl
 from math import *
 
+from scipy.stats import vonmises
+from scipy.optimize import fmin
+
 def positivePhases( phases ):
 	return fmod(phases + 2 * pi, 2 * pi)
 
@@ -77,14 +80,18 @@ def circularStandardDeviationFromNoiseSD( real, imag, noiseSD ):
 	resultInfToZero = np.nan_to_num(result * np.isfinite(result))
 	return np.clip( np.nan_to_num( np.isinf( result ) * result ), 0, sdForZeroAmplitude ) + resultInfToZero
 
-def fitVonMises( data, initial = [0,1] ):
-	from scipy.stats import vonmises
-	from scipy.optimize import fmin
-	
+def fitVonMises( data, initial = [0,pi] ):
 	# negative log likelihood sum is to be minimized, this maximized the likelihood
 	vmL = lambda v : -np.sum(np.log( vonmises.pdf(v[0] ,v[1] , data) ))
+	return fmin(vmL, initial) # , xtol=0.000001, ftol=0.000001
 	
-	return fmin(vmL, initial, xtol=0.000001, ftol=0.000001)
+def bootstrapVonMisesFits( data, nrDraws = 50, nrRepetitions = 1000 ):
+	nrSamples = data.shape[0]
+	if nrDraws == 0:
+		nrDraws = nrSamples
+	drawIndices = np.random.randint(nrSamples, size = (nrRepetitions,nrDraws))
+	results = np.array([fitVonMises(data[drawIndices[i]]) for i in range(nrRepetitions)])
 	
-	
+	return results
+
 		

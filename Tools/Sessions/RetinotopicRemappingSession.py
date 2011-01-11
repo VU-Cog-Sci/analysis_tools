@@ -161,7 +161,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
 	
 		
-	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
+	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -199,6 +199,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=9)
 				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=9)
 				plotNr += 1
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phasePhasePlots.pdf' ))
 	
 	def phaseDistributionPlots(self):
 		if not hasattr(self, 'maskedConditionData'):
@@ -219,6 +220,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_ylabel(self.conditionDict.keys()[condition], fontsize=10)
 #				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
 				plotNr += 1
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDistributionPlots.pdf' ))
 	
 	def significanceSignificancePlots(self):
 		if not hasattr(self, 'maskedConditionData'):
@@ -234,32 +236,16 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				summedArray = - ( self.maskedConditionData[i][comb[0]][0] + self.maskedConditionData[i][comb[1]][0] == 0.0 )
 				pl.scatter(self.maskedConditionData[i][comb[0]][0][summedArray], self.maskedConditionData[i][comb[1]][0][summedArray], c = 'r', alpha = 0.1)
 				sbp.set_title(self.rois[i], fontsize=10)
-				if i == 1:
-					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
-					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
+#				if i == 1:
+#					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
+#					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
 				sbp.axis([-10,10,-10,10])
 				plotNr += 1
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'significanceSignificancePlots.pdf' ))
 	
-	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False):
+	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False, runBootstrap = False, nrBootstrapRepetitions = 1000):
 		if not hasattr(self, 'maskedConditionData'):
 			self.conditionDataForRegions( maskThreshold = maskThreshold, nrVoxels = nrVoxels )
-			
-		if False:
-			f = pl.figure(figsize = (10,10))
-			pl.subplots_adjust(hspace=0.4, wspace=0.4)
-			plotNr = 1		
-			for cond in comparisons:
-				cond1 = self.conditionDict.keys().index(cond[0])
-				cond2 = self.conditionDict.keys().index(cond[1])
-				for i in range(len(self.maskedConditionData)):
-					sbp = f.add_subplot(len(comparisons),len(self.maskedConditionData),plotNr, polar = True)
-					summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
-					pl.hist(circularDifference(self.maskedConditionData[i][cond1][9][summedArray], self.maskedConditionData[i][cond2][9][summedArray]), range = (-pi,pi), normed = True, bins = 40)
-					sbp.set_title(self.rois[i], fontsize=10)
-					if i == 0:
-						sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
-						# sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
-					plotNr += 1
 		
 		fitResults = []
 		allPhaseDiffs = []
@@ -267,12 +253,22 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		f = pl.figure(figsize = (7,12))
 		pl.subplots_adjust(hspace=0.4, wspace=0.4)
 		plotNr = 1		
+		
+		if not runBootstrap:
+			try:
+				allBootstrapResults = np.load(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.npy' ))
+			except OSError:
+				runBootstrap = True
+				allBootstrapResults = np.zeros((len(self.maskedConditionData), len(comparisons), nrBootstrapRepetitions, 2))
+		else:
+			allBootstrapResults = np.zeros((len(self.maskedConditionData), len(comparisons), nrBootstrapRepetitions, 2))
+			
 		for i in range(len(self.maskedConditionData)):
 			fitResults.append([])
 			allPhaseDiffs.append([])
 			phaseHists.append([])
 			for (c,cond) in zip(range(len(comparisons)), comparisons):
-				sbp = f.add_subplot(len(self.maskedConditionData),1,plotNr)
+				sbp = f.add_subplot(len(self.maskedConditionData),3,plotNr)
 				cond1 = self.conditionDict.keys().index(cond[0])
 				cond2 = self.conditionDict.keys().index(cond[1])
 				summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
@@ -286,12 +282,37 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][c])
 				sbp.set_title(self.rois[i], fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
+				
+				if runBootstrap:
+					allBootstrapResults[i,c] = bootstrapVonMisesFits( diffs, nrRepetitions = nrBootstrapRepetitions )
+				
+				sbp = f.add_subplot(len(self.maskedConditionData),3,plotNr+1)
+				pl.hist(allBootstrapResults[i,c][:,0], range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][c], histtype = 'stepfilled', alpha = 0.15)
+				sbp.set_xlabel('means of bootstrap fits', fontsize=10)
+				
+				sbp = f.add_subplot(len(self.maskedConditionData),3,plotNr+2)
+				sds = 1.0/allBootstrapResults[i,c][:,1]
+				sds.sort()
+				pl.plot(sds.cumsum(), c = ['r','g','b'][c], alpha = 0.15)
+				sbp.set_xlabel('kappa parameters of bootstrap fits', fontsize=10)
+				sbp.axis([0,nrBootstrapRepetitions,0,20 * pi])
+				
+				# some cursory analysis of the bootstrap results.
+				# how many of the bootstrap simulations resulted in a 0.0 mean which is not realistic?
+				noMeans = (allBootstrapResults[i,c][:,0] == 0.0)
+				self.logger.debug('amount of zero outcomes for ' + str(cond) + ' : ' + str( (allBootstrapResults[i,c][:,0] == 0.0).sum()/allBootstrapResults[i,c][:,0].shape[0] ))
+				# what is the mean of the means?
+				self.logger.debug('mean mean of bootstrap fits: ' + str(circularMean(allBootstrapResults[i,c][-noMeans,0])))
+				
 			phaseHists[-1] = np.array(phaseHists[-1])
-			plotNr += 1	
+			plotNr += 3	
 		
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.npy' ), allBootstrapResults)
+		self.bootstrapResults = allBootstrapResults
 		self.fitResults = np.array(fitResults)
 		self.allPhaseDiffs = allPhaseDiffs
 		self.phaseHists = np.array(phaseHists)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.pdf' ))
 		
 		
 	
@@ -332,6 +353,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				plotNr += 1
 				outputData[-1].append(histData)
 		self.phasePhaseHistogramDict.update( {baseCondition: outputData} )
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase.pdf' ))
 		return outputData
 	
 		
@@ -365,3 +387,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2] + ' ' + str(diffs.shape[0]), fontsize=10)
 			plotNr += 1	
 		self.combinationFitResults = np.array(fitResults)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'combinationsPhaseDifferences.pdf' ))
+		
+		
+		
+		

@@ -33,6 +33,7 @@ class ImageOperator( Operator ):
 		if self.inputObject.__class__.__name__ == 'str':
 			dataFile = NiftiImage(self.inputObject)
 			self.inputObject = dataFile
+			self.inputFileName = self.inputObject.filename
 			self.logger.info('started with ' +os.path.split(self.inputFileName)[-1])
 		if self.inputObject.__class__.__name__ == 'ndarray':
 		# don't care about file name. will be added for saving, later
