@@ -85,7 +85,7 @@ def fitVonMises( data, initial = [0,pi] ):
 	vmL = lambda v : -np.sum(np.log( vonmises.pdf(v[0] ,v[1] , data) ))
 	return fmin(vmL, initial) # , xtol=0.000001, ftol=0.000001
 	
-def bootstrapVonMisesFits( data, nrDraws = 50, nrRepetitions = 1000 ):
+def bootstrapVonMisesFits( data, nrDraws = 100, nrRepetitions = 1000 ):
 	nrSamples = data.shape[0]
 	if nrDraws == 0:
 		nrDraws = nrSamples

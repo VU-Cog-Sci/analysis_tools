@@ -144,7 +144,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1'],[ 'V2'],[ 'V3', 'V3AB'],['V4'], ['inferiorparietal', 'superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -155,13 +155,25 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		maskedFiles = self.maskFiles(dataFiles = self.collectConditionFiles(add_eccen = add_eccen), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
 		maskedConditionData = []
 		for roi in regions:
-			thisRoiData = self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True)
+			if roi.__class__.__name__ == 'str': 
+				thisRoiData = self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True)
+			elif roi.__class__.__name__ == 'list':
+				print roi
+				allRoisData = []
+				for r in roi:
+					allRoisData.append( np.array( self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), r + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True) ) )
+					print r
+					print allRoisData[-1].shape
+				print len(allRoisData)
+				
+				thisRoiData = np.dstack(allRoisData)
+				print thisRoiData.shape
 			maskedConditionData.append(thisRoiData)
 		self.maskedConditionData = maskedConditionData
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
 	
 		
-	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
+	def runDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4'], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -180,7 +192,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.maskedRunData = maskedRunData
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRunData)) + ' ' + str(len(self.maskedRunData[0])) + ' ' + str(len(self.maskedRunData[1][0]))+ ' ' + str(len(self.maskedRunData[0][0][0])))
 	
-	def phasePhasePlots(self):
+	def phasePhasePlots(self, nrBins = 10):
 		if not hasattr(self, 'maskedConditionData'):
 			self.conditionDataForRegions()
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
@@ -189,17 +201,22 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.subplots_adjust(hspace=0.4)
 		pl.subplots_adjust(wspace=0.4)
 		plotNr = 1
-		for comb in combinations(range(len(self.conditionDict)),2):
+		combs = list(combinations(range(len(self.conditionDict)),2))
+		self.histoResults = np.zeros((len(combs),len(self.maskedConditionData), nrBins, nrBins))
+		for (c,comb) in zip(range(len(combs)), combs):
 			for i in range(len(self.maskedConditionData)):
 				sbp = f.add_subplot(len(list(combinations(range(len(self.conditionDict)),2))),len(self.maskedConditionData),plotNr)
 				summedArray = - ( self.maskedConditionData[i][comb[0]][9] + self.maskedConditionData[i][comb[1]][9] == 0.0 )
 				# pl.scatter(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
-				pl.hexbin(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], gridsize = 10)
-				sbp.set_title(self.rois[i] + '\t\t\t\t', fontsize=11)
+				self.histoResults[c,i] = np.histogram2d(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], bins = nrBins, range = [[-pi,pi],[-pi,pi]], normed = True)[0]
+				pl.imshow(self.histoResults[c,i])
+				sbp.set_title(str(self.rois[i]) + '\t\t\t\t', fontsize=11)
 				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=9)
 				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=9)
 				plotNr += 1
+		self.combs = combs
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phasePhasePlots.pdf' ))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phasePhasePlots.npy' ), self.histoResults)
 	
 	def phaseDistributionPlots(self):
 		if not hasattr(self, 'maskedConditionData'):
@@ -216,7 +233,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				# pl.scatter(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
 				pl.hist(self.maskedConditionData[i][condition][9][summedArray], normed = True)
 #				pl.hist(self.maskedConditionData[i][condition][9], normed = True)
-				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_title(str(self.rois[i]), fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[condition], fontsize=10)
 #				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=10)
 				plotNr += 1
@@ -235,7 +252,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp = f.add_subplot(len(list(combinations(range(len(self.conditionDict)),2))),len(self.maskedConditionData),plotNr)
 				summedArray = - ( self.maskedConditionData[i][comb[0]][0] + self.maskedConditionData[i][comb[1]][0] == 0.0 )
 				pl.scatter(self.maskedConditionData[i][comb[0]][0][summedArray], self.maskedConditionData[i][comb[1]][0][summedArray], c = 'r', alpha = 0.1)
-				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_title(str(self.rois[i]), fontsize=10)
 #				if i == 1:
 #					sbp.set_ylabel(self.conditionDict.keys()[cond1], fontsize=10)
 #					sbp.set_xlabel(self.conditionDict.keys()[cond2], fontsize=10)
@@ -243,7 +260,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				plotNr += 1
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'significanceSignificancePlots.pdf' ))
 	
-	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False, runBootstrap = False, nrBootstrapRepetitions = 1000):
+	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False, runBootstrap = False, nrBootstrapRepetitions = 100):
 		if not hasattr(self, 'maskedConditionData'):
 			self.conditionDataForRegions( maskThreshold = maskThreshold, nrVoxels = nrVoxels )
 		
@@ -280,7 +297,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				phaseHists[-1].append(np.histogram(diffs, bins = 25, range = (-pi, pi), normed = True)[0])
 				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][c], histtype = 'stepfilled', alpha = 0.15)
 				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][c])
-				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_title(str(self.rois[i]), fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
 				
 				if runBootstrap:
@@ -316,8 +333,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		
 		
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 10):
-		self.conditionDataForRegions(add_eccen = True)
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 10, maskThreshold = 3.0 ):
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
@@ -341,7 +358,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				 	baseData = self.maskedConditionData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
 				circDiffData = circularDifference(self.maskedConditionData[i][cond1][9][summedArray],self.maskedConditionData[i][cond2][9][summedArray])
 				s = f.add_subplot(len(comparisons),len(self.maskedConditionData),plotNr)
-				s.set_title(self.rois[i], fontsize=8)
+				s.set_title(str(self.rois[i]), fontsize=8)
 				s.set_xlabel('phase difference', fontsize=12)
 				s.set_ylabel(baseCondition + ' phase', fontsize=12)
 				s.set_xticks([-pi,-pi/2.0,0,pi/2.0,pi])
@@ -383,7 +400,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				fitResults[-1].append([mu, kappa])
 				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][j], histtype = 'stepfilled', alpha = 0.15)
 				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][j])
-				sbp.set_title(self.rois[i], fontsize=10)
+				sbp.set_title(str(self.rois[i]), fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2] + ' ' + str(diffs.shape[0]), fontsize=10)
 			plotNr += 1	
 		self.combinationFitResults = np.array(fitResults)
