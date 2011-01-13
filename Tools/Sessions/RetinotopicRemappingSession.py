@@ -10,6 +10,7 @@ Copyright (c) 2009 TK. All rights reserved.
 from Session import * 
 from RetinotopicMappingSession import *
 from ..circularTools import *
+import matplotlib.cm as cm
 
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):
@@ -144,7 +145,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],[ 'V2'],[ 'V3', 'V3AB'],['V4'], ['inferiorparietal', 'superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1', 'V2', 'V3','V3AB','V4'], ['inferiorparietal', 'superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -209,7 +210,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				summedArray = - ( self.maskedConditionData[i][comb[0]][9] + self.maskedConditionData[i][comb[1]][9] == 0.0 )
 				# pl.scatter(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
 				self.histoResults[c,i] = np.histogram2d(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], bins = nrBins, range = [[-pi,pi],[-pi,pi]], normed = True)[0]
-				pl.imshow(self.histoResults[c,i])
+				pl.imshow(np.exp(self.histoResults[c,i]), cmap=cm.gray)
 				sbp.set_title(str(self.rois[i]) + '\t\t\t\t', fontsize=11)
 				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=9)
 				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=9)
@@ -260,7 +261,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				plotNr += 1
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'significanceSignificancePlots.pdf' ))
 	
-	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False, runBootstrap = False, nrBootstrapRepetitions = 100):
+	def fitPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False, runBootstrap = False, nrBootstrapRepetitions = 1000):
 		if not hasattr(self, 'maskedConditionData'):
 			self.conditionDataForRegions( maskThreshold = maskThreshold, nrVoxels = nrVoxels )
 		
