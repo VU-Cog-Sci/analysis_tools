@@ -352,15 +352,6 @@ class Session(PathConstructor):
 					funcFile = NiftiImage(zscO.outputFileName)
 		
 	
-	def primaryEyeDataAnalysis(self):
-		"""
-		Take the eye movement data for the runs in this session
-		"""
-		for ri in self.scanTypeDict['epi_bold']:
-			self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
-			self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
-		
-
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc', statMasks = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 

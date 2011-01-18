@@ -79,6 +79,14 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pp.close()
 #		pl.show()
 	
+	def primaryEyeDataAnalysis(self):
+		"""
+		Take the eye movement data for the runs in this session
+		"""
+		for ri in self.scanTypeDict['epi_bold']:
+			self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
+			self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
+	
 	def createFunctionalMask(self, exclusionThreshold = 1.5, maskFrame = 3):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
@@ -110,6 +118,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			thisConditionFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[condition][0]]), 'polar.nii.gz')
 			images.append(NiftiImage(thisConditionFile))
 		if add_eccen:
+			self.eccenImage = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz'))
 			images.append(NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')))
 		return images
 		
@@ -145,7 +154,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'], ['V3AB'], ['V4'], ['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'], ['V3AB'], ['V4']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -395,7 +404,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase.pdf' ))
 		return outputData
 
-	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 20, maskThreshold = 4.0 ):
+	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
 		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
@@ -405,7 +414,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.subplots_adjust(hspace=0.4, wspace=0.4)
 		plotNr = 1
 		
-		outputData = np.zeros((len(self.rois), len(comparisons), binSize))
+		outputData = np.zeros((len(self.rois), len(comparisons), nrBins))
 		for i in range(len(self.rois)):
 			sbp = f.add_subplot(len(self.rois),1,plotNr)
 			sbp = f.add_subplot(len(self.maskedConditionData),1,plotNr)
@@ -420,18 +429,59 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				 	baseData = self.maskedConditionData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
 				circDiffData = circularDifference(self.maskedConditionData[i][cond1][9][summedArray],self.maskedConditionData[i][cond2][9][summedArray])
 				diffs = (1.0 - (np.abs(circDiffData) / (pi/2.0)) )
-				res = np.array([diffs[((baseData > ph) * (baseData <= ph + (2*pi)/binSize))].mean() for ph in np.linspace(-pi,pi,binSize,endpoint = False)])
+				diffs = np.tile(diffs, 3) 
+				baseData = np.concatenate((baseData - 2*pi, baseData, baseData + 2*pi))
+				res = np.array([diffs[((baseData > (ph - binSize/2.0)) * (baseData <= (ph + binSize/2.0)))].mean() for ph in np.linspace(-pi,pi, nrBins)])
 				outputData[i,j] = res
 				
 				sbp.set_title(str(self.rois[i]), fontsize=8)
-				pl.plot(np.linspace(-pi,pi,binSize), outputData[i,j], ['r-','g-','b-'][j])
+				pl.plot(np.linspace(-pi,pi,nrBins), outputData[i,j], ['r-','g-','b-'][j])
 			plotNr += 1
 		self.collapsedPhaseDiffDict.update( {baseCondition: outputData} )
 		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiff.pdf' ))
 		return outputData
-
 		
+	def collapsePhaseDifferencesHorVer(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', nrBins = 6, maskThreshold = 4.0 ):
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
+
+		if not hasattr(self, 'collapsedPhaseDiffDict'):
+			self.collapsedPhaseDiffDict = {}
+
+		f = pl.figure(figsize = (10,10))
+		pl.subplots_adjust(hspace=0.4, wspace=0.4)
+		plotNr = 1
+
+		outputData = np.zeros((len(self.rois), len(comparisons), nrBins))
+		for i in range(len(self.rois)):
+			sbp = f.add_subplot(len(self.rois),1,plotNr)
+			sbp = f.add_subplot(len(self.maskedConditionData),1,plotNr)
+			for (j, cond) in zip(range(len(comparisons)), comparisons):
+				cond1 = self.conditionDict.keys().index(cond[0])
+				cond2 = self.conditionDict.keys().index(cond[1])
+				summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
+				# base phase data based on eccen which is the last data file in maskedConditionData
+				if baseCondition == 'eccen':
+					baseData = self.maskedConditionData[i][-1][9][summedArray]
+				else:
+				 	baseData = self.maskedConditionData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
+				# horizontal / vertical index
+				baseData = np.arctan(np.abs(np.tan(baseData))) / (pi/2.0)
+				circDiffData = circularDifference(self.maskedConditionData[i][cond1][9][summedArray],self.maskedConditionData[i][cond2][9][summedArray])
+				diffs = (1.0 - (np.abs(circDiffData) / (pi/2.0)) )
+				
+				res = np.array([diffs[((baseData > ph) * (baseData <= (ph + 1.0/nrBins)))].mean() for ph in np.linspace(0,1, nrBins, endpoint = False)])
+				outputData[i,j] = res
+
+				sbp.set_title(str(self.rois[i]), fontsize=8)
+				pl.plot(np.linspace(-pi,pi,nrBins), outputData[i,j], ['r-','g-','b-'][j])
+			plotNr += 1
+		self.collapsedPhaseDiffDict.update( {baseCondition + '_HV': outputData} )
+
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiff.pdf' ))
+		return outputData
+
+	
 	def combinationsPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 3.0, nrVoxels = False):
 		self.runDataForRegions( maskThreshold = maskThreshold )
 		fitResults = []
