@@ -154,7 +154,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'], ['V3AB'], ['V4']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1','V2'],['V3','V3AB'],['V4','lateraloccipital']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
