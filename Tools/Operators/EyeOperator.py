@@ -56,14 +56,18 @@ class ASLEyeOperator( EyeOperator ):
 			self.TR = TR
 		
 		
-	def firstPass(self, nrVolumes, delay, TR = None, makeFigure = False ):
+	def firstPass(self, nrVolumes, delay, TR = None, makeFigure = False, figureFileName = '' ):
 		self.nrVolumes = nrVolumes
 		self.delay = delay
 		
 		# analyze incoming TR signals
 		self.trSignals(TR = TR)
 		
-		self.logger.debug('TR is %f, nr of TRs is %d, nrVolumes and delay: %i, %i', self.TR, len(self.TRtimes), self.nrVolumes, self.delay)
+		self.logger.debug('TR is %f, nr of TRs as per .eyd file is %d, nrVolumes and delay: %i, %i', self.TR, len(self.TRtimes), self.nrVolumes, self.delay)
+		if len(self.TRtimes) != self.nrVolumes:
+			self.logger.warning('data amount in .eyd file doesn not correspond to the amount of data in the .nii file... Aborting this eye file. \n%s', self.inputFileName)
+			self.error = True
+			return
 		
 		self.gazeData = self.rawDataFile['horz_gaze_coord'][self.firstTR['index']:self.firstTR['index'] + self.sampleFrequency * self.TR * self.nrVolumes ]
 		self.gazeDataPerTR = self.gazeData.reshape(self.gazeData.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
@@ -78,13 +82,19 @@ class ASLEyeOperator( EyeOperator ):
 		
 		
 		if makeFigure:
+			if figureFileName == '':
+				figureFileName = os.splitext(inputFileName)[0] + '.pdf'
+
 			f = pl.figure(figsize = (10,5))
 			sbp = f.add_subplot(2,1,1)
 			for (g,p,i) in zip(self.gazeDataPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataPerTR.T.shape[0])):
 				if i >= delay:
-					pl.plot( np.arange(g.shape[0])[p], g[p], c = 'k', alpha = 0.75, linewidth=0.25 )
-			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+					pl.plot( np.arange(g.shape[0])[p], g[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
+			pl.axvspan(0.125 * self.sampleFrequency, 0.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.125 * self.sampleFrequency, 1.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			
+			sbp.annotate(os.path.splitext(os.path.split(figureFileName)[-1])[0], xy=(.5, .5),  xycoords='axes fraction',
+			                horizontalalignment='center', verticalalignment='center')
 			
 			gazeMean = [g[p].mean() for (g,p) in zip(self.gazeDataPerTR, self.pupilRecognPerTR)]
 			pl.plot( np.arange(self.TR * self.sampleFrequency), gazeMean, 'o', c = 'k', alpha = 1.0, linewidth = 4.0 )
@@ -94,12 +104,13 @@ class ASLEyeOperator( EyeOperator ):
 			sbp = f.add_subplot(2,1,2)
 			for (v,p,sd) in zip(self.horVelocitiesPerTR.T, self.pupilRecognPerTR.T, self.hVRunningSDPerTR.T):
 				if i >= delay:
-					pl.plot( np.arange(v.shape[0])[p], v[p], c = 'k', alpha = 0.75, linewidth=0.25 )
+					pl.plot( np.arange(v.shape[0])[p], v[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
 					pl.plot( np.arange(sd.shape[0])[p], sd[p], '+', c = 'b', alpha = 0.75, linewidth=0.5 )
 					
-			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(0.125 * self.sampleFrequency, 0.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.125 * self.sampleFrequency, 1.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
 			sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
+			pl.savefig(figureFileName)
 			
 			
 		

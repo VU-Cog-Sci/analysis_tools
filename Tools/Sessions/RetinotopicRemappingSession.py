@@ -163,12 +163,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				allRoisData = []
 				for r in roi:
 					allRoisData.append( np.array( self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), r + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True) ) )
-					print r
-					print allRoisData[-1].shape
-				print len(allRoisData)
 				
 				thisRoiData = np.dstack(allRoisData)
-				print thisRoiData.shape
 			maskedConditionData.append(thisRoiData)
 		self.maskedConditionData = maskedConditionData
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
@@ -309,7 +305,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.set_xlabel('means of bootstrap fits', fontsize=10)
 				
 				sbp = f.add_subplot(len(self.maskedConditionData),3,plotNr+2)
-				sds = 1.0/allBootstrapResults[i,c][:,1]
+				sds = allBootstrapResults[i,c][:,1]
 				sds.sort()
 				pl.plot(sds.cumsum(), c = ['r','g','b'][c], alpha = 0.15)
 				sbp.set_xlabel('kappa parameters of bootstrap fits', fontsize=10)
@@ -325,7 +321,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			phaseHists[-1] = np.array(phaseHists[-1])
 			plotNr += 3	
 		
-		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.npy' ), allBootstrapResults)
+		if runBootstrap:
+			np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.npy' ), allBootstrapResults)
+			
 		self.bootstrapResults = allBootstrapResults
 		self.fitResults = np.array(fitResults)
 		self.allPhaseDiffs = allPhaseDiffs
@@ -465,6 +463,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			plotNr += 1	
 		self.combinationFitResults = np.array(fitResults)
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'combinationsPhaseDifferences.pdf' ))
+		
 		
 		
 		
