@@ -90,8 +90,8 @@ class ASLEyeOperator( EyeOperator ):
 			for (g,p,i) in zip(self.gazeDataPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataPerTR.T.shape[0])):
 				if i >= delay:
 					pl.plot( np.arange(g.shape[0])[p], g[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
-			pl.axvspan(0.125 * self.sampleFrequency, 0.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.125 * self.sampleFrequency, 1.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
 			
 			sbp.annotate(os.path.splitext(os.path.split(figureFileName)[-1])[0], xy=(.5, .5),  xycoords='axes fraction',
 			                horizontalalignment='center', verticalalignment='center')
@@ -107,8 +107,8 @@ class ASLEyeOperator( EyeOperator ):
 					pl.plot( np.arange(v.shape[0])[p], v[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
 					pl.plot( np.arange(sd.shape[0])[p], sd[p], '+', c = 'b', alpha = 0.75, linewidth=0.5 )
 					
-			pl.axvspan(0.125 * self.sampleFrequency, 0.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.125 * self.sampleFrequency, 1.375 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
 			sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
 			pl.savefig(figureFileName)
 			

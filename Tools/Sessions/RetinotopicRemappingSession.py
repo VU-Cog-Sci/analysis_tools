@@ -96,6 +96,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')
 		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
 		imO = ImageMaskingOperator(inputObject = eccenFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
+		# change the first frame of the mask and input data (-log p-value) to its absolute value
+		imO.maskData[0] = np.abs(imO.maskData[0])
+		imO.inputData[0] = np.abs(imO.inputData[0])
 		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
 		maskImage = NiftiImage(maskedDataArray)
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen_mask-' + str(exclusionThreshold) + '.nii.gz')
@@ -104,6 +107,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		polarFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar.nii.gz')
 		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
 		imO = ImageMaskingOperator(inputObject = polarFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
+		# change the first frame of the mask and input data (-log p-value) to its absolute value
+		imO.maskData[0] = np.abs(imO.maskData[0])
+		imO.inputData[0] = np.abs(imO.inputData[0])
 		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
 		maskImage = NiftiImage(maskedDataArray)
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar_mask-' + str(exclusionThreshold) + '.nii.gz')
@@ -154,7 +160,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1','V2'],['V3','V3AB'],['V4','lateraloccipital']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['lateraloccipital'],['fusiform'],['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -162,7 +168,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		['pericalcarine','lateraloccipital','lingual','fusiform','cuneus','precuneus','inferiorparietal', 'superiorparietal']
 		"""
 		self.rois = regions
-		maskedFiles = self.maskFiles(dataFiles = self.collectConditionFiles(add_eccen = add_eccen), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
+		maskedFiles = self.maskFiles(dataFiles = self.collectConditionFiles(add_eccen = add_eccen), maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 0)
 		maskedConditionData = []
 		for roi in regions:
 			if roi.__class__.__name__ == 'str': 
@@ -179,7 +185,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedConditionData)) + ' ' + str(len(self.maskedConditionData[0])) + ' ' + str(self.maskedConditionData[0][0].shape))
 	
 		
-	def runDataForRegions(self, regions = [['V1'],['V2'],['V3'], ['V3AB'], ['V4']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
+	def runDataForRegions(self, regions = [['V1','V2','V3'], ['V3AB','V4']], maskFile = 'polar_mask-1.5.nii.gz', maskThreshold = 4.0, nrVoxels = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
