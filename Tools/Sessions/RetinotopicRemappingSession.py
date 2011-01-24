@@ -87,7 +87,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
 			self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
 	
-	def createFunctionalMask(self, exclusionThreshold = 1.5, maskFrame = 3):
+	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
 		results in creation of a mask file which can be accessed later
@@ -160,7 +160,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['lateraloccipital'],['fusiform'],['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1','V2','V3'], ['V3AB','V4']], maskFile = 'polar_mask-2.0.nii.gz', maskThreshold = 4.0, nrVoxels = False, add_eccen = True ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -221,7 +221,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				summedArray = - ( self.maskedConditionData[i][comb[0]][9] + self.maskedConditionData[i][comb[1]][9] == 0.0 )
 				# pl.scatter(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], c = 'g',  alpha = 0.1)
 				self.histoResults[c,i] = np.histogram2d(self.maskedConditionData[i][comb[0]][9][summedArray], self.maskedConditionData[i][comb[1]][9][summedArray], bins = nrBins, range = [[-pi,pi],[-pi,pi]], normed = True)[0]
-				pl.imshow(np.exp(self.histoResults[c,i]), cmap=cm.gray)
+				pl.imshow(self.histoResults[c,i], cmap=cm.gray)
 				sbp.set_title(str(self.rois[i]) + '\t\t\t\t', fontsize=11)
 				sbp.set_ylabel(self.conditionDict.keys()[comb[1]], fontsize=9)
 				sbp.set_xlabel(self.conditionDict.keys()[comb[0]], fontsize=9)
@@ -431,6 +431,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				# base phase data based on eccen which is the last data file in maskedConditionData
 				if baseCondition == 'eccen':
 					baseData = self.maskedConditionData[i][-1][9][summedArray]
+					# the eccen data would do better with a factor 0.22 offset - from tksurfer inspection of phase data
+					offset = 0.5 * 2 * pi
+					baseData = np.fmod(baseData + 3 * pi + offset, 2 * pi) - pi
 				else:
 				 	baseData = self.maskedConditionData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
 				circDiffData = circularDifference(self.maskedConditionData[i][cond1][9][summedArray],self.maskedConditionData[i][cond2][9][summedArray])
