@@ -123,7 +123,7 @@ class EyelinkOperator( EyeOperator ):
 			self.type = 'eyelink'
 			self.inputFileName = self.inputObject
 			# in Kwargs there's a variable that we can set to 
-			if hasattr(self, is_split):
+			if hasattr(self, 'is_split'):
 				self.messageFile = os.path.splitext(self.inputFileName)[0] + '.msg'
 				self.gazeFile = os.path.splitext(self.inputFileName)[0] + '.gaz'
 			else:

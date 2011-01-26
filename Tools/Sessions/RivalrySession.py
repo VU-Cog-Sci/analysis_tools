@@ -116,7 +116,7 @@ class RivalryReplaySession(Session):
 			s.set_xlabel(roiArray[r], fontsize=9)
 		return res
 	
-	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, whichMask = 'transStateGTdomState', color = 'k'):
+	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, whichMask = '_transStateGTdomState', color = 'k'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
@@ -158,7 +158,7 @@ class RivalryReplaySession(Session):
 		return res
 			
 	
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], whichMask = 'transStateGTdomState'):
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], whichMask = '_transStateGTdomState'):
 		evRes = []
 		fig = pl.figure(figsize = (3.5,10))
 		
@@ -168,10 +168,10 @@ class RivalryReplaySession(Session):
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			if r == 0:
 				s.set_title(self.subject.initials + ' averaged', fontsize=12)
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'r'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'g'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'r'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'g'))
 			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], whichMask = whichMask, color = 'b'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay'], whichMask = whichMask, color = 'k'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
 			s.set_xlabel(roiArray[r], fontsize=9)
 #			s.axis([-5,17,-2.1,3.8])
 		
@@ -249,6 +249,85 @@ class RivalryReplaySession(Session):
 			featOp.execute()
 			
 	
+#			def coherenceAnalysis(self, rois = [['pericalcarine', 'lateraloccipital','lingual'],['inferiorparietal', 'superiorparietal','cuneus','precuneus','supramarginal'],['insula','superiortemporal', 'parsorbitalis','parstriangularis','parsopercularis','rostralmiddlefrontal'],['caudalmiddlefrontal','precentral', 'superiorfrontal']], labels = ['occipital','parietal','inferiorfrontal','fef']):
+	def coherenceAnalysis(self, roiArray = [['pericalcarine', 'lateraloccipital','lingual'],['inferiorparietal', 'superiorparietal','cuneus','precuneus'],['supramarginal'],['superiortemporal', 'parsorbitalis','parstriangularis','parsopercularis','caudalmiddlefrontal','precentral'], ['superiorfrontal'], ['rostralmiddlefrontal']], labels = ['occ','par','tpj','inffr','fef','dlpfc']):
+		self.roiData = []
+		for roi in roiArray:
+			thisRoiData = self.gatherRIOData(roi, self.scanTypeDict['epi_bold'], whichMask = '_rivalry_Z')
+			self.roiData.append(thisRoiData.mean(axis = 1))
+		self.roiData = np.array(self.roiData)
+		
+#		f = pl.figure(figsize=(9,3))
+#		pl.plot(self.roiData.T, alpha = 0.25)
+		
+		if True:
+			
+			self.labels = labels
+			
+			#Import the time-series objects: 
+			from nitime.timeseries import TimeSeries 
+			#Import the analysis objects:
+			from nitime.analysis import CorrelationAnalyzer,CoherenceAnalyzer
+			#Import utility functions:
+			from nitime.utils import percent_change
+			import nitime.viz as viz
+			from nitime.viz import drawmatrix_channels,drawgraph_channels,plot_xcorr
+		
+			# set the parameters for the coherence analysis
+			TR=2.0
+			f_lb = 0.03
+			f_ub = 0.3
+		
+			roi_names = np.array(self.labels)
+			n_samples = self.roiData.shape[1]
+		
+			#Make an empty container for the data
+			data = np.zeros(self.roiData.shape)
+		
+			# Normalize the data:
+			# or not,because these data have been filtered and Z-scored
+			# data = percent_change(data)
+			data = self.roiData
+		
+			T = TimeSeries(data,sampling_interval=TR)
+			T.metadata['roi'] = roi_names
+		
+			#Initialize the correlation analyzer
+			C = CorrelationAnalyzer(T)
+		
+			#Display the correlation matrix
+#			fig01 = drawmatrix_channels(C.corrcoef,roi_names,size=[8.,6.],color_anchor=0)
+		
+#			xc = C.xcorr_norm
+#			plot_xcorr(xc,((0,1),(1,2)),line_labels = ['occ','par'])
+			T = TimeSeries(data,sampling_interval=TR)
+			T.metadata['roi'] = roi_names
+			
+			C = CoherenceAnalyzer(T)
+			freq_idx = np.where((C.frequencies>f_lb) * (C.frequencies<f_ub))[0]
+		
+			coh = np.mean(C.coherence[:,:,freq_idx],-1) #Averaging on the last dimension
+#			fig03 = drawmatrix_channels(coh,roi_names,size=[8.,6.],color_anchor=0)
+			
+#			idx = np.hstack([0,1,3])
+#			idx1 = np.vstack([[idx[i]]*3 for i in range(3)]).ravel()
+#			idx2 = np.hstack(3*[idx])
+			
+#			coh = C.coherence[idx1,idx2].reshape(3,3,C.frequencies.shape[0])
+#			coh = np.mean(coh[:,:,freq_idx],-1)
+			
+			fig04 = drawgraph_channels(coh,roi_names)
+			
+			# take out inferior frontal
+#			idx3 = np.hstack(9*[0])
+#			coh = C.coherence_partial[idx1,idx2,idx3].reshape(3,3,C.frequencies.shape[0])
+#			coh = np.mean(coh[:,:,freq_idx],-1)
+			
+#			fig05 = drawgraph_channels(coh,roi_names[idx])
+#			fig06 = drawmatrix_channels(coh,roi_names[idx],color_anchor=0)
+			
+			drawgraph_channels(C.delay[:,:,freq_idx].mean(axis=-1), roi_names)
+			self.C = C
 
 
 

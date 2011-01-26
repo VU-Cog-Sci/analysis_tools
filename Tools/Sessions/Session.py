@@ -406,7 +406,7 @@ class Session(PathConstructor):
 			
 				
 		
-	def maskFunctionalData(self, maskThreshold = 0.0, postFixFunctional = ['mcf']):
+	def maskFunctionalData(self, maskThreshold = 0.0, postFixFunctional = ['mcf'], timeSlices = [0,-1]):
 		"""
 		maskFunctionalData will mask each bold file with the masks present in the masks folder.
 		"""
@@ -423,10 +423,10 @@ class Session(PathConstructor):
 			
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFixFunctional ))
 			for rn in range(len(rois)):
-				imo = ImageMaskingOperator(funcFile, maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))
+				imo = ImageMaskingOperator(funcFile.data[timeSlices[0]:timeSlices[1]], maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))
 				imo.applyAllMasks(save = True, maskFunction = '__gt__', flat = True)
 		
-	def gatherRIOData(self, roi, whichRuns, whichMask = 'thresh_z_stat'):
+	def gatherRIOData(self, roi, whichRuns, whichMask = '_thresh_z_stat' ):
 		data = []
 		for r in whichRuns:
 			# roi is either a list or a string. if it's a list, we iterate across different rois. if it's a string, we make it into a 1-member list first before entering the for loop.
@@ -436,16 +436,16 @@ class Session(PathConstructor):
 			for thisRoi in roi:
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
-					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle')):
-						roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.pickle')):
+						roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.pickle'), 'r')
 						thisRoiData = pickle.load(roiFile)[0]
 						roiFile.close()
 					else:
 						thisRoiData = np.array([])
 				else: # combine both hemispheres in one roi
-					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle')):
-						roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
-						roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + '_' + whichMask, extension = '.pickle'), 'r')
+					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.pickle')):
+						roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.pickle'), 'r')
+						roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + whichMask, extension = '.pickle'), 'r')
 						thisRoiData = np.hstack((pickle.load(roiFileL)[0], pickle.load(roiFileR)[0]))
 						roiFileL.close()
 						roiFileR.close()
@@ -456,11 +456,6 @@ class Session(PathConstructor):
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
-	def gatherRIOData(self, rois, dataFiles, whichMask = 'thresh_z_stat'):
-		"""
-		A more general method for gathering roi data that takes in both arrays of filenames and numpy arrays
-		"""
-		# get the roi data arrays
 		
 		
 		

@@ -38,10 +38,11 @@ class ImageOperator( Operator ):
 		if self.inputObject.__class__.__name__ == 'ndarray':
 		# don't care about file name. will be added for saving, later
 		# we will use an in-memory nifti file object as a data container here.
-			self.inputObject = NiftiImage(self.inputObject)
-			self.logger.info('started with ndarray of shape ' + self.inputObject.data.shape)
+			self.inputArray = self.inputObject
+			self.inputObject = NiftiImage(self.inputArray)
+			self.logger.info('started with ndarray of shape ' + str(self.inputArray.shape))
 			# inputFileName has to be set in the **kwargs now, or it will be the empty string
-			if not hasattr(self, inputFileName):
+			if not hasattr(self, 'inputFileName'):
 				self.inputFileName = ''
 		
 		
