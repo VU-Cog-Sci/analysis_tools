@@ -94,4 +94,19 @@ def bootstrapVonMisesFits( data, nrDraws = 100, nrRepetitions = 1000 ):
 	
 	return results
 
-		
+def cart2Circ(x, y):
+	rho = sqrt(x*x + y*y)
+	if y > 0:
+		phi = np.arctan(y/x)
+	elif y < 0 and x >= 0:
+		 phi = np.arctan(y/x) + pi
+	elif y < 0 and x < 0:
+		phi = np.arctan(y/x) - pi
+	elif y == 0 and x > 0:
+		phi = pi/2.0
+	elif y == 0 and x > 0:
+		phi = -pi/2.0
+	elif y == 0 and x == 0:
+		phi = 0.0
+	return rho, phi
+	

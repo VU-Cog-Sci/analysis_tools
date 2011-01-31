@@ -375,16 +375,20 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
+		if not hasattr(self, 'phasePhaseTotalDict'):
+			self.phasePhaseTotalDict = {}
 		
 		f = pl.figure(figsize = (10,10))
 		pl.subplots_adjust(hspace=0.4)
 		pl.subplots_adjust(wspace=0.4)
 		plotNr = 1		
 		outputData = []
+		totalData = []
 		for cond in comparisons:
 			cond1 = self.conditionDict.keys().index(cond[0])
 			cond2 = self.conditionDict.keys().index(cond[1])
 			outputData.append([])
+			totalData.append([])
 			for i in range(len(self.maskedConditionData)):
 				sbp = f.add_subplot(len(comparisons),len(self.maskedConditionData),plotNr)
 				summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
@@ -406,8 +410,10 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				pl.imshow(histData, extent = (-pi,pi,-pi,pi))
 				plotNr += 1
 				outputData[-1].append(histData)
+				totalData[-1].append([baseData, circDiffData])
 		self.phasePhaseHistogramDict.update( {baseCondition: outputData} )
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase.pdf' ))
+		self.phasePhaseTotalDict.update( {baseCondition: totalData} )
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_' + baseCondition + '.pdf' ))
 		return outputData
 	
 	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
