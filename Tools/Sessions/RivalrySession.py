@@ -250,85 +250,98 @@ class RivalryReplaySession(Session):
 			
 	
 #			def coherenceAnalysis(self, rois = [['pericalcarine', 'lateraloccipital','lingual'],['inferiorparietal', 'superiorparietal','cuneus','precuneus','supramarginal'],['insula','superiortemporal', 'parsorbitalis','parstriangularis','parsopercularis','rostralmiddlefrontal'],['caudalmiddlefrontal','precentral', 'superiorfrontal']], labels = ['occipital','parietal','inferiorfrontal','fef']):
-	def coherenceAnalysis(self, roiArray = [['pericalcarine', 'lateraloccipital','lingual'],['inferiorparietal', 'superiorparietal','cuneus','precuneus'],['supramarginal'],['superiortemporal', 'parsorbitalis','parstriangularis','parsopercularis','caudalmiddlefrontal','precentral'], ['superiorfrontal'], ['rostralmiddlefrontal']], labels = ['occ','par','tpj','inffr','fef','dlpfc']):
-		self.roiData = []
-		for roi in roiArray:
-			thisRoiData = self.gatherRIOData(roi, self.scanTypeDict['epi_bold'], whichMask = '_rivalry_Z')
-			self.roiData.append(thisRoiData.mean(axis = 1))
-		self.roiData = np.array(self.roiData)
+	def coherenceAnalysis(self, roiArray = [['pericalcarine', 'lateraloccipital','lingual'],['inferiorparietal', 'superiorparietal','cuneus','precuneus'],['supramarginal'],['superiortemporal', 'parsorbitalis','parstriangularis','parsopercularis','caudalmiddlefrontal','precentral'], ['superiorfrontal'], ['rostralmiddlefrontal']], labels = ['occ','par','tpj','inffr','fef','dlpfc'], acrossAreas = False, acrossConditions = True):
 		
-#		f = pl.figure(figsize=(9,3))
-#		pl.plot(self.roiData.T, alpha = 0.25)
+		#Import the time-series objects: 
+		from nitime.timeseries import TimeSeries 
+		#Import the analysis objects:
+		from nitime.analysis import CoherenceAnalyzer
+		#Import utility functions:
+		import nitime.viz as viz
+		from nitime.viz import drawmatrix_channels,drawgraph_channels
 		
-		if True:
+		# parameters
+		TR=2.0
+		f_lb = 0.1
+		f_ub = 0.5
+		
+		self.labels = labels
+		roi_names = np.array(self.labels)
+		
+		self.coherences = []
+		self.delays = []
+		self.Cs = []
+		
+		if acrossAreas:
+		
+			plotNr = 1
+			for (ts, runs) in zip([[4,64],[69,129],[69,129]],[self.scanTypeDict['epi_bold'],self.conditionDict['replay'],self.conditionDict['replay2']]):
+				roiData = []
+				for roi in roiArray:
+					thisRoiData = self.gatherRIOData(roi, runs, whichMask = '_rivalry_Z', timeSlices = ts)
+					roiData.append(thisRoiData.mean(axis = 1))
+				roiData = np.array(roiData)
+			#	self.conditionCoherenceDict.append( np.array(roiData) )
+				n_samples = roiData.shape[1]
 			
-			self.labels = labels
+				T = TimeSeries(roiData,sampling_interval=TR)
+				T.metadata['roi'] = roi_names
 			
-			#Import the time-series objects: 
-			from nitime.timeseries import TimeSeries 
-			#Import the analysis objects:
-			from nitime.analysis import CorrelationAnalyzer,CoherenceAnalyzer
-			#Import utility functions:
-			from nitime.utils import percent_change
-			import nitime.viz as viz
-			from nitime.viz import drawmatrix_channels,drawgraph_channels,plot_xcorr
-		
-			# set the parameters for the coherence analysis
-			TR=2.0
-			f_lb = 0.03
-			f_ub = 0.3
-		
-			roi_names = np.array(self.labels)
-			n_samples = self.roiData.shape[1]
-		
-			#Make an empty container for the data
-			data = np.zeros(self.roiData.shape)
-		
-			# Normalize the data:
-			# or not,because these data have been filtered and Z-scored
-			# data = percent_change(data)
-			data = self.roiData
-		
-			T = TimeSeries(data,sampling_interval=TR)
-			T.metadata['roi'] = roi_names
-		
-			#Initialize the correlation analyzer
-			C = CorrelationAnalyzer(T)
-		
-			#Display the correlation matrix
-#			fig01 = drawmatrix_channels(C.corrcoef,roi_names,size=[8.,6.],color_anchor=0)
-		
-#			xc = C.xcorr_norm
-#			plot_xcorr(xc,((0,1),(1,2)),line_labels = ['occ','par'])
-			T = TimeSeries(data,sampling_interval=TR)
-			T.metadata['roi'] = roi_names
+				C = CoherenceAnalyzer(T, unwrap_phases = True)
+				freq_idx = np.where((C.frequencies>f_lb) * (C.frequencies<f_ub))[0]
 			
-			C = CoherenceAnalyzer(T)
-			freq_idx = np.where((C.frequencies>f_lb) * (C.frequencies<f_ub))[0]
+				self.coherences.append(np.mean(C.coherence[:,:,freq_idx],-1))
+				self.delays.append(np.mean(C.delay[:,:,freq_idx],-1))
+				self.Cs.append(C)
+	#			drawmatrix_channels(self.delays[-1],roi_names, title = self.subject.initials + '\n Delay ' + ['rivalry','instantaneous replay','duration-matched replay'][plotNr - 1])
+	#			drawmatrix_channels(self.coherences[-1],roi_names, title = self.subject.initials + '\n Coherence ' + ['rivalry','instantaneous replay','duration-matched replay'][plotNr - 1])
+				plotNr += 1
 		
-			coh = np.mean(C.coherence[:,:,freq_idx],-1) #Averaging on the last dimension
-#			fig03 = drawmatrix_channels(coh,roi_names,size=[8.,6.],color_anchor=0)
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[0],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay rivalry')
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[1],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay instant replay')
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[2],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay duration-matched replay')
+		
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[0] - self.delays[1],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay difference between rivalry and instant replay')
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[0] - self.delays[2],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay difference between rivalry and duration-matched replay')
+			f = pl.figure(figsize = (5,7))
+			drawmatrix_channels(self.delays[2] - self.delays[1],labels, size = (5,7), fig = f, title = self.subject.initials + '\n Delay difference between duration-matched and instant replay')
+		
+		if acrossConditions:
+			self.plotData = []
+			fig1 = pl.figure(figsize = (8,3))
+			for (counter, runs) in zip([0,1],[self.conditionDict['replay'],self.conditionDict['replay2']]):
+				roiData = []
+				for roi in roiArray:
+					thisRivData = self.gatherRIOData(roi, runs, whichMask = '_rivalry_Z', timeSlices = [4,64]).mean(axis = 1)
+					thisRepData = self.gatherRIOData(roi, runs, whichMask = '_rivalry_Z', timeSlices = [69,129]).mean(axis = 1)
+				
+					roiData.append(thisRivData)
+					roiData.append(thisRepData)
+				roiData = np.array(roiData)
+				n_samples = roiData.shape[1]
 			
-#			idx = np.hstack([0,1,3])
-#			idx1 = np.vstack([[idx[i]]*3 for i in range(3)]).ravel()
-#			idx2 = np.hstack(3*[idx])
+				T = TimeSeries(roiData,sampling_interval=TR)
+				T.metadata['roi'] = np.array([[roi_names[i] + ' Riv', roi_names[i] + ' Rep'] for i in range(len(roi_names))]).ravel()
 			
-#			coh = C.coherence[idx1,idx2].reshape(3,3,C.frequencies.shape[0])
-#			coh = np.mean(coh[:,:,freq_idx],-1)
+				C = CoherenceAnalyzer(T, unwrap_phases = True)
+				freq_idx = np.where((C.frequencies>f_lb) * (C.frequencies<f_ub))[0]
+				np.mean(C.coherence[:,:,freq_idx],-1)
+				np.mean(C.delay[:,:,freq_idx],-1)
 			
-			fig04 = drawgraph_channels(coh,roi_names)
-			
-			# take out inferior frontal
-#			idx3 = np.hstack(9*[0])
-#			coh = C.coherence_partial[idx1,idx2,idx3].reshape(3,3,C.frequencies.shape[0])
-#			coh = np.mean(coh[:,:,freq_idx],-1)
-			
-#			fig05 = drawgraph_channels(coh,roi_names[idx])
-#			fig06 = drawmatrix_channels(coh,roi_names[idx],color_anchor=0)
-			
-			drawgraph_channels(C.delay[:,:,freq_idx].mean(axis=-1), roi_names)
-			self.C = C
-
+		#		f = pl.figure(figsize = (5,7))
+		#		drawmatrix_channels(np.mean(C.delay[:,:,freq_idx],-1), T.metadata['roi'], size = (5,7), fig = f, title = self.subject.initials + '\n Rivalry and Replay ' + ['intant', 'dur-match'][counter])
+				
+				rivrepindices = np.array([np.array([0,1]) + (2 * i) for i in range(6)])
+				delay = np.mean(C.delay[:,:,freq_idx],-1)
+				plotData = [delay[rivrepindices[i,0],rivrepindices[i,1]] for i in range(len(rivrepindices))]
+				
+				self.plotData.append(plotData)
+		
 
 
 class RivalryLearningSession(Session):

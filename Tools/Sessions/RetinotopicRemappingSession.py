@@ -11,6 +11,7 @@ from Session import *
 from RetinotopicMappingSession import *
 from ..circularTools import *
 import matplotlib.cm as cm
+from pylab import *
 
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):
@@ -370,7 +371,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed.pdf' ))
 		self.collapsedPhaseDiffs = collapsedPhaseDiffs
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 10, maskThreshold = 3.0 ):
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 30, maskThreshold = 4.0, smooth = True, smoothSize = 15 ):
 		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
@@ -406,11 +407,27 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				s.set_xticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
 				s.set_yticks([-pi,-pi/2.0,0,pi/2.0,pi])
 				s.set_yticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
-				histData = np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)])[0]
-				pl.imshow(histData, extent = (-pi,pi,-pi,pi))
+				if False: # baseCondition == 'eccen':
+					histData = np.histogram2d(positivePhases(baseData) * np.cos( circDiffData ), positivePhases(baseData) * np.sin( circDiffData ), [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)] )[0]
+				else:
+					histData = np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)])[0]
+				
+				if smooth:
+					from scipy.signal import convolve2d
+					x = np.linspace(-3.0, 3.0, smoothSize)
+					y = np.linspace(-3.0, 3.0, smoothSize)
+					X,Y = meshgrid(x, y)
+					filt = bivariate_normal(X, Y, 1.0, 1.0, 0.0, 0.0)
+					h2 = np.tile(np.tile(histData, 3).T, 3)
+					h2f = convolve2d(h2.T, filt, mode= 'same')
+					
+					histData = h2f[histData.shape[0]:histData.shape[0]*2,histData.shape[1]:histData.shape[1]*2]
+					
+#					pl.imshow(filt, extent = (-pi,pi,-pi,pi), alpha = 0.5)
+				pl.imshow(histData, extent = (-pi,pi,-pi,pi), alpha = 0.5)
 				plotNr += 1
 				outputData[-1].append(histData)
-				totalData[-1].append([baseData, circDiffData])
+				totalData[-1].append(np.array([baseData, circDiffData]))
 		self.phasePhaseHistogramDict.update( {baseCondition: outputData} )
 		self.phasePhaseTotalDict.update( {baseCondition: totalData} )
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_' + baseCondition + '.pdf' ))

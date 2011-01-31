@@ -16,7 +16,7 @@ from scipy.stats import vonmises
 from scipy.optimize import fmin
 
 def positivePhases( phases ):
-	return fmod(phases + 2 * pi, 2 * pi)
+	return np.fmod(phases + 2 * pi, 2 * pi)
 
 def circularDifference( phase1, phase2 ):
 	# we need to do a circular subtraction; as follows

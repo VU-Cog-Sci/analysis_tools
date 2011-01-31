@@ -426,7 +426,7 @@ class Session(PathConstructor):
 				imo = ImageMaskingOperator(funcFile.data[timeSlices[0]:timeSlices[1]], maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))
 				imo.applyAllMasks(save = True, maskFunction = '__gt__', flat = True)
 		
-	def gatherRIOData(self, roi, whichRuns, whichMask = '_thresh_z_stat' ):
+	def gatherRIOData(self, roi, whichRuns, whichMask = '_thresh_z_stat', timeSlices = [0,-1] ):
 		data = []
 		for r in whichRuns:
 			# roi is either a list or a string. if it's a list, we iterate across different rois. if it's a string, we make it into a 1-member list first before entering the for loop.
@@ -452,7 +452,7 @@ class Session(PathConstructor):
 					else:
 						thisRoiData = np.array([])
 				if thisRoiData.shape[0] > 0:
-					runData.append(thisRoiData)
+					runData.append(thisRoiData[timeSlices[0]:timeSlices[1]])
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
