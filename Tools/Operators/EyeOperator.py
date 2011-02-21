@@ -42,7 +42,7 @@ class ASLEyeOperator( EyeOperator ):
 		self.rawDataFile = loadmat(self.inputFileName)['dataEYD'][0,0]
 		
 		self.sampleFrequency = self.rawDataFile['freq'][0,0]
-
+	
 	def trSignals(self, TR = None):
 		self.TRinfo = (np.array(self.rawDataFile['XDAT']-np.min(self.rawDataFile['XDAT']))/(np.max(self.rawDataFile['XDAT'])-np.min(self.rawDataFile['XDAT'])) == 1.0).ravel()
 		# take even non-same consecutive TR samples
@@ -54,8 +54,7 @@ class ASLEyeOperator( EyeOperator ):
 			self.TR = self.TR.seconds + self.TR.microseconds / 1000.0
 		else:
 			self.TR = TR
-		
-		
+	
 	def firstPass(self, nrVolumes, delay, TR = None, makeFigure = False, figureFileName = '' ):
 		self.nrVolumes = nrVolumes
 		self.delay = delay
@@ -80,11 +79,10 @@ class ASLEyeOperator( EyeOperator ):
 		self.hVRunningSD = np.concatenate((np.ones((6)) * self.horVelocities.std(), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)]))
 		self.hVRunningSDPerTR = self.hVRunningSD.reshape(self.hVRunningSD.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
-		
 		if makeFigure:
 			if figureFileName == '':
 				figureFileName = os.splitext(inputFileName)[0] + '.pdf'
-
+				
 			f = pl.figure(figsize = (10,5))
 			sbp = f.add_subplot(2,1,1)
 			for (g,p,i) in zip(self.gazeDataPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataPerTR.T.shape[0])):
@@ -112,8 +110,8 @@ class ASLEyeOperator( EyeOperator ):
 			sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
 			pl.savefig(figureFileName)
 			
-			
-		
+	
+
 class EyelinkOperator( EyeOperator ):
 	"""docstring for EyelinkOperator"""
 	def __init__(self, inputObject, **kwargs):
