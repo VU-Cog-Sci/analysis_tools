@@ -588,3 +588,27 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedAllRemap.pdf' ))
 		self.collapsedPhaseDiffsRemap = collapsedPhaseDiffs
 		
+	def wholeBrainComparisons(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']] ):
+		"""docstring for wholeBrainComparisons"""
+		
+		allDiffs = []
+		
+		for comp in comparisons:
+			f1 = NiftiImage(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[comp[0]][0]]), 'polar.nii.gz'))
+			f2 = NiftiImage(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[comp[1]][0]]), 'polar.nii.gz'))
+			
+			allDiffs.append((1.0 - (np.abs(circularDifference(f1.data[9], f2.data[9])) / (pi/2.0)) ))
+			
+		allDiffs.append( allDiffs[1]/allDiffs[0] )
+		allDiffs.append( allDiffs[2]/allDiffs[0] )
+		
+		allDiffs = np.array(allDiffs)
+		
+		nF = NiftiImage( allDiffs )
+		nF.filename = os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'diffs.nii.gz')
+		nF.save()
+		
+		vts = VolToSurfOperator(inputObject = nF)
+		vts.configure(frames = {'full':0, 'remap':1, 'perihery':2, 'remap_full':3, 'peripheral_full': 4}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
+		vts.execute()
+		
