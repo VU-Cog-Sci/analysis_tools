@@ -606,6 +606,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		
 		nF = NiftiImage( allDiffs )
 		nF.filename = os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'diffs.nii.gz')
+		nF.header = f2.header
 		nF.save()
 		
 		vts = VolToSurfOperator(inputObject = nF)
