@@ -7,7 +7,7 @@ Created by Tomas Knapen on 2010-12-19.
 Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 """
 
-import os, sys, subprocess
+import os, sys, subprocess, re
 import tempfile, logging
 import pickle
 
@@ -125,6 +125,7 @@ class EyelinkOperator( EyeOperator ):
 				self.messageFile = os.path.splitext(self.inputFileName)[0] + '.msg'
 				self.gazeFile = os.path.splitext(self.inputFileName)[0] + '.gaz'
 			else:
+				from CommandLineOperator import EDF2ASCOperator
 				eac = EDF2ASCOperator(self.inputFileName)
 				eac.configure()
 				eac.execute()
@@ -133,9 +134,21 @@ class EyelinkOperator( EyeOperator ):
 		else:
 			self.logger.warning('Input object is not an edf file')
 	
-	def loadData(self):
+	def loadData(self):		
+		# take out non-readable string elements in order to load numpy array
+		f = open(self.gazeFile)
+		workingString = f.read()
+		f.close()
+		
+		workingString = re.sub(re.compile('	\.\.\.'), '', workingString)
+		
+		of = open(self.gazeFile, 'w')
+		of.write(workingString)
+		of.close()
+		
+		# and loadtxt
 		self.gazeData = np.loadtxt(self.gazeFile)
-		mF = open(self.messagefile, 'r')
+		mF = open(self.messageFile, 'r')
 		self.msgData = mF.readlines()
 		mF.close()
 	

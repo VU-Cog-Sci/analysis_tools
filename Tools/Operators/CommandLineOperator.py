@@ -563,7 +563,7 @@ class EDF2ASCOperator( CommandLineOperator ):
 		else:
 			self.intermediatecmd += settings
 		
-		self.gazcmd = self.intermediatecmd + ' -s "'+inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.gazeOutputFileName
-		self.msgcmd = self.intermediatecmd + ' -e "'+inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.messageOutputFileName
+		self.gazcmd = self.intermediatecmd + ' -s "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.gazeOutputFileName
+		self.msgcmd = self.intermediatecmd + ' -e "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.messageOutputFileName
 		
 		self.runcmd = self.gazcmd + '; ' + self.msgcmd
