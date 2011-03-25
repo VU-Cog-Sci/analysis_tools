@@ -123,7 +123,7 @@ class RivalryReplaySession(Session):
 		res = []
 		
 		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = whichMask )
-		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray', 'halfwayTransitionsAsArray'], sampleInterval = [-6,15] )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, whichEvents = ['perceptEventsAsArray','transitionEventsAsArray','yokedEventsAsArray'], sampleInterval = [-6,21] )
 		
 		# split out two types of events
 #		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -171,7 +171,8 @@ class RivalryReplaySession(Session):
 			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'r'))
 			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'g'))
 			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], whichMask = whichMask, color = 'b'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
+#			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
 			s.set_xlabel(roiArray[r], fontsize=9)
 #			s.axis([-5,17,-2.1,3.8])
 		

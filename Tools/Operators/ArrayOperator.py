@@ -119,7 +119,7 @@ class EventRelatedAverageOperator(EventDataOperator):
 		self.TRTimes = np.arange(self.TR / 2.0, self.dataArray.shape[-1] * self.TR + self.TR / 2.0, self.TR)
 		
 		# throw out events that happen too near the beginning and end of the run to fit in the averaging interval -- this has already been done in gatherBehavioralData in session
-		self.selectedEventArray = self.eventArray # [( self.eventArray > self.interval[0] ) * ( self.eventArray < (self.dataArray.shape[-1] - self.interval[-1]) )]
+		self.selectedEventArray = self.eventArray[( self.eventArray > self.interval[0] ) * ( self.eventArray < (self.dataArray.shape[-1] - self.interval[-1]) )]
 		
 		self.prepareEventData()
 	

@@ -146,7 +146,7 @@ class EyelinkOperator( EyeOperator ):
 		of.write(workingString)
 		of.close()
 		
-		# and loadtxt
+		# and load gaze and message data
 		self.gazeData = np.loadtxt(self.gazeFile)
 		mF = open(self.messageFile, 'r')
 		self.msgData = mF.readlines()
