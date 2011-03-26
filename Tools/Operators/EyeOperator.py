@@ -131,10 +131,12 @@ class EyelinkOperator( EyeOperator ):
 				eac.execute()
 				self.messageFile = eac.messageOutputFileName
 				self.gazeFile = eac.gazeOutputFileName
+				self.convertGazeData()
 		else:
 			self.logger.warning('Input object is not an edf file')
-	
-	def loadData(self):		
+
+	def convertGazeData(self):
+		"""convertGazeData from text file that is output to a numpy binary file"""
 		# take out non-readable string elements in order to load numpy array
 		f = open(self.gazeFile)
 		workingString = f.read()
@@ -146,9 +148,16 @@ class EyelinkOperator( EyeOperator ):
 		of.write(workingString)
 		of.close()
 		
-		# and load gaze and message data
-		self.gazeData = np.loadtxt(self.gazeFile)
+		# and loadtxt
+		gazeData = np.loadtxt(self.gazeFile)
+		# and re-save as binary zipped file
+		np.savez(self.gazeFile, gazeData)
+
+
+
+	def loadData(self):		
 		mF = open(self.messageFile, 'r')
 		self.msgData = mF.readlines()
 		mF.close()
-	
+		
+		self.gazeData = np.load(self.gazeFile)
