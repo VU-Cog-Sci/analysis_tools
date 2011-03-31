@@ -134,7 +134,7 @@ class EyelinkOperator( EyeOperator ):
 				self.convertGazeData()
 		else:
 			self.logger.warning('Input object is not an edf file')
-
+	
 	def convertGazeData(self):
 		"""convertGazeData from text file that is output to a numpy binary file"""
 		# take out non-readable string elements in order to load numpy array
@@ -151,13 +151,49 @@ class EyelinkOperator( EyeOperator ):
 		# and loadtxt
 		gazeData = np.loadtxt(self.gazeFile)
 		# and re-save as binary zipped file
-		np.savez(self.gazeFile, gazeData)
-
-
-
+		np.save(self.gazeFile, gazeData)
+		os.rename(self.gazeFile+'.npy', self.gazeFile)
+	
 	def loadData(self):		
 		mF = open(self.messageFile, 'r')
-		self.msgData = mF.readlines()
+		self.msgData = mF.read()
 		mF.close()
 		
 		self.gazeData = np.load(self.gazeFile)
+		
+	def findAll(self):
+		"""docstring for findAll"""
+		self.findTrials()
+		self.findTrialPhases()
+		self.findParameters()
+	
+	def findOccurences(self, RE = ''):
+		return re.findall(re.compile(RE), self.msgData)
+	
+	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
+		
+		startTrialStrings = self.findOccurences(startRE)
+		stopTrialStrings = self.findOccurences(stopRE)
+		
+		self.nrTrials = int(startTrialStrings[-1][1])
+		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in startTrialStrings])
+		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in stopTrialStrings])
+	
+	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
+		phaseStarts = []
+		for i in range(self.nrTrials):
+			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
+			phaseStrings = self.findOccurences(thisRE)
+			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
+		self.phaseStarts = np.array(phaseStarts)
+	
+	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
+		parameters = []
+		for i in range(self.nrTrials):
+			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
+			parameterStrings = self.findOccurences(thisRE)
+			# assuming all these parameters are numeric
+			parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
+		self.parameters = parameters
+			
+			
