@@ -114,14 +114,14 @@ class ASLEyeOperator( EyeOperator ):
 
 class EyelinkOperator( EyeOperator ):
 	"""docstring for EyelinkOperator"""
-	def __init__(self, inputObject, **kwargs):
+	def __init__(self, inputObject, split = True, **kwargs):
 		super(EyelinkOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
 		if os.path.splitext(self.inputObject)[-1] == '.edf':
 			self.type = 'eyelink'
 			self.inputFileName = self.inputObject
 			# in Kwargs there's a variable that we can set to 
-			if hasattr(self, 'is_split'):
+			if not split:
 				self.messageFile = os.path.splitext(self.inputFileName)[0] + '.msg'
 				self.gazeFile = os.path.splitext(self.inputFileName)[0] + '.gaz'
 			else:
@@ -136,7 +136,6 @@ class EyelinkOperator( EyeOperator ):
 			self.logger.warning('Input object is not an edf file')
 	
 	def convertGazeData(self):
-		"""convertGazeData from text file that is output to a numpy binary file"""
 		# take out non-readable string elements in order to load numpy array
 		f = open(self.gazeFile)
 		workingString = f.read()
@@ -148,13 +147,12 @@ class EyelinkOperator( EyeOperator ):
 		of.write(workingString)
 		of.close()
 		
-		# and loadtxt
-		gazeData = np.loadtxt(self.gazeFile)
-		# and re-save as binary zipped file
-		np.save(self.gazeFile, gazeData)
+		gd = np.loadtxt(self.gazeFile)
+		np.save( self.gazeFile, gd )
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
+		
 	
-	def loadData(self):		
+	def loadData(self):
 		mF = open(self.messageFile, 'r')
 		self.msgData = mF.read()
 		mF.close()
@@ -175,7 +173,7 @@ class EyelinkOperator( EyeOperator ):
 		startTrialStrings = self.findOccurences(startRE)
 		stopTrialStrings = self.findOccurences(stopRE)
 		
-		self.nrTrials = int(startTrialStrings[-1][1])
+		self.nrTrials = int(startTrialStrings[-1][1]) + 1
 		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in startTrialStrings])
 		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in stopTrialStrings])
 	

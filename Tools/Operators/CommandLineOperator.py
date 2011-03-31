@@ -546,7 +546,7 @@ class EDF2ASCOperator( CommandLineOperator ):
 	def __init__(self, inputObject, **kwargs):
 		super(EDF2ASCOperator, self).__init__(inputObject = inputObject, cmd = '/Applications/EyeLink/EDF_Access_API/Example/edf2asc', **kwargs)
 		
-	def configure(self, gazeOutputFileName = None, messageOutputFileName = None, settings = ''):
+	def configure(self, gazeOutputFileName = None, messageOutputFileName = None, settings = ' -t -miss 0.0001 -ftime'):
 		if gazeOutputFileName == None:
 			self.gazeOutputFileName = os.path.splitext(self.inputFileName)[0] + '.gaz'
 		else:
@@ -558,10 +558,7 @@ class EDF2ASCOperator( CommandLineOperator ):
 		standardOutputFileName = os.path.splitext(self.inputFileName)[0] + '.asc'
 		
 		self.intermediatecmd = self.cmd
-		if settings == '':
-			self.intermediatecmd += ' -t -miss 0.0001 -ftime'
-		else:
-			self.intermediatecmd += settings
+		self.intermediatecmd += settings
 		
 		self.gazcmd = self.intermediatecmd + ' -s "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.gazeOutputFileName
 		self.msgcmd = self.intermediatecmd + ' -e "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.messageOutputFileName
