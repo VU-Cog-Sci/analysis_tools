@@ -152,12 +152,15 @@ class EyelinkOperator( EyeOperator ):
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
 		
 	
-	def loadData(self):
+	def loadData(self, get_gaze_data = True):
 		mF = open(self.messageFile, 'r')
 		self.msgData = mF.read()
 		mF.close()
 		
-		self.gazeData = np.load(self.gazeFile)
+		if get_gaze_data:
+			self.gazeData = np.load(self.gazeFile)
+		else:
+			self.gazeData = None
 		
 	def findAll(self):
 		"""docstring for findAll"""
@@ -170,12 +173,12 @@ class EyelinkOperator( EyeOperator ):
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		
-		startTrialStrings = self.findOccurences(startRE)
-		stopTrialStrings = self.findOccurences(stopRE)
+		self.startTrialStrings = self.findOccurences(startRE)
+		self.stopTrialStrings = self.findOccurences(stopRE)
 		
-		self.nrTrials = int(startTrialStrings[-1][1]) + 1
-		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in startTrialStrings])
-		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in stopTrialStrings])
+		self.nrTrials = len(self.stopTrialStrings)
+		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.startTrialStrings])
+		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stopTrialStrings])
 	
 	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
 		phaseStarts = []
@@ -183,15 +186,25 @@ class EyelinkOperator( EyeOperator ):
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			phaseStrings = self.findOccurences(thisRE)
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
-		self.phaseStarts = np.array(phaseStarts)
+		self.phaseStarts = phaseStarts
+		# self.phaseStarts = np.array(phaseStarts)
 	
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
 		parameters = []
-		for i in range(self.nrTrials):
-			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
-			parameterStrings = self.findOccurences(thisRE)
-			# assuming all these parameters are numeric
-			parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
-		self.parameters = parameters
+		# if there are no duplicates in the edf file
+		if np.unique(self.trialStarts[:,1]).shape[0] == len(self.startTrialStrings):
+			for i in range(self.nrTrials):
+				thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
+				parameterStrings = self.findOccurences(thisRE)
+				# assuming all these parameters are numeric
+				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
+		else:	# there are duplicates in the edf file - take care of this by using the stop times.
+			for stop_time in self.stopTrialStrings:
+				thisRE = RE.replace(' X ', ' ' + stop_time[0] + ' ')
+				thisRE = thisRE.replace('\t[\d\.]+', stop_time[1])
+				parameterStrings = self.findOccurences(thisRE)
+				# assuming all these parameters are numeric
+				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
+		self.parameters = parameters	
 			
 			
