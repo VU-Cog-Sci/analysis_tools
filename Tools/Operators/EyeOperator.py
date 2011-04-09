@@ -13,6 +13,7 @@ import pickle
 
 import scipy as sp
 import scipy.fftpack
+import scipy.signal as signal
 import numpy as np
 import matplotlib.pylab as pl
 from math import *
@@ -21,6 +22,9 @@ from scipy.io import *
 from nifti import *
 from Operator import *
 from datetime import *
+
+def derivative_normal_pdf( mu, sigma, x ):
+	return -( np.exp( - ( (x - mu)**2 / (2.0 * (sigma ** 2))) ) * (x - mu)) / ( sqrt(2.0 * pi) * sigma ** 3)
 
 class EyeOperator( Operator ):
 	"""docstring for ImageOperator"""
@@ -148,6 +152,10 @@ class EyelinkOperator( EyeOperator ):
 		of.close()
 		
 		gd = np.loadtxt(self.gazeFile)
+		# make sure the amount of samples is even, so that later filtering is made easier. 
+		# deleting the first data point of a session shouldn't matter at all..
+		if bool(gd.shape[0] % 2):
+			gd = gd[1:]
 		np.save( self.gazeFile, gd )
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
 		
@@ -167,9 +175,23 @@ class EyelinkOperator( EyeOperator ):
 		self.findTrials()
 		self.findTrialPhases()
 		self.findParameters()
+		self.findSampleParameters()
+		
+		logString = 'data parameters:'
+		if self.gazeData != None:
+			logString += ' samples - ' + str(self.gazeData.shape)
+		logString += ' sampleFrequency, eye - ' + str(self.sampleFrequency) + ' ' + self.eye
+		logString += ' nrTrials, phases - ' + str(self.nrTrials) + ' ' + str(self.trialStarts.shape)
+		self.logger.info(logString)
+			
 	
 	def findOccurences(self, RE = ''):
 		return re.findall(re.compile(RE), self.msgData)
+	
+	def findSampleParameters(self, RE = 'MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'):
+		self.parameterStrings = self.findOccurences(RE)
+		self.sampleFrequency = int(self.parameterStrings[0][0])
+		self.eye = self.parameterStrings[0][1]
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		
@@ -207,4 +229,50 @@ class EyelinkOperator( EyeOperator ):
 				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
 		self.parameters = parameters	
 			
+	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
+		"""
+		Removes low frequency drift of frequency lower than cutoffFrequency from the eye position signals
+		cleanup removes intermediate data formats
+		"""
+		if self.gazeData == None:
+			self.loadData(get_gaze_data = True)
 			
+		self.signalNrSamples = self.gazeData.shape[0]
+		self.cutoffFrequency = cutoffFrequency
+		
+		self.representedFrequencies = np.fft.fftfreq(n = int(self.signalNrSamples), d = 1.0/self.sampleFrequency)[:floor(self.signalNrSamples/2.0)]
+		self.f = np.ones(self.signalNrSamples)
+		self.thres = max(np.arange(self.f.shape[0])[self.representedFrequencies < self.cutoffFrequency])
+		# high-pass:
+		self.f[:self.thres] = 0.0
+		self.f[-self.thres:] = 0.0
+		
+		
+		# fourier transform all data columns instead of the time column
+		self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
+		self.fourierFilteredData = (self.fourierData.T * self.f).T
+		self.filteredGazeData = sp.fftpack.ifft(self.fourierFilteredData, axis = 0).astype(np.float64)
+#		self.filteredData = self.backFourierFilteredData.reshape(self.inputObject.data.shape).astype(np.float32)
+		if cleanup:
+			del(self.fourierData, self.fourierFilteredData)
+			
+		self.logger.info('fourier drift correction of data at cutoff of ' + str(cutoffFrequency) + ' finished')
+	
+	def computeVelocities(self, smoothingFilterWidth = 0.0025 ):
+		"""
+		calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
+		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation
+		"""
+		if self.gazeData == None:
+			self.loadData(get_gaze_data = True)
+		if not hasattr(self, 'fourierData'):
+			self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
+		
+		times = np.linspace(-floor(self.gazeData.shape[0]/2) / self.sampleFrequency, floor(self.gazeData.shape[0]/2) / self.sampleFrequency, self.gazeData.shape[0] )
+		# derivative of gaussian with zero mean, fourier transformed.
+		diffKernelFFT = sp.fftpack.fft( derivative_normal_pdf( mu = 0, sigma = smoothingFilterWidth, x = times) )
+		
+		self.velocityData = sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64)
+		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' finished')
+		
+		
