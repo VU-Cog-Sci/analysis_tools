@@ -175,7 +175,7 @@ class EyelinkOperator( EyeOperator ):
 		self.findTrials()
 		self.findTrialPhases()
 		self.findParameters()
-		self.findSampleParameters()
+		self.findRecordingParameters()
 		
 		logString = 'data parameters:'
 		if self.gazeData != None:
@@ -188,10 +188,21 @@ class EyelinkOperator( EyeOperator ):
 	def findOccurences(self, RE = ''):
 		return re.findall(re.compile(RE), self.msgData)
 	
-	def findSampleParameters(self, RE = 'MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'):
-		self.parameterStrings = self.findOccurences(RE)
+	def findRecordingParameters(self, sampleRE = 'MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)', screenRE = 'MSG\t[\d\.]+\tGAZE_COORDS (\d+.\d+) (\d+.\d+) (\d+.\d+) (\d+.\d+)', pixelRE = 'MSG\t[\d\.]+\tdegrees per pixel (\d*.\d*)', standardPixelsPerDegree = 84.6):
+		self.parameterStrings = self.findOccurences(sampleRE)
 		self.sampleFrequency = int(self.parameterStrings[0][0])
 		self.eye = self.parameterStrings[0][1]
+		
+		self.screenStrings = self.findOccurences(screenRE)
+		self.screenCorners = np.array([float(s) for s in self.screenStrings[0]])
+		self.screenSizePixels = [self.screenCorners[2]-self.screenCorners[0], self.screenCorners[3]-self.screenCorners[1]]
+		
+		self.pixelStrings = self.findOccurences(pixelRE)
+		if len(self.pixelStrings) > 0:
+			self.pixelsPerDegree = float(self.pixelStrings[0])
+		else:
+			# standard is for the 74 cm screen distance on the 24 inch Sony that is running at 1280x960.
+			self.pixelsPerDegree = standardPixelsPerDegree
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		
@@ -269,8 +280,9 @@ class EyelinkOperator( EyeOperator ):
 			self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
 		
 		times = np.linspace(-floor(self.gazeData.shape[0]/2) / self.sampleFrequency, floor(self.gazeData.shape[0]/2) / self.sampleFrequency, self.gazeData.shape[0] )
-		# derivative of gaussian with zero mean, fourier transformed.
-		diffKernelFFT = sp.fftpack.fft( derivative_normal_pdf( mu = 0, sigma = smoothingFilterWidth, x = times) )
+		# derivative of gaussian with zero mean scaled to degrees per second, fourier transformed.
+		dergausspdf = derivative_normal_pdf( mu = 0, sigma = smoothingFilterWidth, x = times)
+		diffKernelFFT = sp.fftpack.fft( (dergausspdf / np.max(dergausspdf)) / ( self.sampleFrequency * self.pixelsPerDegree ) )
 		
 		self.velocityData = sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64)
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' finished')
