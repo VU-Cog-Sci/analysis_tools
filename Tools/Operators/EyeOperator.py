@@ -258,7 +258,6 @@ class EyelinkOperator( EyeOperator ):
 		self.f[:self.thres] = 0.0
 		self.f[-self.thres:] = 0.0
 		
-		
 		# fourier transform all data columns instead of the time column
 		self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
 		self.fourierFilteredData = (self.fourierData.T * self.f).T
@@ -282,9 +281,14 @@ class EyelinkOperator( EyeOperator ):
 		times = np.linspace(-floor(self.gazeData.shape[0]/2) / self.sampleFrequency, floor(self.gazeData.shape[0]/2) / self.sampleFrequency, self.gazeData.shape[0] )
 		# derivative of gaussian with zero mean scaled to degrees per second, fourier transformed.
 		dergausspdf = derivative_normal_pdf( mu = 0, sigma = smoothingFilterWidth, x = times)
-		diffKernelFFT = sp.fftpack.fft( (dergausspdf / np.max(dergausspdf)) / ( self.sampleFrequency * self.pixelsPerDegree ) )
+		c = np.sum(dergausspdf * times)
+		dergausspdf = np.roll(dergausspdf, times.shape[0]/2) * c
 		
-		self.velocityData = sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64)
+		print np.max(dergausspdf), np.abs(dergausspdf).sum(), c
+		diffKernelFFT = sp.fftpack.fft( dergausspdf )
+		
+		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' finished')
 		
 		
