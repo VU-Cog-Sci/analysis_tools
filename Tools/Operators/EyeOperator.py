@@ -287,7 +287,7 @@ class EyelinkOperator( EyeOperator ):
 		print np.max(dergausspdf), np.abs(dergausspdf).sum(), c
 		diffKernelFFT = sp.fftpack.fft( dergausspdf )
 		
-		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.fourierVelocityData = sqrt(times.shape[0]) * self.sampleFrequency * sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' finished')
 		
