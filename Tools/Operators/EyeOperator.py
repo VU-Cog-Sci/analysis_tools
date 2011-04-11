@@ -262,13 +262,12 @@ class EyelinkOperator( EyeOperator ):
 		self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
 		self.fourierFilteredData = (self.fourierData.T * self.f).T
 		self.filteredGazeData = sp.fftpack.ifft(self.fourierFilteredData, axis = 0).astype(np.float64)
-#		self.filteredData = self.backFourierFilteredData.reshape(self.inputObject.data.shape).astype(np.float32)
 		if cleanup:
 			del(self.fourierData, self.fourierFilteredData)
 			
 		self.logger.info('fourier drift correction of data at cutoff of ' + str(cutoffFrequency) + ' finished')
 	
-	def computeVelocities(self, smoothingFilterWidth = 0.0025 ):
+	def computeVelocities(self, smoothingFilterWidth = 0.0001 ):
 		"""
 		calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
 		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation
@@ -279,16 +278,24 @@ class EyelinkOperator( EyeOperator ):
 			self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
 		
 		times = np.linspace(-floor(self.gazeData.shape[0]/2) / self.sampleFrequency, floor(self.gazeData.shape[0]/2) / self.sampleFrequency, self.gazeData.shape[0] )
-		# derivative of gaussian with zero mean scaled to degrees per second, fourier transformed.
-		dergausspdf = derivative_normal_pdf( mu = 0, sigma = smoothingFilterWidth, x = times)
-		c = np.sum(dergausspdf * times)
-		dergausspdf = np.roll(dergausspdf, times.shape[0]/2) * c
+		# gaussian with zero mean scaled to degrees per second, fourier transformed.
+		gauss_pdf = sp.stats.norm.pdf( times / smoothingFilterWidth )
+		gauss_pdf_kernel = np.roll(gauss_pdf / gauss_pdf.sum(), times.shape[0]/2)
+		gauss_pdf_kernel_fft = sp.fftpack.fft( gauss_pdf_kernel )
 		
-		print np.max(dergausspdf), np.abs(dergausspdf).sum(), c
-		diffKernelFFT = sp.fftpack.fft( dergausspdf )
+		# difference operator, fourier transformed.
+		diff_kernel = np.zeros(times.shape[0])
+		diff_kernel[times.shape[0]/2-1] = 1
+		diff_kernel[times.shape[0]/2] = -1
+		diff_kernel_fft = sp.fftpack.fft( np.roll(diff_kernel, times.shape[0]/2) )
 		
-		self.fourierVelocityData = sqrt(times.shape[0]) * self.sampleFrequency * sp.fftpack.ifft((self.fourierData.T * diffKernelFFT).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		diff_smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft * diff_kernel_fft
+		diff_data_fft = self.fourierData.T * diff_kernel_fft
+		
 		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
-		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' finished')
+		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		
+		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 		
 		
