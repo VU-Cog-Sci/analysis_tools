@@ -23,6 +23,8 @@ from nifti import *
 from Operator import *
 from datetime import *
 
+from BehaviorOperator import NewBehaviorOperator
+
 def derivative_normal_pdf( mu, sigma, x ):
 	return -( np.exp( - ( (x - mu)**2 / (2.0 * (sigma ** 2))) ) * (x - mu)) / ( sqrt(2.0 * pi) * sigma ** 3)
 
@@ -176,6 +178,8 @@ class EyelinkOperator( EyeOperator ):
 		self.findTrialPhases()
 		self.findParameters()
 		self.findRecordingParameters()
+		self.findKeyEvents()
+		self.findELEvents()
 		
 		logString = 'data parameters:'
 		if self.gazeData != None:
@@ -204,8 +208,26 @@ class EyelinkOperator( EyeOperator ):
 			# standard is for the 74 cm screen distance on the 24 inch Sony that is running at 1280x960.
 			self.pixelsPerDegree = standardPixelsPerDegree
 	
-	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
+	def findELEvents(self, 
+	saccRE = 'ESACC\t(\S+)[\s\t]+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+.?\d+)', 
+	fixRE = 'EFIX\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?', 
+	blinkRE = 'EBLINK\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d?.?\d*)?'):
+		"""
+		searches for the ends of Eyelink events, since they
+		contain all the information about the occurrence of the event. Examples:
+		ESACC	R	2347313	2347487	174	  621.8	  472.4	  662.0	  479.0	   0.99	 
+		EFIX	R	2340362.0	2347312.0	6950	  650.0	  480.4	   5377
+		EBLINK	R	2347352	2347423	71
+		"""
+		saccadeStrings = self.findOccurences(saccRE)
+		fixStrings = self.findOccurences(fixRE)
+		blinkStrings = self.findOccurences(blinkRE)
 		
+		self.saccades_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[7])} for e in saccadeStrings]
+		self.fixations_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fixStrings]
+		self.blinks_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blinkStrings]
+	
+	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		self.startTrialStrings = self.findOccurences(startRE)
 		self.stopTrialStrings = self.findOccurences(stopRE)
 		
@@ -222,6 +244,14 @@ class EyelinkOperator( EyeOperator ):
 		self.phaseStarts = phaseStarts
 		# self.phaseStarts = np.array(phaseStarts)
 	
+	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+), \'unicode\': u\'(\S*?)\', \'mod\': (\d+)}\)\> at (\d+.\d)'):
+		events = []
+		for i in range(self.nrTrials):
+			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
+			eventStrings = self.findOccurences(thisRE)
+			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'unicode':e[5],'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
+		self.events = events
+		
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
 		parameters = []
 		# if there are no duplicates in the edf file
@@ -238,7 +268,12 @@ class EyelinkOperator( EyeOperator ):
 				parameterStrings = self.findOccurences(thisRE)
 				# assuming all these parameters are numeric
 				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
-		self.parameters = parameters	
+		if len(parameters) > 0:		# there were parameters in the edf file
+			self.parameters = parameters	
+		else:		# we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
+			bhO = NewBehaviorOperator(os.path.splitext(self.inputFileName)[0] + '_outputDict.pickle')
+			self.parameters = bhO.parameters
+			
 			
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
 		"""
@@ -267,7 +302,7 @@ class EyelinkOperator( EyeOperator ):
 			
 		self.logger.info('fourier drift correction of data at cutoff of ' + str(cutoffFrequency) + ' finished')
 	
-	def computeVelocities(self, smoothingFilterWidth = 0.0001 ):
+	def computeVelocities(self, smoothingFilterWidth = 0.002 ):
 		"""
 		calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
 		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation
@@ -291,10 +326,12 @@ class EyelinkOperator( EyeOperator ):
 		
 		diff_smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft * diff_kernel_fft
 		diff_data_fft = self.fourierData.T * diff_kernel_fft
+		smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft
 		
 		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
 		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.fourierSmoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 		

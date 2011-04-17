@@ -44,6 +44,20 @@ class BehaviorOperator(Operator):
 		self.inputFileName = fileNameList[-1]
 	
 
+class NewBehaviorOperator(BehaviorOperator):
+	"""
+	A class that takes a now standard inputDict file and takes its parameterArray and events
+	"""
+	def __init__(self, inputObject, **kwargs):
+		super(SDTBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+	
+		f = open(self.inputFileName, 'r')
+		self.pickledData = pickle.load(f)
+		f.close()
+		
+		self.parameters = self.pickledData['parameterArray']
+		self.rawEventData = self.pickledData['eventArray']
+
 class RivalryLearningBehaviorOperator(BehaviorOperator):
 	def openData(self):
 		"""
@@ -333,5 +347,5 @@ class ApparentMotionBehaviorOperator(BehaviorOperator):
 		self.percepts = self.rivalryButtonPeriods[(self.rivalryButtonPeriods[:,2] == 1.) + (self.rivalryButtonPeriods[:,2] == 3.)]
 		
 		self.yokedPeriods = []
-		
+	
 	
