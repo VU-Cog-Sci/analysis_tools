@@ -138,6 +138,13 @@ class EyelinkOperator( EyeOperator ):
 				self.messageFile = eac.messageOutputFileName
 				self.gazeFile = eac.gazeOutputFileName
 				self.convertGazeData()
+			
+			# recover time of experimental run from filename
+			timeStamp = self.inputFileName.split('_')[-2:]
+			[y, m, d] = [int(t) for t in timeStamp[0].split('-')]
+			[h, mi, s] = [int(t) for t in timeStamp[1].split('.')[:-1]]
+			self.timeStamp = datetime(y, m, d, h, mi, s)
+			self.timeStamp_numpy = np.array([y, m, d, h, mi, s], dtype = np.int)
 		else:
 			self.logger.warning('Input object is not an edf file')
 	
@@ -335,4 +342,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 		
-		
+	def processIntoTable(tableFile = ''):
+		"""
+		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
+		"""
