@@ -23,6 +23,8 @@ from nifti import *
 from Operator import *
 from datetime import *
 
+from tables import *
+
 from BehaviorOperator import NewBehaviorOperator
 
 def derivative_normal_pdf( mu, sigma, x ):
@@ -233,6 +235,10 @@ class EyelinkOperator( EyeOperator ):
 		self.saccades_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[7])} for e in saccadeStrings]
 		self.fixations_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fixStrings]
 		self.blinks_from_MSG_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blinkStrings]
+		
+		self.saccadesTypeDictionary = np.dtype([(s , np.array(self.saccades_from_MSG_file[0][s]).dtype) for s in self.saccades_from_MSG_file[0].keys()])
+		self.fixationsTypeDictionary = np.dtype([(s , np.array(self.fixations_from_MSG_file[0][s]).dtype) for s in self.fixations_from_MSG_file[0].keys()])
+		self.blinksTypeDictionary = np.dtype([(s , np.array(self.blinks_from_MSG_file[0][s]).dtype) for s in self.blinks_from_MSG_file[0].keys()])
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		self.startTrialStrings = self.findOccurences(startRE)
@@ -241,6 +247,10 @@ class EyelinkOperator( EyeOperator ):
 		self.nrTrials = len(self.stopTrialStrings)
 		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.startTrialStrings])
 		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stopTrialStrings])
+		
+		self.trials = np.hstack((self.trialStarts, self.trialEnds))
+		
+		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
 	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
 		phaseStarts = []
@@ -250,6 +260,8 @@ class EyelinkOperator( EyeOperator ):
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
 		self.phaseStarts = phaseStarts
 		# self.phaseStarts = np.array(phaseStarts)
+		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, tuple(np.array(phaseStarts[0]).shape)))
+		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
 	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+), \'unicode\': u\'(\S*?)\', \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
@@ -267,21 +279,28 @@ class EyelinkOperator( EyeOperator ):
 				thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 				parameterStrings = self.findOccurences(thisRE)
 				# assuming all these parameters are numeric
-				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
+				thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
+				thisTrialParameters.update({'trial_nr' : float(i)})
+				parameters.append(thisTrialParameters)
 		else:	# there are duplicates in the edf file - take care of this by using the stop times.
-			for stop_time in self.stopTrialStrings:
+			for (i, stop_time) in zip(range(len(self.stopTrialStrings)),self.stopTrialStrings):
 				thisRE = RE.replace(' X ', ' ' + stop_time[0] + ' ')
 				thisRE = thisRE.replace('\t[\d\.]+', stop_time[1])
 				parameterStrings = self.findOccurences(thisRE)
 				# assuming all these parameters are numeric
-				parameters.append(dict([[s[0], float(s[1])] for s in parameterStrings]))
+				thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
+				thisTrialParameters.update({'trial_nr' : float(i)})
+				parameters.append(thisTrialParameters)
 		if len(parameters) > 0:		# there were parameters in the edf file
 			self.parameters = parameters	
 		else:		# we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
 			bhO = NewBehaviorOperator(os.path.splitext(self.inputFileName)[0] + '_outputDict.pickle')
 			self.parameters = bhO.parameters
+			self.parameters = [p.update({'trial_nr' : float(i)}) for (i,p) in zip(range(len(self.parameters)), self.parameters)]
 			
-			
+		# now create parameters and types for hdf5 file table of trial parameters
+		self.parameterTypeDictionary = np.dtype([(k, np.float64) for k in self.parameters[0].keys()])
+	
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
 		"""
 		Removes low frequency drift of frequency lower than cutoffFrequency from the eye position signals
@@ -312,7 +331,8 @@ class EyelinkOperator( EyeOperator ):
 	def computeVelocities(self, smoothingFilterWidth = 0.002 ):
 		"""
 		calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
-		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation
+		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation.
+		Presently works only for one-eye data only - will change this as binocular data comes available.
 		"""
 		if self.gazeData == None:
 			self.loadData(get_gaze_data = True)
@@ -335,14 +355,103 @@ class EyelinkOperator( EyeOperator ):
 		diff_data_fft = self.fourierData.T * diff_kernel_fft
 		smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft
 		
-		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
+#		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
 		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.normedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierVelocityData]).reshape((self.fourierVelocityData.shape[0],1))
+		
+		self.velocityData = np.hstack((self.fourierVelocityData, self.normedVelocityData))
+		self.logger.info('velocity calculation of data finished')
+		
 		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
-		self.fourierSmoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.normedSmoothedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierSmoothedVelocityData]).reshape((self.fourierSmoothedVelocityData.shape[0],1))
+		
+		self.smoothedVelocityData = np.hstack((self.fourierSmoothedVelocityData, self.normedSmoothedVelocityData))
+		self.smoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
-		
-	def processIntoTable(tableFile = ''):
+	
+	def processIntoTable(self, tableFile = '', name = 'bla'):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
+		if tableFile == '':
+			self.logger.error('cannot process data into no table')
+			return
+		
+		self.tableFileName = tableFile
+		self.runName = name
+		if not os.path.isfile(self.tableFileName):
+			self.logger.info('starting table file ' + self.tableFileName)
+			h5file = openFile(self.tableFileName, mode = "w", title = "Eye file")
+		else:
+			self.logger.info('opening table file ' + self.tableFileName)
+			h5file = openFile(self.tableFileName, mode = "a", title = "Eye file")
+		try:
+			h5file.getNode(where = '/', name=self.runName, classname='Group')
+			self.logger.info('data file ' + self.inputFileName + ' already in ' + self.tableFileName)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + self.runName + ' to this file')
+			thisRunGroup = h5file.createGroup("/", self.runName, 'Run ' + str(len(h5file.listNodes(where = '/', classname = 'Group'))) +' imported from ' + self.inputFileName)
+			
+			# create a table for the parameters of this run's trials
+			thisRunParameterTable = h5file.createTable(thisRunGroup, 'trial_parameters', self.parameterTypeDictionary, 'Parameters for trials in run ' + self.inputFileName)
+			# fill up the table
+			trial = thisRunParameterTable.row
+			for tr in self.parameters:
+				for par in tr.keys():
+					trial[par] = tr[par]
+				trial.append()
+			thisRunParameterTable.flush()
+			
+			# create a table for the saccades from the eyelink of this run's trials
+			thisRunSaccadeTable = h5file.createTable(thisRunGroup, 'trial_saccades_from_EL', self.saccadesTypeDictionary, 'Saccades for trials in run ' + self.inputFileName)
+			# fill up the table
+			sacc = thisRunSaccadeTable.row
+			for tr in self.saccades_from_MSG_file:
+				for par in tr.keys():
+					sacc[par] = tr[par]
+				sacc.append()
+			thisRunSaccadeTable.flush()
+			
+			# create a table for the blinks from the eyelink of this run's trials
+			thisRunBlinksTable = h5file.createTable(thisRunGroup, 'trial_blinks_from_EL', self.blinksTypeDictionary, 'Blinks for trials in run ' + self.inputFileName)
+			# fill up the table
+			blink = thisRunBlinksTable.row
+			for tr in self.blinks_from_MSG_file:
+				for par in tr.keys():
+					blink[par] = tr[par]
+				blink.append()
+			thisRunBlinksTable.flush()
+			
+			# create a table for the fixations from the eyelink of this run's trials
+			thisRunFixationsTable = h5file.createTable(thisRunGroup, 'trial_fixations_from_EL', self.fixationsTypeDictionary, 'Fixations for trials in run ' + self.inputFileName)
+			# fill up the table
+			fix = thisRunFixationsTable.row
+			for tr in self.fixations_from_MSG_file:
+				for par in tr.keys():
+					fix[par] = tr[par]
+				fix.append()
+			thisRunFixationsTable.flush()
+			
+			# create a table for the trial times of this run's trials
+			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
+			trial = thisRunTimeTable.row
+			for (i, tr) in zip(range(len(self.trials)), self.trials):
+				trial['trial_start_EL_timestamp'] = tr[0]
+				trial['trial_start_index'] = tr[1]
+				trial['trial_start_exp_timestamp'] = tr[2]
+				trial['trial_end_EL_timestamp'] = tr[3]
+				trial['trial_end_index'] = tr[4]
+				trial['trial_end_exp_timestamp'] = tr[5]
+				trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i])
+				trial.append()
+			thisRunTimeTable.flush()
+			
+			# create eye arrays for the run's eye movement data
+			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
+		h5file.close()
+				
