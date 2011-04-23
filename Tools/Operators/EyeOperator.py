@@ -180,7 +180,7 @@ class EyelinkOperator( EyeOperator ):
 			self.gazeData = np.load(self.gazeFile)
 		else:
 			self.gazeData = None
-		
+	
 	def findAll(self):
 		"""docstring for findAll"""
 		self.findTrials()
@@ -196,7 +196,17 @@ class EyelinkOperator( EyeOperator ):
 		logString += ' sampleFrequency, eye - ' + str(self.sampleFrequency) + ' ' + self.eye
 		logString += ' nrTrials, phases - ' + str(self.nrTrials) + ' ' + str(self.trialStarts.shape)
 		self.logger.info(logString)
-			
+		
+		tobedeleted = []
+		for r in range(len(self.parameters)):
+			if 'answer' not in self.parameters[r].keys():
+				self.logger.info( 'no answer in run # ' + self.gazeFile + ' trial # ' + str(r) )
+				tobedeleted.append(r + len(tobedeleted))
+		for r in tobedeleted:
+			self.parameters.pop(r)
+			self.trialPhases.pop(r)
+			self.trials = np.delete(self.trials, r)
+				
 	
 	def findOccurences(self, RE = ''):
 		return re.findall(re.compile(RE), self.msgData)
@@ -217,10 +227,10 @@ class EyelinkOperator( EyeOperator ):
 			# standard is for the 74 cm screen distance on the 24 inch Sony that is running at 1280x960.
 			self.pixelsPerDegree = standardPixelsPerDegree
 	
-	def findELEvents(self, 
-	saccRE = 'ESACC\t(\S+)[\s\t]+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+.?\d+)', 
-	fixRE = 'EFIX\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?', 
-	blinkRE = 'EBLINK\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d?.?\d*)?'):
+	def findELEvents(self,
+		saccRE = 'ESACC\t(\S+)[\s\t]+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+.?\d+)', 
+		fixRE = 'EFIX\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?', 
+		blinkRE = 'EBLINK\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d?.?\d*)?'):
 		"""
 		searches for the ends of Eyelink events, since they
 		contain all the information about the occurrence of the event. Examples:
@@ -260,7 +270,9 @@ class EyelinkOperator( EyeOperator ):
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
 		self.phaseStarts = phaseStarts
 		# self.phaseStarts = np.array(phaseStarts)
-		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, tuple(np.array(phaseStarts[0]).shape)))
+		# sometimes there are not an equal amount of phasestarts in a run.
+		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts]).min()
+		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts, 3)))
 		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
 	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+), \'unicode\': u\'(\S*?)\', \'mod\': (\d+)}\)\> at (\d+.\d)'):
@@ -394,6 +406,10 @@ class EyelinkOperator( EyeOperator ):
 			self.logger.info('Adding group ' + self.runName + ' to this file')
 			thisRunGroup = h5file.createGroup("/", self.runName, 'Run ' + str(len(h5file.listNodes(where = '/', classname = 'Group'))) +' imported from ' + self.inputFileName)
 			
+			# create all the parameters, events and such if they haven't already been created.
+			if not hasattr(self, 'parameters'):
+				self.findAll()
+				
 			# create a table for the parameters of this run's trials
 			thisRunParameterTable = h5file.createTable(thisRunGroup, 'trial_parameters', self.parameterTypeDictionary, 'Parameters for trials in run ' + self.inputFileName)
 			# fill up the table
@@ -405,7 +421,7 @@ class EyelinkOperator( EyeOperator ):
 			thisRunParameterTable.flush()
 			
 			# create a table for the saccades from the eyelink of this run's trials
-			thisRunSaccadeTable = h5file.createTable(thisRunGroup, 'trial_saccades_from_EL', self.saccadesTypeDictionary, 'Saccades for trials in run ' + self.inputFileName)
+			thisRunSaccadeTable = h5file.createTable(thisRunGroup, 'saccades_from_EL', self.saccadesTypeDictionary, 'Saccades for trials in run ' + self.inputFileName)
 			# fill up the table
 			sacc = thisRunSaccadeTable.row
 			for tr in self.saccades_from_MSG_file:
@@ -415,7 +431,7 @@ class EyelinkOperator( EyeOperator ):
 			thisRunSaccadeTable.flush()
 			
 			# create a table for the blinks from the eyelink of this run's trials
-			thisRunBlinksTable = h5file.createTable(thisRunGroup, 'trial_blinks_from_EL', self.blinksTypeDictionary, 'Blinks for trials in run ' + self.inputFileName)
+			thisRunBlinksTable = h5file.createTable(thisRunGroup, 'blinks_from_EL', self.blinksTypeDictionary, 'Blinks for trials in run ' + self.inputFileName)
 			# fill up the table
 			blink = thisRunBlinksTable.row
 			for tr in self.blinks_from_MSG_file:
@@ -425,7 +441,7 @@ class EyelinkOperator( EyeOperator ):
 			thisRunBlinksTable.flush()
 			
 			# create a table for the fixations from the eyelink of this run's trials
-			thisRunFixationsTable = h5file.createTable(thisRunGroup, 'trial_fixations_from_EL', self.fixationsTypeDictionary, 'Fixations for trials in run ' + self.inputFileName)
+			thisRunFixationsTable = h5file.createTable(thisRunGroup, 'fixations_from_EL', self.fixationsTypeDictionary, 'Fixations for trials in run ' + self.inputFileName)
 			# fill up the table
 			fix = thisRunFixationsTable.row
 			for tr in self.fixations_from_MSG_file:
@@ -444,14 +460,23 @@ class EyelinkOperator( EyeOperator ):
 				trial['trial_end_EL_timestamp'] = tr[3]
 				trial['trial_end_index'] = tr[4]
 				trial['trial_end_exp_timestamp'] = tr[5]
-				trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i])
+				trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i][:self.nrPhaseStarts])
 				trial.append()
 			thisRunTimeTable.flush()
 			
 			# create eye arrays for the run's eye movement data
+			if self.gazeData == None:
+				self.loadData()
+			
 			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
+			
+			if not hasattr(self, 'velocityData'):
+				# make the velocities arrays if it hasn't been done yet. 
+				self.computeVelocities()
+			
 			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
 			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
 			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
+			
 		h5file.close()
 				
