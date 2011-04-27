@@ -178,11 +178,12 @@ class EyelinkOperator( EyeOperator ):
 		
 		if get_gaze_data:
 			self.gazeData = np.load(self.gazeFile)
-		else:
-			self.gazeData = None
 	
 	def findAll(self):
 		"""docstring for findAll"""
+		if not hasattr(self, 'msgData'):
+			self.loadData(get_gaze_data = False)
+		
 		self.findTrials()
 		self.findTrialPhases()
 		self.findParameters()
@@ -191,7 +192,7 @@ class EyelinkOperator( EyeOperator ):
 		self.findELEvents()
 		
 		logString = 'data parameters:'
-		if self.gazeData != None:
+		if hasattr(self, 'gazeData'):
 			logString += ' samples - ' + str(self.gazeData.shape)
 		logString += ' sampleFrequency, eye - ' + str(self.sampleFrequency) + ' ' + self.eye
 		logString += ' nrTrials, phases - ' + str(self.nrTrials) + ' ' + str(self.trialStarts.shape)
@@ -318,7 +319,7 @@ class EyelinkOperator( EyeOperator ):
 		Removes low frequency drift of frequency lower than cutoffFrequency from the eye position signals
 		cleanup removes intermediate data formats
 		"""
-		if self.gazeData == None:
+		if not hasattr(self, 'gazeData'):
 			self.loadData(get_gaze_data = True)
 			
 		self.signalNrSamples = self.gazeData.shape[0]
@@ -346,7 +347,7 @@ class EyelinkOperator( EyeOperator ):
 		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation.
 		Presently works only for one-eye data only - will change this as binocular data comes available.
 		"""
-		if self.gazeData == None:
+		if not hasattr(self, 'gazeData'):
 			self.loadData(get_gaze_data = True)
 		if not hasattr(self, 'fourierData'):
 			self.fourierData = sp.fftpack.fft(self.gazeData[:,1:], axis = 0)
@@ -465,7 +466,7 @@ class EyelinkOperator( EyeOperator ):
 			thisRunTimeTable.flush()
 			
 			# create eye arrays for the run's eye movement data
-			if self.gazeData == None:
+			if not hasattr(self, 'gazeData'):
 				self.loadData()
 			
 			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)

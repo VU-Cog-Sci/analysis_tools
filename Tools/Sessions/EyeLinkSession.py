@@ -93,19 +93,18 @@ class EyelinkSession(object):
 			# if they haven't been split, split then and then import their data
 			if f not in msg_files_no_ext:
 				elo = EyelinkOperator( inputObject = f+'.edf', split = True )
-				elo.loadData(get_gaze_data = True)
-				eyelink_fos.append(elo)
 			else:
 				elo = EyelinkOperator( inputObject = f+'.edf', split = False )
-				elo.loadData(get_gaze_data = True)
-				eyelink_fos.append(elo)
-
+			eyelink_fos.append(elo)
+			
+			# make sure to throw out trials that do not have answers
 			elo.findAll()
 			for r in range(len(elo.parameters)):
 				if 'answer' not in elo.parameters[r].keys():
 					print 'no answer in run # ' + elo.gazeFile + ' trial # ' + str(r)
 					elo.parameters.pop(r)
 		
+		# enter the files into the hdf5 file in order
 		order = np.argsort(np.array([int(elo.timeStamp.strftime("%Y%m%d%H%M%S")) for elo in eyelink_fos]))
 		for i in order:
 			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i))
