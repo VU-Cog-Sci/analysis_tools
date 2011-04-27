@@ -42,17 +42,16 @@ class EyelinkSession(object):
 		except OSError:
 			pass
 		self.base_directory = os.path.join( base_directory, project_name, experiment_name, self.subject.initials )
-		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
 		
 		self.create_folder_hierarchy()
-		
-		self.loggingLevel = loggingLevel
+		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
 		
 		# add logging for this session
 		# sessions create their own logging file handler
+		self.loggingLevel = loggingLevel
 		self.logger = logging.getLogger( self.__class__.__name__ )
 		self.logger.setLevel(self.loggingLevel)
-		addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
+		addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.base_directory, 'log', 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
 		loggingLevelSetup()
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
@@ -111,11 +110,23 @@ class EyelinkSession(object):
 		for i in order:
 			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i))
 	
-	def import_behavior_data(self)
+	def import_behavioral_data(self)
 		behavioral_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.walkGroups(where = '/'):
 			behavioral_data.append(r.trial_parameters.read())
 		self.behavioral_data = np.concatenate(behavioral_data)
+		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
 	
-	
+class TAESession(EyelinkSession):
+	def preprocess_behavioral_data(self):
+		"""docstring for preprocess_behavioral_data"""
+		# rectify answers and test orientations
+		self.rectified_answers = (1-self.behavioral_data['answer'] * np.sign(self.behavioral_data['adaptation_orientation'])) / 2.0
+		self.rectified_test_orientations = self.behavioral_data['test_orientation']*np.sign(self.behavioral_data['adaptation_orientation'])
+		
+		# get values that are unique for conditions and tests
+		self.adaptation_frequencies = np.unique(self.behavioral_data['phase_redraw_period'])
+		self.adaptation_durations = np.unique(self.behavioral_data['adaptation_duration'])
+		self.test_orientations = np.unique(self.behavioral_data['test_orientation'])
+		
