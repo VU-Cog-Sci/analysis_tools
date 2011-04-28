@@ -489,7 +489,7 @@ class EyelinkOperator( EyeOperator ):
 		h5file.close()
 	
 	def clean_data(self):
-		if hasattr(self, 'velocityData'):
+		if hasattr(self, 'velocityData'):	# this is a sign that velocity analysis was run
 			del(self.velocityData)
 			del(self.smoothedGazeData)
 			del(self.smoothedVelocityData)
