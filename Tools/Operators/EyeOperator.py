@@ -205,7 +205,7 @@ class EyelinkOperator( EyeOperator ):
 				tobedeleted.append(r + len(tobedeleted))
 		for r in tobedeleted:
 			self.parameters.pop(r)
-			self.trialPhases.pop(r)
+			self.phaseStarts.pop(r)
 			self.trials = np.delete(self.trials, r)
 				
 	
@@ -380,7 +380,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, tableFile = '', name = 'bla'):
+	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = False):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
@@ -469,9 +469,9 @@ class EyelinkOperator( EyeOperator ):
 #			ca_gaze = h5file.createCArray(thisRunGroup, 'gaze_data',  Float64Atom(), self.gazeData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Raw gaze data from ' + self.inputFileName)
 #			ca_gaze = self.gazeData
 			
-			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData.astype(np.float32), 'Raw gaze data from ' + self.inputFileName)
 			
-			if not hasattr(self, 'velocityData'):
+			if not hasattr(self, 'velocityData') and compute_velocities:
 				# make the velocities arrays if it hasn't been done yet. 
 				self.computeVelocities()
 			
@@ -481,10 +481,10 @@ class EyelinkOperator( EyeOperator ):
 #			ca_svel = self.smoothedVelocityData
 #			ca_sgaze = h5file.createCArray(thisRunGroup, 'smoothed_gaze_data',  Float64Atom(), self.smoothedGazeData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Smoothed gaze data from ' + self.inputFileName)
 #			ca_sgaze = self.smoothedGazeData
-			
-			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
-			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
-			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
+			if compute_velocities:
+				h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData.astype(np.float32), 'Raw velocity data from ' + self.inputFileName)
+				h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData.astype(np.float32), 'Smoothed gaze data from ' + self.inputFileName)
+				h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData.astype(np.float32), 'Smoothed velocity data from ' + self.inputFileName)
 			
 		h5file.close()
 	
@@ -493,7 +493,8 @@ class EyelinkOperator( EyeOperator ):
 			del(self.velocityData)
 			del(self.smoothedGazeData)
 			del(self.smoothedVelocityData)
-			del(self.gazeData)
 			del(self.normedVelocityData)
 			del(self.fourierSmoothedVelocityData)
 			del(self.normedSmoothedVelocityData)
+	
+	
