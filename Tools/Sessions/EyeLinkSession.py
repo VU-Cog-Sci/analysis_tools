@@ -129,3 +129,82 @@ class TAESession(EyelinkSession):
 		self.adaptation_durations = np.unique(self.behavioral_data['adaptation_duration'])
 		self.test_orientations = np.unique(self.behavioral_data['test_orientation'])
 		
+		self.test_orientation_indices = [self.behavioraldata['test_orientation'] == t for t in self.test_orientations]
+		self.rectified_test_orientation_indices = [rectified_test_orientations == t for t in self.test_orientations]
+		
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.TAEs = []
+		self.pfs = []
+		
+	
+	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = ''):
+		"""fits the data in self.behavioral_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
+		rectified_answers = [self.rectified_answers[boolean_array * self.rectified_test_orientation_indices[i]] for i in range(self.test_orientations.shape[0])]
+		nr_ones, nr_samples = [r.sum() for r in rectified_answers], [r.shape[0] for r in rectified_answers]
+		fit_data = zip(self.test_orientations, nr_ones, nr_samples)
+		
+		# and we fit the data
+		pf = BootstrapInference(fit_data, sigmoid = 'gauss', core = 'ab', nafc = 1, cuts = [0.25,0.5,0.75], gammaislambda = True)
+		# and let the package do a bootstrap sampling of the resulting fits
+		pf.sample()
+		
+		# scatter plot of the actual data points
+		sub_plot.scatter(self.test_orientations, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25)
+		
+		# line plot of the fitted curve
+		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
+		
+		# TEAE value as a red line in the plot
+		sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
+		# and the boundaries of the confidence interval on this point
+		sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
+		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
+		
+		sub_plot.set_title(title, fontsize=9)
+		sub_plot.axis([plot_range[0], plot_range[0], -0.025, 1.025])
+		
+		# archive these results in the object's list variables.
+		self.psychometric_data.append(fit_data)
+		self.TAEs.append(pf.estimate[0])
+		self.pfs.append(pf)
+		
+	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
+		"""plots the confidence data in self.behavioral_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
+		rectified_confidence = [self.behavioral_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
+		mm = [np.min(self.behavioral_data[:]['confidence']),np.max(self.behavioral_data[:]['confidence'])]
+		sub_plot = sub_plot.twinx()
+		
+		if normalize_confidence:
+			# the confidence ratings are normalized
+			conf_grouped_mean = np.array([np.mean((c-mm[0])/(mm[1]-mm[0])) for c in rectified_confidence])
+			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 0.75)
+			sub_plot.axis([plot_range[0],plot_range[1],-0.05,1.05])
+			
+		else:
+			# raw confidence is used
+			conf_grouped_mean = np.array([np.mean(c) for c in rectified_confidence])
+			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 0.75)
+			sub_plot.axis([plot_range[0], plot_range[1], mm[0], mm[1]])
+	
+	def run_conditions(self):
+		"""
+		run across conditions and adaptation durations
+		"""
+		
+		fig = pl.figure(figsize = (15,4))
+		pl_nr = 1
+		# across conditions
+		for c in self.adaptation_frequencies:
+			c_array = self.behavioral_data[:]['phase_redraw_period'] == c
+			# across adaptation durations:
+			for a in self.adaptation_durations:
+				a_array = self.behavioral_data[:]['adaptation_duration'] == a
+				# combination of conditions and durations
+				this_condition_array = c_array * a_array
+				sub_plot = fig.add_subplot(self.adaptation_frequencies.shape[0], self.adaptation_durations.shape[0], pl_nr)
+				self.fit_condition(this_condition_array, sub_plot, 'adapt period ' + str(c) + ', adapt duration ' + str(a) )
+				self.plot_confidence(this_condition_array, sub_plot)
+				pl_nr += 1
+		
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf')
