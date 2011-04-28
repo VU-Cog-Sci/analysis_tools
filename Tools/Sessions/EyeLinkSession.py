@@ -207,4 +207,4 @@ class TAESession(EyelinkSession):
 				self.plot_confidence(this_condition_array, sub_plot)
 				pl_nr += 1
 		
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf')
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf'))
