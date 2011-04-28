@@ -49,7 +49,7 @@ class NewBehaviorOperator(BehaviorOperator):
 	A class that takes a now standard inputDict file and takes its parameterArray and events
 	"""
 	def __init__(self, inputObject, **kwargs):
-		super(SDTBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+		super(NewBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
 	
 		f = open(self.inputFileName, 'r')
 		self.pickledData = pickle.load(f)

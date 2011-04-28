@@ -218,8 +218,13 @@ class EyelinkOperator( EyeOperator ):
 		self.eye = self.parameterStrings[0][1]
 		
 		self.screenStrings = self.findOccurences(screenRE)
-		self.screenCorners = np.array([float(s) for s in self.screenStrings[0]])
-		self.screenSizePixels = [self.screenCorners[2]-self.screenCorners[0], self.screenCorners[3]-self.screenCorners[1]]
+		if len(self.screenStrings) > 0:
+			self.screenCorners = np.array([float(s) for s in self.screenStrings[0]])
+			self.screenSizePixels = [self.screenCorners[2]-self.screenCorners[0], self.screenCorners[3]-self.screenCorners[1]]
+		else:
+			# just put random stuff in there
+			self.screenCorners = [0,0,1280,960]
+			self.screenSizePixels = [self.screenCorners[2]-self.screenCorners[0], self.screenCorners[3]-self.screenCorners[1]]
 		
 		self.pixelStrings = self.findOccurences(pixelRE)
 		if len(self.pixelStrings) > 0:
@@ -229,9 +234,9 @@ class EyelinkOperator( EyeOperator ):
 			self.pixelsPerDegree = standardPixelsPerDegree
 	
 	def findELEvents(self,
-		saccRE = 'ESACC\t(\S+)[\s\t]+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+.?\d+)', 
-		fixRE = 'EFIX\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?\s+(\d+\.?\d*)?', 
-		blinkRE = 'EBLINK\t(\S+)\s+(\d*\.?\d*)\t(\d+\.?\d*)\s+(\d?.?\d*)?'):
+		saccRE = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)', 
+		fixRE = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?', 
+		blinkRE = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'):
 		"""
 		searches for the ends of Eyelink events, since they
 		contain all the information about the occurrence of the event. Examples:
@@ -287,25 +292,17 @@ class EyelinkOperator( EyeOperator ):
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
 		parameters = []
 		# if there are no duplicates in the edf file
-		if np.unique(self.trialStarts[:,1]).shape[0] == len(self.startTrialStrings):
-			for i in range(self.nrTrials):
-				thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
-				parameterStrings = self.findOccurences(thisRE)
+		for i in range(self.nrTrials):
+			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
+			parameterStrings = self.findOccurences(thisRE)
+			if len(parameterStrings) > 0:
 				# assuming all these parameters are numeric
 				thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
 				thisTrialParameters.update({'trial_nr' : float(i)})
 				parameters.append(thisTrialParameters)
-		else:	# there are duplicates in the edf file - take care of this by using the stop times.
-			for (i, stop_time) in zip(range(len(self.stopTrialStrings)),self.stopTrialStrings):
-				thisRE = RE.replace(' X ', ' ' + stop_time[0] + ' ')
-				thisRE = thisRE.replace('\t[\d\.]+', stop_time[1])
-				parameterStrings = self.findOccurences(thisRE)
-				# assuming all these parameters are numeric
-				thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
-				thisTrialParameters.update({'trial_nr' : float(i)})
-				parameters.append(thisTrialParameters)
+		
 		if len(parameters) > 0:		# there were parameters in the edf file
-			self.parameters = parameters	
+			self.parameters = parameters
 		else:		# we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
 			bhO = NewBehaviorOperator(os.path.splitext(self.inputFileName)[0] + '_outputDict.pickle')
 			self.parameters = bhO.parameters
@@ -469,15 +466,34 @@ class EyelinkOperator( EyeOperator ):
 			if not hasattr(self, 'gazeData'):
 				self.loadData()
 			
-			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
+			ca_gaze = h5file.createCArray(thisRunGroup, 'gaze_data',  Float32Atom(), self.gazeData.shape, filters = Filters(complevel=5, complib='zlib'))
+			ca_gaze = self.gazeData
+			
+#			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
 			
 			if not hasattr(self, 'velocityData'):
 				# make the velocities arrays if it hasn't been done yet. 
 				self.computeVelocities()
 			
-			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
-			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
-			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
+			ca_vel = h5file.createCArray(thisRunGroup, 'velocity_data',  Float32Atom(), self.velocityData.shape, filters = Filters(complevel=5, complib='zlib'))
+			ca_vel = self.velocityData
+			ca_svel = h5file.createCArray(thisRunGroup, 'smoothed_velocity_data',  Float32Atom(), self.smoothedVelocityData.shape, filters = Filters(complevel=5, complib='zlib'))
+			ca_svel = self.smoothedVelocityData
+			ca_sgaze = h5file.createCArray(thisRunGroup, 'smoothed_gaze_data',  Float32Atom(), self.smoothedGazeData.shape, filters = Filters(complevel=5, complib='zlib'))
+			ca_sgaze = self.smoothedGazeData
+			
+#			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
+#			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
+#			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
 			
 		h5file.close()
-				
+	
+	def clean_data(self):
+		if hasattr(self, 'velocityData'):
+			del(self.velocityData)
+			del(self.smoothedGazeData)
+			del(self.smoothedVelocityData)
+			del(self.gazeData)
+			del(self.normedVelocityData)
+			del(self.fourierSmoothedVelocityData)
+			del(self.normedSmoothedVelocityData)

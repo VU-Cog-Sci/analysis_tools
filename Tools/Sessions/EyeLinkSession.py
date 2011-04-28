@@ -30,8 +30,8 @@ from ..Operators.BehaviorOperator import *
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 
-class EyelinkSession(object):
-	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wild_card, loggingLevel = logging.DEBUG):
+class EyeLinkSession(object):
+	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
 		self.ID = ID
 		self.subject = subject
 		self.project_name = project_name
@@ -70,7 +70,8 @@ class EyelinkSession(object):
 		"""docstring for import_raw_data"""
 		os.chdir(original_data_directory)
 		behavior_files = subprocess.Popen('ls ' + self.wildcard + '*_outputDict.pickle', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
-		eye_files = [f.split('_outputDict.pickle') + '.edf' for f in behavior_files]
+		self.logger.info('importing files ' + str(behavior_files) + ' from ' + original_data_directory)
+		eye_files = [f.split('_outputDict.pickle')[0] + '.edf' for f in behavior_files]
 		
 		# put output dicts and eyelink files next to one another - that's what the eyelinkoperator expects.
 		for i in range(len(behavior_files)):
@@ -108,16 +109,17 @@ class EyelinkSession(object):
 		order = np.argsort(np.array([int(elo.timeStamp.strftime("%Y%m%d%H%M%S")) for elo in eyelink_fos]))
 		for i in order:
 			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i))
+			eyelink_fos[i].clean_data()
 	
-	def import_behavioral_data(self)
+	def import_behavioral_data(self):
 		behavioral_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
-		for r in h5f.walkGroups(where = '/'):
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			behavioral_data.append(r.trial_parameters.read())
 		self.behavioral_data = np.concatenate(behavioral_data)
 		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
 	
-class TAESession(EyelinkSession):
+class TAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
 		"""docstring for preprocess_behavioral_data"""
 		# rectify answers and test orientations
@@ -129,8 +131,8 @@ class TAESession(EyelinkSession):
 		self.adaptation_durations = np.unique(self.behavioral_data['adaptation_duration'])
 		self.test_orientations = np.unique(self.behavioral_data['test_orientation'])
 		
-		self.test_orientation_indices = [self.behavioraldata['test_orientation'] == t for t in self.test_orientations]
-		self.rectified_test_orientation_indices = [rectified_test_orientations == t for t in self.test_orientations]
+		self.test_orientation_indices = [self.behavioral_data['test_orientation'] == t for t in self.test_orientations]
+		self.rectified_test_orientation_indices = [self.rectified_test_orientations == t for t in self.test_orientations]
 		
 		# prepare some lists for further use
 		self.psychometric_data = []
@@ -169,7 +171,7 @@ class TAESession(EyelinkSession):
 		self.TAEs.append(pf.estimate[0])
 		self.pfs.append(pf)
 		
-	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
+	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = False, plot_range = [-5,5], y_label = ''):
 		"""plots the confidence data in self.behavioral_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
 		rectified_confidence = [self.behavioral_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
 		mm = [np.min(self.behavioral_data[:]['confidence']),np.max(self.behavioral_data[:]['confidence'])]
@@ -186,13 +188,15 @@ class TAESession(EyelinkSession):
 			conf_grouped_mean = np.array([np.mean(c) for c in rectified_confidence])
 			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 0.75)
 			sub_plot.axis([plot_range[0], plot_range[1], mm[0], mm[1]])
+			
+		return sub_plot
 	
 	def run_conditions(self):
 		"""
 		run across conditions and adaptation durations
 		"""
-		
 		fig = pl.figure(figsize = (15,4))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.15)
 		pl_nr = 1
 		# across conditions
 		for c in self.adaptation_frequencies:
@@ -204,7 +208,16 @@ class TAESession(EyelinkSession):
 				this_condition_array = c_array * a_array
 				sub_plot = fig.add_subplot(self.adaptation_frequencies.shape[0], self.adaptation_durations.shape[0], pl_nr)
 				self.fit_condition(this_condition_array, sub_plot, 'adapt period ' + str(c) + ', adapt duration ' + str(a) )
-				self.plot_confidence(this_condition_array, sub_plot)
+				if c == self.adaptation_frequencies[-1]:
+					sub_plot.set_xlabel('orientation [deg]', fontsize=9)
+				if a == self.adaptation_durations[0]:
+					sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
+				
+				sub_plot = self.plot_confidence(this_condition_array, sub_plot)
+				if a == self.adaptation_durations[-1]:
+					sub_plot.set_ylabel('confidence', fontsize=9)
+				
 				pl_nr += 1
+				
 		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf'))
