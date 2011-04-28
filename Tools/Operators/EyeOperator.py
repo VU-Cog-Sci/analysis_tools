@@ -466,25 +466,25 @@ class EyelinkOperator( EyeOperator ):
 			if not hasattr(self, 'gazeData'):
 				self.loadData()
 			
-			ca_gaze = h5file.createCArray(thisRunGroup, 'gaze_data',  Float32Atom(), self.gazeData.shape, filters = Filters(complevel=5, complib='zlib'))
-			ca_gaze = self.gazeData
+#			ca_gaze = h5file.createCArray(thisRunGroup, 'gaze_data',  Float64Atom(), self.gazeData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Raw gaze data from ' + self.inputFileName)
+#			ca_gaze = self.gazeData
 			
-#			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData, 'Raw gaze data from ' + self.inputFileName)
 			
 			if not hasattr(self, 'velocityData'):
 				# make the velocities arrays if it hasn't been done yet. 
 				self.computeVelocities()
 			
-			ca_vel = h5file.createCArray(thisRunGroup, 'velocity_data',  Float32Atom(), self.velocityData.shape, filters = Filters(complevel=5, complib='zlib'))
-			ca_vel = self.velocityData
-			ca_svel = h5file.createCArray(thisRunGroup, 'smoothed_velocity_data',  Float32Atom(), self.smoothedVelocityData.shape, filters = Filters(complevel=5, complib='zlib'))
-			ca_svel = self.smoothedVelocityData
-			ca_sgaze = h5file.createCArray(thisRunGroup, 'smoothed_gaze_data',  Float32Atom(), self.smoothedGazeData.shape, filters = Filters(complevel=5, complib='zlib'))
-			ca_sgaze = self.smoothedGazeData
+#			ca_vel = h5file.createCArray(thisRunGroup, 'velocity_data',  Float64Atom(), self.velocityData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Raw velocity data from ' + self.inputFileName)
+#			ca_vel = self.velocityData
+#			ca_svel = h5file.createCArray(thisRunGroup, 'smoothed_velocity_data',  Float64Atom(), self.smoothedVelocityData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Smoothed velocity data from ' + self.inputFileName)
+#			ca_svel = self.smoothedVelocityData
+#			ca_sgaze = h5file.createCArray(thisRunGroup, 'smoothed_gaze_data',  Float64Atom(), self.smoothedGazeData.shape, filters = Filters(complevel=5, complib='zlib'), title = 'Smoothed gaze data from ' + self.inputFileName)
+#			ca_sgaze = self.smoothedGazeData
 			
-#			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
-#			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
-#			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData, 'Raw velocity data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData, 'Smoothed gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData, 'Smoothed velocity data from ' + self.inputFileName)
 			
 		h5file.close()
 	
