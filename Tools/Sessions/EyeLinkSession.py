@@ -171,7 +171,7 @@ class TAESession(EyeLinkSession):
 		self.TAEs.append(pf.estimate[0])
 		self.pfs.append(pf)
 		
-	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = False, plot_range = [-5,5], y_label = ''):
+	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
 		"""plots the confidence data in self.behavioral_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
 		rectified_confidence = [self.behavioral_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
 		mm = [np.min(self.behavioral_data[:]['confidence']),np.max(self.behavioral_data[:]['confidence'])]
@@ -180,13 +180,13 @@ class TAESession(EyeLinkSession):
 		if normalize_confidence:
 			# the confidence ratings are normalized
 			conf_grouped_mean = np.array([np.mean((c-mm[0])/(mm[1]-mm[0])) for c in rectified_confidence])
-			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 0.75)
-			sub_plot.axis([plot_range[0],plot_range[1],-0.05,1.05])
+			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 1.75)
+			sub_plot.axis([plot_range[0],plot_range[1],-0.025,1.025])
 			
 		else:
 			# raw confidence is used
 			conf_grouped_mean = np.array([np.mean(c) for c in rectified_confidence])
-			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 0.75)
+			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 1.75)
 			sub_plot.axis([plot_range[0], plot_range[1], mm[0], mm[1]])
 			
 		return sub_plot
@@ -196,7 +196,7 @@ class TAESession(EyeLinkSession):
 		run across conditions and adaptation durations
 		"""
 		fig = pl.figure(figsize = (15,4))
-		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.15)
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
 		pl_nr = 1
 		# across conditions
 		for c in self.adaptation_frequencies:
@@ -212,6 +212,8 @@ class TAESession(EyeLinkSession):
 					sub_plot.set_xlabel('orientation [deg]', fontsize=9)
 				if a == self.adaptation_durations[0]:
 					sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
+					if c == self.adaptation_frequencies[0]:
+						sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
 				
 				sub_plot = self.plot_confidence(this_condition_array, sub_plot)
 				if a == self.adaptation_durations[-1]:
@@ -219,5 +221,4 @@ class TAESession(EyeLinkSession):
 				
 				pl_nr += 1
 				
-		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf'))
