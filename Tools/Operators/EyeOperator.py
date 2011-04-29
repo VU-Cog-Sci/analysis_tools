@@ -167,7 +167,7 @@ class EyelinkOperator( EyeOperator ):
 		# deleting the first data point of a session shouldn't matter at all..
 		if bool(gd.shape[0] % 2):
 			gd = gd[1:]
-		np.save( self.gazeFile, gd )
+		np.save( self.gazeFile, gd.astype(np.float32) )
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
 		
 	
@@ -178,6 +178,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		if get_gaze_data:
 			self.gazeData = np.load(self.gazeFile)
+			self.gazeData = self.gazeData.astype(np.float32)
 	
 	def findAll(self):
 		"""docstring for findAll"""
@@ -304,9 +305,11 @@ class EyelinkOperator( EyeOperator ):
 		if len(parameters) > 0:		# there were parameters in the edf file
 			self.parameters = parameters
 		else:		# we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
+			self.logger.info('taking parameter data for ' + self.inputFileName + ' from its dictionary neigbor')
 			bhO = NewBehaviorOperator(os.path.splitext(self.inputFileName)[0] + '_outputDict.pickle')
 			self.parameters = bhO.parameters
-			self.parameters = [p.update({'trial_nr' : float(i)}) for (i,p) in zip(range(len(self.parameters)), self.parameters)]
+			for i in range(len(self.parameters)):
+				self.parameters[i].update({'trial_nr' : float(i)})
 			
 		# now create parameters and types for hdf5 file table of trial parameters
 		self.parameterTypeDictionary = np.dtype([(k, np.float64) for k in self.parameters[0].keys()])
@@ -366,7 +369,7 @@ class EyelinkOperator( EyeOperator ):
 		smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft
 		
 #		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
-		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
 		self.normedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierVelocityData]).reshape((self.fourierVelocityData.shape[0],1))
 		
 		self.velocityData = np.hstack((self.fourierVelocityData, self.normedVelocityData))
@@ -380,7 +383,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = False):
+	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = True):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""

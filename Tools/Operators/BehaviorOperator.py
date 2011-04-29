@@ -55,6 +55,8 @@ class NewBehaviorOperator(BehaviorOperator):
 		self.pickledData = pickle.load(f)
 		f.close()
 		
+		print self.pickledData['parameterArray'][0]
+		
 		self.parameters = self.pickledData['parameterArray']
 		self.rawEventData = self.pickledData['eventArray']
 
