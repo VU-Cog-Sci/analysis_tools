@@ -261,12 +261,20 @@ class EyelinkOperator( EyeOperator ):
 		self.startTrialStrings = self.findOccurences(startRE)
 		self.stopTrialStrings = self.findOccurences(stopRE)
 		
-		self.nrTrials = len(self.stopTrialStrings)
+		if np.unique(np.array(self.startTrialStrings, dtype = np.float64)[:,1]).shape[0] == np.array(self.startTrialStrings, dtype = np.float64).shape[0]:
+			self.monotonic = True
+			
+		else:
+			self.monotonic = False
+			self.nrRunsInDataFile = np.array(self.startTrialStrings, dtype = np.float64).shape[0] / np.unique(np.array(self.startTrialStrings, dtype = np.float64)[:,1]).shape[0]
+			self.logger.info('This edf file contains multiple runs. Analyzing ' + str(self.nrRunsInDataFile) + ' runs.')
+		
 		self.trialStarts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.startTrialStrings])
 		self.trialEnds = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stopTrialStrings])
-		
+			
+		self.nrTrials = len(self.stopTrialStrings)
 		self.trials = np.hstack((self.trialStarts, self.trialEnds))
-		
+			
 		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
 	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
@@ -275,8 +283,14 @@ class EyelinkOperator( EyeOperator ):
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			phaseStrings = self.findOccurences(thisRE)
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
+		if self.monotonic == False:
+			nrPhases = len(phaseStarts[0])/self.nrRunsInDataFile
+			newPhases = []
+			for j in range(self.nrTrials / self.nrRunsInDataFile):
+				for i in range(self.nrRunsInDataFile):
+					newPhases.append( phaseStarts[j][i*nrPhases:(i+1)*nrPhases] )
+			phaseStarts = newPhases
 		self.phaseStarts = phaseStarts
-		# self.phaseStarts = np.array(phaseStarts)
 		# sometimes there are not an equal amount of phasestarts in a run.
 		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts]).min()
 		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts, 3)))
@@ -293,14 +307,23 @@ class EyelinkOperator( EyeOperator ):
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
 		parameters = []
 		# if there are no duplicates in the edf file
+		trialCounter = 0
 		for i in range(self.nrTrials):
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			parameterStrings = self.findOccurences(thisRE)
 			if len(parameterStrings) > 0:
-				# assuming all these parameters are numeric
-				thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
-				thisTrialParameters.update({'trial_nr' : float(i)})
-				parameters.append(thisTrialParameters)
+				if self.monotonic == False:
+					nrParameters = len(parameterStrings)/self.nrRunsInDataFile
+					for j in range(self.nrRunsInDataFile):
+						thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings[j*nrParameters:(j+1)*nrParameters]])
+						thisTrialParameters.update({'trial_nr' : float(trialCounter)})
+						parameters.append(thisTrialParameters)
+						trialCounter += 1
+				else:
+					# assuming all these parameters are numeric
+					thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
+					thisTrialParameters.update({'trial_nr' : float(i)})
+					parameters.append(thisTrialParameters)
 		
 		if len(parameters) > 0:		# there were parameters in the edf file
 			self.parameters = parameters
@@ -383,7 +406,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = True):
+	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = False):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""

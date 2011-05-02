@@ -115,9 +115,11 @@ class EyeLinkSession(object):
 		behavioral_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			behavioral_data.append(r.trial_parameters.read())
+			if 'run_' in r._v_name:
+				behavioral_data.append(r.trial_parameters.read())
 		self.behavioral_data = np.concatenate(behavioral_data)
 		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
+		h5f.close()
 	
 class TAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
@@ -138,6 +140,7 @@ class TAESession(EyeLinkSession):
 		self.psychometric_data = []
 		self.TAEs = []
 		self.pfs = []
+		self.confidence_ratings = []
 		
 	
 	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = ''):
@@ -164,7 +167,7 @@ class TAESession(EyeLinkSession):
 		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
 		
 		sub_plot.set_title(title, fontsize=9)
-		sub_plot.axis([plot_range[0], plot_range[0], -0.025, 1.025])
+		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 		
 		# archive these results in the object's list variables.
 		self.psychometric_data.append(fit_data)
@@ -189,12 +192,16 @@ class TAESession(EyeLinkSession):
 			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 1.75)
 			sub_plot.axis([plot_range[0], plot_range[1], mm[0], mm[1]])
 			
+		self.confidence_ratings.append(conf_grouped_mean)
+		
 		return sub_plot
 	
 	def run_conditions(self):
 		"""
 		run across conditions and adaptation durations
 		"""
+		self.conditions = []
+		
 		fig = pl.figure(figsize = (15,4))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
 		pl_nr = 1
@@ -220,5 +227,40 @@ class TAESession(EyeLinkSession):
 					sub_plot.set_ylabel('confidence', fontsize=9)
 				
 				pl_nr += 1
+				self.conditions.append([c, a])
 				
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf'))
+		
+		self.TAEs = np.array(self.TAEs).reshape(2,-1)
+		
+		# one big figure
+		fig = pl.figure(figsize = (6,3))
+		s = fig.add_subplot(111)
+		s.axhline(y=0.0, c = 'k', marker = '.', alpha = 0.55, linewidth = 0.5)
+		s.plot(self.adaptation_durations, self.TAEs[0], 'b--', linewidth = 1.75, alpha = 0.5)
+		s.scatter(self.adaptation_durations, self.TAEs[0], facecolor = (1.0,1.0,1.0), edgecolor = 'b', alpha = 1.0, linewidth = 1.75)
+		s.plot(self.adaptation_durations, self.TAEs[1], 'g--', linewidth = 1.75, alpha = 0.5)
+		s.scatter(self.adaptation_durations, self.TAEs[1], facecolor = (1.0,1.0,1.0), edgecolor = 'g', alpha = 1.0, linewidth = 1.75)
+		s.set_ylabel('TAE [deg]', fontsize = 9)
+		s.set_xlabel('Adapt duration [s]', fontsize = 9)
+		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary.pdf'))
+		
+		
+	def save_fit_results(self):
+		"""docstring for save_fit_results"""
+		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
+			self.run_conditions()
+		else:
+			h5f = openFile(self.hdf5_filename, mode = "a" )
+			if 'results' in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
+				h5f.removeNode(where = '/', name = 'results', recursive = True)
+				
+			resultsGroup = h5f.createGroup('/', 'results', 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5f.createArray(resultsGroup, 'psychometric_data', np.array(self.psychometric_data, dtype = np.float64),'Psychometric Data')
+			h5f.createArray(resultsGroup, 'TAEs', np.array(self.TAEs, dtype = np.float64), 'Tilt after-effects')
+			h5f.createArray(resultsGroup, 'confidence_ratings', np.array(self.confidence_ratings, dtype = np.float64), 'Confidence_ratings')
+			h5f.createArray(resultsGroup, 'conditions', np.array(self.conditions, dtype = np.float64), 'Conditions - Adaptation frequencies and Durations')
+			
+			h5f.close()
+			
