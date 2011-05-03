@@ -61,7 +61,7 @@ class EyeLinkSession(object):
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
 		self.logger.info('starting analysis of session ' + str(self.ID))
-		
+	
 	def create_folder_hierarchy(self):
 		"""docstring for createFolderHierarchy"""
 		# check for basic directory
@@ -70,7 +70,7 @@ class EyeLinkSession(object):
 				os.mkdir(os.path.join(self.base_directory, p))
 			except OSError:
 				pass
-		
+	
 	def import_raw_data(self, original_data_directory):
 		"""docstring for import_raw_data"""
 		os.chdir(original_data_directory)
@@ -89,7 +89,7 @@ class EyeLinkSession(object):
 		# what files are there to analyze?
 		edf_files = subprocess.Popen('ls ' + self.wildcard + '*.edf', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
 		msg_files = subprocess.Popen('ls ' + self.wildcard + '*.msg', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
-
+		
 		edf_files_no_ext = [f.split('.edf')[0] for f in edf_files]
 		msg_files_no_ext = [f.split('.msg')[0] for f in msg_files]
 		
@@ -125,7 +125,8 @@ class EyeLinkSession(object):
 		self.behavioral_data = np.concatenate(behavioral_data)
 		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
 		h5f.close()
-	
+
+
 class TAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
 		"""docstring for preprocess_behavioral_data"""
