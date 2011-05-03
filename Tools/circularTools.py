@@ -109,4 +109,16 @@ def cart2Circ(x, y):
 	elif y == 0 and x == 0:
 		phi = 0.0
 	return rho, phi
+
+def rotateCartesianPoints(points, angle, indegrees = False):
+	"""
+	rotates points (an X by 2 np.array) by angle as defined in radians.
+	if angle is defined in degrees, indegrees = True will correct.
+	"""
+	if indegrees:
+		angle = pi * (angle / 180.0)
+	m = np.matrix([[cos(angle),-sin(angle)],[sin(angle),cos(angle)]])
+	return np.array( np.matrix(points).T * m )
+	
+	
 	

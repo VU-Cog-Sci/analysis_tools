@@ -14,6 +14,9 @@ import scipy as sp
 import numpy as np
 import matplotlib.pylab as pl
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.transforms import Affine2D
+import mpl_toolkits.axisartist.floating_axes as floating_axes
+
 from pypsignifit import *
 from tables import *
 
@@ -29,6 +32,8 @@ from ..Operators.ImageOperator import *
 from ..Operators.BehaviorOperator import *
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
+from ..circularTools import *
+
 
 class EyeLinkSession(object):
 	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
@@ -136,11 +141,6 @@ class TAESession(EyeLinkSession):
 		self.test_orientation_indices = [self.behavioral_data['test_orientation'] == t for t in self.test_orientations]
 		self.rectified_test_orientation_indices = [self.rectified_test_orientations == t for t in self.test_orientations]
 		
-		# prepare some lists for further use
-		self.psychometric_data = []
-		self.TAEs = []
-		self.pfs = []
-		self.confidence_ratings = []
 		
 	
 	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = ''):
@@ -173,7 +173,7 @@ class TAESession(EyeLinkSession):
 		self.psychometric_data.append(fit_data)
 		self.TAEs.append(pf.estimate[0])
 		self.pfs.append(pf)
-		
+	
 	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
 		"""plots the confidence data in self.behavioral_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
 		rectified_confidence = [self.behavioral_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
@@ -200,6 +200,11 @@ class TAESession(EyeLinkSession):
 		"""
 		run across conditions and adaptation durations
 		"""
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.TAEs = []
+		self.pfs = []
+		self.confidence_ratings = []
 		self.conditions = []
 		
 		fig = pl.figure(figsize = (15,4))
@@ -229,9 +234,9 @@ class TAESession(EyeLinkSession):
 				pl_nr += 1
 				self.conditions.append([c, a])
 				
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves.pdf'))
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves_' + str(self.wildcard) + '.pdf'))
 		
-		self.TAEs = np.array(self.TAEs).reshape(2,-1)
+		self.TAEs = np.array(self.TAEs).reshape((self.adaptation_frequencies.shape[0],self.adaptation_durations.shape[0]))
 		
 		# one big figure
 		fig = pl.figure(figsize = (6,3))
@@ -244,9 +249,45 @@ class TAESession(EyeLinkSession):
 		s.set_ylabel('TAE [deg]', fontsize = 9)
 		s.set_xlabel('Adapt duration [s]', fontsize = 9)
 		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary.pdf'))
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '.pdf'))
 		
+		# correlate TAE values against minimum confidence points
+		self.confidence_ratings = np.array(self.confidence_ratings).reshape((self.adaptation_frequencies.shape[0],self.adaptation_durations.shape[0],-1))
+		# construct minimum confidence points
+		self.confidence_minima = np.zeros((self.adaptation_frequencies.shape[0],self.adaptation_durations.shape[0]))
+		fig = pl.figure(figsize = (5,5))
+		s = fig.add_subplot(111, aspect='equal')
+		s.plot(np.linspace(-1.0, 2.75,40), np.linspace(-1.0, 2.75, 40), 'k--', alpha = 0.95, linewidth = 1.75)
+		for i in range(self.adaptation_frequencies.shape[0]):
+			for j in range(self.adaptation_durations.shape[0]):
+				self.confidence_minima[i,j] = self.test_orientations[self.confidence_ratings[i,j] == np.min(self.confidence_ratings[i,j])].mean()
+				s.scatter(self.TAEs[i,j], self.confidence_minima[i,j], s = 20 + 20 * j, facecolor = (1.0,1.0,1.0), edgecolor = ['b','g'][i], alpha = 1.0 - (0.75 * j) / float(self.adaptation_durations.shape[0]), linewidth = 1.75)
+		s.axis([-1.0, 2.75, -1.0, 2.75])
+		s.set_xlabel('TAE [deg]', fontsize = 9)
+		s.set_ylabel('Conf Min [deg]', fontsize = 9)
+		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+		s.grid()
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_conf_corr_' + str(self.wildcard) + '.pdf'))
 		
+		# rotate and histogram for upper right corner
+		fig = pl.figure(figsize = (7,3.5))
+		tr = Affine2D().scale(3, 1).rotate_deg(-45)
+		grid_helper = floating_axes.GridHelperCurveLinear(tr, extremes=(-2, 2, 0, .7))
+		s = floating_axes.FloatingSubplot(fig, 111, grid_helper=grid_helper) 
+		# fig.add_subplot(s)
+		s = fig.add_subplot(111)
+		
+		grid_helper.grid_finder.grid_locator1._nbins = 4 
+		grid_helper.grid_finder.grid_locator2._nbins = 4
+		
+		# rotate those and make a histogram:
+		rotatedDistances = np.zeros((self.TAEs.shape[0], self.TAEs[0].ravel().shape[0], 2))
+		for i in range(self.adaptation_frequencies.shape[0]):
+			rotatedDistances[i] = rotateCartesianPoints(np.array([self.TAEs[i].ravel(),self.confidence_minima[i].ravel()]), -45.0, indegrees = True)
+			pl.hist(rotatedDistances[i][:,0], edgecolor = (1.0,1.0,1.0), facecolor = ['b','g'][i], label = ['fast','slow'][i], alpha = 0.5, range = [-sqrt(2),sqrt(2)], normed = True, rwidth = 0.5)
+		s.legend()
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_conf_corr_' + str(self.wildcard) + '_hist.pdf'))
+	
 	def save_fit_results(self):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
@@ -261,6 +302,20 @@ class TAESession(EyeLinkSession):
 			h5f.createArray(resultsGroup, 'TAEs', np.array(self.TAEs, dtype = np.float64), 'Tilt after-effects')
 			h5f.createArray(resultsGroup, 'confidence_ratings', np.array(self.confidence_ratings, dtype = np.float64), 'Confidence_ratings')
 			h5f.createArray(resultsGroup, 'conditions', np.array(self.conditions, dtype = np.float64), 'Conditions - Adaptation frequencies and Durations')
+			h5f.createArray(resultsGroup, 'confidence_minima', np.array(self.confidence_minima, dtype = np.float64), 'Confidence_rating minima')
 			
 			h5f.close()
-			
+	
+	def import_distilled_behavioral_data(self):
+		super(TAESession, self).import_behavioral_data()
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if 'results' == r._v_name:
+				self.psychometric_data = r.psychometric_data.read()
+				self.TAEs = r.TAEs.read()
+				self.confidence_ratings = r.confidence_ratings.read()
+				self.conditions = r.conditions.read()
+				if hasattr(r, 'confidence_minima'):
+					self.confidence_minima = r.confidence_minima.read()
+		self.logger.info('imported behavioral distilled results')
+		h5f.close()
