@@ -272,14 +272,7 @@ class TAESession(EyeLinkSession):
 		
 		# rotate and histogram for upper right corner
 		fig = pl.figure(figsize = (7,3.5))
-		tr = Affine2D().scale(3, 1).rotate_deg(-45)
-		grid_helper = floating_axes.GridHelperCurveLinear(tr, extremes=(-2, 2, 0, .7))
-		s = floating_axes.FloatingSubplot(fig, 111, grid_helper=grid_helper) 
-		# fig.add_subplot(s)
 		s = fig.add_subplot(111)
-		
-		grid_helper.grid_finder.grid_locator1._nbins = 4 
-		grid_helper.grid_finder.grid_locator2._nbins = 4
 		
 		# rotate those and make a histogram:
 		rotatedDistances = np.zeros((self.TAEs.shape[0], self.TAEs[0].ravel().shape[0], 2))
