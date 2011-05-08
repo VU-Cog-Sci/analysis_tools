@@ -83,7 +83,7 @@ class EyeLinkSession(object):
 			ExecCommandLine('cp ' + behavior_files[i] + ' ' + os.path.join(self.base_directory, 'raw', behavior_files[i]) )
 			ExecCommandLine('cp ' + eye_files[i] + ' ' + os.path.join(self.base_directory, 'raw', eye_files[i]) )
 	
-	def convert_edf(self):
+	def convert_edf(self, check_answers = True, compute_velocities = False):
 		"""docstring for convert_edf"""
 		os.chdir(os.path.join(self.base_directory, 'raw'))
 		# what files are there to analyze?
@@ -104,16 +104,12 @@ class EyeLinkSession(object):
 			eyelink_fos.append(elo)
 			
 			# make sure to throw out trials that do not have answers
-			elo.findAll()
-			for r in range(len(elo.parameters)):
-				if 'answer' not in elo.parameters[r].keys():
-					print 'no answer in run # ' + elo.gazeFile + ' trial # ' + str(r)
-					elo.parameters.pop(r)
+			elo.findAll(check_answers = check_answers)
 		
 		# enter the files into the hdf5 file in order
 		order = np.argsort(np.array([int(elo.timeStamp.strftime("%Y%m%d%H%M%S")) for elo in eyelink_fos]))
 		for i in order:
-			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i))
+			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i), compute_velocities = compute_velocities )
 			eyelink_fos[i].clean_data()
 	
 	def import_behavioral_data(self):
@@ -313,3 +309,22 @@ class TAESession(EyeLinkSession):
 					self.confidence_minima = r.confidence_minima.read()
 		self.logger.info('imported behavioral distilled results')
 		h5f.close()
+
+class SASession(EyeLinkSession):
+	"""Saccade adaptation session"""
+	def plot_velocity_per_trial_for_run(self, run = None):
+		"""create a single - file pdf plotting the normed velocity of the eye position in a given trial"""
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if 'run_'+str(run) == r._v_name:
+				gaze_data = r.gaze_data.read()
+				timing_data = r.trial_times.read()
+				smooth_velocity_data = r.smoothed_velocity_data.read()
+				break
+			
+		self.behavioral_data = np.concatenate(behavioral_data)
+		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
+		
+	
+	def find_saccade_per_trial(self):
+		pass
