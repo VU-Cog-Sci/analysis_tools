@@ -180,7 +180,7 @@ class EyelinkOperator( EyeOperator ):
 			self.gazeData = np.load(self.gazeFile)
 			self.gazeData = self.gazeData.astype(np.float32)
 	
-	def findAll(self):
+	def findAll(self, check_answers = True):
 		"""docstring for findAll"""
 		if not hasattr(self, 'msgData'):
 			self.loadData(get_gaze_data = False)
@@ -199,15 +199,16 @@ class EyelinkOperator( EyeOperator ):
 		logString += ' nrTrials, phases - ' + str(self.nrTrials) + ' ' + str(self.trialStarts.shape)
 		self.logger.info(logString)
 		
-		tobedeleted = []
-		for r in range(len(self.parameters)):
-			if 'answer' not in self.parameters[r].keys():
-				self.logger.info( 'no answer in run # ' + self.gazeFile + ' trial # ' + str(r) )
-				tobedeleted.append(r + len(tobedeleted))
-		for r in tobedeleted:
-			self.parameters.pop(r)
-			self.phaseStarts.pop(r)
-			self.trials = np.delete(self.trials, r)
+		if check_answers:
+			tobedeleted = []
+			for r in range(len(self.parameters)):
+				if 'answer' not in self.parameters[r].keys():
+					self.logger.info( 'no answer in run # ' + self.gazeFile + ' trial # ' + str(r) )
+					tobedeleted.append(r + len(tobedeleted))
+			for r in tobedeleted:
+				self.parameters.pop(r)
+				self.phaseStarts.pop(r)
+				self.trials = np.delete(self.trials, r)
 				
 	
 	def findOccurences(self, RE = ''):
@@ -316,13 +317,13 @@ class EyelinkOperator( EyeOperator ):
 					nrParameters = len(parameterStrings)/self.nrRunsInDataFile
 					for j in range(self.nrRunsInDataFile):
 						thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings[j*nrParameters:(j+1)*nrParameters]])
-						thisTrialParameters.update({'trial_nr' : float(trialCounter)})
+						thisTrialParameters.update({'trial_nr' : float(trialCounter), 'seen': 0.0})
 						parameters.append(thisTrialParameters)
 						trialCounter += 1
 				else:
 					# assuming all these parameters are numeric
 					thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
-					thisTrialParameters.update({'trial_nr' : float(i)})
+					thisTrialParameters.update({'trial_nr' : float(i), 'seen': 0.0})
 					parameters.append(thisTrialParameters)
 		
 		if len(parameters) > 0:		# there were parameters in the edf file
@@ -406,7 +407,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = False):
+	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = True):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
