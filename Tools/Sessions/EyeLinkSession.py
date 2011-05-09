@@ -112,36 +112,146 @@ class EyeLinkSession(object):
 			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i), compute_velocities = compute_velocities )
 			eyelink_fos[i].clean_data()
 	
-	def import_behavioral_data(self):
-		behavioral_data = []
+	def import_parameters(self):
+		parameter_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if 'run_' in r._v_name:
-				behavioral_data.append(r.trial_parameters.read())
-		self.behavioral_data = np.concatenate(behavioral_data)
-		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
+				parameter_data.append(r.trial_parameters.read())
+		self.parameter_data = np.concatenate(parameter_data)
+		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
+	
+	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity'):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if 'run_'+str(run_index) == r._v_name:
+				run = r
+				break
+		timings = run.trial_times.read()
+		gaze_timestamps = run.gaze_data.read()[:,0]
+		
+		# select data_type
+		if data_type == 'smoothed_velocity':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,-1]
+		elif data_type == 'smoothed_velocity_x':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0]
+		elif data_type == 'smoothed_velocity_y':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1]
+		elif data_type == 'velocity':
+			all_data_of_requested_type = run.velocity_data.read()[:,-1]
+		elif data_type == 'velocity_x':
+			all_data_of_requested_type = run.velocity_data.read()[:,0]
+		elif data_type == 'velocity_y':
+			all_data_of_requested_type = run.velocity_data.read()[:,1]
+		elif data_type == 'gaze_xy':
+			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]]
+		elif data_type == 'gaze_x':
+			all_data_of_requested_type = run.gaze_data.read()[:,1]
+		elif data_type == 'gaze_y':
+			all_data_of_requested_type = run.gaze_data.read()[:,2]
+		elif data_type == 'pupil_size':
+			all_data_of_requested_type = run.gaze_data.read()[:,3]
+		
+		# run for loop for actual data
+		export_data = []
+		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+			export_data.append([])
+			for t in timings[trial_range[0]:trial_range[1]]:
+				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+				which_samples = (gaze_timestamps >= phase_timestamps[trial_phase_range[0]]) * (gaze_timestamps <= phase_timestamps[trial_phase_range[1]])
+				export_data[-1].append(np.array([gaze_timestamps[which_samples], all_data_of_requested_type[which_samples]]))
+		
+		# clean-up
+		h5f.close()
+		return export_data
+	
+	def get_EL_events_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'saccades'):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if 'run_'+str(run_index) == r._v_name:
+				run = r
+				break
+		timings = run.trial_times.read()
+		
+		if data_type == 'saccades':
+			table = run.saccades_from_EL
+		elif data_type == 'fixations':
+			table = run.fixations_from_EL
+		elif data_type == 'blinks':
+			table = run.blinks_from_EL
+		
+		# run for loop for actual data
+		export_data = []
+		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+			export_data.append([])
+			for t in timings[trial_range[0]:trial_range[1]]:
+				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+				where_statement = '(start_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (start_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
+				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
+		
+		return export_data
+	
+	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None):
+		"""
+		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
+		L determines the threshold - standard set at 5 median-based standard deviations from the median
+		"""
+		if xy_velocity_data == None:
+			vel_data = np.zeros(xydata.shape)
+			vel_data[1:] = np.diff(xydata, axis = 0)
+		else:
+			vel_data = xy_velocity_data
+		
+		if not sample_times:
+			sample_times = np.arange(vel_data.shape[1])
+			
+		# median-based standard deviation
+		med = np.median(vel_data, axis = 0)
+		scaled_vel_data = vel_data/np.mean(np.sqrt(((vel_data - med)**2)), axis = 0)
+		
+		# when are we above the threshold, and when were the crossings
+		over_threshold = (np.array([np.norm(s) for s in scaled_vel_data]) > l)
+		# crossings come in pairs
+		threshold_crossings = np.concatenate([[over_threshold[0]],over_threshold[:-1]]) - over_threshold
+		threshold_crossing_indices = np.arange(threshold_crossings.shape[0])[threshold_crossings]
+		
+		saccades = np.zeros( (floor(threshold_crossing_times.shape[0]/2.0)) , dtype = dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')]) )
+		# construct saccades:
+		for i in range(0,threshold_crossing_times.shape[0],2):
+			j = i/2
+			saccade[j,'start_time'], saccade[j,'end_time'] = sample_times[threshold_crossing_indices[i]], sample_times[threshold_crossing_indices[i+1]]
+			saccade[j,'start_point'], saccade[j,'end_point']  = xy_data[:,threshold_crossing_indices[i]], xy_data[:,threshold_crossing_indices[i+1]]
+			saccade[j,'duration'] = saccade[j,'end_time'] - saccade[j,'start_time']
+			saccade[j,'vector'] = saccade[j,'end_point'] - saccade[j,'start_point']
+			saccade[j,'amplitude'] = np.linalg.norm(saccade[j,'vector'])
+			saccade[j,'direction'] = arctan(saccade[j,'vector'][0] / saccade[j,'vector'][1])
+			saccade[j,'peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+			
+		return saccades
+		
+		
 
 
 class TAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
 		"""docstring for preprocess_behavioral_data"""
 		# rectify answers and test orientations
-		self.rectified_answers = (1-self.behavioral_data['answer'] * np.sign(self.behavioral_data['adaptation_orientation'])) / 2.0
-		self.rectified_test_orientations = self.behavioral_data['test_orientation']*np.sign(self.behavioral_data['adaptation_orientation'])
+		self.rectified_answers = (1-self.parameter_data['answer'] * np.sign(self.parameter_data['adaptation_orientation'])) / 2.0
+		self.rectified_test_orientations = self.parameter_data['test_orientation']*np.sign(self.parameter_data['adaptation_orientation'])
 		
 		# get values that are unique for conditions and tests
-		self.adaptation_frequencies = np.unique(self.behavioral_data['phase_redraw_period'])
-		self.adaptation_durations = np.unique(self.behavioral_data['adaptation_duration'])
-		self.test_orientations = np.unique(self.behavioral_data['test_orientation'])
+		self.adaptation_frequencies = np.unique(self.parameter_data['phase_redraw_period'])
+		self.adaptation_durations = np.unique(self.parameter_data['adaptation_duration'])
+		self.test_orientations = np.unique(self.parameter_data['test_orientation'])
 		
-		self.test_orientation_indices = [self.behavioral_data['test_orientation'] == t for t in self.test_orientations]
+		self.test_orientation_indices = [self.parameter_data['test_orientation'] == t for t in self.test_orientations]
 		self.rectified_test_orientation_indices = [self.rectified_test_orientations == t for t in self.test_orientations]
 		
 		
 	
 	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = ''):
-		"""fits the data in self.behavioral_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
+		"""fits the data in self.parameter_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
 		rectified_answers = [self.rectified_answers[boolean_array * self.rectified_test_orientation_indices[i]] for i in range(self.test_orientations.shape[0])]
 		nr_ones, nr_samples = [r.sum() for r in rectified_answers], [r.shape[0] for r in rectified_answers]
 		fit_data = zip(self.test_orientations, nr_ones, nr_samples)
@@ -172,9 +282,9 @@ class TAESession(EyeLinkSession):
 		self.pfs.append(pf)
 	
 	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
-		"""plots the confidence data in self.behavioral_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
-		rectified_confidence = [self.behavioral_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
-		mm = [np.min(self.behavioral_data[:]['confidence']),np.max(self.behavioral_data[:]['confidence'])]
+		"""plots the confidence data in self.parameter_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
+		rectified_confidence = [self.parameter_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
+		mm = [np.min(self.parameter_data[:]['confidence']),np.max(self.parameter_data[:]['confidence'])]
 		sub_plot = sub_plot.twinx()
 		
 		if normalize_confidence:
@@ -209,10 +319,10 @@ class TAESession(EyeLinkSession):
 		pl_nr = 1
 		# across conditions
 		for c in self.adaptation_frequencies:
-			c_array = self.behavioral_data[:]['phase_redraw_period'] == c
+			c_array = self.parameter_data[:]['phase_redraw_period'] == c
 			# across adaptation durations:
 			for a in self.adaptation_durations:
-				a_array = self.behavioral_data[:]['adaptation_duration'] == a
+				a_array = self.parameter_data[:]['adaptation_duration'] == a
 				# combination of conditions and durations
 				this_condition_array = c_array * a_array
 				sub_plot = fig.add_subplot(self.adaptation_frequencies.shape[0], self.adaptation_durations.shape[0], pl_nr)
@@ -312,19 +422,54 @@ class TAESession(EyeLinkSession):
 
 class SASession(EyeLinkSession):
 	"""Saccade adaptation session"""
-	def plot_velocity_per_trial_for_run(self, run = None):
+	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,3], trial_ranges = [[25,150],[150,275]]):
 		"""create a single - file pdf plotting the normed velocity of the eye position in a given trial"""
-		h5f = openFile(self.hdf5_filename, mode = "r" )
-		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'run_'+str(run) == r._v_name:
-				gaze_data = r.gaze_data.read()
-				timing_data = r.trial_times.read()
-				smooth_velocity_data = r.smoothed_velocity_data.read()
-				break
+		
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
+		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
+		
+		durations = []
+		saccade_latencies = []
+		colors = ['b','g','r','c','m','y','k']
+		
+		fig = pl.figure(figsize = (15,6))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		
+		s = fig.add_subplot(211)
+		for (i, trial_block_vel_data, trial_block_sacc_data) in zip(range(len(vel_data)), vel_data, sacc_data):
+			durations.append([])
+			saccade_latencies.append([])
+			for (j, trial_vel_data, trial_sacc_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data):
+				s.plot( trial_vel_data[0] - trial_vel_data[0,0], trial_vel_data[1], c = colors[i], linewidth = 1.5, alpha = 0.25 )
+				# take eyelink's saccade start times in this trial
+				if len(trial_sacc_data) > 0:
+					sacc_timestamps = np.array([sacc['start_timestamp'] for sacc in trial_sacc_data])
+					saccade_latencies[-1].append( sacc_timestamps - trial_vel_data[0,0])
+				durations[-1].append(trial_vel_data[0,-1] - trial_vel_data[0,0])
+				
+		s = fig.add_subplot(212)
+		for i in range(len(vel_data)):
+			pl.hist(np.array(durations[i]), range = [0,np.concatenate(durations).max()], bins = 90, alpha = 0.5, normed = True, histtype = 'stepfilled', color = colors[i] )
+		for i in range(len(vel_data)):
+			pl.hist(np.concatenate(saccade_latencies[i]), range = [0,np.concatenate(durations).max()], bins = 90, alpha = 0.5, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
 			
-		self.behavioral_data = np.concatenate(behavioral_data)
-		self.logger.info('imported behavioral data from ' + str(self.behavioral_data.shape[0]) + ' trials')
+#		s = fig.add_subplot(313)
+#		for (j, trial_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data):
+#			s.plot( trial_data[0] - trial_data[0][0], trial_data[1][::-1], c = colors[i], linewidth = 1.5, alpha = 0.25 )
+			
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'trial_' + 'smoothed_velocity' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 	
-	def find_saccade_per_trial(self):
-		pass
+	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,3], trial_ranges = [[25,150],[150,275]]):
+		"""
+		
+		"""
+		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy')
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
+		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
+		
+		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, sacc_data, gaze_data):
+			for (j, trial_vel_data, trial_sacc_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_gaze_data):
+				
+		
+		
