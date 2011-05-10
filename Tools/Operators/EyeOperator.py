@@ -392,18 +392,17 @@ class EyelinkOperator( EyeOperator ):
 		diff_data_fft = self.fourierData.T * diff_kernel_fft
 		smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft
 		
-#		self.velocityData = self.sampleFrequency * np.diff(self.gazeData[:,1:], axis = 0) / self.pixelsPerDegree
 		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
 		self.normedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierVelocityData]).reshape((self.fourierVelocityData.shape[0],1))
 		
 		self.velocityData = np.hstack((self.fourierVelocityData, self.normedVelocityData))
 		self.logger.info('velocity calculation of data finished')
 		
-		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
 		self.normedSmoothedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierSmoothedVelocityData]).reshape((self.fourierSmoothedVelocityData.shape[0],1))
 		
 		self.smoothedVelocityData = np.hstack((self.fourierSmoothedVelocityData, self.normedSmoothedVelocityData))
-		self.smoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
+		self.smoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	

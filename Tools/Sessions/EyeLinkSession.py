@@ -138,6 +138,8 @@ class EyeLinkSession(object):
 			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0]
 		elif data_type == 'smoothed_velocity_y':
 			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1]
+		elif data_type == 'smoothed_velocity_xy':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]]
 		elif data_type == 'velocity':
 			all_data_of_requested_type = run.velocity_data.read()[:,-1]
 		elif data_type == 'velocity_x':
@@ -150,6 +152,12 @@ class EyeLinkSession(object):
 			all_data_of_requested_type = run.gaze_data.read()[:,1]
 		elif data_type == 'gaze_y':
 			all_data_of_requested_type = run.gaze_data.read()[:,2]
+		elif data_type == 'smoothed_gaze_xy':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,[0,1]]
+		elif data_type == 'smoothed_gaze_x':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,0]
+		elif data_type == 'smoothed_gaze_y':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1]
 		elif data_type == 'pupil_size':
 			all_data_of_requested_type = run.gaze_data.read()[:,3]
 		
@@ -160,8 +168,7 @@ class EyeLinkSession(object):
 			for t in timings[trial_range[0]:trial_range[1]]:
 				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
 				which_samples = (gaze_timestamps >= phase_timestamps[trial_phase_range[0]]) * (gaze_timestamps <= phase_timestamps[trial_phase_range[1]])
-				export_data[-1].append(np.array([gaze_timestamps[which_samples], all_data_of_requested_type[which_samples]]))
-		
+				export_data[-1].append(np.vstack((gaze_timestamps[which_samples].T, all_data_of_requested_type[which_samples].T)).T)
 		# clean-up
 		h5f.close()
 		return export_data
@@ -189,7 +196,7 @@ class EyeLinkSession(object):
 				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
 				where_statement = '(start_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (start_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
 				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
-		
+		h5f.close()
 		return export_data
 	
 	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None):
@@ -203,7 +210,7 @@ class EyeLinkSession(object):
 		else:
 			vel_data = xy_velocity_data
 		
-		if not sample_times:
+		if sample_times == None:
 			sample_times = np.arange(vel_data.shape[1])
 			
 		# median-based standard deviation
@@ -211,22 +218,25 @@ class EyeLinkSession(object):
 		scaled_vel_data = vel_data/np.mean(np.sqrt(((vel_data - med)**2)), axis = 0)
 		
 		# when are we above the threshold, and when were the crossings
-		over_threshold = (np.array([np.norm(s) for s in scaled_vel_data]) > l)
+		over_threshold = (np.array([np.linalg.norm(s) for s in scaled_vel_data]) > l)
 		# crossings come in pairs
 		threshold_crossings = np.concatenate([[over_threshold[0]],over_threshold[:-1]]) - over_threshold
 		threshold_crossing_indices = np.arange(threshold_crossings.shape[0])[threshold_crossings]
 		
-		saccades = np.zeros( (floor(threshold_crossing_times.shape[0]/2.0)) , dtype = dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')]) )
+		saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')]) )
+		
 		# construct saccades:
-		for i in range(0,threshold_crossing_times.shape[0],2):
+		for i in range(0,sample_times[threshold_crossing_indices].shape[0]-1,2):
 			j = i/2
-			saccade[j,'start_time'], saccade[j,'end_time'] = sample_times[threshold_crossing_indices[i]], sample_times[threshold_crossing_indices[i+1]]
-			saccade[j,'start_point'], saccade[j,'end_point']  = xy_data[:,threshold_crossing_indices[i]], xy_data[:,threshold_crossing_indices[i+1]]
-			saccade[j,'duration'] = saccade[j,'end_time'] - saccade[j,'start_time']
-			saccade[j,'vector'] = saccade[j,'end_point'] - saccade[j,'start_point']
-			saccade[j,'amplitude'] = np.linalg.norm(saccade[j,'vector'])
-			saccade[j,'direction'] = arctan(saccade[j,'vector'][0] / saccade[j,'vector'][1])
-			saccade[j,'peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+			saccades[j]['start_time'] = sample_times[threshold_crossing_indices[i]] - sample_times[0]
+			saccades[j]['end_time'] = sample_times[threshold_crossing_indices[i+1]] - sample_times[0]
+			saccades[j]['start_point'][:] = xy_data[threshold_crossing_indices[i],:]
+			saccades[j]['end_point'][:] = xy_data[threshold_crossing_indices[i+1],:]
+			saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
+			saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
+			saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
+			saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / saccades[j]['vector'][1])
+			saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
 			
 		return saccades
 		
@@ -440,12 +450,12 @@ class SASession(EyeLinkSession):
 			durations.append([])
 			saccade_latencies.append([])
 			for (j, trial_vel_data, trial_sacc_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data):
-				s.plot( trial_vel_data[0] - trial_vel_data[0,0], trial_vel_data[1], c = colors[i], linewidth = 1.5, alpha = 0.25 )
+				s.plot( trial_vel_data[:,0] - trial_vel_data[0,0], trial_vel_data[:,1], c = colors[i], linewidth = 1.5, alpha = 0.25 )
 				# take eyelink's saccade start times in this trial
 				if len(trial_sacc_data) > 0:
 					sacc_timestamps = np.array([sacc['start_timestamp'] for sacc in trial_sacc_data])
 					saccade_latencies[-1].append( sacc_timestamps - trial_vel_data[0,0])
-				durations[-1].append(trial_vel_data[0,-1] - trial_vel_data[0,0])
+				durations[-1].append(trial_vel_data[-1,0] - trial_vel_data[0,0])
 				
 		s = fig.add_subplot(212)
 		for i in range(len(vel_data)):
@@ -453,23 +463,20 @@ class SASession(EyeLinkSession):
 		for i in range(len(vel_data)):
 			pl.hist(np.concatenate(saccade_latencies[i]), range = [0,np.concatenate(durations).max()], bins = 90, alpha = 0.5, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
 			
-#		s = fig.add_subplot(313)
-#		for (j, trial_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data):
-#			s.plot( trial_data[0] - trial_data[0][0], trial_data[1][::-1], c = colors[i], linewidth = 1.5, alpha = 0.25 )
-			
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'trial_' + 'smoothed_velocity' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 	
-	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,3], trial_ranges = [[25,150],[150,275]]):
+	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,150],[150,275]]):
 		"""
-		
+		finds saccades in a session 
 		"""
-		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy')
-		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
+		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_gaze_xy')
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity_xy')
 		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
 		
+		saccades = []
 		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, sacc_data, gaze_data):
-			for (j, trial_vel_data, trial_sacc_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_gaze_data):
-				
-		
-		
+			saccades.append([])
+			for (j, trial_vel_data, trial_sacc_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data):
+				saccades[-1].append(self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0]))
+		return saccades
