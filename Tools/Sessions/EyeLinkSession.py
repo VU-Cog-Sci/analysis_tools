@@ -111,7 +111,7 @@ class EyeLinkSession(object):
 		# enter the files into the hdf5 file in order
 		order = np.argsort(np.array([int(elo.timeStamp.strftime("%Y%m%d%H%M%S")) for elo in eyelink_fos]))
 		for i in order:
-			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = 'run_' + str(i), compute_velocities = compute_velocities )
+			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = self.wildcard + '_run_' + str(i), compute_velocities = compute_velocities )
 			eyelink_fos[i].clean_data()
 	
 	def import_parameters(self):
@@ -419,7 +419,7 @@ class TAESession(EyeLinkSession):
 			h5f.close()
 	
 	def import_distilled_behavioral_data(self):
-		super(TAESession, self).import_behavioral_data()
+		super(TAESession, self).import_parameters()
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if 'results' == r._v_name:
