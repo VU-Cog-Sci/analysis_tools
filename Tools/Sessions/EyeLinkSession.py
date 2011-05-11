@@ -114,7 +114,7 @@ class EyeLinkSession(object):
 			eyelink_fos[i].processIntoTable(self.hdf5_filename, name = self.wildcard + '_run_' + str(i), compute_velocities = compute_velocities )
 			eyelink_fos[i].clean_data()
 	
-	def import_parameters(self):
+	def import_parameters(self, run_name = 'run_'):
 		parameter_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
@@ -242,7 +242,7 @@ class EyeLinkSession(object):
 			
 		return saccades
 		
-		
+	
 
 
 class TAESession(EyeLinkSession):
