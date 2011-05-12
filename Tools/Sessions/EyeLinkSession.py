@@ -400,6 +400,54 @@ class TAESession(EyeLinkSession):
 		s.legend()
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_conf_corr_' + str(self.wildcard) + '_hist.pdf'))
 	
+	def run_conditions_joined(self):
+		"""
+		run across conditions and adaptation durations
+		"""
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.TAEs = []
+		self.pfs = []
+		self.confidence_ratings = []
+		self.conditions = []
+		
+		fig = pl.figure(figsize = (15,3))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		pl_nr = 1
+		# across adaptation durations:
+		for a in self.adaptation_durations:
+			a_array = self.parameter_data[:]['adaptation_duration'] == a
+			# combination of conditions and durations
+			this_condition_array = a_array
+			sub_plot = fig.add_subplot(1, self.adaptation_durations.shape[0], pl_nr)
+			self.fit_condition(this_condition_array, sub_plot, 'adapt duration ' + str(a) )
+			sub_plot.set_xlabel('orientation [deg]', fontsize=9)
+			if a == self.adaptation_durations[0]:
+				sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
+				sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
+					
+			sub_plot = self.plot_confidence(this_condition_array, sub_plot)
+			if a == self.adaptation_durations[-1]:
+				sub_plot.set_ylabel('confidence', fontsize=9)
+				
+			pl_nr += 1
+			self.conditions.append(a)
+			
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves_' + str(self.wildcard) + '_joined.pdf'))
+		
+		self.TAEs = np.array(self.TAEs).reshape((self.adaptation_durations.shape[0]))
+		
+		# one big figure
+		fig = pl.figure(figsize = (6,3))
+		s = fig.add_subplot(111)
+		s.axhline(y=0.0, c = 'k', marker = '.', alpha = 0.55, linewidth = 0.5)
+		s.plot(self.adaptation_durations, self.TAEs, 'r--', linewidth = 1.75, alpha = 0.5)
+		s.scatter(self.adaptation_durations, self.TAEs, facecolor = (1.0,1.0,1.0), edgecolor = 'r', alpha = 1.0, linewidth = 1.75)
+		s.set_ylabel('TAE [deg]', fontsize = 9)
+		s.set_xlabel('Adapt duration [s]', fontsize = 9)
+		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
+	
 	def save_fit_results(self):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
@@ -500,3 +548,4 @@ class SASession(EyeLinkSession):
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
 		return saccades
+	
