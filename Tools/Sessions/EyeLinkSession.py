@@ -85,7 +85,7 @@ class EyeLinkSession(object):
 			ExecCommandLine('cp ' + behavior_files[i] + ' ' + os.path.join(self.base_directory, 'raw', behavior_files[i]) )
 			ExecCommandLine('cp ' + eye_files[i] + ' ' + os.path.join(self.base_directory, 'raw', eye_files[i]) )
 	
-	def convert_edf(self, check_answers = True, compute_velocities = False):
+	def convert_edf(self, check_answers = True, compute_velocities = True):
 		"""docstring for convert_edf"""
 		os.chdir(os.path.join(self.base_directory, 'raw'))
 		# what files are there to analyze?
@@ -118,7 +118,7 @@ class EyeLinkSession(object):
 		parameter_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'run_' in r._v_name:
+			if run_name == r._v_name:
 				parameter_data.append(r.trial_parameters.read())
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
@@ -454,23 +454,23 @@ class TAESession(EyeLinkSession):
 			self.run_conditions()
 		else:
 			h5f = openFile(self.hdf5_filename, mode = "a" )
-			if 'results' in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
-				h5f.removeNode(where = '/', name = 'results', recursive = True)
+			if 'results_' + str(self.wildcard) in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
+				h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard), recursive = True)
 				
-			resultsGroup = h5f.createGroup('/', 'results', 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			h5f.createArray(resultsGroup, 'psychometric_data', np.array(self.psychometric_data, dtype = np.float64),'Psychometric Data')
-			h5f.createArray(resultsGroup, 'TAEs', np.array(self.TAEs, dtype = np.float64), 'Tilt after-effects')
-			h5f.createArray(resultsGroup, 'confidence_ratings', np.array(self.confidence_ratings, dtype = np.float64), 'Confidence_ratings')
-			h5f.createArray(resultsGroup, 'conditions', np.array(self.conditions, dtype = np.float64), 'Conditions - Adaptation frequencies and Durations')
-			h5f.createArray(resultsGroup, 'confidence_minima', np.array(self.confidence_minima, dtype = np.float64), 'Confidence_rating minima')
+			resultsGroup = h5f.createGroup('/', 'results_' + str(self.wildcard), 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			if hasattr(self, 'psychometric_data'): h5f.createArray(resultsGroup, 'psychometric_data', np.array(self.psychometric_data, dtype = np.float64),'Psychometric Data')
+			if hasattr(self, 'TAEs'): h5f.createArray(resultsGroup, 'TAEs', np.array(self.TAEs, dtype = np.float64), 'Tilt after-effects')
+			if hasattr(self, 'confidence_ratings'): h5f.createArray(resultsGroup, 'confidence_ratings', np.array(self.confidence_ratings, dtype = np.float64), 'Confidence_ratings')
+			if hasattr(self, 'conditions'): h5f.createArray(resultsGroup, 'conditions', np.array(self.conditions, dtype = np.float64), 'Conditions - Adaptation frequencies and Durations')
+			if hasattr(self, 'confidence_minima'): h5f.createArray(resultsGroup, 'confidence_minima', np.array(self.confidence_minima, dtype = np.float64), 'Confidence_rating minima')
 			
 			h5f.close()
 	
-	def import_distilled_behavioral_data(self):
-		super(TAESession, self).import_parameters()
+	def import_distilled_behavioral_data(self, run_name = 'run_'):
+		super(TAESession, self).import_parameters( run_name = run_name )
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'results' == r._v_name:
+			if 'results_' + str(self.wildcard) == r._v_name:
 				self.psychometric_data = r.psychometric_data.read()
 				self.TAEs = r.TAEs.read()
 				self.confidence_ratings = r.confidence_ratings.read()
