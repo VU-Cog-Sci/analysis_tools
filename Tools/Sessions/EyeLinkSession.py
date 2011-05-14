@@ -118,7 +118,7 @@ class EyeLinkSession(object):
 		parameter_data = []
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if run_name == r._v_name:
+			if run_name in r._v_name:
 				parameter_data.append(r.trial_parameters.read())
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
@@ -466,11 +466,13 @@ class TAESession(EyeLinkSession):
 			
 			h5f.close()
 	
-	def import_distilled_behavioral_data(self, run_name = 'run_'):
+	def import_distilled_behavioral_data(self, run_name = 'run_', results_name = None):
 		super(TAESession, self).import_parameters( run_name = run_name )
 		h5f = openFile(self.hdf5_filename, mode = "r" )
+		if results_name == None:
+			results_name = 'results_' + self.wildcard
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'results_' + str(self.wildcard) == r._v_name:
+			if results_name == r._v_name:
 				self.psychometric_data = r.psychometric_data.read()
 				self.TAEs = r.TAEs.read()
 				self.confidence_ratings = r.confidence_ratings.read()
