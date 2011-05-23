@@ -180,10 +180,13 @@ class EyeLinkSession(object):
 	
 	def get_EL_events_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'saccades'):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
+		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'run_'+str(run_index) == r._v_name:
+			if self.wildcard + '_run_' + str(run_index) == r._v_name:
 				run = r
 				break
+		if run == None:
+			self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
 		timings = run.trial_times.read()
 		
 		if data_type == 'saccades':
