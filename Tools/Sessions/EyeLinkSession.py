@@ -448,16 +448,16 @@ class TAESession(EyeLinkSession):
 		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
 	
-	def save_fit_results(self):
+	def save_fit_results(self, suffix = ''):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
 			self.run_conditions()
 		else:
 			h5f = openFile(self.hdf5_filename, mode = "a" )
-			if 'results_' + str(self.wildcard) in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
-				h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard), recursive = True)
+			if 'results_' + str(self.wildcard) + suffix in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
+				h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard) + suffix, recursive = True)
 				
-			resultsGroup = h5f.createGroup('/', 'results_' + str(self.wildcard), 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			resultsGroup = h5f.createGroup('/', 'results_' + str(self.wildcard) + suffix, 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			if hasattr(self, 'psychometric_data'): h5f.createArray(resultsGroup, 'psychometric_data', np.array(self.psychometric_data, dtype = np.float64),'Psychometric Data')
 			if hasattr(self, 'TAEs'): h5f.createArray(resultsGroup, 'TAEs', np.array(self.TAEs, dtype = np.float64), 'Tilt after-effects')
 			if hasattr(self, 'confidence_ratings'): h5f.createArray(resultsGroup, 'confidence_ratings', np.array(self.confidence_ratings, dtype = np.float64), 'Confidence_ratings')
@@ -466,13 +466,13 @@ class TAESession(EyeLinkSession):
 			
 			h5f.close()
 	
-	def import_distilled_behavioral_data(self, run_name = 'run_', results_name = None):
+	def import_distilled_behavioral_data(self, run_name = 'run_', results_name = ''):
 		super(TAESession, self).import_parameters( run_name = run_name )
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		if results_name == None:
 			results_name = 'results_' + self.wildcard
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if results_name == r._v_name:
+			if 'results_' + str(self.wildcard) + results_suffix == r._v_name:
 				self.psychometric_data = r.psychometric_data.read()
 				self.TAEs = r.TAEs.read()
 				self.confidence_ratings = r.confidence_ratings.read()
