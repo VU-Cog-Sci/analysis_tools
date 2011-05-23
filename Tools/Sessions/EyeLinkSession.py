@@ -126,10 +126,13 @@ class EyeLinkSession(object):
 	
 	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity'):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
+		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'run_'+str(run_index) == r._v_name:
+			if self.wildcard + '_run_' + str(run_index) == r._v_name:
 				run = r
 				break
+		if run == None:
+			self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
 		timings = run.trial_times.read()
 		gaze_timestamps = run.gaze_data.read()[:,0]
 		
@@ -472,7 +475,7 @@ class TAESession(EyeLinkSession):
 		if results_name == None:
 			results_name = 'results_' + self.wildcard
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if 'results_' + str(self.wildcard) + results_suffix == r._v_name:
+			if 'results_' + str(self.wildcard) + results_name == r._v_name:
 				self.psychometric_data = r.psychometric_data.read()
 				self.TAEs = r.TAEs.read()
 				self.confidence_ratings = r.confidence_ratings.read()
