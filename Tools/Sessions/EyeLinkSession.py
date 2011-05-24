@@ -321,7 +321,7 @@ class TAESession(EyeLinkSession):
 		
 		return sub_plot
 	
-	def run_conditions(self):
+	def run_temporal_conditions(self):
 		"""
 		run across conditions and adaptation durations
 		"""
@@ -406,7 +406,7 @@ class TAESession(EyeLinkSession):
 		s.legend()
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_conf_corr_' + str(self.wildcard) + '_hist.pdf'))
 	
-	def run_conditions_joined(self):
+	def run_temporal_conditions_joined(self):
 		"""
 		run across conditions and adaptation durations
 		"""
@@ -454,6 +454,52 @@ class TAESession(EyeLinkSession):
 		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
 	
+	def run_orientation_noise_conditions(self):
+		self.noise_widths = np.unique(self.parameter_data[:]['adaptation_orientation_standard_deviation'])
+		
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.TAEs = []
+		self.pfs = []
+		self.confidence_ratings = []
+		self.conditions = []
+		
+		fig = pl.figure(figsize = (15,3))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		pl_nr = 1
+		# across adaptation durations:
+		for nw in self.noise_widths:
+			a_array = self.parameter_data[:]['adaptation_orientation_standard_deviation'] == nw
+			this_condition_array = a_array
+			sub_plot = fig.add_subplot(1, self.noise_widths.shape[0], pl_nr)
+			self.fit_condition(this_condition_array, sub_plot, 'adapt spread ' + str(a) )
+			sub_plot.set_xlabel('orientation [deg]', fontsize=9)
+			if nw == self.noise_widths[0]:
+				sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
+				sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
+					
+			sub_plot = self.plot_confidence(this_condition_array, sub_plot)
+			if nw == self.noise_widths[-1]:
+				sub_plot.set_ylabel('confidence', fontsize=9)
+				
+			pl_nr += 1
+			self.conditions.append(nw)
+			
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves_' + str(self.wildcard) + '_joined.pdf'))
+		
+		self.TAEs = np.array(self.TAEs).reshape((self.noise_widths.shape[0]))
+		
+		# one big figure
+		fig = pl.figure(figsize = (6,3))
+		s = fig.add_subplot(111)
+		s.axhline(y=0.0, c = 'k', marker = '.', alpha = 0.55, linewidth = 0.5)
+		s.plot(self.noise_widths, self.TAEs, 'r--', linewidth = 1.75, alpha = 0.5)
+		s.scatter(self.noise_widths, self.TAEs, facecolor = (1.0,1.0,1.0), edgecolor = 'r', alpha = 1.0, linewidth = 1.75)
+		s.set_ylabel('TAE [deg]', fontsize = 9)
+		s.set_xlabel('Adapt spread [$\sigma$ in deg]', fontsize = 9)
+		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
+	
 	def save_fit_results(self, suffix = ''):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
@@ -487,10 +533,88 @@ class TAESession(EyeLinkSession):
 					self.confidence_minima = r.confidence_minima.read()
 		self.logger.info('imported behavioral distilled results')
 		h5f.close()
+	
+
+class TEAESession(EyeLinkSession):
+	"""TEAESession analyzes the results of TEAE experiments"""
+	def preprocess_behavioral_data(self):
+		"""docstring for preprocess_behavioral_data"""
+		# compute the relevant test contrasts
+		self.test_contrasts = self.parameter_data[:]['first_test_contrast'] + self.parameter_data[:]['last_test_contrast']
+	
+	def run_training_analysis(self, run_nr = 0):
+		# the training runs are called '3'
+		self.import_parameters( run_name = s.initials + '_' + str(3) + '_run_' + str(run_nr) )
+		self.preprocess_behavioral_data()
+		
+		self.psychometric_data = []
+		self.TEAEs = []
+		self.pfs = []
+		
+		fig = pl.figure(figsize = (11,3))
+		s = fig.add_subplot(1,1,1)
+		self.fit_condition(boolean_array = np.ones(self.parameter_data, dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
+		
+	
+	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-2.8,-1.5], x_label = '', y_label = ''):
+		"""fits the data in self.parameter_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
+		
+		# psychometric curve settings
+		# gumbel_l makes the fit a weibull given that the x-data are log-transformed
+		# logistic and gauss (core = ab) deliver similar results
+		nafc = 2
+		sig = 'gumbel_l'	
+		core = 'ab'
+		
+		tested_contrasts = np.unique(self.test_contrasts[boolean_array])
+		tested_contrast_indices = [self.test_contrasts == tc for tc in tested_contrasts]
+		
+		corrects = [self.parameter_data[[boolean_array * tested_contrast_indices[i]]]['correct'] for i in range(tested_contrast_indices.shape[0])]
+		nr_ones, nr_samples = [r.sum() for r in corrects], [r.shape[0] for r in corrects]
+		fit_data = zip(tested_contrasts, nr_ones, nr_samples)
+		
+		# and we fit the data
+		pf = BootstrapInference(fit_data, sigmoid = sig, nafc = nafc, core = core, priors = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' ))
+		# and let the package do a bootstrap sampling of the resulting fits
+		pf.sample()
+		pfs.append(pf)
+		
+		# scatter plot of the actual data points
+		sub_plot.scatter(tested_contrasts, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25, s = nr_samples)
+		
+		# line plot of the fitted curve
+		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
+		
+		# TEAE value as a red line in the plot
+		sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
+		# and the boundaries of the confidence interval on this point
+		sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
+		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
+		
+		sub_plot.set_title(title, fontsize=9)
+		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
+		
+		# archive these results in the object's list variables.
+		self.psychometric_data.append(fit_data)
+		self.TEAEs.append(pf.estimate[0])
+		self.pfs.append(pf)		
+	
+	def plot_staircases_for_condition(self, boolean_array, sub_plot, color = 'b', plot_range = [-2.8,-1.5]):
+		staircases_in_this_condition = np.unique(self.parameter_data[boolean_array]['staircase'])
+		staircase_indices = [self.parameter_data[:]['staircase'] == st for st in staircases_in_this_condition]
+		
+		sub_plot = sub_plot.twinx()
+		
+		for i in range(len(staircase_indices)):
+			sub_plot.plot(self.test_contrasts[staircase_indices * boolean_array], c = 'b', linewidth = 1.75, alpha = 0.5, linestyle = '--')
+		sub_plot.axis([0, self.test_contrasts[staircase_indices * boolean_array].shape[0]+1, plot_range[0], plot_range[1]])
+		
+		return sub_plot
 
 class SASession(EyeLinkSession):
 	"""Saccade adaptation session"""
-	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,150],[150,275]], nr_plot_points = 1000):
+	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
 		"""create a single - file pdf plotting the normed velocity of the eye position in a given trial"""
 		
 		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
@@ -518,6 +642,7 @@ class SASession(EyeLinkSession):
 					saccade_latencies[-1].append( sacc_timestamps - trial_vel_data[0,0])
 				durations[-1].append(trial_vel_data[-1,0] - trial_vel_data[0,0] - 500)
 		
+		# find our own saccades
 		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
 		s = fig.add_subplot(312)
 		bin_range = [0,trial_vel_data[max_index,0]-trial_vel_data[0,0]]
@@ -538,7 +663,7 @@ class SASession(EyeLinkSession):
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'trial_' + 'smoothed_velocity' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 	
-	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,150],[150,275]]):
+	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]]):
 		"""
 		finds saccades in a session 
 		"""
