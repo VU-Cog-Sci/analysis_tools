@@ -540,11 +540,12 @@ class TEAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
 		"""docstring for preprocess_behavioral_data"""
 		# compute the relevant test contrasts
-		self.test_contrasts = self.parameter_data[:]['first_test_contrast'] + self.parameter_data[:]['last_test_contrast']
+		self.test_contrasts = np.log10(self.parameter_data[:]['first_test_contrast'] + self.parameter_data[:]['last_test_contrast'])
 	
 	def run_training_analysis(self, run_nr = 0):
+		self.logger.debug('starting training analysis for run ' + str(run_nr))
 		# the training runs are called '3'
-		self.import_parameters( run_name = s.initials + '_' + str(3) + '_run_' + str(run_nr) )
+		self.import_parameters( run_name = self.subject.initials + '_' + str(3) + '_run_' + str(run_nr) )
 		self.preprocess_behavioral_data()
 		
 		self.psychometric_data = []
@@ -553,7 +554,7 @@ class TEAESession(EyeLinkSession):
 		
 		fig = pl.figure(figsize = (11,3))
 		s = fig.add_subplot(1,1,1)
-		self.fit_condition(boolean_array = np.ones(self.parameter_data, dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
+		self.fit_condition(boolean_array = np.ones((len(self.parameter_data)), dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
 		
 	
@@ -570,7 +571,7 @@ class TEAESession(EyeLinkSession):
 		tested_contrasts = np.unique(self.test_contrasts[boolean_array])
 		tested_contrast_indices = [self.test_contrasts == tc for tc in tested_contrasts]
 		
-		corrects = [self.parameter_data[[boolean_array * tested_contrast_indices[i]]]['correct'] for i in range(tested_contrast_indices.shape[0])]
+		corrects = [self.parameter_data[boolean_array * tested_contrast_indices[i]]['correct'] for i in range(len(tested_contrast_indices))]
 		nr_ones, nr_samples = [r.sum() for r in corrects], [r.shape[0] for r in corrects]
 		fit_data = zip(tested_contrasts, nr_ones, nr_samples)
 		
@@ -578,13 +579,14 @@ class TEAESession(EyeLinkSession):
 		pf = BootstrapInference(fit_data, sigmoid = sig, nafc = nafc, core = core, priors = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' ))
 		# and let the package do a bootstrap sampling of the resulting fits
 		pf.sample()
-		pfs.append(pf)
 		
 		# scatter plot of the actual data points
 		sub_plot.scatter(tested_contrasts, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25, s = nr_samples)
 		
 		# line plot of the fitted curve
 		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
+		# line plot of chance
+		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), np.ones((500)) * 0.5, 'y--', linewidth = 0.75, alpha = 0.5)
 		
 		# TEAE value as a red line in the plot
 		sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
@@ -593,7 +595,7 @@ class TEAESession(EyeLinkSession):
 		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
 		
 		sub_plot.set_title(title, fontsize=9)
-		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
+		sub_plot.axis([plot_range[0], plot_range[1], 0.425, 1.025])
 		
 		# archive these results in the object's list variables.
 		self.psychometric_data.append(fit_data)
