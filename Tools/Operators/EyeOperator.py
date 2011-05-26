@@ -256,7 +256,8 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.saccadesTypeDictionary = np.dtype([(s , np.array(self.saccades_from_MSG_file[0][s]).dtype) for s in self.saccades_from_MSG_file[0].keys()])
 		self.fixationsTypeDictionary = np.dtype([(s , np.array(self.fixations_from_MSG_file[0][s]).dtype) for s in self.fixations_from_MSG_file[0].keys()])
-		self.blinksTypeDictionary = np.dtype([(s , np.array(self.blinks_from_MSG_file[0][s]).dtype) for s in self.blinks_from_MSG_file[0].keys()])
+		if len(self.blinks_from_MSG_file) > 0:
+			self.blinksTypeDictionary = np.dtype([(s , np.array(self.blinks_from_MSG_file[0][s]).dtype) for s in self.blinks_from_MSG_file[0].keys()])
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
 		self.startTrialStrings = self.findOccurences(startRE)
@@ -455,14 +456,15 @@ class EyelinkOperator( EyeOperator ):
 			thisRunSaccadeTable.flush()
 			
 			# create a table for the blinks from the eyelink of this run's trials
-			thisRunBlinksTable = h5file.createTable(thisRunGroup, 'blinks_from_EL', self.blinksTypeDictionary, 'Blinks for trials in run ' + self.inputFileName)
-			# fill up the table
-			blink = thisRunBlinksTable.row
-			for tr in self.blinks_from_MSG_file:
-				for par in tr.keys():
-					blink[par] = tr[par]
-				blink.append()
-			thisRunBlinksTable.flush()
+			if len(self.blinks_from_MSG_file) > 0:
+				thisRunBlinksTable = h5file.createTable(thisRunGroup, 'blinks_from_EL', self.blinksTypeDictionary, 'Blinks for trials in run ' + self.inputFileName)
+				# fill up the table
+				blink = thisRunBlinksTable.row
+				for tr in self.blinks_from_MSG_file:
+					for par in tr.keys():
+						blink[par] = tr[par]
+					blink.append()
+				thisRunBlinksTable.flush()
 			
 			# create a table for the fixations from the eyelink of this run's trials
 			thisRunFixationsTable = h5file.createTable(thisRunGroup, 'fixations_from_EL', self.fixationsTypeDictionary, 'Fixations for trials in run ' + self.inputFileName)

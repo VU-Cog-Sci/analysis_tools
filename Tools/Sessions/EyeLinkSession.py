@@ -472,7 +472,7 @@ class TAESession(EyeLinkSession):
 			a_array = self.parameter_data[:]['adaptation_orientation_standard_deviation'] == nw
 			this_condition_array = a_array
 			sub_plot = fig.add_subplot(1, self.noise_widths.shape[0], pl_nr)
-			self.fit_condition(this_condition_array, sub_plot, 'adapt spread ' + str(a) )
+			self.fit_condition(this_condition_array, sub_plot, 'adapt spread ' + str(nw) )
 			sub_plot.set_xlabel('orientation [deg]', fontsize=9)
 			if nw == self.noise_widths[0]:
 				sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
@@ -595,7 +595,7 @@ class TEAESession(EyeLinkSession):
 		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
 		
 		sub_plot.set_title(title, fontsize=9)
-		sub_plot.axis([plot_range[0], plot_range[1], 0.425, 1.025])
+		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 		
 		# archive these results in the object's list variables.
 		self.psychometric_data.append(fit_data)
