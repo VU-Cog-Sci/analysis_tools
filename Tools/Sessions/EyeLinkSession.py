@@ -683,4 +683,17 @@ class SASession(EyeLinkSession):
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
 		return saccades
+		
+	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		runs = []
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if self.wildcard + '_run_' in r._v_name:
+				runs.append( int(r._v_name.split('_')[-1]) )
+		h5f.close()
+		if len(runs) != 0:
+			for r in runs:
+				self.plot_velocity_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, nr_plot_points = nr_plot_points)
+		else:
+			return
 	
