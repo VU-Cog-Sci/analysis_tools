@@ -212,6 +212,8 @@ class EyeLinkSession(object):
 		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 		L determines the threshold - standard set at 5 median-based standard deviations from the median
 		"""
+		minimum_saccade_duration = 6 # in ms, as we assume the sampling to be
+		
 		if xy_velocity_data == None:
 			vel_data = np.zeros(xydata.shape)
 			vel_data[1:] = np.diff(xydata, axis = 0)
@@ -231,6 +233,19 @@ class EyeLinkSession(object):
 		threshold_crossings = np.concatenate([[over_threshold[0]],over_threshold[:-1]]) - over_threshold
 		threshold_crossing_indices = np.arange(threshold_crossings.shape[0])[threshold_crossings]
 		
+		# check for shorter saccades and gaps
+		tci = []
+		for i in range(0, threshold_crossing_indices.shape[0],2):
+			if threshold_crossing_indices[i + 1] - threshold_crossing_indices[i] > minimum_saccade_duration:
+				tci.append(threshold_crossing_indices[i])
+				tci.append(threshold_crossing_indices[i+1])
+		tci = np.array(tci)
+		tci_nd = []
+		for i in range(0, tci.shape[0]-2,2):
+			# check for tiny gaps
+			if tci[i + 2] - tci[i + 1] > minimum_saccade_duration:
+				pass
+		
 		saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
 		
 		# construct saccades:
@@ -243,7 +258,7 @@ class EyeLinkSession(object):
 			saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
 			saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
 			saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
-			saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / saccades[j]['vector'][1])
+			saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / (saccades[j]['vector'][1] + 0.00001))
 			saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
 			
 		return saccades
@@ -617,7 +632,7 @@ class TEAESession(EyeLinkSession):
 class SASession(EyeLinkSession):
 	"""Saccade adaptation session"""
 	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
-		"""create a single - file pdf plotting the normed velocity of the eye position in a given trial"""
+		"""create a single - file pdf plotting the normed velocity of the eye position in all trials"""
 		
 		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
 		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
