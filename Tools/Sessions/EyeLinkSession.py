@@ -233,18 +233,19 @@ class EyeLinkSession(object):
 		threshold_crossings = np.concatenate([[over_threshold[0]],over_threshold[:-1]]) - over_threshold
 		threshold_crossing_indices = np.arange(threshold_crossings.shape[0])[threshold_crossings]
 		
-		# check for shorter saccades and gaps
-		tci = []
-		for i in range(0, threshold_crossing_indices.shape[0],2):
-			if threshold_crossing_indices[i + 1] - threshold_crossing_indices[i] > minimum_saccade_duration:
-				tci.append(threshold_crossing_indices[i])
-				tci.append(threshold_crossing_indices[i+1])
-		tci = np.array(tci)
-		tci_nd = []
-		for i in range(0, tci.shape[0]-2,2):
-			# check for tiny gaps
-			if tci[i + 2] - tci[i + 1] > minimum_saccade_duration:
-				pass
+		if False:
+			# check for shorter saccades and gaps
+			tci = []
+			for i in range(0, threshold_crossing_indices.shape[0],2):
+				if threshold_crossing_indices[i + 1] - threshold_crossing_indices[i] > minimum_saccade_duration:
+					tci.append(threshold_crossing_indices[i])
+					tci.append(threshold_crossing_indices[i+1])
+			tci = np.array(tci)
+			tci_nd = []
+			for i in range(0, tci.shape[0]-2,2):
+				# check for tiny gaps
+				if tci[i + 2] - tci[i + 1] > minimum_saccade_duration:
+					pass
 		
 		saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
 		
@@ -679,6 +680,8 @@ class SASession(EyeLinkSession):
 		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'trial_' + 'smoothed_velocity' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
+		return self_saccades
+		
 	
 	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]]):
 		"""
@@ -697,6 +700,7 @@ class SASession(EyeLinkSession):
 					saccades[-1].append(saccs)
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
+		
 		return saccades
 		
 	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
