@@ -352,7 +352,7 @@ class Session(PathConstructor):
 					funcFile = NiftiImage(zscO.outputFileName)
 		
 	
-	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc', statMasks = None):
+	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2005s', statMasks = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
 		"""

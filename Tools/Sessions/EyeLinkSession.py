@@ -11,6 +11,7 @@ import os, sys, pickle, math
 from subprocess import *
 
 import scipy as sp
+import scipy.stats as stats
 import numpy as np
 import matplotlib.pylab as pl
 from matplotlib.backends.backend_pdf import PdfPages
@@ -659,6 +660,7 @@ class SASession(EyeLinkSession):
 					sacc_timestamps = np.array([sacc['start_timestamp'] for sacc in trial_sacc_data])
 					saccade_latencies[-1].append( sacc_timestamps - trial_vel_data[0,0])
 				durations[-1].append(trial_vel_data[-1,0] - trial_vel_data[0,0] - 500)
+			s.axis([0, trial_vel_data[np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], 0, 600])
 		
 		# find our own saccades
 		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
@@ -702,7 +704,7 @@ class SASession(EyeLinkSession):
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
 		
 		return saccades
-		
+	
 	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		runs = []
@@ -710,9 +712,50 @@ class SASession(EyeLinkSession):
 			if self.wildcard + '_run_' in r._v_name:
 				runs.append( int(r._v_name.split('_')[-1]) )
 		h5f.close()
+		colors = ['b','g','r','c','m','y','k']
+		sacs = []
 		if len(runs) != 0:
 			for r in runs:
-				self.plot_velocity_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, nr_plot_points = nr_plot_points)
+				sacs.append(self.plot_velocity_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, nr_plot_points = nr_plot_points))
+			return sacs
 		else:
 			return
+	
+	def analyze_saccades_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], smooth_width = 15 ):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		runs = []
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if self.wildcard + '_run_' in r._v_name:
+				runs.append( int(r._v_name.split('_')[-1]) )
+		h5f.close()
+		colors = ['b','g','r','c','m','y','k']
+		sacs = []
+		
+		if len(runs) != 0:
+			fig = pl.figure(figsize = (15,3))
+			s = fig.add_subplot(1,1,1)
+			for r in runs:
+				sacs.append(self.find_saccades_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges))
+			self.logger.debug('Detected saccades from ' + str(runs))
+			blocks_multiple_runs = [[s[i] for s in sacs] for i in range(len(trial_ranges))]
+			for (i, b) in zip(range(len(blocks_multiple_runs)), blocks_multiple_runs):
+				minimal_block_length = np.array([len(br) for br in b]).min()
+				first_saccades = np.array([[st[0] for st in br[:minimal_block_length]] for br in b], dtype = self.saccade_dtype)
+				amps = first_saccades['amplitude']
+				pl.plot( np.mean(amps, axis = 0), colors[i] + '--', alpha = 0.5, linewidth = 1.25 )
+				
+				kern =  stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+				sm_signal = np.convolve( np.mean(amps, axis = 0), kern / kern.sum(), 'valid' )
+				pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = 0.75, linewidth = 1.75 )
+				alpha = 0.2
+				for a in amps:
+					sm_signal = np.convolve( a, kern / kern.sum(), 'valid' )
+					pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = alpha, linewidth = 0.75 )
+					alpha += 0.05
+					
+					
+					
+				pl.draw()
+				
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'averaged_sacc_ampl_per_block_across_runs' + str(self.wildcard) + '.pdf'))
 	
