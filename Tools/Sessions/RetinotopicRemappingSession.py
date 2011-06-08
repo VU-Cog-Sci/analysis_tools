@@ -345,7 +345,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.phaseHists = np.array(phaseHists)
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.pdf' ))
 	
-	def collapsePhaseDifferences(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], maskThreshold = 4.0, nrVoxels = False):
+	def collapsePhaseDifferences(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery'],['sacc_map','remap']], maskThreshold = 4.0, nrVoxels = False):
 		""""""
 		if not hasattr(self, 'maskedConditionData'):
 			self.conditionDataForRegions( maskThreshold = maskThreshold, nrVoxels = nrVoxels )
@@ -365,7 +365,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				collapsedPhaseDiffs[i,c] = 1.0 - (np.abs(diffs).mean() / pi)
 				forHists[-1].append(1.0 - (np.abs(diffs) / pi))
 			
-			pl.bar(np.arange(0,3), collapsedPhaseDiffs[i])
+			pl.bar(np.arange(0,len(comparisons)), collapsedPhaseDiffs[i])
 			sbp.set_title(str(self.rois[i]), fontsize=10)
 			sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2], fontsize=10)
 			plotNr += 1
@@ -380,12 +380,12 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		for i in range(len(forHists)):
 			sbp = f.add_subplot(len(forHists),2,plotNr)
 			for j in range(len(comparisons)):
-				pl.hist(forHists[i][j], range = [0,1], bins = 50, alpha = 0.25, normed = True, histtype = 'step', linewidth = 2.5, color = ['r','g','b'][j])
+				pl.hist(forHists[i][j], range = [0,1], bins = 50, alpha = 0.25, normed = True, histtype = 'step', linewidth = 2.5, color = ['r','g','b','c'][j])
 			plotNr += 1
 			sbp.set_title(str(self.rois[i]), fontsize=10)
 			sbp = f.add_subplot(len(forHists),2,plotNr) #sbp.twinx()
 			for j in range(len(comparisons)):
-				pl.plot(np.linspace(0,1,len(forHists[i][j])), np.sort(np.array(forHists[i][j])), ['r--','g--','b--'][j], alpha = 0.75)
+				pl.plot(np.linspace(0,1,len(forHists[i][j])), np.sort(np.array(forHists[i][j])), ['r--','g--','b--','c--'][j], alpha = 0.75)
 			plotNr += 1
 			sbp.set_title(str(self.rois[i]), fontsize=10)
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_hist.pdf' ))
@@ -393,25 +393,27 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pickle.dump(forHists, f)
 		f.close()
 		
-		f = pl.figure(figsize = (5,12))
-		pl.subplots_adjust(hspace=0.4, wspace=0.4)
-		plotNr = 1
-		for i in range(len(forHists)):
-			sbp = f.add_subplot(len(forHists),1,plotNr)
-			sbp.set_title(str(self.rois[i]), fontsize=10)
-			print [forHists[i][j].shape[0] for j in range(3)]
-			pl.scatter(forHists[i][0][:], forHists[i][1][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'g')
-			stt = sp.stats.spearmanr(forHists[i][0], forHists[i][1][:forHists[i][0].shape[0]])
-			sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.9), va="top", ha="left", size = 9, color = 'g')
-			pl.scatter(forHists[i][0], forHists[i][2][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'b')
-			stt = sp.stats.spearmanr(forHists[i][0], forHists[i][2][:forHists[i][0].shape[0]])
-			sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.7), va="top", ha="left", size = 9, color = 'b')
-			pl.scatter(forHists[i][1][:forHists[i][0].shape[0]], forHists[i][2][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'k')
-			stt = sp.stats.spearmanr(forHists[i][1][:forHists[i][0].shape[0]], forHists[i][2][:forHists[i][0].shape[0]])
-			sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.5), va="top", ha="left", size = 9, color = 'k')
-			plotNr += 1
-			sbp.axis([0.5,1,0,1])
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
+		if False:
+			# this is just done for the original 3 comparisons. not adding the third since this didn't show any correlations
+			f = pl.figure(figsize = (5,12))
+			pl.subplots_adjust(hspace=0.4, wspace=0.4)
+			plotNr = 1
+			for i in range(len(forHists)):
+				sbp = f.add_subplot(len(forHists),1,plotNr)
+				sbp.set_title(str(self.rois[i]), fontsize=10)
+				print [forHists[i][j].shape[0] for j in range(3)]
+				pl.scatter(forHists[i][0][:], forHists[i][1][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'g')
+				stt = sp.stats.spearmanr(forHists[i][0], forHists[i][1][:forHists[i][0].shape[0]])
+				sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.9), va="top", ha="left", size = 9, color = 'g')
+				pl.scatter(forHists[i][0], forHists[i][2][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'b')
+				stt = sp.stats.spearmanr(forHists[i][0], forHists[i][2][:forHists[i][0].shape[0]])
+				sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.7), va="top", ha="left", size = 9, color = 'b')
+				pl.scatter(forHists[i][1][:forHists[i][0].shape[0]], forHists[i][2][:forHists[i][0].shape[0]], alpha = 0.25, linewidth = 1.75, color = 'k')
+				stt = sp.stats.spearmanr(forHists[i][1][:forHists[i][0].shape[0]], forHists[i][2][:forHists[i][0].shape[0]])
+				sbp.annotate('rho: %1.3f' % stt[0] + ' p: %1.3f' % stt[1], (0.525,0.5), va="top", ha="left", size = 9, color = 'k')
+				plotNr += 1
+				sbp.axis([0.5,1,0,1])
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
 		
 
 		
@@ -633,7 +635,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedAllRemap.pdf' ))
 		self.collapsedPhaseDiffsRemap = collapsedPhaseDiffs
 	
-	def wholeBrainComparisons(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']] ):
+	def wholeBrainComparisons(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery'],['sacc_map','remap']] ):
 		"""docstring for wholeBrainComparisons"""
 		
 		allDiffs = []
@@ -660,8 +662,22 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		nF.header = f2.header
 		nF.save()
 		
-		
 		vts = VolToSurfOperator(inputObject = nF)
-		vts.configure(frames = {'full':0, 'remap':1, 'perihery':2, 'remap_full':3, 'peripheral_full': 4}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
+		vts.configure(frames = {'full':0, 'remap':1, 'perihery':2, 'remap2':3, 'remap_full':4, 'peripheral_full': 5, 'remap2_full':6}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
 		vts.execute()
 	
+	def makeTiffsFromCondition(self, condition ):
+		
+		thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/redraw_retmaps.tcl'
+		for hemi in ['lh','rh']:
+			REDict = {
+			'---HEMI---': hemi,
+			'---CONDITION---': condition, 
+			'---FIGPATH---': os.path.join(self.conditionFolder(stage = 'processed/mri/', run = self.runList[self.conditionDict[condition][0]]), 'surf'),
+			'---NAME---': self.subject.standardFSID
+			}
+			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
+			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition + '.tcl')
+			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
+			# run 
+			rmtOp.execute()

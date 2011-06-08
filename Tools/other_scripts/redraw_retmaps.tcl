@@ -3,32 +3,25 @@
 
 set hemiSphere "---HEMI---"
 set condition "---CONDITION---"
-set name = "---NAME---"
+set name "---NAME---"
 
 if {$hemiSphere == "rh"} {
 	# for right hemisphere we need the following parameters
-	set yDirection = -1
+	set yDirection -1
 } else {		
 # for left hemisphere we need the following parameters
-	set yDirection = 1
+	set yDirection 1
 }
-set nrimages 72
 
-set rgbname polar
-set fthresh 2.3
-set fslope 10
-set fmid 1.4
-set angle_offset 0.225
-set angle_cycles 2.0
-set invphaseflag 0
-set revphaseflag 0
-set smoothsteps 5
-
+set polardir [format "%s/surf" $condition]
 
 # run the standard script, taken from polar-views.tcl
+# source $env(FREESURFER_HOME)/lib/tcl/polar-views.tcl
 
-#### file defaults: can reset in csh script with setenv
-#set dir 004/image7                 ;# usually set in calling script setenv
+#### read non-cap setenv vars (or ext w/correct rgbname) to override defaults
+source $env(FREESURFER_HOME)/lib/tcl/readenv.tcl
+
+### for backward compatibility (old script-specific mechanism)
 set floatstem sig                   ;# float file stem
 set realname 2                      ;# analyse infix
 set complexname 3                   ;# analyse infix
@@ -47,12 +40,8 @@ set fthresh 0.3         ;# val/curv sigmoid zero (neg=>0)
 set fslope 1.5          ;# contast (was fsquash 2.5)
 set fmid   0.8          ;# set linear region
 set smoothsteps 10
-set offset 0.20    ;# default lighting offset 
+set offset 0.20    ;# default lighting offset
 
-#### read non-cap setenv vars (or ext w/correct rgbname) to override defaults
-source $env(FREESURFER_HOME)/lib/tcl/readenv.tcl
-
-### for backward compatibility (old script-specific mechanism)
 if { [info exists revpolarflag] } { 
   set revphaseflag $revpolarflag 
 }
@@ -83,17 +72,46 @@ open_window
 make_lateral_view       ;# rotate either hemisphere
 do_lighting_model -1 -1 -1 -1 $offset ;# -1 => nochange; diffuse curv (def=0.15)
 
+
 # done with the standard script - here's my coding...
-
-
 # smooth the curvature and surface before doing anything else
+set rgbname polar
+set fthresh 1.7
+set fslope 1
+set fmid 5
+set angle_offset 0.225
+set angle_cycles 2.0
+set invphaseflag 0
+set revphaseflag 0
+set smoothsteps 5
+
+# setup overlay characteristics
+set gaLinkedVars(fthresh) $fthresh
+SendLinkedVarGroup overlay
+set gaLinkedVars(fmid) $fmid
+SendLinkedVarGroup overlay
+set gaLinkedVars(fslope) $fslope
+SendLinkedVarGroup overlay
+
 smooth_curv 40
-shrink 200
+shrink 400
 
-rotate_brain_y 90 * yDirection
 
-set presentY 0.0
+scale_brain 1.6
+set nrimages 12
+set rotation_gain 150.0
+set rot [ expr { $rotation_gain / $nrimages } ]
+
+make_lateral_view
+rotate_brain_y [ expr { (70.0 * $yDirection) } ]
+rotate_brain_x [ expr { -$rotation_gain / 2.0 } ]
+redraw
+
 for {set i 0} {$i < $nrimages} {incr i} {
+	
+	rotate_brain_x [ expr { $rot * $i } ]
+	redraw
+	
 	set l [string length "$i"] 
 	if {$l == 1} {
 	    set label "00$i"
@@ -102,13 +120,9 @@ for {set i 0} {$i < $nrimages} {incr i} {
 	} elseif {$l == 3} {
 	    set label "$i"
 	}
-    set fN [format "---FIGPATH---/%s_%s_%s_%s.tiff" $name $condition $hemiSphere $label]
-	rotate_brain_y [yDirection * sin(6.283185307 * $l / $nrimages )]
-	rotate_brain_x [cos(6.283185307 * $l / $nrimages )]
-	redraw
+	set fN [format "---FIGPATH---/%s_%s_%s_%s_x.tiff" $name $condition $hemiSphere $label]
 	save_tiff $fN
-	rotate_brain_y [yDirection * -sin(6.283185307 * $l / $nrimages )]
-	rotate_brain_x [-cos(6.283185307 * $l / $nrimages )]
+	rotate_brain_x [ expr { -$rot * $i } ]
 }
 
-#exit
+exit
