@@ -120,7 +120,15 @@ class EyeLinkSession(object):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name in r._v_name:
-				parameter_data.append(r.trial_parameters.read())
+				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
+				# perhaps later a more elegant solution is possible
+				this_dtype = np.array(r.trial_parameters.read().dtype.names)
+				if len(parameter_data) == 0:	# if the first run, we construct a dtype_array
+					dtype_array = this_dtype
+				else:	# common denominator by intersection
+					dtype_array = np.intersect1d(dtype_array, this_dtype)
+				parameter_data.append(np.array(r.trial_parameters.read()))
+		parameter_data = [p[:][dtype_array] for p in parameter_data]
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
@@ -481,14 +489,14 @@ class TAESession(EyeLinkSession):
 		self.confidence_ratings = []
 		self.conditions = []
 		
-		fig = pl.figure(figsize = (15,3))
-		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		fig = pl.figure(figsize = (4,10))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		pl_nr = 1
 		# across adaptation durations:
 		for nw in self.noise_widths:
 			a_array = self.parameter_data[:]['adaptation_orientation_standard_deviation'] == nw
 			this_condition_array = a_array
-			sub_plot = fig.add_subplot(1, self.noise_widths.shape[0], pl_nr)
+			sub_plot = fig.add_subplot(self.noise_widths.shape[0], 1, pl_nr)
 			self.fit_condition(this_condition_array, sub_plot, 'adapt spread ' + str(nw) )
 			sub_plot.set_xlabel('orientation [deg]', fontsize=9)
 			if nw == self.noise_widths[0]:
@@ -558,24 +566,12 @@ class TEAESession(EyeLinkSession):
 		"""docstring for preprocess_behavioral_data"""
 		# compute the relevant test contrasts
 		self.test_contrasts = np.log10(self.parameter_data[:]['first_test_contrast'] + self.parameter_data[:]['last_test_contrast'])
+		self.adaptation_orientations = np.unique(self.parameter_data[:]['adaptation_orientation'])
+		self.test_orientations = np.unique(self.parameter_data[:]['test_orientation'])
+		self.adaptation_durations = np.unique(self.parameter_data[:]['adaptation_duration'])
+		self.phase_redraw_periods = np.unique(self.parameter_data[:]['phase_redraw_period'])
 	
-	def run_training_analysis(self, run_nr = 0):
-		self.logger.debug('starting training analysis for run ' + str(run_nr))
-		# the training runs are called '3'
-		self.import_parameters( run_name = self.subject.initials + '_' + str(3) + '_run_' + str(run_nr) )
-		self.preprocess_behavioral_data()
-		
-		self.psychometric_data = []
-		self.TEAEs = []
-		self.pfs = []
-		
-		fig = pl.figure(figsize = (11,3))
-		s = fig.add_subplot(1,1,1)
-		self.fit_condition(boolean_array = np.ones((len(self.parameter_data)), dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
-		
-	
-	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-2.8,-1.5], x_label = '', y_label = ''):
+	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-2.8,-1.5], x_label = '', y_label = '', colors = ['r','k']):
 		"""fits the data in self.parameter_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
 		
 		# psychometric curve settings
@@ -598,18 +594,18 @@ class TEAESession(EyeLinkSession):
 		pf.sample()
 		
 		# scatter plot of the actual data points
-		sub_plot.scatter(tested_contrasts, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25, s = nr_samples)
+		sub_plot.scatter(tested_contrasts, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = colors[1], alpha = 1.0, linewidth = 1.25, s = nr_samples)
 		
 		# line plot of the fitted curve
-		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
+		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), c = colors[1], linewidth = 1.75)
 		# line plot of chance
 		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), np.ones((500)) * 0.5, 'y--', linewidth = 0.75, alpha = 0.5)
 		
 		# TEAE value as a red line in the plot
-		sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
+		sub_plot.axvline(x=pf.estimate[0], c = colors[0], alpha = 0.7, linewidth = 2.25)
 		# and the boundaries of the confidence interval on this point
-		sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
-		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
+		sub_plot.axvline(x=pf.getCI(1)[0], c = colors[0], alpha = 0.55, linewidth = 1.25)
+		sub_plot.axvline(x=pf.getCI(1)[1], c = colors[0], alpha = 0.55, linewidth = 1.25)
 		
 		sub_plot.set_title(title, fontsize=9)
 		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
@@ -630,10 +626,73 @@ class TEAESession(EyeLinkSession):
 		sub_plot.axis([0, self.test_contrasts[staircase_indices * boolean_array].shape[0]+1, plot_range[0], plot_range[1]])
 		
 		return sub_plot
+	
+	def run_training_analysis(self, run_nr = 0):
+		self.logger.debug('starting training analysis for run ' + str(run_nr))
+		# the training runs are called '3'
+		self.import_parameters( run_name = self.subject.initials + '_' + str(3) + '_run_' + str(run_nr) )
+		self.preprocess_behavioral_data()
+		
+		self.psychometric_data = []
+		self.conditions = []
+		self.TEAEs = []
+		self.pfs = []
+		
+		fig = pl.figure(figsize = (11,3))
+		s = fig.add_subplot(1,1,1)
+		self.fit_condition(boolean_array = np.ones((len(self.parameter_data)), dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
+		pl.show()
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
+	
+	def run_time_analysis(self, run_nr = None):
+		self.logger.debug('starting adaptation analysis for run ' + str(run_nr))
+		# the training runs are called '3'
+		if run_nr == None:
+			self.import_parameters( run_name = self.subject.initials + '_' + str(2) + '_run_' ) # run_name = self.subject.initials + '_' + str(2) + '_run_'
+			run_nr = 'all'
+		else:
+			self.import_parameters( run_name = self.subject.initials + '_' + str(2) + '_run_' + str(run_nr) )
+		self.preprocess_behavioral_data()
+		
+		self.psychometric_data = []
+		self.conditions = []
+		self.TEAEs = []
+		self.pfs = []
+		
+		equal_opposite_orientations = np.array([((self.parameter_data[:]['test_orientation'] - self.parameter_data[:]['adaptation_orientation']) == 0) == v for v in [True, False]])
+		
+		fig_nr = 1
+		fig = pl.figure(figsize = (15,4))
+		for i in range(self.phase_redraw_periods.shape[0]):
+			this_prp_indices = self.parameter_data[:]['phase_redraw_period'] == self.phase_redraw_periods[i]
+			for j in range(self.adaptation_durations.shape[0]):
+				s = fig.add_subplot(self.phase_redraw_periods.shape[0],self.adaptation_durations.shape[0],fig_nr)
+				for k in range(equal_opposite_orientations.shape[0]):
+					this_ad_indices = self.parameter_data[:]['adaptation_duration'] == self.adaptation_durations[j]
+					self.fit_condition(boolean_array = this_prp_indices * this_ad_indices * equal_opposite_orientations[k], sub_plot = s, title = 'adaptation ' + str(self.adaptation_durations[j]) + ' ' +  str(i), x_label = 'log contrast', y_label = 'p (correct)', colors = [['r','r'], ['k','k']][k])
+					self.conditions.append([self.phase_redraw_periods[i], self.adaptation_durations[j], [0,1][k]])
+				fig_nr += 1
+				
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
+		
+		self.TEAEs = np.array(self.TEAEs).reshape((self.phase_redraw_periods.shape[0], self.adaptation_durations.shape[0],equal_opposite_orientations.shape[0]))
+		print self.TEAEs
+		# one big figure
+		fig = pl.figure(figsize = (6,3))
+		s = fig.add_subplot(111)
+		for i in range(self.phase_redraw_periods.shape[0]):
+			s.axhline(y=0.0, c = 'k', marker = '.', alpha = 0.55, linewidth = 0.5)
+			s.plot(self.adaptation_durations, self.TEAEs[i,:,0]-self.TEAEs[i,:,1], ['g--','b--'][i], linewidth = 1.75, alpha = 0.5)
+			s.scatter(self.adaptation_durations, self.TEAEs[i,:,0]-self.TEAEs[i,:,1], facecolor = (1.0,1.0,1.0), edgecolor = ['g','b'][i], alpha = 1.0, linewidth = 1.75)
+			s.set_ylabel('TEAE [log contrast]', fontsize = 9)
+			s.set_xlabel('Adaptation duration [s]', fontsize = 9)
+			s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
+	
 
 class SASession(EyeLinkSession):
 	"""Saccade adaptation session"""
-	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
+	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
 		"""create a single - file pdf plotting the normed velocity of the eye position in all trials"""
 		
 		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
@@ -641,7 +700,6 @@ class SASession(EyeLinkSession):
 		
 		durations = []
 		saccade_latencies = []
-		colors = ['b','g','r','c','m','y','k']
 		max_index = 0
 		
 		fig = pl.figure(figsize = (15,6))
@@ -705,30 +763,29 @@ class SASession(EyeLinkSession):
 		
 		return saccades
 	
-	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], nr_plot_points = 1000):
+	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		runs = []
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if self.wildcard + '_run_' in r._v_name:
 				runs.append( int(r._v_name.split('_')[-1]) )
 		h5f.close()
-		colors = ['b','g','r','c','m','y','k']
 		sacs = []
 		if len(runs) != 0:
 			for r in runs:
-				sacs.append(self.plot_velocity_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, nr_plot_points = nr_plot_points))
+				sacs.append(self.plot_velocity_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, colors = colors, nr_plot_points = nr_plot_points))
 			return sacs
 		else:
 			return
 	
-	def analyze_saccades_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], smooth_width = 15 ):
+	def analyze_saccades_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], smooth_width = 15, colors = ['b','g','r','c','m','y','k'] ):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		runs = []
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if self.wildcard + '_run_' in r._v_name:
 				runs.append( int(r._v_name.split('_')[-1]) )
 		h5f.close()
-		colors = ['b','g','r','c','m','y','k']
+		
 		sacs = []
 		
 		if len(runs) != 0:
@@ -757,5 +814,5 @@ class SASession(EyeLinkSession):
 					
 				pl.draw()
 				
-			pl.savefig(os.path.join(self.base_directory, 'figs', 'averaged_sacc_ampl_per_block_across_runs' + str(self.wildcard) + '.pdf'))
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'averaged_sacc_ampl_per_block_across_runs_' + str(self.wildcard) + '.pdf'))
 	
