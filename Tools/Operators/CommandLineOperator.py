@@ -540,6 +540,42 @@ class FEATOperator( CommandLineOperator ):
 		if not waitForExecute:
 			runcmd += ' & '
 		self.runcmd = runcmd
+		
+class RetMapReDrawOperator( CommandLineOperator ):
+	"""docstring for MCFlirtOperator"""
+	def __init__(self, inputObject, **kwargs):
+		super(RetMapReDrawOperator, self).__init__(inputObject = inputObject, cmd = 'tksurfer ', **kwargs)
+		self.redrawFile = self.inputObject
+
+	def configure(self, REDict = {}, redrawFileName = '', waitForExecute = False):
+		"""
+		configure will run feat on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+
+		self.redrawFileName = redrawFileName
+
+		sf = open(self.redrawFile,'r')
+		workingString = sf.read()
+		sf.close()
+		for e in REDict:
+			rS = re.compile(e)
+			workingString = re.sub(rS, REDict[e], workingString)
+			
+		of = open(self.redrawFileName, 'w')
+		of.write(workingString)
+		of.close()
+		
+		
+		runcmd = 'cd ' + os.path.split(redrawFileName)[0] + '; '+ self.cmd
+		
+		runcmd += ' ' + REDict['---NAME---']
+		runcmd += ' ' + REDict['---HEMI---'] + ' inflated -tcl '
+		
+		runcmd += self.redrawFileName
+		if not waitForExecute:
+			runcmd += ' & '
+		self.runcmd = runcmd
 
 class EDF2ASCOperator( CommandLineOperator ):
 	"""docstring for EDF2ASCOperator"""

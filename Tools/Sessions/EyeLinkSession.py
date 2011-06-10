@@ -717,7 +717,7 @@ class SASession(EyeLinkSession):
 				if len(trial_sacc_data) > 0:
 					sacc_timestamps = np.array([sacc['start_timestamp'] for sacc in trial_sacc_data])
 					saccade_latencies[-1].append( sacc_timestamps - trial_vel_data[0,0])
-				durations[-1].append(trial_vel_data[-1,0] - trial_vel_data[0,0] - 500)
+				durations[-1].append(trial_vel_data[-1,0] - trial_vel_data[0,0] - 750)
 			s.axis([0, trial_vel_data[np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], 0, 600])
 		
 		# find our own saccades
@@ -725,12 +725,14 @@ class SASession(EyeLinkSession):
 		s = fig.add_subplot(312)
 		bin_range = [0,trial_vel_data[max_index,0]-trial_vel_data[0,0]]
 		for i in range(len(vel_data)):
-			pl.hist(np.array(durations[i]), range = bin_range, bins = 90, alpha = 0.5, normed = True, histtype = 'stepfilled', color = colors[i] )
+			#pl.hist(np.array(durations[i]), range = bin_range, bins = 90, alpha = 0.5, normed = True, histtype = 'stepfilled', color = colors[i] )
+			pl.plot(np.sort(np.array(durations[i])), np.linspace(0,1, np.array(durations[i]).shape[0]), alpha = 0.5, color = colors[i], linewidth = 1.25 )
 		for i in range(len(vel_data)):
-			pl.hist(np.array([ss[0] for ss in saccade_latencies[i]]), range = bin_range, bins = 90, alpha = 0.25, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
+			#pl.hist(np.array([ss[0] for ss in saccade_latencies[i]]), range = bin_range, bins = 90, alpha = 0.25, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
+			pl.plot(np.sort(np.array([ss[0] for ss in saccade_latencies[i]])), np.linspace(0,1,np.array([ss[0] for ss in saccade_latencies[i]]).shape[0]), alpha = 0.675, color = colors[i], linewidth = 1.5 )
 		for i in range(len(vel_data)):
-			pl.hist(np.array([ss[0]['start_time'] for ss in self_saccades[i]]), range = bin_range, bins = 90, alpha = 0.75, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
-		
+			#pl.hist(np.array([ss[0]['start_time'] for ss in self_saccades[i]]), range = bin_range, bins = 90, alpha = 0.75, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
+			pl.plot(np.sort(np.array([ss[0]['start_time'] for ss in self_saccades[i]])), np.linspace(0,1,np.array([ss[0]['start_time'] for ss in self_saccades[i]]).shape[0]), alpha = 0.75, color = colors[i], linewidth = 1.75 )
 		s = fig.add_subplot(313)
 		for i in range(len(vel_data)):
 			pl.scatter(np.arange(len(vel_data[i])), np.array([ss[0]['amplitude'] for ss in self_saccades[i]]), facecolor = (1.0,1.0,1.0), edgecolor = colors[i], alpha = 0.5, linewidth = 1.25 )
