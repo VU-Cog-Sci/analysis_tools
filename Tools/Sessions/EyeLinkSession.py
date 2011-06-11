@@ -238,23 +238,56 @@ class EyeLinkSession(object):
 		
 		# when are we above the threshold, and when were the crossings
 		over_threshold = (np.array([np.linalg.norm(s) for s in scaled_vel_data]) > l)
-		# crossings come in pairs
-		threshold_crossings = np.concatenate([[over_threshold[0]],over_threshold[:-1]]) - over_threshold
-		threshold_crossing_indices = np.arange(threshold_crossings.shape[0])[threshold_crossings]
+		# integers instead of bools preserve the sign of threshold transgression
+		over_threshold_int = np.array(over_threshold, dtype = np.int16)
 		
-		if False:
-			# check for shorter saccades and gaps
-			tci = []
-			for i in range(0, threshold_crossing_indices.shape[0],2):
-				if threshold_crossing_indices[i + 1] - threshold_crossing_indices[i] > minimum_saccade_duration:
+		# crossings come in pairs
+		threshold_crossings_int = np.concatenate([[0], np.diff(over_threshold_int)])
+		threshold_crossing_indices = np.arange(threshold_crossings_int.shape[0])[threshold_crossings_int != 0]
+		
+		# check for shorter saccades and gaps
+		tci = []
+		sacc_on = False
+		for i in range(0, threshold_crossing_indices.shape[0]):
+			# last transgression, is an offset of a saccade
+			if i == threshold_crossing_indices.shape[0]-1:
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1:
 					tci.append(threshold_crossing_indices[i])
-					tci.append(threshold_crossing_indices[i+1])
-			tci = np.array(tci)
-			tci_nd = []
-			for i in range(0, tci.shape[0]-2,2):
-				# check for tiny gaps
-				if tci[i + 2] - tci[i + 1] > minimum_saccade_duration:
+					sacc_on = False # be complete
+				else: pass
+			# first transgression, start of a saccade
+			elif i == 0:
+				if threshold_crossings_int[threshold_crossing_indices[i]] == 1:
+					tci.append(threshold_crossing_indices[i])
+					sacc_on = True
+				else: pass
+			elif threshold_crossings_int[threshold_crossing_indices[i]] == 1 and sacc_on == False: # start of a saccade that occurs without a prior saccade en route
+				tci.append(threshold_crossing_indices[i])
+				sacc_on = True
+			# don't want to add any point that borders on a too-short interval
+			elif (threshold_crossing_indices[i+1] - threshold_crossing_indices[i] <= minimum_saccade_duration):
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1: # offset but the next is too short - disregard offset
 					pass
+				elif threshold_crossings_int[threshold_crossing_indices[i]] == 1: # onset but the next is too short - disregard offset if there is already a previous saccade going on
+					if sacc_on: # there already is a saccade going on - no need to include this afterbirth
+						pass
+					else:	# this should have been caught earlier
+						tci.append(threshold_crossing_indices[i])
+						sacc_on = True
+			elif (threshold_crossing_indices[i] - threshold_crossing_indices[i-1] <= minimum_saccade_duration):
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1: # offset but the previous one is too short - use offset offset
+					if sacc_on:
+						tci.append(threshold_crossing_indices[i])
+						sacc_on = False
+			# but add anything else
+			else:
+				tci.append(threshold_crossing_indices[i])
+				if threshold_crossings_int[threshold_crossing_indices[i]] == 1:
+					sacc_on = True
+				else:
+					sacc_on = False
+		
+		threshold_crossing_indices = np.array(tci)
 		
 		saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
 		
@@ -274,7 +307,6 @@ class EyeLinkSession(object):
 		return saccades
 		
 	
-
 
 class TAESession(EyeLinkSession):
 	def preprocess_behavioral_data(self):
@@ -676,7 +708,7 @@ class TEAESession(EyeLinkSession):
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
 		
 		self.TEAEs = np.array(self.TEAEs).reshape((self.phase_redraw_periods.shape[0], self.adaptation_durations.shape[0],equal_opposite_orientations.shape[0]))
-		print self.TEAEs
+		
 		# one big figure
 		fig = pl.figure(figsize = (6,3))
 		s = fig.add_subplot(111)
