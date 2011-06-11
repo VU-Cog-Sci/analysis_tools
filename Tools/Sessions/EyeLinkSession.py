@@ -765,6 +765,7 @@ class SASession(EyeLinkSession):
 		for i in range(len(vel_data)):
 			#pl.hist(np.array([ss[0]['start_time'] for ss in self_saccades[i]]), range = bin_range, bins = 90, alpha = 0.75, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
 			pl.plot(np.sort(np.array([ss[0]['start_time'] for ss in self_saccades[i]])), np.linspace(0,1,np.array([ss[0]['start_time'] for ss in self_saccades[i]]).shape[0]), alpha = 0.75, color = colors[i], linewidth = 1.75 )
+		s.axis([0, trial_vel_data[np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], 0, 1])
 		s = fig.add_subplot(313)
 		for i in range(len(vel_data)):
 			pl.scatter(np.arange(len(vel_data[i])), np.array([ss[0]['amplitude'] for ss in self_saccades[i]]), facecolor = (1.0,1.0,1.0), edgecolor = colors[i], alpha = 0.5, linewidth = 1.25 )
@@ -819,14 +820,17 @@ class SASession(EyeLinkSession):
 			if self.wildcard + '_run_' in r._v_name:
 				runs.append( int(r._v_name.split('_')[-1]) )
 		h5f.close()
+		runs = np.sort(runs)
 		
 		sacs = []
+		pars = []
 		
 		if len(runs) != 0:
 			fig = pl.figure(figsize = (15,3))
 			s = fig.add_subplot(1,1,1)
 			for r in runs:
 				sacs.append(self.find_saccades_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges))
+				pars.append(self.import_parameters(run_name = self.wildcard + '_run_' + str(e)))
 			self.logger.debug('Detected saccades from ' + str(runs))
 			blocks_multiple_runs = [[s[i] for s in sacs] for i in range(len(trial_ranges))]
 			for (i, b) in zip(range(len(blocks_multiple_runs)), blocks_multiple_runs):
