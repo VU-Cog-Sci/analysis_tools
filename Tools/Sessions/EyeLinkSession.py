@@ -216,7 +216,7 @@ class EyeLinkSession(object):
 		h5f.close()
 		return export_data
 	
-	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None):
+	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 26.365):
 		"""
 		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 		L determines the threshold - standard set at 5 median-based standard deviations from the median
@@ -734,10 +734,10 @@ class SASession(EyeLinkSession):
 		saccade_latencies = []
 		max_index = 0
 		
-		fig = pl.figure(figsize = (15,6))
+		fig = pl.figure(figsize = (12,8))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
 		
-		s = fig.add_subplot(311)
+		s = fig.add_subplot(411)
 		for (i, trial_block_vel_data, trial_block_sacc_data) in zip(range(len(vel_data)), vel_data, sacc_data):
 			durations.append([])
 			saccade_latencies.append([])
@@ -754,7 +754,7 @@ class SASession(EyeLinkSession):
 		
 		# find our own saccades
 		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
-		s = fig.add_subplot(312)
+		s = fig.add_subplot(412)
 		bin_range = [0,trial_vel_data[max_index,0]-trial_vel_data[0,0]]
 		for i in range(len(vel_data)):
 			#pl.hist(np.array(durations[i]), range = bin_range, bins = 90, alpha = 0.5, normed = True, histtype = 'stepfilled', color = colors[i] )
@@ -766,17 +766,80 @@ class SASession(EyeLinkSession):
 			#pl.hist(np.array([ss[0]['start_time'] for ss in self_saccades[i]]), range = bin_range, bins = 90, alpha = 0.75, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
 			pl.plot(np.sort(np.array([ss[0]['start_time'] for ss in self_saccades[i]])), np.linspace(0,1,np.array([ss[0]['start_time'] for ss in self_saccades[i]]).shape[0]), alpha = 0.75, color = colors[i], linewidth = 1.75 )
 		s.axis([0, trial_vel_data[np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], 0, 1])
-		s = fig.add_subplot(313)
+		
+		s = fig.add_subplot(413)
 		for i in range(len(vel_data)):
 			pl.scatter(np.arange(len(vel_data[i])), np.array([ss[0]['amplitude'] for ss in self_saccades[i]]), facecolor = (1.0,1.0,1.0), edgecolor = colors[i], alpha = 0.5, linewidth = 1.25 )
 			smooth_width = 10
 			sm_signal = np.convolve( np.array([ss[0]['amplitude'] for ss in self_saccades[i]]), np.ones((smooth_width))/float(smooth_width), 'valid' )
 			pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2, sm_signal, c = colors[i], alpha = 0.5, linewidth = 1.25 )
+		s.axis([0, np.max([len(rr) for rr in vel_data]) + 1, 0, 15])
+		
+		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
+		all_these_saccades_from_parameters = self.distill_saccades_from_parameters()[0]
+		par_sacs = [all_these_saccades_from_parameters[tr[0]:tr[1]] for tr in trial_ranges]
+		
+		s = fig.add_subplot(414)
+		for i in range(len(vel_data)):
+			pl.scatter(np.arange(len(vel_data[i])), np.array([ss[0]['amplitude'] for ss in self_saccades[i]]) / par_sacs[i]['amplitude'], facecolor = (1.0,1.0,1.0), edgecolor = colors[i], alpha = 0.5, linewidth = 1.25 )
+			smooth_width = 10
+			sm_signal = np.convolve( np.array([ss[0]['amplitude'] for ss in self_saccades[i]]) / par_sacs[i]['amplitude'], np.ones((smooth_width))/float(smooth_width), 'valid' )
+			pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2, sm_signal, c = colors[i], alpha = 0.5, linewidth = 1.25 )
+		s.axis([0, np.max([len(rr) for rr in vel_data]) + 1, 0, 1.75])
 		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'trial_' + 'smoothed_velocity' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 		return self_saccades
+	
+	def plot_all_saccades_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
+		from matplotlib.backends.backend_pdf import PdfPages
+		pp = PdfPages(os.path.join(self.base_directory, 'figs', 'all_saccades' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
+		max_index = 0
+		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
+		xy_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy')
+		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
+		
+		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
+		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
+		
+		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, sacc_data, xy_data, ps):
+			for (j, trial_vel_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
+				if max_index < np.min([nr_plot_points, trial_vel_data.shape[0]]):
+					max_index = np.min([nr_plot_points, trial_vel_data.shape[0]])
+				f = pl.figure(figsize = (12,3))
+				f.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+				
+				# take eyelink's saccade start times in this trial
+				if len(trial_sacc_data) > 0:
+					sacc_timestamps = np.array([sacc['start_timestamp'] for sacc in trial_sacc_data])
+					el_saccade_latency = sacc_timestamps[0] - trial_vel_data[0,0]
+					sacc_startpoint = [trial_sacc_data['start_x'][0], trial_sacc_data['start_y'][0]]
+					sacc_endpoint = [trial_sacc_data['end_x'][0], trial_sacc_data['end_y'][0]]
+				else:
+					el_saccade_latency = 0.0
+					
+				s = f.add_subplot(121)
+				s.plot( trial_xy_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),1], trial_xy_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),2], c = colors[i], linewidth = 2.5, alpha = 0.35 )
+				if len(trial_sacc_data) > 0:
+#					pl.scatter(np.array([sacc_startpoint[0], sacc_endpoint[0]]), np.array([sacc_startpoint[1], sacc_endpoint[1]]), colors[i])
+					s.plot(np.array([sacc_startpoint[0], sacc_endpoint[0]]), np.array([sacc_startpoint[1], sacc_endpoint[1]]), colors[i] + 'o', linewidth = 4.5, alpha = 0.5)
+				s.plot(np.array([trial_ps['saccade_endpoint_x']]), np.array([trial_ps['saccade_endpoint_y']]), colors[i] + 'x', linewidth = 4.5)
+				s.plot(np.array([trial_ps['fixation_target_x'], trial_ps['saccade_target_x']]), np.array([trial_ps['fixation_target_y'], trial_ps['saccade_target_y']]), colors[i] + '+', linewidth = 4.5)
+				# fit the screen
+				s.axis([0,800,0,600])
+				s.set_title('gaze in screen coordinates')
+				s = f.add_subplot(122)
+				s.plot( trial_vel_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], trial_vel_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),1], c = colors[i], linewidth = 2.5, alpha = 0.25 )
+					
+				if len(trial_sacc_data) > 0:
+					s.axvline(el_saccade_latency, c = colors[i], alpha = 0.7, linewidth = 1.25)
+				s.axvline(trial_vel_data[-1,0] - trial_vel_data[0,0] - 750, c = colors[i], alpha = 0.7, linewidth = 1.25, linestyle = '--')
+				s.axis([0,800,0,500])
+				s.set_title('velocity')
+				pp.savefig()
+		pp.close()
 	
 	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]]):
 		"""
@@ -786,16 +849,18 @@ class SASession(EyeLinkSession):
 		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity_xy')
 		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
 		
+		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
+		
 		saccades = []
 		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, sacc_data, gaze_data):
 			saccades.append([])
 			for (j, trial_vel_data, trial_sacc_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data):
-				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0])
+				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0], pixels_per_degree = self.parameter_data[0]['pixels_per_degree'])
 				if saccs.shape[0] > 0:
 					saccades[-1].append(saccs)
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
-		
+		self.logger.debug('Detected saccades from run # ' + str(run_index))
 		return saccades
 	
 	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
@@ -823,34 +888,62 @@ class SASession(EyeLinkSession):
 		runs = np.sort(runs)
 		
 		sacs = []
-		pars = []
+		par_sacs = []
 		
 		if len(runs) != 0:
 			fig = pl.figure(figsize = (15,3))
 			s = fig.add_subplot(1,1,1)
 			for r in runs:
+				self.import_parameters(run_name = self.wildcard + '_run_' + str(r))
 				sacs.append(self.find_saccades_per_trial_for_run(run_index = r, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges))
-				pars.append(self.import_parameters(run_name = self.wildcard + '_run_' + str(e)))
-			self.logger.debug('Detected saccades from ' + str(runs))
-			blocks_multiple_runs = [[s[i] for s in sacs] for i in range(len(trial_ranges))]
-			for (i, b) in zip(range(len(blocks_multiple_runs)), blocks_multiple_runs):
-				minimal_block_length = np.array([len(br) for br in b]).min()
-				first_saccades = np.array([[st[0] for st in br[:minimal_block_length]] for br in b], dtype = self.saccade_dtype)
-				amps = first_saccades['amplitude']
-				pl.plot( np.mean(amps, axis = 0), colors[i] + '--', alpha = 0.5, linewidth = 1.25 )
+				all_these_saccades_from_parameters = self.distill_saccades_from_parameters()[0]
+				par_sacs.append([all_these_saccades_from_parameters[tr[0]:tr[1]] for tr in trial_ranges])
+			
+			blocks_multiple_runs_saccades = [[s[i] for s in sacs] for i in range(len(trial_ranges))]
+			blocks_multiple_runs_parameter_saccades = [[s[i] for s in par_sacs] for i in range(len(trial_ranges))]
+			
+			for (i, bs, bp) in zip(range(len(blocks_multiple_runs_saccades)), blocks_multiple_runs_saccades, blocks_multiple_runs_parameter_saccades):
+				minimal_block_length = np.array([len(br) for br in bs]).min()
+				first_saccades = np.array([[st[0] for st in br[:minimal_block_length]] for br in bs], dtype = self.saccade_dtype)
+				intended_saccades = np.array([br[:minimal_block_length] for br in bp], dtype = self.saccade_dtype)
+				amps = np.array([first_saccades['amplitude'], intended_saccades['amplitude'], first_saccades['amplitude'] / intended_saccades['amplitude']])
 				
-				kern =  stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
-				sm_signal = np.convolve( np.mean(amps, axis = 0), kern / kern.sum(), 'valid' )
-				pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = 0.75, linewidth = 1.75 )
-				alpha = 0.2
-				for a in amps:
-					sm_signal = np.convolve( a, kern / kern.sum(), 'valid' )
-					pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = alpha, linewidth = 0.75 )
-					alpha += 0.05
-					
-					
+				pl.plot( np.mean(amps[:,0], axis = 0), colors[i] + '--', alpha = 0.5, linewidth = 1.25 )
+				pl.plot( np.mean(amps[:,1], axis = 0), colors[i] + '+', alpha = 0.5, linewidth = 1.25 )
+				pl.plot( np.mean(amps[:,2], axis = 0), colors[i] + 'v', alpha = 0.5, linewidth = 1.25 )
+				
+#				kern =  stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+#				sm_signal = np.convolve( np.mean(amps, axis = 0), kern / kern.sum(), 'valid' )
+#				pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = 0.75, linewidth = 1.75 )
+#				alpha = 0.2
+#				for a in amps:
+#					sm_signal = np.convolve( a, kern / kern.sum(), 'valid' )
+#					pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = alpha, linewidth = 0.75 )
+#					alpha += 0.05
 					
 				pl.draw()
 				
 			pl.savefig(os.path.join(self.base_directory, 'figs', 'averaged_sacc_ampl_per_block_across_runs_' + str(self.wildcard) + '.pdf'))
 	
+	def distill_saccades_from_parameters(self, parameter_data = None):
+		
+		if parameter_data == None: parameter_data = self.parameter_data
+		
+		pre_step_saccades = np.zeros( (parameter_data.shape[0]) , dtype = self.saccade_dtype )
+		post_step_saccades = np.zeros( (parameter_data.shape[0]) , dtype = self.saccade_dtype )
+		
+		# construct saccades:
+		for (i, p) in zip(range(parameter_data.shape[0]), parameter_data):
+			pre_step_saccades[i]['start_point'][:] = [p['fixation_target_x'], p['fixation_target_y']]
+			pre_step_saccades[i]['end_point'][:] = [p['saccade_target_x'], p['saccade_target_y']]
+			pre_step_saccades[i]['vector'] = pre_step_saccades[i]['end_point'] - pre_step_saccades[i]['start_point']
+			pre_step_saccades[i]['amplitude'] = np.linalg.norm(pre_step_saccades[i]['vector']) / p['pixels_per_degree']
+			pre_step_saccades[i]['direction'] = math.atan(pre_step_saccades[i]['vector'][0] / (pre_step_saccades[i]['vector'][1] + 0.00001))
+			
+			post_step_saccades[i] = pre_step_saccades[i]
+			post_step_saccades[i]['end_point'][:] = [p['saccade_target_x'], p['saccade_target_y']]
+			post_step_saccades[i]['vector'] = post_step_saccades[i]['end_point'] - post_step_saccades[i]['start_point']
+			post_step_saccades[i]['amplitude'] = np.linalg.norm(post_step_saccades[i]['vector']) / p['pixels_per_degree']
+			post_step_saccades[i]['direction'] = math.atan(post_step_saccades[i]['vector'][0] / (post_step_saccades[i]['vector'][1] + 0.00001))
+			
+		return [pre_step_saccades, post_step_saccades]
