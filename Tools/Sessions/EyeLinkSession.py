@@ -289,20 +289,22 @@ class EyeLinkSession(object):
 		
 		threshold_crossing_indices = np.array(tci)
 		
-		saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
+		if threshold_crossing_indices.shape[0] > 0:
+			saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
 		
-		# construct saccades:
-		for i in range(0,sample_times[threshold_crossing_indices].shape[0]-1,2):
-			j = i/2
-			saccades[j]['start_time'] = sample_times[threshold_crossing_indices[i]] - sample_times[0]
-			saccades[j]['end_time'] = sample_times[threshold_crossing_indices[i+1]] - sample_times[0]
-			saccades[j]['start_point'][:] = xy_data[threshold_crossing_indices[i],:]
-			saccades[j]['end_point'][:] = xy_data[threshold_crossing_indices[i+1],:]
-			saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
-			saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
-			saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
-			saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / (saccades[j]['vector'][1] + 0.00001))
-			saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+			# construct saccades:
+			for i in range(0,sample_times[threshold_crossing_indices].shape[0]-1,2):
+				j = i/2
+				saccades[j]['start_time'] = sample_times[threshold_crossing_indices[i]] - sample_times[0]
+				saccades[j]['end_time'] = sample_times[threshold_crossing_indices[i+1]] - sample_times[0]
+				saccades[j]['start_point'][:] = xy_data[threshold_crossing_indices[i],:]
+				saccades[j]['end_point'][:] = xy_data[threshold_crossing_indices[i+1],:]
+				saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
+				saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
+				saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
+				saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / (saccades[j]['vector'][1] + 0.00001))
+				saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+		else: saccades = np.array([])
 			
 		return saccades
 		
@@ -836,7 +838,7 @@ class SASession(EyeLinkSession):
 				if len(trial_sacc_data) > 0:
 					s.axvline(el_saccade_latency, c = colors[i], alpha = 0.7, linewidth = 1.25)
 				s.axvline(trial_vel_data[-1,0] - trial_vel_data[0,0] - 750, c = colors[i], alpha = 0.7, linewidth = 1.25, linestyle = '--')
-				s.axis([0,800,0,500])
+				s.axis([0,500,0,500])
 				s.set_title('velocity')
 				pp.savefig()
 		pp.close()
