@@ -827,13 +827,19 @@ class SASession(EyeLinkSession):
 				s = f.add_subplot(121)
 				s.plot( trial_xy_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),1], trial_xy_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),2], c = colors[i], linewidth = 2.5, alpha = 0.35 )
 				if len(trial_sacc_data) > 0:
-#					pl.scatter(np.array([sacc_startpoint[0], sacc_endpoint[0]]), np.array([sacc_startpoint[1], sacc_endpoint[1]]), colors[i])
-					s.plot(np.array([sacc_startpoint[0], sacc_endpoint[0]]), np.array([sacc_startpoint[1], sacc_endpoint[1]]), colors[i] + 'o', linewidth = 4.5, alpha = 0.5)
-				s.plot(np.array([trial_ps['saccade_endpoint_x']]), np.array([trial_ps['saccade_endpoint_y']]), colors[i] + 'x', linewidth = 4.5)
-				s.plot(np.array([trial_ps['fixation_target_x'], trial_ps['saccade_target_x']]), np.array([trial_ps['fixation_target_y'], trial_ps['saccade_target_y']]), colors[i] + '+', linewidth = 4.5)
+					s.plot(np.array([sacc_startpoint[0], sacc_endpoint[0]]), np.array([sacc_startpoint[1], sacc_endpoint[1]]), colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 10)
+				s.plot(np.array([trial_ps['saccade_endpoint_x']]), np.array([trial_ps['saccade_endpoint_y']]), colors[i] + 's', mew = 2.5, alpha = 0.5, mec = 'w', ms = 8)
+				s.plot(np.array([trial_ps['fixation_target_x'], trial_ps['saccade_target_x']]), np.array([trial_ps['fixation_target_y'], trial_ps['saccade_target_y']]), colors[i] + 'D', mew = 2.5, alpha = 0.65, mec = 'w', ms = 8)
 				# fit the screen
 				s.axis([0,800,0,600])
 				s.set_title('gaze in screen coordinates')
+				s.annotate('Trial # ' + str(trial_ps['trial_nr']) + ' block ' + str(trial_ps['trial_block']), (20,550), va="top", ha="left", size = 4 )
+				print 
+				print np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))
+				s.annotate('Saccade amplitude pre-step: ' + str(trial_ps['amplitude_pre']) + ' or ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))), (20,500), va="top", ha="left", size = 4 )
+				s.annotate('Saccade amplitude post-step: ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']]))), (20,450), va="top", ha="left", size = 4 )
+				s.annotate('Gain of step: ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))/np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']]))), (20,400), va="top", ha="left", size = 4 )
+				s.annotate('Amplitude of actual saccade: ' + str(np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint))), (20,350), va="top", ha="left", size = 4 )
 				s = f.add_subplot(122)
 				s.plot( trial_vel_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], trial_vel_data[:np.min([nr_plot_points, trial_vel_data.shape[0]]),1], c = colors[i], linewidth = 2.5, alpha = 0.25 )
 					
