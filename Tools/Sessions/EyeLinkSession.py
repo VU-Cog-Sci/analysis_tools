@@ -808,12 +808,8 @@ class SASession(EyeLinkSession):
 		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
 		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
 		
-		print 'data gathered, entering loops'
-		
 		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, sacc_data, xy_data, ps):
-			print 'i:' + str(i)
 			for (j, trial_vel_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
-				print 'j:' + str(j)
 				if max_index < np.min([nr_plot_points, trial_vel_data.shape[0]]):
 					max_index = np.min([nr_plot_points, trial_vel_data.shape[0]])
 				f = pl.figure(figsize = (12,3))
