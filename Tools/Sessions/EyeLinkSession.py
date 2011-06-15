@@ -557,6 +557,7 @@ class TAESession(EyeLinkSession):
 		s.set_ylabel('TAE [deg]', fontsize = 9)
 		s.set_xlabel('Adapt spread [$\sigma$ in deg]', fontsize = 9)
 		s.set_title('Subject ' + self.subject.firstName, fontsize = 9)
+		s.axis([-1,22,-0.3,2.0])
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
 	
 	def save_fit_results(self, suffix = ''):
@@ -767,6 +768,7 @@ class SASession(EyeLinkSession):
 		for i in range(len(vel_data)):
 			#pl.hist(np.array([ss[0]['start_time'] for ss in self_saccades[i]]), range = bin_range, bins = 90, alpha = 0.75, normed = True, histtype = 'step', linewidth = 2.5, color = colors[i] )
 			pl.plot(np.sort(np.array([ss[0]['start_time'] for ss in self_saccades[i]])), np.linspace(0,1,np.array([ss[0]['start_time'] for ss in self_saccades[i]]).shape[0]), alpha = 0.75, color = colors[i], linewidth = 1.75 )
+		s.axis([0,500,0,1])
 		s.axis([0, trial_vel_data[np.min([nr_plot_points, trial_vel_data.shape[0]]),0] - trial_vel_data[0,0], 0, 1])
 		
 		s = fig.add_subplot(413)
