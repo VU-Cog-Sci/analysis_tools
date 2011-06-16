@@ -808,7 +808,10 @@ class SASession(EyeLinkSession):
 		self_saccades = self.find_saccades_per_trial_for_run(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range)
 		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
 		
+		saccade_data = []
+		
 		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, sacc_data, xy_data, ps):
+			saccade_data.append([])
 			for (j, trial_vel_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
 				if max_index < np.min([nr_plot_points, trial_vel_data.shape[0]]):
 					max_index = np.min([nr_plot_points, trial_vel_data.shape[0]])
@@ -833,6 +836,15 @@ class SASession(EyeLinkSession):
 				# fit the screen
 				s.axis([0,800,0,600])
 				s.set_title('gaze in screen coordinates')
+				
+				pre_fix_pix = np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']])
+				sacc_target_pix = np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']])
+				sacc_endpoint_pix = np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']])
+				set_gain = np.linalg.norm(sacc_endpoint_pix-pre_fix_pix) / np.linalg.norm(sacc_target_pix-pre_fix_pix)
+				sacc_ampl_pix = np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint))
+				sacc_gain = np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint)) / np.linalg.norm((sacc_target_pix - pre_fix_pix))
+				
+				saccade_data[-1].append([pre_fix_pix, sacc_target_pix, sacc_endpoint_pix, set_gain, sacc_ampl_pix, sacc_gain])
 				s.annotate('Trial # ' + str(trial_ps['trial_nr']) + ' block ' + str(trial_ps['trial_block']), (20,550), va="top", ha="left", size = 6 )
 				s.annotate('Saccade amplitude pre-step: ' + str(trial_ps['amplitude_pre']) + ' or ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))), (20,500), va="top", ha="left", size = 6 )
 				s.annotate('Saccade amplitude post-step: ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']]))), (20,450), va="top", ha="left", size = 6 )
@@ -847,8 +859,19 @@ class SASession(EyeLinkSession):
 				s.axis([0,500,0,500])
 				s.set_title('velocity')
 				pp.savefig()
-			pl.close()
+				pl.close()
 		pp.close()
+		
+		# create a figure that tracks adaptation
+		f = pl.figure(figsize = (12,3))
+		f.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		s = f.add_subplot(111)
+		for i in range(len(saccade_data)):
+			gains = np.array([tr[-1] for tr in saccade_data[i]])
+			gains = np.array([np.arange(gains.shape[0]), gains]).T
+			gains = gains[gains[:,1] > 0.4].T
+			s.plot(gains[0], gains[1], colors[i] + 'D', mew = 2.5, alpha = 0.65, mec = 'w', ms = 8 )
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 	
 	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]]):
 		"""
