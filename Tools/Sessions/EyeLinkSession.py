@@ -35,6 +35,10 @@ from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 from ..circularTools import *
 
+# function for fitting
+def normal_pdf_gain_offset(x, mu, sigma, offset, gain):
+	return np.exp(-(x-mu)**2/(2 * sigma)) * gain + offset
+
 
 class EyeLinkSession(object):
 	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
@@ -327,7 +331,7 @@ class TAESession(EyeLinkSession):
 		
 		
 	
-	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = ''):
+	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = '', make_plot = True, create_globals = True):
 		"""fits the data in self.parameter_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
 		rectified_answers = [self.rectified_answers[boolean_array * self.rectified_test_orientation_indices[i]] for i in range(self.test_orientations.shape[0])]
 		nr_ones, nr_samples = [r.sum() for r in rectified_answers], [r.shape[0] for r in rectified_answers]
@@ -338,45 +342,50 @@ class TAESession(EyeLinkSession):
 		# and let the package do a bootstrap sampling of the resulting fits
 		pf.sample()
 		
-		# scatter plot of the actual data points
-		sub_plot.scatter(self.test_orientations, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25)
+		if make_plot:
+			# scatter plot of the actual data points
+			sub_plot.scatter(self.test_orientations, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25)
 		
-		# line plot of the fitted curve
-		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
+			# line plot of the fitted curve
+			sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), 'k--', linewidth = 1.75)
 		
-		# TEAE value as a red line in the plot
-		sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
-		# and the boundaries of the confidence interval on this point
-		sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
-		sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
+			# TEAE value as a red line in the plot
+			sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
+			# and the boundaries of the confidence interval on this point
+			sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
+			sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
 		
-		sub_plot.set_title(title, fontsize=9)
-		sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
+			sub_plot.set_title(title, fontsize=9)
+			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 		
-		# archive these results in the object's list variables.
-		self.psychometric_data.append(fit_data)
-		self.TAEs.append(pf.estimate[0])
-		self.pfs.append(pf)
+		if create_globals:
+			# archive these results in the object's list variables.
+			self.psychometric_data.append(fit_data)
+			self.TAEs.append(pf.estimate[0])
+			self.pfs.append(pf)
+		
+		return fit_data, pf
 	
-	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = True, plot_range = [-5,5], y_label = ''):
+	def normalize_and_fit_confidence(self, test_orientations, confidence_ratings_per_test_orientation, start_value_mu = 0):
+		
+		conf_grouped_mean = np.array([np.mean(c) for c in confidence_ratings_per_test_orientation])
+		normed_conf_grouped_mean = ((conf_grouped_mean-conf_grouped_mean.min())/(conf_grouped_mean.max()-conf_grouped_mean.min()))
+		
+		fitopt, fitcov = sp.optimize.curve_fit(normal_pdf_gain_offset, test_orientations, normed_conf_grouped_mean, p0 = [start_value_mu, 5.0, 0.0, 1.5])
+		return fitopt, fitcov, normed_conf_grouped_mean
+	
+	def plot_confidence(self, boolean_array, sub_plot, normalize_confidence = False, plot_range = [-5,5], y_label = '', TAE = 0):
 		"""plots the confidence data in self.parameter_data[boolean_array] in sub_plot. It doesn't set the title of the subplot."""
 		rectified_confidence = [self.parameter_data[boolean_array * self.rectified_test_orientation_indices[i]]['confidence'] for i in range(self.test_orientations.shape[0])]
-		mm = [np.min(self.parameter_data[:]['confidence']),np.max(self.parameter_data[:]['confidence'])]
+		
 		sub_plot = sub_plot.twinx()
 		
-		if normalize_confidence:
-			# the confidence ratings are normalized
-			conf_grouped_mean = np.array([np.mean((c-mm[0])/(mm[1]-mm[0])) for c in rectified_confidence])
-			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 1.75)
-			sub_plot.axis([plot_range[0],plot_range[1],-0.025,1.025])
-			
-		else:
-			# raw confidence is used
-			conf_grouped_mean = np.array([np.mean(c) for c in rectified_confidence])
-			sub_plot.plot(self.test_orientations, conf_grouped_mean, 'g--' , alpha = 0.5, linewidth = 1.75)
-			sub_plot.axis([plot_range[0], plot_range[1], mm[0], mm[1]])
-			
-		self.confidence_ratings.append(conf_grouped_mean)
+		fitopt, fitcov, normed_conf_grouped_mean = self.normalize_and_fit_confidence(self.test_orientations, rectified_confidence, start_value_mu = TAE)
+		
+		sub_plot.plot(self.test_orientations, normed_conf_grouped_mean, 'go' , alpha = 0.5, linewidth = 1.75, mec = 'w')
+		sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), normal_pdf_gain_offset(np.linspace(plot_range[0],plot_range[1], 500), fitopt[0], fitopt[1], fitopt[2], fitopt[3]), 'g-' , alpha = 0.5, linewidth = 1.75, mec = 'w')
+		
+		self.confidence_ratings.append(normed_conf_grouped_mean)
 		
 		return sub_plot
 	
@@ -411,7 +420,7 @@ class TAESession(EyeLinkSession):
 					if c == self.adaptation_frequencies[0]:
 						sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
 				
-				sub_plot = self.plot_confidence(this_condition_array, sub_plot)
+				sub_plot = self.plot_confidence(this_condition_array, sub_plot, TAE = self.TAEs[-1])
 				if a == self.adaptation_durations[-1]:
 					sub_plot.set_ylabel('confidence', fontsize=9)
 				
@@ -444,7 +453,9 @@ class TAESession(EyeLinkSession):
 		s.plot(np.linspace(-1.0, 2.75,40), np.linspace(-1.0, 2.75, 40), 'k--', alpha = 0.95, linewidth = 1.75)
 		for i in range(self.adaptation_frequencies.shape[0]):
 			for j in range(self.adaptation_durations.shape[0]):
-				self.confidence_minima[i,j] = self.test_orientations[self.confidence_ratings[i,j] == np.min(self.confidence_ratings[i,j])].mean()
+		#		self.confidence_minima[i,j] = self.test_orientations[self.confidence_ratings[i,j] == np.min(self.confidence_ratings[i,j])].mean()
+				fitopt, fitcov, normed_conf_grouped_mean = self.normalize_and_fit_confidence(self.test_orientations, self.confidence_ratings[i,j], start_value_mu = self.TAEs[i,j])
+				self.confidence_minima[i,j] = fitopt[0]
 				s.scatter(self.TAEs[i,j], self.confidence_minima[i,j], s = 20 + 20 * j, facecolor = (1.0,1.0,1.0), edgecolor = ['b','g'][i], alpha = 1.0 - (0.75 * j) / float(self.adaptation_durations.shape[0]), linewidth = 1.75)
 		s.axis([-1.0, 2.75, -1.0, 2.75])
 		s.set_xlabel('TAE [deg]', fontsize = 9)
@@ -560,6 +571,74 @@ class TAESession(EyeLinkSession):
 		s.axis([-1,22,-0.3,2.0])
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adapt_summary_' + str(self.wildcard) + '_joined.pdf'))
 	
+	def run_random_duration_conditions(self):
+		self.absolute_adaptation_orientations = np.unique(np.abs(self.parameter_data[:]['adaptation_orientation']))
+		
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.TAEs = []
+		self.pfs = []
+		self.confidence_ratings = []
+		self.conditions = []
+		
+		fig = pl.figure(figsize = (4,4))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
+		pl_nr = 1
+		# across adaptation durations:
+		for ao in self.absolute_adaptation_orientations:
+			a_array = np.abs(self.parameter_data[:]['adaptation_orientation']) == ao
+			this_condition_array = a_array
+			sub_plot = fig.add_subplot(self.absolute_adaptation_orientations.shape[0], 1, pl_nr)
+			self.fit_condition(a_array, sub_plot, 'adapt orientation ' + str(ao) )
+			sub_plot.set_xlabel('orientation [deg]', fontsize=9)
+			if ao == self.absolute_adaptation_orientations[0]:
+				sub_plot.set_ylabel('p(tilt seen in adapt direction)', fontsize=9)
+				sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
+				
+			sub_plot = self.plot_confidence(this_condition_array, sub_plot)
+			if ao == self.absolute_adaptation_orientations[-1]:
+				sub_plot.set_ylabel('confidence', fontsize=9)
+				
+			pl_nr += 1
+			self.conditions.append(ao)
+			
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_psychometric_curves_' + str(self.wildcard) + '_joined.pdf'))
+		
+		self.TAEs = np.array(self.TAEs).reshape((self.absolute_adaptation_orientations.shape[0]))
+		
+		fig = pl.figure(figsize = (6,4))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
+		sub_plot = fig.add_subplot(1, 1, 1)
+		sub_plot.set_xlabel('TAE [deg]', fontsize=9)
+		sub_plot.set_ylabel('T [s]', fontsize=9)
+		sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
+		# across adaptation orientations:
+		for ao in self.absolute_adaptation_orientations:
+			condition_running_TAEs = []
+			
+			a_array = np.abs(self.parameter_data[:]['adaptation_orientation']) == ao
+			this_condition_array = a_array
+			
+			rectified_answers = [self.rectified_answers[this_condition_array * self.rectified_test_orientation_indices[i]] for i in range(self.test_orientations.shape[0])]
+			durations = [self.parameter_data[this_condition_array * self.rectified_test_orientation_indices[i]]['adaptation_duration'] for i in range(self.test_orientations.shape[0])]
+			
+			bin_width = 0.5
+			for bin_time in np.arange(0.25, 1.5 - bin_width, 0.025):
+				durs_this_interval_indices = [(d >= bin_time) * (d < bin_time + bin_width) for d in durations]
+				rectified_answers_this_time_bin = [r[d] for (r,d) in zip(rectified_answers, durs_this_interval_indices)]
+				duration_this_bin = np.concatenate([r[d] for (r,d) in zip(durations, durs_this_interval_indices)]).mean()
+				nr_ones, nr_samples = [r.sum() for r in rectified_answers_this_time_bin], [r.shape[0] for r in rectified_answers_this_time_bin]
+				fit_data = zip(self.test_orientations, nr_ones, nr_samples)
+				# and we fit the data
+				pf = BootstrapInference(fit_data, sample = False, sigmoid = 'gauss', core = 'ab', nafc = 1, cuts = [0.25,0.5,0.75], gammaislambda = True)
+				condition_running_TAEs.append([pf.estimate[0], duration_this_bin])
+			condition_running_TAEs = np.array(condition_running_TAEs)
+			sub_plot.plot(condition_running_TAEs[:,1], condition_running_TAEs[:,0])
+			
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_over_time_' + str(self.wildcard) + '_joined.pdf'))
+
+		
+		
 	def save_fit_results(self, suffix = ''):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
@@ -862,6 +941,7 @@ class SASession(EyeLinkSession):
 				pl.close()
 		pp.close()
 		
+		smooth_width = 6
 		# create a figure that tracks adaptation
 		f = pl.figure(figsize = (12,3))
 		f.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
@@ -871,6 +951,9 @@ class SASession(EyeLinkSession):
 			gains = np.array([np.arange(gains.shape[0]), gains]).T
 			gains = gains[gains[:,1] > 0.4].T
 			s.plot(gains[0], gains[1], colors[i] + 'D', mew = 2.5, alpha = 0.65, mec = 'w', ms = 8 )
+			kern =  stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+			sm_signal = np.convolve( gains[1], kern / kern.sum(), 'valid' )
+			pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = 0.5, linewidth = 1.75 )
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 	
 	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]]):
@@ -882,16 +965,24 @@ class SASession(EyeLinkSession):
 		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
 		
 		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
+		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
 		
 		saccades = []
-		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, sacc_data, gaze_data):
-			saccades.append([])
-			for (j, trial_vel_data, trial_sacc_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_gaze_data):
+		for (i, trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, sacc_data, xy_data, ps):
+			saccade_data.append([])
+			for (j, trial_vel_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
 				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0], pixels_per_degree = self.parameter_data[0]['pixels_per_degree'])
 				if saccs.shape[0] > 0:
 					saccades[-1].append(saccs)
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
+				pre_fix_pix = np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']])
+				sacc_target_pix = np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']])
+				sacc_endpoint_pix = np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']])
+				set_gain = np.linalg.norm(sacc_endpoint_pix-pre_fix_pix) / np.linalg.norm(sacc_target_pix-pre_fix_pix)
+				sacc_ampl_pix = np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint))
+				sacc_gain = np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint)) / np.linalg.norm((sacc_target_pix - pre_fix_pix))
+				
 		self.logger.debug('Detected saccades from run # ' + str(run_index))
 		return saccades
 	
