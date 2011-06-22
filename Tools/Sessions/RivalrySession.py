@@ -493,11 +493,15 @@ class RivalryLearningSession(Session):
 		
 		self.logger.debug('eventRelatedAverage analysis with input data shaped: %s, and %s events of type %s', str(roiData.shape), str(eventData[eventType].shape[0]), eventType)
 		# mean data over voxels for this analysis
-		roiData = roiData.mean(axis = 1)
+		roiDataM = roiData.mean(axis = 1)
+		roiDataVar = roiData.var(axis = 1)
 		for e in range(len(eventArray)):
-			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-3.0,15.0])
+			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), eventObject = eventArray[e], interval = [-3.0,15.0])
+			eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), eventObject = eventArray[e], interval = [-3.0,15.0])
 			d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
+			dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
 			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.75)
+			pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = color, alpha = 0.75, ls = '--')
 	
 	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], eventType = 'transitionEventsAsArray', learningPartitions = None):
 		
@@ -522,7 +526,7 @@ class RivalryLearningSession(Session):
 				for (ind, lp) in zip(range(len(learningPartitions)), learningPartitions):
 					self.eventRelatedAverageEvents(roiArray[r], eventType = eventType, whichRuns = [self.conditionDict['rivalry'][i] for i in lp], color = colors[ind])
 				s.set_xlabel(roiArray[r], fontsize=9)
-				s.axis([-5,17,-0.1,0.1])
+				s.axis([-5,17,-0.075,0.075])
 	
 	def prepareTransitionGLM(self, functionals = False):
 		"""
