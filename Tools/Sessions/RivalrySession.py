@@ -115,7 +115,7 @@ class RivalryReplaySession(Session):
 			s.set_xlabel(roiArray[r], fontsize=9)
 		return res
 	
-	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, whichMask = '_transStateGTdomState', color = 'k'):
+	def eventRelatedAverageEvents(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, whichMask = '_transStateGTdomState', color = 'k', signal = 'mean'):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
@@ -146,18 +146,24 @@ class RivalryReplaySession(Session):
 		smoothingWidth = 7
 		f = np.array([pow(math.e, -(pow(x,2.0)/(smoothingWidth))) for x in np.linspace(-smoothingWidth,smoothingWidth,smoothingWidth*2.0)])
 		
-		# mean data over voxels for this analysis
-		roiData = roiData.mean(axis = 1)
+		# mean or std data over voxels for this analysis
+		if signal == 'mean':
+			roiData = roiData.mean(axis = 1)
+		elif signal == 'std':
+			roiData = roiData.std(axis = 1)
+		elif signal == 'cv':
+			roiData = roiData.std(axis = 1)/roiData.mean(axis = 1)
+			
 		for e in range(len(eventArray)):
 			eraOp = EventRelatedAverageOperator(inputObject = np.array([roiData]), eventObject = eventArray[e], interval = [-2.0,14.0])
 			d = eraOp.run(binWidth = 4.0, stepSize = 0.25)
-			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.25)
-			pl.plot(d[:,0], np.convolve(f/f.sum(), d[:,1], 'same'), c = color, alpha = 0.6)
+			pl.plot(d[:,0], d[:,1], c = color, alpha = 0.75)
+#			pl.plot(d[:,0], np.convolve(f/f.sum(), d[:,1], 'same'), c = color, alpha = 0.6)
 			res.append(d)
 		return res
 			
 	
-	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], whichMask = '_transStateGTdomState'):
+	def eventRelatedAverageEventsFromRois(self, roiArray = ['V1','V2','MT','lingual','superiorparietal','inferiorparietal','insula'], whichMask = '_transStateGTdomState', signal = 'mean'):
 		evRes = []
 		fig = pl.figure(figsize = (3.5,10))
 		
@@ -166,16 +172,19 @@ class RivalryReplaySession(Session):
 			evRes.append([])
 			s = fig.add_subplot(len(roiArray),1,r+1)
 			if r == 0:
-				s.set_title(self.subject.initials + ' averaged', fontsize=12)
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'r'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'g'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], whichMask = whichMask, color = 'b'))
-			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
+				s.set_title(self.subject.initials + ' averaged ' + signal, fontsize=12)
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'perceptEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'r', signal = signal))
+			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'transitionEventsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'g', signal = signal))
+#			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay'], whichMask = whichMask, color = 'b', signal = signal))
+#			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'yokedEventsAsArray', whichRuns = self.conditionDict['replay2'], whichMask = whichMask, color = 'k', signal = signal))
 #			evRes[r].append(self.eventRelatedAverageEvents(roiArray[r], eventType = 'halfwayTransitionsAsArray', whichRuns = self.conditionDict['rivalry'] + self.conditionDict['replay'] + self.conditionDict['replay2'], whichMask = whichMask, color = 'k'))
 			s.set_xlabel(roiArray[r], fontsize=9)
-#			s.axis([-5,17,-2.1,3.8])
+			if signal == 'mean':
+				pl.xlim([0,12])
+			elif signal == 'std':
+				s.axis([0,12,0.85,0.985])
 		
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'event-related_' + signal + '.pdf'))
 		return evRes
 	
 	def runTransitionGLM(self, perRun = False, acrossRuns = True):
