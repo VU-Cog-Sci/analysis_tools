@@ -636,9 +636,7 @@ class TAESession(EyeLinkSession):
 			sub_plot.plot(condition_running_TAEs[:,1], condition_running_TAEs[:,0])
 			
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_over_time_' + str(self.wildcard) + '_joined.pdf'))
-
-		
-		
+	
 	def save_fit_results(self, suffix = ''):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
@@ -727,7 +725,31 @@ class TEAESession(EyeLinkSession):
 		# archive these results in the object's list variables.
 		self.psychometric_data.append(fit_data)
 		self.TEAEs.append(pf.estimate[0])
-		self.pfs.append(pf)		
+		self.pfs.append(pf)
+	
+	def plot_confidence_for_condition(self, boolean_array, sub_plot, title, plot_range = [-2.8,-1.5], x_label = '', y_label = '', colors = ['r','k']):
+		correct_indices = self.parameter_data[:]['correct'] == 1
+		tested_contrasts = np.unique(self.test_contrasts[boolean_array])
+		tested_contrast_indices = [self.test_contrasts == tc for tc in tested_contrasts]
+		
+		correct_confidence = [self.parameter_data[boolean_array * correct_indices * tested_contrast_indices[i]]['confidence'] for i in range(len(tested_contrast_indices))]
+		incorrect_confidence = [self.parameter_data[boolean_array * -correct_indices * tested_contrast_indices[i]]['confidence'] for i in range(len(tested_contrast_indices))]
+		
+		mean_correct_confidence = np.array([c.mean() for c in correct_confidence])
+		mean_incorrect_confidence = np.array([c.mean() for c in incorrect_confidence])
+		
+		sub_plot = sub_plot.twinx()
+		
+		# sub_plot.plot(tested_contrasts, mean_correct_confidence / 4.0, c = colors[0], alpha = 0.5, linewidth = 1.75, ls = 'dotted')
+		# sub_plot.plot(tested_contrasts, mean_incorrect_confidence / 4.0, c = colors[1], alpha = 0.5, linewidth = 1.75, ls = 'dashed')
+		
+		sub_plot.plot(tested_contrasts, (mean_correct_confidence-mean_incorrect_confidence) / 4.0, c = colors[1], alpha = 0.5, linewidth = 1.75)
+		
+		sub_plot.axis([plot_range[0], plot_range[1], -1.025, 1.025])
+	#	self.confidence_ratings.append(normed_conf_grouped_mean)
+		
+		return sub_plot
+		
 	
 	def plot_staircases_for_condition(self, boolean_array, sub_plot, color = 'b', plot_range = [-2.8,-1.5]):
 		staircases_in_this_condition = np.unique(self.parameter_data[boolean_array]['staircase'])
@@ -755,6 +777,8 @@ class TEAESession(EyeLinkSession):
 		fig = pl.figure(figsize = (11,3))
 		s = fig.add_subplot(1,1,1)
 		self.fit_condition(boolean_array = np.ones((len(self.parameter_data)), dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'p (correct)')
+		self.plot_confidence_for_condition(boolean_array = np.ones((len(self.parameter_data)), dtype = 'Bool'), sub_plot = s, title = 'training ' + self.wildcard, x_label = 'log contrast', y_label = 'confidence')
+		
 		pl.show()
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
 	
@@ -777,6 +801,7 @@ class TEAESession(EyeLinkSession):
 		
 		fig_nr = 1
 		fig = pl.figure(figsize = (15,4))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		for i in range(self.phase_redraw_periods.shape[0]):
 			this_prp_indices = self.parameter_data[:]['phase_redraw_period'] == self.phase_redraw_periods[i]
 			for j in range(self.adaptation_durations.shape[0]):
@@ -784,7 +809,9 @@ class TEAESession(EyeLinkSession):
 				for k in range(equal_opposite_orientations.shape[0]):
 					this_ad_indices = self.parameter_data[:]['adaptation_duration'] == self.adaptation_durations[j]
 					self.fit_condition(boolean_array = this_prp_indices * this_ad_indices * equal_opposite_orientations[k], sub_plot = s, title = 'adaptation ' + str(self.adaptation_durations[j]) + ' ' +  str(i), x_label = 'log contrast', y_label = 'p (correct)', colors = [['r','r'], ['k','k']][k])
+					self.plot_confidence_for_condition( boolean_array = this_prp_indices * this_ad_indices * equal_opposite_orientations[k], sub_plot = s, title = 'adaptation ' + str(self.adaptation_durations[j]) + ' ' +  str(i), x_label = 'log contrast', y_label = 'confidence', colors = [['r','r'], ['k','k']][k] )
 					self.conditions.append([self.phase_redraw_periods[i], self.adaptation_durations[j], [0,1][k]])
+					
 				fig_nr += 1
 				
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'training_psychometric_curves_' + str(run_nr) + '_' + str(self.wildcard) + '.pdf'))
