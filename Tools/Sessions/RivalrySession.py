@@ -484,7 +484,7 @@ class RivalryLearningSession(Session):
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
 		roiData = self.gatherRIOData(roi, whichRuns = whichRuns )
-		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,30] )
+		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,20] )
 		
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[eventType][:,2]) == 1, np.abs(eventData[eventType][:,2]) == 2]
@@ -563,4 +563,45 @@ class RivalryLearningSession(Session):
 		
 	
 
-
+	def eventRelatedDecodingFromRoi(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, color = 'k'):
+		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
+		
+		roiData = self.gatherRIOData(roi, whichRuns = [self.conditionDict['rivalry'][i] for i in whichRuns] )
+		eventData = self.gatherBehavioralData( whichRuns = [self.conditionDict['rivalry'][i] for i in whichRuns] )
+		
+		from ..Operators.ImageOperator import Design
+		
+		d = Design(roiData.shape[0], 2.0, subSamplingRatio = 100)
+		forTransitionregressor = np.ones((eventData['transitionEventsAsArray'].shape[0],3))
+		forTransitionregressor[:,0] = eventData['transitionEventsAsArray'][:,0]
+		forTransitionregressor[:,1] = 0.5
+		d.addRegressor(forTransitionregressor)
+		# percept regressor
+		d.addRegressor(np.hstack( (eventData['perceptEventsAsArray'][:,[0,1]], (eventData['perceptEventsAsArray'][:,[2]]-1.5) * 2.0) ))
+		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) # a = 6, b = 0.9
+		
+		if True:
+			from ..Operators.ArrayOperator import DecodingOperator
+		
+			# use median thresholding for transition feature indexing
+			over_median = d.designMatrix[:,0] > np.median(d.designMatrix[:,0])
+			under_median = -over_median
+		
+			om_indices = np.arange(over_median.shape[0])[over_median]
+			um_indices = np.arange(over_median.shape[0])[under_median]
+		
+			nr_runs = np.min([om_indices.shape[0], um_indices.shape[0]])
+			run_width = 10
+			dec = DecodingOperator(roiData, decoder = 'libSVM', fullOutput = True)
+			
+			for i in range(nr_runs-run_width):
+				testThisRun = (np.arange(nr_runs) >= i) * (np.arange(nr_runs) < i+run_width)
+				trainingThisRun = -testThisRun
+				trainingDataIndices = np.concatenate(( om_indices[trainingThisRun], um_indices[trainingThisRun] ))
+				testDataIndices = np.concatenate(( om_indices[testThisRun], um_indices[testThisRun] ))
+				trainingsLabels = np.concatenate(( -np.ones((nr_runs-run_width)), np.ones((nr_runs-run_width)) ))
+				testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
+				
+				print dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
+			
+		

@@ -245,16 +245,18 @@ class Design(object):
 		for event in regressor:
 			startTime = event[0]
 			endTime = event[0]+event[1]
-			regressorValues[(self.timeValuesForConvolution > startTime) * (self.timeValuesForConvolution + endTime)] = event[2]
+			regressorValues[(self.timeValuesForConvolution > startTime) * (self.timeValuesForConvolution < endTime)] = event[2]
 		self.rawDesignMatrix.append(regressorValues)
+		
+		return regressorValues
 	
 	def convolveWithHRF(self, hrfType = 'doubleGamma', hrfParameters = {'a1':6, 'a2':12, 'b1': 0.9, 'b2': 0.9, 'c':0.35}):
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/self.subSamplingRatio), **hrfParameters)')
-		self.designMatrix = np.zeros((len(self.designMatrix),self.nrTimePoints))
+		self.designMatrix = np.zeros((len(self.rawDesignMatrix),self.nrTimePoints))
 		for (i, reg) in zip(np.arange(len(self.rawDesignMatrix)), self.rawDesignMatrix):
-			self.designMatrix[i] = sp.convolve(reg, hrfKernel)[0::round(self.subsamplingRatio * self.rtime)]
+			self.designMatrix[i] = sp.convolve(reg, self.hrfKernel, 'same')[0::round(self.subSamplingRatio * self.rtime)]
 			
 		# first dimension has to be time instead of condition
 		self.designMatrix = self.designMatrix.T

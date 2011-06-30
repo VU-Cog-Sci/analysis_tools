@@ -9,6 +9,13 @@ Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 
 from Operator import *
 
+# weird workaround for scipy stats import bug. try and except: do again!
+try:
+	import scipy.stats as stats
+except ValueError:
+	import scipy.stats as stats
+
+
 
 class ArrayOperator(Operator):
 	"""
@@ -145,3 +152,96 @@ class EventRelatedAverageOperator(EventDataOperator):
 		self.output = np.array([self.averageEventsInTimeInterval(i) for i in self.averagingIntervals])
 		return self.output
 	
+		# for decoding we need the following:
+		from shogun.Features import SparseRealFeatures, RealFeatures, Labels
+		from shogun.Kernel import GaussianKernel
+		from shogun.Classifier import LibSVM
+		from shogun.Classifier import SVMLin
+
+
+from shogun.Features import SparseRealFeatures, RealFeatures, Labels
+from shogun.Kernel import GaussianKernel
+from shogun.Classifier import LibSVM
+from shogun.Classifier import SVMLin
+
+def svmLinDecoder(train, test, trainLabels, testLabels, fullOutput = False, C = 0.9, epsilon = 1e-5, nThreads = 4):
+	realfeat=RealFeatures(train)
+	feats_train=SparseRealFeatures()
+	feats_train.obtain_from_simple(realfeat)
+	realfeat=RealFeatures(test)
+	feats_test=SparseRealFeatures()
+	feats_test.obtain_from_simple(realfeat)
+	
+	num_threads=nThreads
+	labels=Labels(trainLabels)
+	
+	svm=SVMLin(C, feats_train, labels)
+	svm.set_epsilon(epsilon)
+	svm.parallel.set_num_threads(num_threads)
+	svm.set_bias_enabled(True)
+	svm.train()
+	
+	svm.set_features(feats_test)
+#	svm.get_bias()
+#	svm.get_w()
+	out = svm.classify().get_labels()
+	
+	predictions = np.sign(out)
+	accuracy = ( predictions == testLabels ).sum() / float(testLabels.shape[0])
+	
+	if fullOutput:
+		return [accuracy, predictions, out]
+	else:
+		return accuracy
+
+
+def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, width = 2.1, C = 1, epsilon = 1e-5 ):
+	pl.figure()
+	pl.imshow(train)
+	pl.show()
+	feats_train=RealFeatures(train)
+	feats_test=RealFeatures(test)
+	
+	kernel=GaussianKernel(feats_train, feats_train, width)
+	labels=Labels(trainLabels)
+	
+	svm=LibSVM(C, kernel, labels)
+	svm.set_epsilon(epsilon)
+	
+	svm.train()
+	
+	kernel.init(feats_train, feats_test)
+	
+	out = svm.classify().get_labels()
+	
+	predictions = np.sign(out)
+	accuracy = ( predictions == testLabels ).sum() / float(testLabels.shape[0])
+	
+	if fullOutput:
+		return [accuracy, predictions, out]
+	else:
+		return accuracy
+	
+
+class DecodingOperator(ArrayOperator):
+	def __init__(self, inputObject, decoder = 'libSVM', fullOutput = False, **kwargs ):
+		"""
+		inputObject is an array of voxels x Time. 
+		It contains all the feature data. configure function will define the trainings/test partitions on the data and the labels associated with those.
+		"""
+		super(DecodingOperator, self).__init__(inputObject, **kwargs)
+		self.decoder = decoder
+		self.fullOutput = fullOutput
+		self.dataArray = np.array(self.dataArray, dtype = np.float32)
+		
+	def decode(self, trainingDataIndices, trainingLabels, testDataIndices, testLabels):
+		
+		train = self.dataArray[trainingDataIndices].T
+		test = self.dataArray[testDataIndices].T
+		
+		if self.decoder == 'libSVM':
+			return libSVMDecoder(train, test, trainingLabels.T, testLabels.T, fullOutput = self.fullOutput)
+		elif self.decoder == 'svmLin':
+			return svmLinDecoder(train, test, trainingLabels.T, testLabels.T, fullOutput = self.fullOutput)
+			
+		
