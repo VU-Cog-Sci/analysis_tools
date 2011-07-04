@@ -1149,10 +1149,10 @@ class SASession(EyeLinkSession):
 		set_sacc_ampl_pix = np.linalg.norm(np.array(pre_fix_pix)-np.array(sacc_target_pix))
 		set_sacc_ampl = set_sacc_ampl_pix / parameters['pixels_per_degree']
 		
-		
+		print vel_data.shape
 		# parameters from the saccades, both detected by eyelink and by our computation
 		el_sacc_timestamp = np.array(el_sacc['start_timestamp'])
-		el_saccade_latency = el_sacc_timestamp - vel_data[0,0]
+		el_saccade_latency = el_sacc_timestamp - xy_data[0,0]
 		el_sacc_start_point = np.array([el_sacc['start_x'], el_sacc['start_y']])
 		el_sacc_end_point = np.array([el_sacc['end_x'], el_sacc['end_y']])
 		el_saccade_vector = el_sacc_start_point - el_sacc_end_point
