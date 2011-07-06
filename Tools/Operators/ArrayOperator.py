@@ -221,7 +221,28 @@ def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, widt
 		return [accuracy, predictions, out]
 	else:
 		return accuracy
+
+def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 2.1, C = 1, epsilon= 1e-5):
 	
+	from shogun.Features import RealFeatures, Labels
+	from shogun.Kernel import GaussianKernel
+	from shogun.Classifier import LibSVMMultiClass
+	
+	feats_train=RealFeatures(fm_train_real)
+	feats_test=RealFeatures(fm_test_real)
+	kernel=GaussianKernel(feats_train, feats_train, width)
+	
+	labels=Labels(label_train_multiclass)
+	
+	svm=LibSVMMultiClass(C, kernel, labels)
+	svm.set_epsilon(epsilon)
+	svm.train()
+	
+	kernel.init(feats_train, feats_test)
+	out = svm.classify().get_labels()
+	predictions = svm.classify()
+	
+	return predictions, svm, predictions.get_labels()
 
 class DecodingOperator(ArrayOperator):
 	def __init__(self, inputObject, decoder = 'libSVM', fullOutput = False, **kwargs ):
@@ -232,16 +253,18 @@ class DecodingOperator(ArrayOperator):
 		super(DecodingOperator, self).__init__(inputObject, **kwargs)
 		self.decoder = decoder
 		self.fullOutput = fullOutput
-		self.dataArray = np.array(self.dataArray, dtype = np.float32)
+		self.dataArray = np.array(self.dataArray, dtype = np.float64)
 		
 	def decode(self, trainingDataIndices, trainingLabels, testDataIndices, testLabels):
 		
 		train = self.dataArray[trainingDataIndices].T
 		test = self.dataArray[testDataIndices].T
-		
+				
 		if self.decoder == 'libSVM':
-			return libSVMDecoder(train, test, trainingLabels.T, testLabels.T, fullOutput = self.fullOutput)
+			return libSVMDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
 		elif self.decoder == 'svmLin':
-			return svmLinDecoder(train, test, trainingLabels.T, testLabels.T, fullOutput = self.fullOutput)
+			return svmLinDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
+		elif self.decoder == 'multiclass':
+			return classifier_libsvm_modular( train, test, trainingLabels )
 			
 		

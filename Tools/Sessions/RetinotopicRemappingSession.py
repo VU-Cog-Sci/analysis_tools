@@ -681,3 +681,34 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
 			# run 
 			rmtOp.execute()
+	
+	
+	def phaseDecoding(self, condition, roi ):
+		
+		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar' ), dtype = np.float64)
+		phases = np.array(np.mod(np.arange(roiData.shape[0]), 16), dtype = np.float64)
+		
+		print roiData.shape, phases.shape
+		
+		from ..Operators.ArrayOperator import DecodingOperator
+		
+		nr_samples = roiData.shape[0]
+		run_width = 32
+		dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
+		print nr_samples
+		f = pl.figure()
+		
+		for i in range(nr_samples-run_width):
+			testThisRun = (np.arange(nr_samples) >= i) * (np.arange(nr_samples) < i+run_width)
+			trainingThisRun = -testThisRun
+			trainingDataIndices = np.arange(nr_samples)[trainingThisRun]
+			testDataIndices = np.arange(nr_samples)[testThisRun]
+			trainingsLabels = phases[trainingThisRun]
+			testLabels = (phases[testThisRun] / 16 ) * 2.0 * pi
+			
+			out = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)[-1]
+			out = (out / 16 ) * 2.0 * pi
+			
+			pl.plot(circularDifference(testLabels, out).sort())
+			pl.draw()
+		
