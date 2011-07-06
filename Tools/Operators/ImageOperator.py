@@ -170,6 +170,7 @@ class ImageMaskingOperator( ImageOperator ):
 				maskedDataFile.close()
 			
 		return allMaskedData
+		
 	
 	def execute(self):
 		super(ImageMaskingOperator, self).execute()
