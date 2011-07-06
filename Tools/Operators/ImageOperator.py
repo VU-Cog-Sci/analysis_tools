@@ -58,9 +58,11 @@ class ImageMaskingOperator( ImageOperator ):
 		
 		if self.maskObject.__class__.__name__ == 'str':
 			self.maskObject = NiftiImage(self.maskObject)
-		if self.inputObject.__class__.__name__ == 'NiftiImage':
+		if self.maskObject.__class__.__name__ == 'NiftiImage':
 			# not typically the filename I'd want to be using
 			self.maskFileName = self.maskObject.filename
+		if self.maskObject.__class__.__name__ == 'ndarray':
+			self.maskObject = NiftiImage(self.maskObject)
 			
 		# if all thresholds for all mask volumes will be equal:
 		if len(thresholds) < self.maskObject.data.shape[0]:
@@ -164,10 +166,16 @@ class ImageMaskingOperator( ImageOperator ):
 				allMaskedData.append(self.applySingleMask(i, self.thresholds[i], self.nrVoxels[i], maskFunction, flat = flat))
 			
 			if save:
-				fileName = self.outputFileName + '.pickle'
-				maskedDataFile = open(fileName, 'w')
-				pickle.dump(allMaskedData, maskedDataFile)
-				maskedDataFile.close()
+#				fileName = self.outputFileName + '.pickle'
+#				maskedDataFile = open(fileName, 'w')
+#				pickle.dump(allMaskedData, maskedDataFile)
+				np.save(self.outputFileName + '.npy', allMaskedData)
+#				maskedDataFile.close()
+				oldDataFile = self.outputFileName + '.pickle'
+				try:
+					os.system('rm ' + oldDataFile )
+				except OSError:
+					pass
 			
 		return allMaskedData
 		
