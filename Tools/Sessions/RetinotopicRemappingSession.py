@@ -712,9 +712,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			out = (out / 16 ) * 2.0 * pi
 			all_out.append(circularDifference(testLabels, out))
 		all_out = np.concatenate(all_out)
-		pl.hist(all_out, alpha = 0.1, range = [-pi,pi], bins = 50, normed = True, histtype = 'step', linewidth = 1.25, color = color)
+		pl.hist(all_out, alpha = 0.1, range = [-pi,pi], bins = 50, normed = True, histtype = 'step', linewidth = 1.25, color = color, rwidth = 1.0)
 #		pl.plot(np.sort(all_out), np.linspace(0,1,all_out.shape[0]), linewidth = 2.5, color = color )
-			
+	
 	def phaseDecodingRoi(self, roi, condition_array = ['fix_map', 'sacc_map', 'remap', 'fix_periphery'], colors = ['r', 'm', 'g', 'b'], subfigure = None):
 		
 		for (cond, i) in zip(condition_array, range(len(condition_array))):

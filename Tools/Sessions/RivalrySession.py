@@ -483,7 +483,7 @@ class RivalryLearningSession(Session):
 		"""eventRelatedAverage analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting eventRelatedAverage for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = whichRuns )
+		roiData = self.gatherRIOData(roi, whichRuns = whichRuns, whichMask = '_zstat_1' )
 		eventData = self.gatherBehavioralData( whichRuns = whichRuns, sampleInterval = [-5,20] )
 		
 		# split out two types of events
@@ -603,5 +603,13 @@ class RivalryLearningSession(Session):
 				testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
 				
 				print dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
-			
+	
+	def convertRetinoMask(self):
+		statfile = os.path.join(self.stageFolder(stage = 'processed/mri/disparity/retino.gfeat/cope1.feat/stats/') , 'zstat1.nii.gz')
+		print self.conditionDict
+		first_mapping_epi_run = os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['disparity'][0]], postFix = ['mcf'], extension = '.feat'), 'example_func.nii.gz')
+		transformFile = os.path.join(self.stageFolder(stage = 'processed/mri/disparity/') , 'example_func2standard_INV.mat')
+		f = FlirtOperator(statfile, referenceFileName = first_mapping_epi_run )
+		f.configureApply(transformFile, outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'z_stat.nii.gz'))
+		f.execute()
 		
