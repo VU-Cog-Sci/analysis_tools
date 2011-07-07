@@ -683,7 +683,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			rmtOp.execute()
 	
 	
-	def phaseDecoding(self, condition, roi ):
+	def phaseDecodingConditionRoi(self, condition, roi, subfigure = None, color = 'k' ):
 		
 		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar' ), dtype = np.float64)
 		phases = np.array(np.mod(np.arange(roiData.shape[0]), 16), dtype = np.float64)
@@ -695,8 +695,12 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
 		print 'nr of samples in ' + condition + ', ' + roi + ': ' + str(nr_samples)
 		
-		f = pl.figure()
-		for i in range(nr_samples-run_width):
+		if subfigure == None:
+			f = pl.figure()
+			subfigure = f.add_subplot(111)
+		
+		all_out = []
+		for i in range(0, nr_samples-run_width, 10):
 			testThisRun = (np.arange(nr_samples) >= i) * (np.arange(nr_samples) < i+run_width)
 			trainingThisRun = -testThisRun
 			trainingDataIndices = np.arange(nr_samples)[trainingThisRun]
@@ -706,10 +710,21 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			
 			out = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)[-1]
 			out = (out / 16 ) * 2.0 * pi
+			all_out.append(circularDifference(testLabels, out))
+		all_out = np.concatenate(all_out)
+		pl.hist(all_out, alpha = 0.1, range = [-pi,pi], bins = 50, normed = True, histtype = 'step', linewidth = 1.25, color = color)
+#		pl.plot(np.sort(all_out), np.linspace(0,1,all_out.shape[0]), linewidth = 2.5, color = color )
 			
-			pl.hist(circularDifference(testLabels, out), alpha = 0.1, range = [-pi,pi], bins = 40, normed = True, histtype = 'step', linewidth = 2.5)
+	def phaseDecodingRoi(self, roi, condition_array = ['fix_map', 'sacc_map', 'remap', 'fix_periphery'], colors = ['r', 'm', 'g', 'b'], subfigure = None):
+		
+		for (cond, i) in zip(condition_array, range(len(condition_array))):
+			self.phaseDecodingConditionRoi(condition = cond, roi = roi, subfigure = subfigure, color = colors[i])
+	
+	def phaseDecodingRois(self, roi_array = ['V1', 'V2', 'V3', 'V3AB', 'V4']):
+		fig = pl.figure(figsize = (6,8))
+		for (roi, i) in zip(roi_array, range(len(roi_array))):
+			subfig = fig.add_subplot(len(roi_array), 1, i+1)
+			self.phaseDecodingRoi(roi = roi, subfigure = subfig)
+			pl.draw()
 		pl.show()
-			
-			
-			
 		
