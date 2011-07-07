@@ -688,16 +688,14 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar' ), dtype = np.float64)
 		phases = np.array(np.mod(np.arange(roiData.shape[0]), 16), dtype = np.float64)
 		
-		print roiData.shape, phases.shape
-		
 		from ..Operators.ArrayOperator import DecodingOperator
 		
 		nr_samples = roiData.shape[0]
-		run_width = 32
+		run_width = 80
 		dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
-		print nr_samples
-		f = pl.figure()
+		print 'nr of samples in ' + condition + ', ' + roi + ': ' + str(nr_samples)
 		
+		f = pl.figure()
 		for i in range(nr_samples-run_width):
 			testThisRun = (np.arange(nr_samples) >= i) * (np.arange(nr_samples) < i+run_width)
 			trainingThisRun = -testThisRun
@@ -709,6 +707,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			out = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)[-1]
 			out = (out / 16 ) * 2.0 * pi
 			
-			pl.plot(circularDifference(testLabels, out).sort())
-			pl.draw()
+			pl.hist(circularDifference(testLabels, out), alpha = 0.1, range = [-pi,pi], bins = 40, normed = True, histtype = 'step', linewidth = 2.5)
+		pl.show()
+			
+			
+			
 		
