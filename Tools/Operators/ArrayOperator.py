@@ -222,7 +222,7 @@ def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, widt
 	else:
 		return accuracy
 
-def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 2.1, C = 1, epsilon= 1e-5):
+def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 2.1, C = 0.9, epsilon= 1e-5):
 	
 	from shogun.Features import RealFeatures, Labels
 	from shogun.Kernel import GaussianKernel
@@ -243,6 +243,28 @@ def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclas
 	predictions = svm.classify()
 	
 	return predictions, svm, predictions.get_labels()
+
+def regression_libsvr_modular(fm_train, fm_test,label_train, width=2.1,C=1,epsilon=1e-5,tube_epsilon=1e-2):
+
+	from shogun.Features import Labels, RealFeatures
+	from shogun.Kernel import GaussianKernel
+	from shogun.Regression import LibSVR
+
+	feats_train=RealFeatures(fm_train)
+	feats_test=RealFeatures(fm_test)
+
+	kernel=GaussianKernel(feats_train, feats_train, width)
+	labels=Labels(label_train)
+
+	svr=LibSVR(C, epsilon, kernel, labels)
+	svr.set_tube_epsilon(tube_epsilon)
+	svr.train()
+
+	kernel.init(feats_train, feats_test)
+	out1=svr.classify().get_labels()
+	out2=svr.classify(feats_test).get_labels()
+
+	return out1,out2,kernel
 
 class DecodingOperator(ArrayOperator):
 	def __init__(self, inputObject, decoder = 'libSVM', fullOutput = False, **kwargs ):
@@ -266,5 +288,6 @@ class DecodingOperator(ArrayOperator):
 			return svmLinDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
 		elif self.decoder == 'multiclass':
 			return classifier_libsvm_modular( train, test, trainingLabels )
-			
+		elif self.decoder == 'regression':
+			return regression_libsvr_modular( train, test, trainingLabels )
 		

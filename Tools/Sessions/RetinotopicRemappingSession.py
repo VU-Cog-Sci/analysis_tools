@@ -685,35 +685,39 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 	
 	def phaseDecodingConditionRoi(self, condition, roi, subfigure = None, color = 'k' ):
 		
-		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar' ), dtype = np.float64)
+		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar', timeSlices = [16,112] ), dtype = np.float64)
 		phases = np.array(np.mod(np.arange(roiData.shape[0]), 16), dtype = np.float64)
 		
 		from ..Operators.ArrayOperator import DecodingOperator
 		
 		nr_samples = roiData.shape[0]
-		run_width = 48
+		run_width = 64
 		dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
-		print 'nr of samples in ' + condition + ', ' + roi + ': ' + str(nr_samples)
+		print 'nr of samples in ' + condition + ', ' + roi + ': ' + str(nr_samples) + ' whole shape: ' + str(roiData.shape)
 		
 		if subfigure == None:
 			f = pl.figure()
 			subfigure = f.add_subplot(111)
 		
 		all_out = []
-		for i in range(0, nr_samples-run_width, 16):
+		for i in range(0, nr_samples-run_width, 4):
 			testThisRun = (np.arange(nr_samples) >= i) * (np.arange(nr_samples) < i+run_width)
+#			testThisRun = np.array(np.random.binomial(1, run_width/float(nr_samples), nr_samples), dtype = bool)
 			trainingThisRun = -testThisRun
 			trainingDataIndices = np.arange(nr_samples)[trainingThisRun]
 			testDataIndices = np.arange(nr_samples)[testThisRun]
 			trainingsLabels = phases[trainingThisRun]
-			testLabels = (phases[testThisRun] / 16 ) * 2.0 * pi
+			testLabels = phases[testThisRun]
 			
 			out = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)[-1]
-			out = (out / 16 ) * 2.0 * pi
-			all_out.append([testLabels, out, circularDifference(testLabels, out)])
+#			out = (out / 16.0 ) * 2.0 * pi
+#			print out, testLabels, out - testLabels
+			all_out.append([testLabels, out, circularDifference((testLabels / 16.0 ) * 2.0 * pi, (out / 16.0 ) * 2.0 * pi)])
 		all_out = np.array(all_out)
-		all_out_diffs = np.concatenate(all_out[:,2])
-		pl.hist(all_out[:,-1].ravel(), alpha = 0.1, range = [-pi,pi], bins = 16, normed = True, histtype = 'stepfilled', linewidth = 1.25, color = color, rwidth = 1.0)
+#		all_out_diffs = np.concatenate(all_out[:,2])
+#		pl.hist(all_out[:,0].ravel(), alpha = 0.1, bins = 16, normed = False, histtype = 'step', linewidth = 2.5, color = 'r', rwidth = 1.0)
+#		pl.hist(all_out[:,1].ravel(), alpha = 0.1, bins = 16, normed = False, histtype = 'step', linewidth = 2.5, color = 'g', rwidth = 1.0)
+		pl.hist(all_out[:,-1].ravel(), alpha = 0.2, range = [-pi,pi], bins = 16, normed = True, histtype = 'stepfilled', linewidth = 1.25, color = color, rwidth = 1.0)
 		subfigure.axis([-pi,pi,0,1.5])
 #		pl.plot(np.linspace(-pi, pi, 16), np.histogram(all_out_diffs, bins = 16, range = [-pi, pi], normed = True)[0], linewidth = 2.5, color = color )
 #		im = histogram2d(all_out[:,0].ravel(), all_out[:,1].ravel(), bins = 16, range = [[0,2*pi],[0,2*pi]], normed=True)
