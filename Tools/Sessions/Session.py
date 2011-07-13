@@ -42,6 +42,17 @@ class PathConstructor(object):
 		"""docstring for baseFolder"""
 		return os.path.join(self.project.baseFolder, self.subject.initials, self.dateCode)
 	
+	def makeBaseFolder(self):
+		if not os.path.isdir(self.baseFolder()):
+			try:
+				os.mkdir(os.path.join(self.project.baseFolder, self.subject.initials))
+			except OSError:
+				pass
+			try:
+				os.mkdir(self.baseFolder())
+			except OSError:
+				pass
+	
 	def stageFolder(self, stage):
 		"""folder for a certain stage - such as 'raw/mri' or 'processed/eyelink', or something like that. """
 		return os.path.join(self.baseFolder(), stage)
@@ -82,9 +93,14 @@ class PathConstructor(object):
 		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye']
 		conditionFolders = np.concatenate((self.conditionList, ['log','figs','masks','masks/stat','masks/anat','reg','surf','scripts']))
 		
+		
+		self.makeBaseFolder()
 		# assuming baseDir/raw/ exists, we must make processed
 		if not os.path.isdir(os.path.join(self.baseFolder(), 'processed') ):
 			os.mkdir(os.path.join(self.baseFolder(), 'processed'))
+		if not os.path.isdir(os.path.join(self.baseFolder(), 'raw') ):
+			os.mkdir(os.path.join(self.baseFolder(), 'raw'))
+		
 		
 		# create folders for processed data
 		for pf in self.processedFolders:
@@ -450,21 +466,14 @@ class Session(PathConstructor):
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
 					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.npy')):
-#						roiFile = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.pickle'), 'r')
-#						thisRoiData = pickle.load(roiFile)[0]
-#						roiFile.close()
 						thisRoiData = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.npy'))[0]
 					else:
 						thisRoiData = np.array([])
 				else: # combine both hemispheres in one roi
 					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.npy')):
-#						roiFileL = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.pickle'), 'r')
-#						roiFileR = open(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + whichMask, extension = '.pickle'), 'r')
 						l = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.npy'))[0]
 						r = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + whichMask, extension = '.npy'))[0]
 						thisRoiData = np.hstack((l,r))
-#						roiFileL.close()
-#						roiFileR.close()
 					else:
 						thisRoiData = np.array([])
 				if thisRoiData.shape[0] > 0:

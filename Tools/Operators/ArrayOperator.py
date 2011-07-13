@@ -222,7 +222,7 @@ def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, widt
 	else:
 		return accuracy
 
-def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 2.1, C = 0.9, epsilon= 1e-5):
+def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 1.7, C = 0.4, epsilon= 1e-5):
 	
 	from shogun.Features import RealFeatures, Labels
 	from shogun.Kernel import GaussianKernel

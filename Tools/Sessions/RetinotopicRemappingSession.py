@@ -682,25 +682,75 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			# run 
 			rmtOp.execute()
 	
+	def smoothRoiDataOverTime(self, data, start, end, width = 1, start_out = 4, end_out = 4):
+		timepoints_per_run = end-start
+		nr_runs = data.shape[0]/(timepoints_per_run)
+		new_nr_timepoints_per_run = timepoints_per_run - end_out - start_out
+		out_data = np.zeros((new_nr_timepoints_per_run* nr_runs, data.shape[1]))
+		for i in range(nr_runs):
+			# smooth over time per voxel
+			run_data_s = np.zeros((timepoints_per_run-start_out-end_out,))
+			for j in range(data.shape[1]):
+				out_data[i*new_nr_timepoints_per_run:(i+1)*new_nr_timepoints_per_run,j] = np.convolve(data[i*timepoints_per_run:(i+1)*timepoints_per_run,j], np.ones((width))/width, 'valid')[start_out:timepoints_per_run-end_out]
+		self.logger.info('smoothed roi data from shape ' + str(data.shape) + ' changed to ' + str(out_data.shape))
+		return out_data
+	
+	def phaseDecodingFromBaseConditionRoi(self, roi, base_condition = 'sacc_map', test_conditions = ['fix_map','remap','fix_periphery'], subfigure = None, color = 'k' ):
+		start, end = 16, 120
+		trainData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[base_condition], whichMask = '_polar', timeSlices = [start,end] ), dtype = np.float64)
+		trainData = self.smoothRoiDataOverTime(trainData, start, end)
+		trainPhases = np.array(np.mod(np.arange(trainData.shape[0]), 16), dtype = np.float64)
+		[nr_train_samples, nr_voxels] = trainData.shape
+		
+		from ..Operators.ArrayOperator import DecodingOperator
+		from scipy.stats import vonmises
+		
+		if subfigure == None:
+			f = pl.figure()
+			subfigure = f.add_subplot(111)
+		subfigure.set_title(roi)
+		for (i, testCondition) in zip(range(3), test_conditions):
+			testData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[testCondition], whichMask = '_polar', timeSlices = [start,end] ), dtype = np.float64)
+			testData = self.smoothRoiDataOverTime(testData, start, end)
+			testPhases = np.array(np.mod(np.arange(testData.shape[0]), 16), dtype = np.float64)
+			nr_test_samples = testData.shape[0]
+			
+			roiData = np.concatenate([trainData, testData])
+			dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
+			
+			out = dec.decode(np.arange(trainData.shape[0]), trainPhases, np.arange(trainData.shape[0],roiData.shape[0]), testPhases)[-1]
+			pl.hist(circularDifference((testPhases / 16.0 ) * 2.0 * pi, (out / 16.0 ) * 2.0 * pi), alpha = 0.25, range = [-pi,pi], bins = 17, normed = True, histtype = 'stepfilled', linewidth = 2.5, color = ['r','g','b'][i], rwidth = 1.0)
+			fts = fitVonMises(circularDifference((testPhases / 16.0 ) * 2.0 * pi, (out / 16.0 ) * 2.0 * pi))
+			pl.plot(np.linspace(-pi,pi,100), vonmises.pdf(fts[0] ,fts[1] , np.linspace(-pi,pi,100)), alpha = 0.25, linewidth = 2.5, color = ['r','g','b'][i])
+			subfigure.axis([-pi,pi,0,1.5])
+			
 	
 	def phaseDecodingConditionRoi(self, condition, roi, subfigure = None, color = 'k' ):
 		
-		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar', timeSlices = [16,112] ), dtype = np.float64)
+		start, end = 8, 120
+		roiData = np.array(self.gatherRIOData(roi, whichRuns = self.conditionDict[condition], whichMask = '_polar', timeSlices = [start,end] ), dtype = np.float64)
 		phases = np.array(np.mod(np.arange(roiData.shape[0]), 16), dtype = np.float64)
 		
 		from ..Operators.ArrayOperator import DecodingOperator
+		from scipy.stats import vonmises
 		
-		nr_samples = roiData.shape[0]
+		# 96 TRs per run.
+		# reshape for grouping across runs?
+		[nr_samples, nr_voxels] = roiData.shape
+#		roiData = roiData.reshape((roiData.shape[0]/(end-start), (end-start), -1))
+#		roiData = roiData.transpose((1,0,2)).reshape(nr_samples, -1)
+		
 		run_width = 64
 		dec = DecodingOperator(roiData, decoder = 'multiclass', fullOutput = True)
 		print 'nr of samples in ' + condition + ', ' + roi + ': ' + str(nr_samples) + ' whole shape: ' + str(roiData.shape)
+
 		
 		if subfigure == None:
 			f = pl.figure()
 			subfigure = f.add_subplot(111)
 		
 		all_out = []
-		for i in range(0, nr_samples-run_width, 4):
+		for i in range(0, nr_samples-run_width, 8):
 			testThisRun = (np.arange(nr_samples) >= i) * (np.arange(nr_samples) < i+run_width)
 #			testThisRun = np.array(np.random.binomial(1, run_width/float(nr_samples), nr_samples), dtype = bool)
 			trainingThisRun = -testThisRun
@@ -717,8 +767,11 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 #		all_out_diffs = np.concatenate(all_out[:,2])
 #		pl.hist(all_out[:,0].ravel(), alpha = 0.1, bins = 16, normed = False, histtype = 'step', linewidth = 2.5, color = 'r', rwidth = 1.0)
 #		pl.hist(all_out[:,1].ravel(), alpha = 0.1, bins = 16, normed = False, histtype = 'step', linewidth = 2.5, color = 'g', rwidth = 1.0)
-		pl.hist(all_out[:,-1].ravel(), alpha = 0.2, range = [-pi,pi], bins = 16, normed = True, histtype = 'stepfilled', linewidth = 1.25, color = color, rwidth = 1.0)
+		pl.hist(all_out[:,-1].ravel(), alpha = 0.25, range = [-pi,pi], bins = 17, normed = True, histtype = 'stepfilled', linewidth = 2.5, color = color, rwidth = 1.0)
+		fts = fitVonMises(all_out[:,-1].ravel())
+		pl.plot(np.linspace(-pi,pi,500), vonmises.pdf(fts[0] ,fts[1] , np.linspace(-pi,pi,500)), alpha = 0.25, linewidth = 2.5, color = color)
 		subfigure.axis([-pi,pi,0,1.5])
+		subfigure.set_title(roi + ' ' + condition)
 #		pl.plot(np.linspace(-pi, pi, 16), np.histogram(all_out_diffs, bins = 16, range = [-pi, pi], normed = True)[0], linewidth = 2.5, color = color )
 #		im = histogram2d(all_out[:,0].ravel(), all_out[:,1].ravel(), bins = 16, range = [[0,2*pi],[0,2*pi]], normed=True)
 #		pl.imshow(im[0])
@@ -736,7 +789,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 #			subfig = fig.add_subplot(len(roi_array), 1, i+1)
 			subfig = None
 			self.phaseDecodingRoi(roi = roi, subfigure = subfig, figure = None)
-#			subfig.set_title(roi)
+#			fig.set_title(roi)
 			pl.draw()
 		pl.show()
 		
