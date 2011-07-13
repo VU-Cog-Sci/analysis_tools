@@ -207,7 +207,7 @@ class RetinotopicMappingSession(Session):
 #				pp.close()
 #		pl.show()
 	
-	def makeTiffsFromCondition(self, condition, y_rotation = 90.0 ):
+	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
 	
 		thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/redraw_retmaps.tcl'
 		for hemi in ['lh','rh']:
@@ -217,6 +217,7 @@ class RetinotopicMappingSession(Session):
 			'---FIGPATH---': os.path.join(self.conditionFolder(stage = 'processed/mri/', run = self.runList[self.conditionDict[condition][0]]), 'surf'),
 			'---NAME---': self.subject.standardFSID,
 			'---BASE_Y_ROTATION---': str(y_rotation),
+			'---EXIT---': str(exit_when_ready),
 			}
 			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
 			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition + '.tcl')

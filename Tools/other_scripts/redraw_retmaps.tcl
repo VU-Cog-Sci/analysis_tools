@@ -5,6 +5,7 @@ set hemiSphere "---HEMI---"
 set condition "---CONDITION---"
 set name "---NAME---"
 set base_y_rotation "---BASE_Y_ROTATION---"
+set exit_when_ready "---EXIT---"
 
 if {$hemiSphere == "rh"} {
 	# for right hemisphere we need the following parameters
@@ -80,7 +81,7 @@ set rgbname polar
 set fthresh 1.7
 set fslope 1
 set fmid 5
-set angle_offset 0.225
+set angle_offset 0.5
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
@@ -125,5 +126,6 @@ for {set i 0} {$i < $nrimages} {incr i} {
 	save_tiff $fN
 	rotate_brain_x [ expr { -$rot * $i } ]
 }
-
-exit
+if {$exit_when_ready == 1} {
+    exit
+}
