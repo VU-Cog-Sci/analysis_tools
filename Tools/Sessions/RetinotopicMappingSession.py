@@ -159,11 +159,11 @@ class RetinotopicMappingSession(Session):
 				rdIm = NiftiImage(rd)
 				pdIm = NiftiImage(pd)
 				
-				pp = PdfPages(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][rawInputFileNames.index(rd)]], extension = '.pdf' ))
+#				pp = PdfPages(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][rawInputFileNames.index(rd)]], extension = '.pdf' ))
 				
 				for roi in rois:
 					for hemi in ['lh','rh']:
-						maskFileName = self.runFile(stage = 'processed/mri/masks', base = hemi + '.' + roi )
+						maskFileName = self.runFile(stage = 'processed/mri/masks/anat', base = hemi + '.' + roi )
 						
 						# run directly on the results of retmapping, that is, the polar.nii.gz and eccen.nii.gz files 
 						# mask the input files:
@@ -202,8 +202,24 @@ class RetinotopicMappingSession(Session):
 						s.plot( ftticks[1:floor(ftRoiRD.shape[0]/2.0)], ftRoiRD[1:floor(ftRoiRD.shape[0]/2.0)] )
 						pl.xlabel('frequency [Hz]')
 					
-						pp.savefig()
+						pl.savefig(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][rawInputFileNames.index(rd)]], extension = '_' + hemi + '_' + roi + '.png' ))
 					
-				pp.close()
+#				pp.close()
 #		pl.show()
 	
+	def makeTiffsFromCondition(self, condition, y_rotation = 90.0 ):
+	
+		thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/redraw_retmaps.tcl'
+		for hemi in ['lh','rh']:
+			REDict = {
+			'---HEMI---': hemi,
+			'---CONDITION---': condition, 
+			'---FIGPATH---': os.path.join(self.conditionFolder(stage = 'processed/mri/', run = self.runList[self.conditionDict[condition][0]]), 'surf'),
+			'---NAME---': self.subject.standardFSID,
+			'---BASE_Y_ROTATION---': str(y_rotation),
+			}
+			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
+			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition + '.tcl')
+			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
+			# run 
+			rmtOp.execute()

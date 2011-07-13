@@ -4,6 +4,7 @@
 set hemiSphere "---HEMI---"
 set condition "---CONDITION---"
 set name "---NAME---"
+set base_y_rotation "---BASE_Y_ROTATION---"
 
 if {$hemiSphere == "rh"} {
 	# for right hemisphere we need the following parameters
@@ -83,7 +84,7 @@ set angle_offset 0.225
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
-set smoothsteps 5
+set smoothsteps 3
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh
@@ -103,7 +104,7 @@ set rotation_gain 150.0
 set rot [ expr { $rotation_gain / $nrimages } ]
 
 make_lateral_view
-rotate_brain_y [ expr { (70.0 * $yDirection) } ]
+rotate_brain_y [ expr { ($base_y_rotation * $yDirection) } ]
 rotate_brain_x [ expr { -$rotation_gain / 2.0 } ]
 redraw
 
@@ -120,7 +121,7 @@ for {set i 0} {$i < $nrimages} {incr i} {
 	} elseif {$l == 3} {
 	    set label "$i"
 	}
-	set fN [format "---FIGPATH---/%s_%s_%s_%s_x.tiff" $name $condition $hemiSphere $label]
+	set fN [format "---FIGPATH---/%s_%s_%s_%s_%s.tiff" $name $condition $hemiSphere $label $base_y_rotation]
 	save_tiff $fN
 	rotate_brain_x [ expr { -$rot * $i } ]
 }

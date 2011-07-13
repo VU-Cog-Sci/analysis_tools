@@ -666,22 +666,6 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		vts.configure(frames = {'full':0, 'remap':1, 'perihery':2, 'remap2':3, 'remap_full':4, 'peripheral_full': 5, 'remap2_full':6}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
 		vts.execute()
 	
-	def makeTiffsFromCondition(self, condition ):
-		
-		thisFeatFile = '/Users/tk/Documents/research/analysis_tools/Tools/other_scripts/redraw_retmaps.tcl'
-		for hemi in ['lh','rh']:
-			REDict = {
-			'---HEMI---': hemi,
-			'---CONDITION---': condition, 
-			'---FIGPATH---': os.path.join(self.conditionFolder(stage = 'processed/mri/', run = self.runList[self.conditionDict[condition][0]]), 'surf'),
-			'---NAME---': self.subject.standardFSID
-			}
-			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
-			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition + '.tcl')
-			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
-			# run 
-			rmtOp.execute()
-	
 	def smoothRoiDataOverTime(self, data, start, end, width = 1, start_out = 4, end_out = 4):
 		timepoints_per_run = end-start
 		nr_runs = data.shape[0]/(timepoints_per_run)
