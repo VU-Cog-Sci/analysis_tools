@@ -649,6 +649,98 @@ class TAESession(EyeLinkSession):
 			
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'adaptation_over_time_' + str(self.wildcard) + '_joined.pdf'))
 	
+	def run_eccentricity_test(self):
+		"""
+		Analyze correct/incorrect responses 
+		"""
+		# prepare some lists for further use
+		self.psychometric_data = []
+		self.thresholds = []
+		self.pfs = []
+		self.confidence_ratings = []
+		self.conditions = []
+		
+		self.stimulus_positions = np.sort(np.unique(self.parameter_data[:]['test_stimulus_position_x']))
+		self.spatial_frequencies = -np.sort(np.unique(self.parameter_data[:]['spatial_freq']))[::-1]
+		self.all_corrects = -np.sign(self.parameter_data[:]['answer']) == np.sign(self.parameter_data[:]['test_orientation'])
+		self.all_eccentricities = self.parameter_data[:]['test_stimulus_position_x'] - self.parameter_data[:]['adaptation_fixation_position_x']
+		self.eccentricities = np.sort(np.unique(self.all_eccentricities))
+		eccentricity_order = np.argsort(np.abs(self.eccentricities))
+		
+		print self.eccentricities
+		plot_range = [self.spatial_frequencies[0] - 1 , self.spatial_frequencies[-1] + 1]
+		
+		fig = pl.figure(figsize = (6,12))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1)
+		pl_nr = 1
+		# across conditions
+		for (i, c) in zip(range(self.eccentricities.shape[0]), self.eccentricities[eccentricity_order]):
+			c_array = np.abs(np.round(self.parameter_data[:]['test_stimulus_position_x'])) == np.abs(np.round(c + self.parameter_data[:]['adaptation_fixation_position_x']))
+			
+			# combination of conditions and durations
+			this_condition_array = c_array
+			sub_plot = fig.add_subplot(self.stimulus_positions.shape[0], 1, pl_nr)
+			
+			# psychometric curve settings
+			# gumbel_l makes the fit a weibull given that the x-data are log-transformed
+			# logistic and gauss (core = ab) deliver similar results
+			nafc = 2
+			sig = 'gumbel_l'	
+			core = 'ab'
+			
+			all_nr_corrects = np.array([[self.all_corrects[(self.parameter_data[:]['spatial_freq'] == -sf) * this_condition_array].sum(), self.all_corrects[(self.parameter_data[:]['spatial_freq'] == -sf) * this_condition_array].shape[0]] for sf in self.spatial_frequencies])
+			
+			nr_ones, nr_samples =  all_nr_corrects[:,0], all_nr_corrects[:,1]
+			fit_data = zip(self.spatial_frequencies, nr_ones, nr_samples)
+			
+			print fit_data, [self.all_corrects[self.parameter_data[this_condition_array]['spatial_freq'] == sf] for sf in self.spatial_frequencies]
+			
+			# and we fit the data
+			pf = BootstrapInference(fit_data, sigmoid = sig, nafc = nafc, core = core, priors = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' ))
+			# and let the package do a bootstrap sampling of the resulting fits
+			pf.sample()
+			
+			# scatter plot of the actual data points
+			sub_plot.scatter(self.spatial_frequencies, np.array(nr_ones, dtype = np.float32) / np.array(nr_samples, dtype = np.float32), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25, s = nr_samples)
+
+			# line plot of the fitted curve
+			sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), c = 'k', linewidth = 1.75)
+			# line plot of chance
+			sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), np.ones((500)) * 0.5, 'y--', linewidth = 0.75, alpha = 0.5)
+
+			# TEAE value as a red line in the plot
+			sub_plot.axvline(x=pf.estimate[0], c = 'r', alpha = 0.7, linewidth = 2.25)
+			# and the boundaries of the confidence interval on this point
+			sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
+			sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
+
+#			sub_plot.set_title(title, fontsize=9)
+			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
+
+			# archive these results in the object's list variables.
+			self.psychometric_data.append(fit_data)
+			self.thresholds.append(pf.estimate[0])
+			self.pfs.append(pf)
+			
+			
+			
+			sub_plot.set_xlabel('Spatial Frequency', fontsize=9)
+#			if a == self.adaptation_durations[0]:
+			sub_plot.set_ylabel('p(correct)', fontsize=9)
+#				if c == self.adaptation_frequencies[0]:
+#					sub_plot.annotate(self.subject.firstName, (-4,1), va="top", ha="left", size = 14)
+			
+#			sub_plot = self.plot_confidence(this_condition_array, sub_plot, TAE = self.TAEs[-1])
+#			if a == self.adaptation_durations[-1]:
+#				sub_plot.set_ylabel('confidence', fontsize=9)
+			
+			pl_nr += 1
+#			self.conditions.append([c, a])
+				
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'eccentricity_psychometric_curves_' + str(self.wildcard) + '.pdf'))
+		pl.show()
+		self.thresholds = np.array(self.thresholds)
+	
 	def save_fit_results(self, suffix = ''):
 		"""docstring for save_fit_results"""
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
