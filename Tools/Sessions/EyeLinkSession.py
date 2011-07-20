@@ -667,7 +667,6 @@ class TAESession(EyeLinkSession):
 		self.eccentricities = np.sort(np.unique(self.all_eccentricities))
 		eccentricity_order = np.argsort(np.abs(self.eccentricities))
 		
-		print self.eccentricities
 		plot_range = [self.spatial_frequencies[0] - 1 , self.spatial_frequencies[-1] + 1]
 		
 		fig = pl.figure(figsize = (6,12))
@@ -692,8 +691,6 @@ class TAESession(EyeLinkSession):
 			
 			nr_ones, nr_samples =  all_nr_corrects[:,0], all_nr_corrects[:,1]
 			fit_data = zip(self.spatial_frequencies, nr_ones, nr_samples)
-			
-			print fit_data, [self.all_corrects[self.parameter_data[this_condition_array]['spatial_freq'] == sf] for sf in self.spatial_frequencies]
 			
 			# and we fit the data
 			pf = BootstrapInference(fit_data, sigmoid = sig, nafc = nafc, core = core, priors = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' ))
@@ -738,7 +735,7 @@ class TAESession(EyeLinkSession):
 #			self.conditions.append([c, a])
 				
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'eccentricity_psychometric_curves_' + str(self.wildcard) + '.pdf'))
-		pl.show()
+		# pl.show()
 		self.thresholds = np.array(self.thresholds)
 	
 	def save_fit_results(self, suffix = ''):
