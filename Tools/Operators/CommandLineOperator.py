@@ -331,7 +331,8 @@ class RetMapOperator( CommandLineOperator ):
 						nrCycles = rmRun.nrCycles,
 						TR = rmRun.TR,
 						delay = rmRun.delay,
-						niiFilePath = fp
+						niiFilePath = fp,
+						nSkip = rmRun.nSkip
 						)
 			thisRun.createParFile()
 			self.allRuns.append(thisRun)
@@ -343,6 +344,7 @@ class RetMapOperator( CommandLineOperator ):
 		self.runcmd += ' -TR ' + str(self.allRuns[0].TR)
 		self.runcmd += ' -delay ' + str(self.allRuns[0].delay)
 		self.runcmd += ' -detrend'
+		self.runcmd += ' -nskip ' + str(self.allRuns[0].nSkip)
 		self.runcmd += ' -o ' + self.outputFileName
 		self.runcmd += ' -parname ' + self.allRuns[0].standardParFileName
 	

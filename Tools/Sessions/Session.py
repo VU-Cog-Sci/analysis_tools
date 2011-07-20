@@ -177,6 +177,8 @@ class Session(PathConstructor):
 		if 'spectro' in self.scanTypeList:
 			self.scanTypeDict.update({'spectro': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]})
 		
+		print self.scanTypeDict
+		
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
 		for c in self.conditions:

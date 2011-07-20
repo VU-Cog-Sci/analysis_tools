@@ -13,11 +13,12 @@ class RetinotopicMappingSession(Session):
 	def parcelateConditions(self):
 		super(RetinotopicMappingSession, self).parcelateConditions()
 		
-		self.mappingTypes = np.unique(np.array([r.mappingType for r in self.runList]))
 		self.mappingTypeDict = {}
-		for mt in self.mappingTypes:
-			if mt != '':
-				self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
+		if 'epi_bold' in self.scanTypeDict.keys():
+			self.mappingTypes = np.unique(np.array([r.mappingType for r in [self.runList[e] for e in self.scanTypeDict['epi_bold']]]))
+			for mt in self.mappingTypes:
+				if mt != '':
+					self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
 		
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
