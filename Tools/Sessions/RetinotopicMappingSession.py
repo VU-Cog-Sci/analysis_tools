@@ -215,13 +215,13 @@ class RetinotopicMappingSession(Session):
 			REDict = {
 			'---HEMI---': hemi,
 			'---CONDITION---': condition, 
-			'---FIGPATH---': os.path.join(self.conditionFolder(stage = 'processed/mri/', run = self.runList[self.conditionDict[condition][0]]), 'surf'),
+			'---FIGPATH---': os.path.join(self.stageFolder(stage = 'processed/mri/'), condition, 'surf'),
 			'---NAME---': self.subject.standardFSID,
 			'---BASE_Y_ROTATION---': str(y_rotation),
 			'---EXIT---': str(exit_when_ready),
 			}
 			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
-			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition + '.tcl')
+			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition.replace('/', '_') + '.tcl')
 			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
 			# run 
 			rmtOp.execute()
