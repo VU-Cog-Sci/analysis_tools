@@ -18,7 +18,7 @@ class RetinotopicMappingSession(Session):
 			self.mappingTypes = np.unique(np.array([r.mappingType for r in [self.runList[e] for e in self.scanTypeDict['epi_bold']]]))
 			for mt in self.mappingTypes:
 				if mt != '':
-					self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [r for r in self.runList])]})
+					self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [self.runList[e] for e in self.scanTypeDict['epi_bold']])]})
 		
 	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
@@ -36,22 +36,24 @@ class RetinotopicMappingSession(Session):
 			postFix.append('mcf')
 		if perCondition:
 			for c in self.conditionDict:
-				prOperator = RetMapOperator([self.runList[pC] for pC in self.conditionDict[c]], cmd = presentCommand)
-				inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict[c]]
-				outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[c][0]]), self.runList[pC].mappingType)
-				opfNameList.append(outputFileName)
-				prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
-				rmOperatorList.append(prOperator)
-			
-		if perRun:
-			for c in self.conditionDict:
-				for i in self.conditionDict[c]:
-					prOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
-					inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
-					outputFileName = os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[i]), self.runList[i].mappingType)
+				if 'polar' in c or 'eccen' in c:
+					prOperator = RetMapOperator([self.runList[pC] for pC in self.conditionDict[c]], cmd = presentCommand)
+					inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = postFix) for pC in self.conditionDict[c]]
+					outputFileName = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[c][0]]), self.runList[pC].mappingType)
 					opfNameList.append(outputFileName)
 					prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
 					rmOperatorList.append(prOperator)
+			
+		if perRun:
+			for c in self.conditionDict:
+				if 'polar' in c or 'eccen' in c:
+					for i in self.conditionDict[c]:
+						prOperator = RetMapOperator([self.runList[i]], cmd = presentCommand)
+						inputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[i], postFix = postFix)]
+						outputFileName = os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[i]), self.runList[i].mappingType)
+						opfNameList.append(outputFileName)
+						prOperator.configure( inputFileNames = inputFileNames, outputFileName = outputFileName )
+						rmOperatorList.append(prOperator)
 			
 		if runMapping:
 			opfString = ''

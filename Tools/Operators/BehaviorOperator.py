@@ -350,4 +350,32 @@ class ApparentMotionBehaviorOperator(BehaviorOperator):
 		
 		self.yokedPeriods = []
 	
+class SphereBehaviorOperator(BehaviorOperator):
+	"""
+	This behavior operator parses the outputs of by own AM behavioral output format in order to take out event timings.
+	"""
+	def __init__(self, inputObject, **kwargs):
+		super(SphereBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+		self.openData()
+		self.separateEventsFromData()
+	
+	def openData(self):
+		"""docstring for openData"""
+		self.rawData = np.loadtxt(self.inputFileName)
+		self.parameters = None
+		
+	def separateEventsFromData(self, reactionTime = 0.4, timeRange = [0,1000], startEndPeriods = [16, -16], time_resolution = 0.0001):
+		self.startTime = self.rawData[0,2]
+		self.timedData = self.rawData
+		self.timedData[:,2] = self.timedData[:,2] - self.startTime
+		self.timedData[:,2] = self.timedData[:,2] * time_resolution
+		self.TREvents = self.timedData[self.timedData[:,1] == 49,[1,2]]
+		self.buttonEvents = self.rawData[self.timedData[:,1] > 65,[1,2]]
+		self.TR = round(np.mean(self.TREvents[:,0] * 1000)) / 1000
+		
+		lastStimulusTime = self.TREvents[-1,1] + startEndPeriods[1]
+		
+		self.transitionEvents = removeRepetitions(self.buttonEvents)
+		
+		np.hstack(np.concatenate((self.transitionEvents[:-1,0], self.transitionEvents[:-1,1], self.transitionEvents[1:,1])), np.concatenate((self.transitionEvents[-1], lastStimulusTime)) )
 	
