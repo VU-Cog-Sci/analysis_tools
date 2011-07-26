@@ -562,7 +562,6 @@ class RivalryLearningSession(Session):
 		
 		
 	
-
 	def eventRelatedDecodingFromRoi(self, roi, eventType = 'perceptEventsAsArray', whichRuns = None, color = 'k'):
 		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
 		
@@ -612,4 +611,19 @@ class RivalryLearningSession(Session):
 		f = FlirtOperator(statfile, referenceFileName = first_mapping_epi_run )
 		f.configureApply(transformFile, outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'z_stat.nii.gz'))
 		f.execute()
-		
+	
+
+class SphereSession(Session):
+	def analyzeBehavior(self):
+		"""docstring for analyzeBehaviorPerRun"""
+		for r in self.scanTypeDict['epi_bold']:
+			# do principal analysis, keys vary across dates but taken care of within behavior function
+			self.runList[r].behavior()
+			# put in the right place
+			try:
+				ExecCommandLine( 'cp ' + self.runList[r].bO.inputFileName + ' ' + self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.txt' ) )
+			except ValueError:
+				pass
+			self.runList[r].behaviorFile = self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.pickle' )
+	
+	

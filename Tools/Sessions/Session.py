@@ -146,7 +146,8 @@ class Session(PathConstructor):
 		# sessions create their own logging file handler
 		self.logger = logging.getLogger( self.__class__.__name__ )
 		self.logger.setLevel(self.loggingLevel)
-		addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
+		if os.path.isfile(os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log')):
+			addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
 		loggingLevelSetup()
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
@@ -437,7 +438,7 @@ class Session(PathConstructor):
 			
 				
 		
-	def maskFunctionalData(self, maskThreshold = 0.0, postFixFunctional = ['mcf'], timeSlices = [0,-1]):
+	def maskFunctionalData(self, maskThreshold = 0.0, postFixFunctional = ['mcf'], timeSlices = [0,-1], delete_older_files = True):
 		"""
 		maskFunctionalData will mask each bold file with the masks present in the masks folder.
 		"""
@@ -448,10 +449,12 @@ class Session(PathConstructor):
 			rois.append(NiftiImage(roi))
 		
 		for r in self.scanTypeDict['epi_bold']:
-			# delete older masked data
-			self.logger.info("removing older masked data: %s", 'rm ' + os.path.join( self.runFolder(stage = 'processed/mri/', run = self.runList[r]), 'masked/*' )) 
-			os.system('rm ' + os.path.join( self.runFolder(stage = 'processed/mri/', run = self.runList[r]), 'masked/*' ) )
-			
+			if delete_older_files:
+				maskedFiles = subprocess.Popen('ls ' + os.path.join( self.runFolder(stage = 'processed/mri/', run = self.runList[r]), 'masked/*.nii.gz' ), shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+				if len(maskedFiles) > 0:
+					# delete older masked data
+					self.logger.info("removing older masked data: %s", 'rm ' + os.path.join( self.runFolder(stage = 'processed/mri/', run = self.runList[r]), 'masked/*' )) 
+					print os.system('rm ' + os.path.join( self.runFolder(stage = 'processed/mri/', run = self.runList[r]), 'masked/*' ) )
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFixFunctional ))
 			for rn in range(len(rois)):
 				imo = ImageMaskingOperator(funcFile.data[timeSlices[0]:timeSlices[1]], maskObject = rois[rn], thresholds = [maskThreshold], outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + os.path.split(rois[rn].filename)[1][:-7], extension = '' ))

@@ -63,7 +63,7 @@ class ImageMaskingOperator( ImageOperator ):
 			self.maskFileName = self.maskObject.filename
 		if self.maskObject.__class__.__name__ == 'ndarray':
 			self.maskObject = NiftiImage(self.maskObject)
-			
+		
 		# if all thresholds for all mask volumes will be equal:
 		if len(thresholds) < self.maskObject.data.shape[0]:
 			self.thresholds = [thresholds[0] for t in range(self.maskObject.data.shape[0])]
@@ -101,6 +101,7 @@ class ImageMaskingOperator( ImageOperator ):
 		# may need separate headers for reference
 		self.maskHeader = self.maskObject.header
 		self.inputHeader = self.inputObject.header
+		print self.maskObject.data.shape
 		
 		if len(self.maskObject.data.shape) == 3:
 			# only one volume of mask data
