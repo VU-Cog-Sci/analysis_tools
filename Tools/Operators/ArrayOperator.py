@@ -56,7 +56,6 @@ class EventDataOperator(ArrayOperator):
 		elif self.eventObject.__class__.__name__ == 'list':
 			self.eventArray = self.eventObject
 			
-			
 		self.TR = TR
 	
 
@@ -141,7 +140,9 @@ class EventRelatedAverageOperator(EventDataOperator):
 #			print zeroTime, self.eventSampleTimes[i], self.intervalRange, self.selectedEventArray[i]
 #			print self.TRTimes[( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[1] + self.selectedEventArray[i] )]
 #			print self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
-			self.eventData[:,i] = self.dataArray[:,( self.TRTimes > self.interval[0] + self.selectedEventArray[i] ) * ( self.TRTimes < self.interval[-1] + self.selectedEventArray[i] )]
+			thisData =  self.dataArray[:,( self.TRTimes > (self.interval[0] + self.selectedEventArray[i]) ) * ( self.TRTimes < (self.interval[-1] + self.selectedEventArray[i]) )]
+			if thisData.shape[1] == self.intervalRange.shape[0]:
+				self.eventData[:,i] = thisData
 	
 	def averageEventsInTimeInterval(self, averagingInterval):
 		theseData = self.eventData[:,( self.eventSampleTimes > averagingInterval[0] ) * ( self.eventSampleTimes <= averagingInterval[1] )].ravel()
@@ -152,18 +153,19 @@ class EventRelatedAverageOperator(EventDataOperator):
 		self.output = np.array([self.averageEventsInTimeInterval(i) for i in self.averagingIntervals])
 		return self.output
 	
+
 		# for decoding we need the following:
 		from shogun.Features import SparseRealFeatures, RealFeatures, Labels
 		from shogun.Kernel import GaussianKernel
 		from shogun.Classifier import LibSVM
 		from shogun.Classifier import SVMLin
-
-
+		
+		
 from shogun.Features import SparseRealFeatures, RealFeatures, Labels
 from shogun.Kernel import GaussianKernel
 from shogun.Classifier import LibSVM
 from shogun.Classifier import SVMLin
-
+	
 def svmLinDecoder(train, test, trainLabels, testLabels, fullOutput = False, C = 0.9, epsilon = 1e-5, nThreads = 4):
 	realfeat=RealFeatures(train)
 	feats_train=SparseRealFeatures()

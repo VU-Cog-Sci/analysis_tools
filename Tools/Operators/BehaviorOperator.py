@@ -369,13 +369,15 @@ class SphereBehaviorOperator(BehaviorOperator):
 		self.timedData = self.rawData
 		self.timedData[:,2] = self.timedData[:,2] - self.startTime
 		self.timedData[:,2] = self.timedData[:,2] * time_resolution
-		self.TREvents = self.timedData[self.timedData[:,1] == 49,[1,2]]
-		self.buttonEvents = self.rawData[self.timedData[:,1] > 65,[1,2]]
+		
+		self.TREvents = self.timedData[self.timedData[:,1] == 49][:,[1,2]]
+		self.buttonEvents = self.rawData[self.timedData[:,1] > 65][:,[1,2]]
 		self.TR = round(np.mean(self.TREvents[:,0] * 1000)) / 1000
 		
 		lastStimulusTime = self.TREvents[-1,1] + startEndPeriods[1]
 		
 		self.transitionEvents = removeRepetitions(self.buttonEvents)
 		
-		np.hstack(np.concatenate((self.transitionEvents[:-1,0], self.transitionEvents[:-1,1], self.transitionEvents[1:,1])), np.concatenate((self.transitionEvents[-1], lastStimulusTime)) )
+		self.percepts = np.vstack((self.transitionEvents[:,0], self.transitionEvents[:,1], np.concatenate((self.transitionEvents[1:,1], [lastStimulusTime])))).T
+		# np.hstack(, np.concatenate((self.transitionEvents[-1], lastStimulusTime)) )
 	

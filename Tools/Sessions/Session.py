@@ -468,6 +468,7 @@ class Session(PathConstructor):
 				roi = [roi]
 			runData = []
 			for thisRoi in roi:
+				print thisRoi
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
 					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.npy')):
@@ -482,7 +483,10 @@ class Session(PathConstructor):
 					else:
 						thisRoiData = np.array([])
 				if thisRoiData.shape[0] > 0:
-					runData.append(thisRoiData[timeSlices[0]:timeSlices[1]])
+					if timeSlices[1] == -1:
+						runData.append(thisRoiData[timeSlices[0]:])
+					else:
+						runData.append(thisRoiData[timeSlices[0]:timeSlices[1]])
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
