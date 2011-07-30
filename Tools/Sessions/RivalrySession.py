@@ -435,7 +435,6 @@ class RivalryLearningSession(Session):
 				# implement time offset. 
 				behData[we][:,0] = behData[we][:,0] + timeOffset
 				data[we].append(behData[we])
-				
 			
 			timeOffset += TR * nrTRs
 			
@@ -627,29 +626,38 @@ class SphereSession(Session):
 	def gatherBehavioralData(self, sampleInterval = [0,0]):
 		
 		trans = []
+		percepts = []
 		timeOffset = 0.0
 		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
-			# behavior for this run, assume behavior analysis has already been run so we can load the results.
-			
-			transitionsThisRun = self.behOps[i].transitionEvents[:-2] # throw away last transition.
-			
-			transitionsThisRun[:,1] += timeOffset
-			
+			# behavior for this run, assume behavior analysis has already been run so we can load the results.			
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
 			timeOffset = i * niiFile.rtime * niiFile.timepoints
+			
+			self.rtime = niiFile.rtime
+			self.timepointsPerRun = niiFile.timepoints
+			self.runDuration = self.rtime * self.timepointsPerRun
+			
+			transitionsThisRun = self.behOps[i].buttonEvents[:-2] # throw away last transitions.
+			transitionsThisRun[:,1] = transitionsThisRun[:,1] + timeOffset
+			
+			perceptsThisRun = self.behOps[i].percepts	# keep all percepts
+			perceptsThisRun[:,[1,2]] = perceptsThisRun[:,[1,2]] + timeOffset
+			
 			trans.append(transitionsThisRun)
+			percepts.append(perceptsThisRun)
 		self.allTransitions = np.vstack(trans)
+		self.allPercepts = np.vstack(percepts)
 		
 		self.logger.debug('gathered behavioral data from all runs')
 		
-		return self.allTransitions
+		return self.allTransitions, self.allPercepts
 	 
 	def deconvolveEventsFromRoi(self, roi, color = 'k'):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
 		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = '_visual' )
-		eventData = self.gatherBehavioralData( )
+		eventData = self.allTransitions
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[:,0]) == 66, np.abs(eventData[:,0]) == 67]
 #		all types of transition/percept events split up, both types and beginning/end separately
@@ -669,8 +677,8 @@ class SphereSession(Session):
 			roiDataM = roiData.mean(axis = 1)
 			roiDataVar = roiData.var(axis = 1)
 			for e in range(len(eventArray)):
-				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-5.0*0.65,20.0*0.65])
-				eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-5.0*0.65,20.0*0.65])
+				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,30.0*0.65])
+				eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,30.0*0.65])
 				zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
 				d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
 				dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
@@ -679,7 +687,7 @@ class SphereSession(Session):
 				pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = color, alpha = 0.75, ls = '--')
 		
 	def deconvolveEvents(self):
-		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','rh.superiorfrontal','inferiorparietal','rh.superiorparietal']
+		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
 		colors = np.linspace(0,1,len(areas))
 		fig = pl.figure(figsize = (4,12))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
@@ -687,7 +695,76 @@ class SphereSession(Session):
 			s = fig.add_subplot(len(areas),1,i+1)
 			self.deconvolveEventsFromRoi(areas[i], color = (colors[i],0,0))
 			s.set_title(areas[i])
-			s.set_ylim((-0.05,0.15))
+			s.set_ylim((-0.05,0.25))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 		
+	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25):
+		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
+		
+		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = '_visual' )
+		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
+		whichPercepts = percepts[:,0] == 66
+		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
+		eventData = [eventData[whichPercepts], eventData[-whichPercepts]]
+		
+		from ..Operators.ImageOperator import Design
+		
+		d = Design(roiData.shape[0], 0.65, subSamplingRatio = 100)
+		# percept 1 regressor
+		d.addRegressor(eventData[0])
+		# percept 2 regressor
+		d.addRegressor(eventData[1])
+		
+		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
+		
+		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)
+		whichSamplesAllRuns = (withinRunIndices > sampleInterval) * (withinRunIndices < (self.timepointsPerRun - sampleInterval))
+		dM = d.designMatrix[whichSamplesAllRuns]
+		rD = roiData[whichSamplesAllRuns]
+		
+		pl.plot(dM)
+		pl.draw()
+		
+		from ..Operators.ArrayOperator import DecodingOperator
+		
+		# use median thresholding for transition feature indexing
+		over_median = dM[:,0] > np.median(dM[:,0])
+		under_median = -over_median
+		
+		om_indices = np.arange(over_median.shape[0])[over_median]
+		um_indices = np.arange(over_median.shape[0])[under_median]
+		
+		nr_runs = np.min([om_indices.shape[0], um_indices.shape[0]])
+		run_width = 1
+		dec = DecodingOperator(rD, decoder = 'libSVM', fullOutput = True)
+		
+		decodingResultsArray = []
+		for i in range(0, nr_runs-run_width, 1):
+			testThisRun = (np.arange(nr_runs) >= i) * (np.arange(nr_runs) < i+run_width)
+			trainingThisRun = -testThisRun
+			trainingDataIndices = np.concatenate(( om_indices[trainingThisRun], um_indices[trainingThisRun] ))
+			testDataIndices = np.concatenate(( om_indices[testThisRun], um_indices[testThisRun] ))
+			trainingsLabels = np.concatenate(( -np.ones((nr_runs-run_width)), np.ones((nr_runs-run_width)) ))
+			testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
+			
+			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
+			
+			decodingResultsArray.append([testThisRun, res])
+		
+		allData = [self.allPercepts, d.designMatrix, whichSamplesAllRuns, decodingResultsArray]
+		f = open(os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + roi + '.pickle'), 'wb')
+		pickle.dump(allData, f)
+		f.close()
+	
+	def decodeEvents(self):
+		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
+		colors = np.linspace(0,1,len(areas))
+#		fig = pl.figure(figsize = (4,12))
+#		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
+		for i in range(len(areas)):
+#			s = fig.add_subplot(len(areas),1,i+1)
+			self.stateDecodingFromRoi(areas[i], color = (colors[i],0,0))
+#			s.set_title(areas[i])
+#			s.set_ylim((-0.05,0.15))
+#		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 		

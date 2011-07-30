@@ -197,10 +197,10 @@ def svmLinDecoder(train, test, trainLabels, testLabels, fullOutput = False, C = 
 		return accuracy
 
 
-def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, width = 2.1, C = 1, epsilon = 1e-5 ):
-	pl.figure()
-	pl.imshow(train)
-	pl.show()
+def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, width = 2.1, C = 0.8, epsilon = 1e-5 ):
+#	pl.figure()
+#	pl.imshow(train)
+#	pl.show()
 	feats_train=RealFeatures(train)
 	feats_test=RealFeatures(test)
 	

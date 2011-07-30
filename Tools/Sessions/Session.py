@@ -430,7 +430,7 @@ class Session(PathConstructor):
 					
 				if toSurf:
 					# convert the statistical masks to surfaces
-					vtsO = VolToSurfOperator(statMaskFile)
+					vtsO = VolToSurfOperator(self.runFile(stage = 'processed/mri/masks/stat/', base = statMask ))
 					vtsO.configure(frames = {statMask:0}, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = self.runFile(stage = 'processed/mri/masks/surf/', base = '' ), threshold = 0.5, surfSmoothingFWHM = 2.0)
 					vtsO.execute()
 		else:	# in this case copy the anatomical masks to the masks folder where they'll be used for the following extraction of functional data
