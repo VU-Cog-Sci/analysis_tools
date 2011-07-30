@@ -767,4 +767,52 @@ class SphereSession(Session):
 #			s.set_title(areas[i])
 #			s.set_ylim((-0.05,0.15))
 #		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
+	
+	def timeForDecodingResults(self):
+		os.chdir(self.stageFolder(stage = 'processed/mri/sphere'))
+		fileNameList = subprocess.Popen('ls ' + 'decodingResults_*.pickle', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		areas = [f.split('_')[1].split('.')[0] for f in fileNameList]
+		print areas
+		# take behavior from the first file
+		f = open(fileNameList[0])
+		d = pickle.load(f)
+		f.close()
+		allPercepts = np.vstack(([[0,0.00,0.00]],d[0]))
+		allTRTimes = np.arange(0, 0.65 * d[2].shape[0], 0.65) + 0.0001
+		lastPerceptForAllTRs = np.array([[t - allPercepts[allPercepts[:,1] < t][-1,1], t, allPercepts[allPercepts[:,1] < t][-1,2]-allPercepts[allPercepts[:,1] < t][-1,1]] for t in allTRTimes])
+		
+		fig = pl.figure(figsize = (2,10))
+		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
+		
+		# take decoding results
+		for i in range(len(fileNameList)):
+			f = open(fileNameList[i])
+			d = pickle.load(f)
+			f.close()
+			
+			decRes = d[3]
+			s = fig.add_subplot(len(areas),1,i+1)
+			
+			weightsAndPerceptTime = []
+			for singleTrial in decRes:
+				TRs = lastPerceptForAllTRs[singleTrial[0]]
+				weights = singleTrial[1][0]
+				weightsAndPerceptTime.append([ TRs[0][0]/TRs[0][], weights])
+			weightsAndPerceptTime = np.array(weightsAndPerceptTime)
+			order = np.argsort(weightsAndPerceptTime[:,0])
+			
+			smooth_width = 25
+			kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+			kern = kern / kern.sum()
+			sm_signal = np.convolve( weightsAndPerceptTime[order,1], kern, 'valid' )
+			sm_time = np.convolve( weightsAndPerceptTime[order,0] , kern, 'valid' )
+			pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
+			
+			
+			pl.plot(weightsAndPerceptTime[:,0], weightsAndPerceptTime[:,1], 'ko', alpha = 0.1)
+			
+			
+		
+		
+		
 		
