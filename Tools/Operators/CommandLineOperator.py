@@ -279,6 +279,15 @@ class FSLMathsOperator( CommandLineOperator ):
 		meanArgs = {'-Tstd': ''}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
 	
+	def configureHPF(self, outputFileName = None, nr_samples_hp = 30):
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_hpf' + standardMRIExtension
+			
+		meanArgs = {'-bptf ': str() + ' -1.0'}
+		self.configure( outputFileName = self.outputFileName, **meanArgs )
+
 
 class retMapRun(object):
 	def   __init__(self, ID, stimType, direction, TR, niiFilePath, delay = 4.0, nSkip = 12, nrCycles = 6):

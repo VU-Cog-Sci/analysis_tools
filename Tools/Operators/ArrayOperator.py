@@ -162,7 +162,7 @@ class EventRelatedAverageOperator(EventDataOperator):
 		
 		
 from shogun.Features import SparseRealFeatures, RealFeatures, Labels
-from shogun.Kernel import GaussianKernel
+from shogun.Kernel import GaussianKernel, LinearKernel, AvgDiagKernelNormalizer
 from shogun.Classifier import LibSVM
 from shogun.Classifier import SVMLin
 	
@@ -223,6 +223,60 @@ def libSVMDecoder(train, test, trainLabels, testLabels, fullOutput = False, widt
 		return [accuracy, predictions, out]
 	else:
 		return accuracy
+		
+def libSVMLinearDecoder(train, test, trainLabels, testLabels, fullOutput = False, scale = 1.0, C = 0.8, epsilon = 1e-5):
+	from shogun.Features import RealFeatures
+	from shogun.Kernel import LinearKernel, AvgDiagKernelNormalizer
+	
+	feats_train=RealFeatures(train)
+	feats_test=RealFeatures(test)
+	
+	kernel=LinearKernel()
+	kernel.set_normalizer(AvgDiagKernelNormalizer(scale))
+	kernel.init(feats_train, feats_test)
+	
+	labels=Labels(trainLabels)
+	
+	svm=LibSVM(C, kernel, labels)
+	svm.set_epsilon(epsilon)
+	
+	svm.train()
+	
+	kernel.init(feats_train, feats_test)
+	
+	out = svm.classify().get_labels()
+	predictions = np.sign(out)
+	accuracy = ( predictions == testLabels ).sum() / float(testLabels.shape[0])
+	
+	
+	if fullOutput:
+		return [accuracy, predictions, out]
+	else:
+		return accuracy
+	
+def classifier_lda_modular(train, test, trainLabels, testLabels, gamma=3, fullOutput = False):
+	from shogun.Features import RealFeatures, Labels
+	from shogun.Classifier import LDA
+
+	feats_train=RealFeatures(train)
+	feats_test=RealFeatures(test)
+
+	labels=Labels(trainLabels)
+
+	lda=LDA(gamma, feats_train, labels)
+	lda.train()
+
+	lda.get_bias()
+	lda.get_w()
+	lda.set_features(feats_test)
+	out = lda.classify().get_labels()
+	predictions = np.sign(out)
+	accuracy = ( predictions == testLabels ).sum() / float(testLabels.shape[0])
+	
+	if fullOutput:
+		return [accuracy, predictions, out]
+
+
 
 def classifier_libsvm_modular(fm_train_real, fm_test_real, label_train_multiclass, width = 1.7, C = 0.4, epsilon= 1e-5):
 	
@@ -286,6 +340,10 @@ class DecodingOperator(ArrayOperator):
 				
 		if self.decoder == 'libSVM':
 			return libSVMDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
+		elif self.decoder == 'libSVMLinear':
+			return libSVMLinearDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
+		elif self.decoder == 'LDA':
+				return classifier_lda_modular(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
 		elif self.decoder == 'svmLin':
 			return svmLinDecoder(train, test, np.asarray(trainingLabels, dtype = np.float64).T, np.asarray(testLabels, dtype = np.float64).T, fullOutput = self.fullOutput)
 		elif self.decoder == 'multiclass':

@@ -352,8 +352,10 @@ class Session(PathConstructor):
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
 			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
 				if op == 'highpass':
-					ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
-					ifO.configure(frequency = filterFreqs['highpass'])
+					ifO = FSLMathsOperator(funcFile)
+					ifO.configureHPF(nr_samples_hp = filterFreqs['lowpass'])
+		#			ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
+		#			ifO.configure(frequency = filterFreqs['highpass'])
 					ifO.execute()
 					funcFile = NiftiImage(ifO.outputFileName)
 				if op == 'lowpass':

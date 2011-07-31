@@ -671,8 +671,8 @@ class SphereSession(Session):
 		eventArray = [eventData[:,1]]
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s', str(roiData.shape), str(eventData.shape[0]))
 		# mean data over voxels for this analysis
-	#	decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, TR = 0.65, deconvolutionSampleDuration = 0.5, deconvolutionInterval = 16.0)
-	#	pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T, c = color)
+#		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, TR = 0.65, deconvolutionInterval = 16.0)
+#		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T, c = color)
 		if True:
 			roiDataM = roiData.mean(axis = 1)
 			roiDataVar = roiData.var(axis = 1)
@@ -698,7 +698,7 @@ class SphereSession(Session):
 			s.set_ylim((-0.05,0.25))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 		
-	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25):
+	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25, run_width = 1):
 		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
 		
 		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = '_visual' )
@@ -717,13 +717,16 @@ class SphereSession(Session):
 		
 		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
 		
-		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)
+		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
 		whichSamplesAllRuns = (withinRunIndices > sampleInterval) * (withinRunIndices < (self.timepointsPerRun - sampleInterval))
+		
 		dM = d.designMatrix[whichSamplesAllRuns]
 		rD = roiData[whichSamplesAllRuns]
 		
-		pl.plot(dM)
-		pl.draw()
+#		pl.plot(dM)
+#		pl.figure()
+#		pl.plot(whichSamplesAllRuns)
+#		pl.draw()
 		
 		from ..Operators.ArrayOperator import DecodingOperator
 		
@@ -735,11 +738,11 @@ class SphereSession(Session):
 		um_indices = np.arange(over_median.shape[0])[under_median]
 		
 		nr_runs = np.min([om_indices.shape[0], um_indices.shape[0]])
-		run_width = 1
-		dec = DecodingOperator(rD, decoder = 'libSVM', fullOutput = True)
+#		run_width = 5
+		dec = DecodingOperator(rD, decoder = 'LDA', fullOutput = True)
 		
 		decodingResultsArray = []
-		for i in range(0, nr_runs-run_width, 1):
+		for i in range(0, nr_runs-run_width, run_width):
 			testThisRun = (np.arange(nr_runs) >= i) * (np.arange(nr_runs) < i+run_width)
 			trainingThisRun = -testThisRun
 			trainingDataIndices = np.concatenate(( om_indices[trainingThisRun], um_indices[trainingThisRun] ))
@@ -747,41 +750,51 @@ class SphereSession(Session):
 			trainingsLabels = np.concatenate(( -np.ones((nr_runs-run_width)), np.ones((nr_runs-run_width)) ))
 			testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
 			
-			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
-			
+			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)			
 			decodingResultsArray.append([testThisRun, res])
 		
 		allData = [self.allPercepts, d.designMatrix, whichSamplesAllRuns, decodingResultsArray]
-		f = open(os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + roi + '.pickle'), 'wb')
+		f = open(os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + str(run_width) + '_' + roi + '.pickle'), 'wb')
 		pickle.dump(allData, f)
 		f.close()
 	
-	def decodeEvents(self):
-		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
+	def decodeEvents(self, run_width):
+		areas = ['V1','V2','MT','pIPS','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
 		colors = np.linspace(0,1,len(areas))
 #		fig = pl.figure(figsize = (4,12))
 #		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		for i in range(len(areas)):
 #			s = fig.add_subplot(len(areas),1,i+1)
-			self.stateDecodingFromRoi(areas[i], color = (colors[i],0,0))
+			self.stateDecodingFromRoi(areas[i], color = (colors[i],0,0), run_width = run_width)
 #			s.set_title(areas[i])
 #			s.set_ylim((-0.05,0.15))
 #		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 	
-	def timeForDecodingResults(self):
-		os.chdir(self.stageFolder(stage = 'processed/mri/sphere'))
-		fileNameList = subprocess.Popen('ls ' + 'decodingResults_*.pickle', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		areas = [f.split('_')[1].split('.')[0] for f in fileNameList]
-		print areas
+	def timeForDecodingResults(self, run_width = 1):
+		areas = ['V1','V2','MT','lh.precentral','superiorfrontal','pIPS','inferiorparietal','superiorparietal']
+		fileNameList = [os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + str(run_width) + '_' + area + '.pickle') for area in areas]
 		# take behavior from the first file
 		f = open(fileNameList[0])
 		d = pickle.load(f)
 		f.close()
-		allPercepts = np.vstack(([[0,0.00,0.00]],d[0]))
+		allPercepts = np.vstack(([[0,0.00,0.00]],d[0]+[0.0, 4.0, 4.0]))
 		allTRTimes = np.arange(0, 0.65 * d[2].shape[0], 0.65) + 0.0001
+		lP = np.array([allPercepts[allPercepts[:,1] < t][-1,1] for t in allTRTimes])
 		lastPerceptForAllTRs = np.array([[t - allPercepts[allPercepts[:,1] < t][-1,1], t, allPercepts[allPercepts[:,1] < t][-1,2]-allPercepts[allPercepts[:,1] < t][-1,1]] for t in allTRTimes])
 		
-		fig = pl.figure(figsize = (2,10))
+#		for i in range(lastPerceptForAllTRs.shape[0]):
+#			print lastPerceptForAllTRs[i]
+		
+		dM = d[1][d[2]]
+		
+		# use median thresholding for feature indexing
+		over_median = dM[:,0] > np.median(dM[:,0])
+		under_median = -over_median
+		
+		om_indices = np.arange(over_median.shape[0])[over_median]
+		um_indices = np.arange(over_median.shape[0])[under_median]
+		
+		fig = pl.figure(figsize = (5,12))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		
 		# take decoding results
@@ -791,28 +804,48 @@ class SphereSession(Session):
 			f.close()
 			
 			decRes = d[3]
-			s = fig.add_subplot(len(areas),1,i+1)
 			
 			weightsAndPerceptTime = []
 			for singleTrial in decRes:
-				TRs = lastPerceptForAllTRs[singleTrial[0]]
-				weights = singleTrial[1][0]
-				weightsAndPerceptTime.append([ TRs[0][0]/TRs[0][], weights])
-			weightsAndPerceptTime = np.array(weightsAndPerceptTime)
+				whatTRs = np.concatenate([om_indices[singleTrial[0]], um_indices[singleTrial[0]]])
+				TRs = lastPerceptForAllTRs[whatTRs]
+				# we take the sign of the W vectors. 
+				weights = (singleTrial[1][1] * (np.ones((singleTrial[1][1].shape[0] / 2, 2)) * [-1, 1]).T.ravel()) / 2.0 + 0.5
+				allThisTRData = np.array([ TRs[:,0], TRs[:,0] / TRs[:,2], weights]).T
+				allThisTRData = allThisTRData[(allThisTRData[:,0] != 0.0) * (allThisTRData[:,1] <= 1.0)]
+				if allThisTRData.shape[0] > 0:
+					weightsAndPerceptTime.append(allThisTRData)
+			weightsAndPerceptTime = np.vstack(weightsAndPerceptTime)
 			order = np.argsort(weightsAndPerceptTime[:,0])
+			nrSamples = order.shape[0]
+			nrBins = 5
+			binEdgeIndices = np.array([np.round(np.linspace(0,nrSamples-1,nrBins+1))[:-1],np.round(np.linspace(0,nrSamples-1,nrBins+1))[1:]]).T
+			binMiddles = np.linspace( 1.0 / (2*nrBins), 1.0 -  1.0 / (2*nrBins), nrBins)
 			
-			smooth_width = 25
+			smooth_width = 200
 			kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
 			kern = kern / kern.sum()
-			sm_signal = np.convolve( weightsAndPerceptTime[order,1], kern, 'valid' )
+			sm_signal = np.convolve( weightsAndPerceptTime[order,2], kern, 'valid' )
 			sm_time = np.convolve( weightsAndPerceptTime[order,0] , kern, 'valid' )
-			pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
+			sm_time_r = np.convolve( weightsAndPerceptTime[order,1] , kern, 'valid' )
 			
+			m_signal = np.array([[binMiddles[k], weightsAndPerceptTime[order[binEdgeIndices[k,0]:binEdgeIndices[k,1]], 2].mean(), weightsAndPerceptTime[order[binEdgeIndices[k,0]:binEdgeIndices[k,1]], 2].std()/sqrt(binEdgeIndices[k,1]-binEdgeIndices[k,0])] for k in range(nrBins)])
 			
-			pl.plot(weightsAndPerceptTime[:,0], weightsAndPerceptTime[:,1], 'ko', alpha = 0.1)
+			print m_signal
 			
-			
-		
+			s = fig.add_subplot(len(areas),1,i+1)
+	#		pl.plot( sm_time_r, sm_signal, 'r', alpha = 0.25, linewidth = 2.75 )
+			pl.plot( m_signal[:,0], m_signal[:,1], 'r--', alpha = 0.85, linewidth = 2.75 )
+			s.fill_between(m_signal[:,0], m_signal[:,1] - m_signal[:,2], m_signal[:,1] + m_signal[:,2], color = 'r', alpha = 0.25)
+	#		pl.plot(weightsAndPerceptTime[:,1], weightsAndPerceptTime[:,2]/weightsAndPerceptTime[:,2].std(), 'ro', alpha = 0.1)
+			s.axis([0,1,0.5,1])
+		#	s.set_ylim([0,1])
+			s.set_title(areas[i])
+#3			s = s.twiny()
+#			pl.plot( sm_time_r, sm_signal, color = 'r', alpha = 0.85, linewidth = 2.75 )
+#			pl.plot(weightsAndPerceptTime[:,0], weightsAndPerceptTime[:,2], 'ro', alpha = 0.1)
+#			s.set_ylim([0,1])
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 		
 		
 		
