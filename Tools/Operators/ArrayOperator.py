@@ -257,15 +257,15 @@ def libSVMLinearDecoder(train, test, trainLabels, testLabels, fullOutput = False
 def classifier_lda_modular(train, test, trainLabels, testLabels, gamma=3, fullOutput = False):
 	from shogun.Features import RealFeatures, Labels
 	from shogun.Classifier import LDA
-
+	
 	feats_train=RealFeatures(train)
 	feats_test=RealFeatures(test)
-
+	
 	labels=Labels(trainLabels)
-
+	
 	lda=LDA(gamma, feats_train, labels)
 	lda.train()
-
+	
 	lda.get_bias()
 	lda.get_w()
 	lda.set_features(feats_test)
