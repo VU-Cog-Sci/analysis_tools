@@ -295,7 +295,7 @@ class Session(PathConstructor):
 									threshold = 0.001 )
 					stV.execute()
 	
-	def motionCorrectFunctionals(self, registerNoMC = False):
+	def motionCorrectFunctionals(self, registerNoMC = False, diagnostics = False):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		how we do this depends on whether we have parallel processing turned on or not
@@ -308,13 +308,14 @@ class Session(PathConstructor):
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ), target = self.referenceFunctionalFileName )
 		 	mcf.configure()
 			mcOperatorList.append(mcf)
-			# diagnostics for temporal SNR are run automatically by mcflirt for the motion corrected volumes
-			# for the non-motion corrected functionals take the temporal mean and standard deviation
-			nmcO = FSLMathsOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ) )
-			nmcO.configureTMean()
-			nmcO.execute()
-			nmcO.configureTStd()
-			nmcO.execute()
+			if diagnostics:
+				# diagnostics for temporal SNR are run automatically by mcflirt for the motion corrected volumes
+				# for the non-motion corrected functionals take the temporal mean and standard deviation
+				nmcO = FSLMathsOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ) )
+				nmcO.configureTMean()
+				nmcO.execute()
+				nmcO.configureTStd()
+				nmcO.execute()
 			# add registration of non-motion corrected functionals to the forRegistration file
 			# to be run together with the motion correction runs
 			if registerNoMC:
@@ -334,9 +335,8 @@ class Session(PathConstructor):
 			job_server = pp.Server(ppservers=ppservers)
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 			ppResults = []
-			for mcf in mcOperatorList:
-				fMcf = job_server.submit(mcf.execute, (), (), ("subprocess",))
-				ppResults.append(fMcf)
+#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
+			ppResults = [job_server.submit(ExecCommandLine,(mcf.runcmd,),(),('subprocess','tempfile',)) for mcf in mcOperatorList]
 			for fMcf in ppResults:
 				fMcf()
 			
