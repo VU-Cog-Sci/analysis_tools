@@ -68,20 +68,15 @@ class RetinotopicMappingSession(Session):
 					op.execute()
 					
 			if self.parallelize:
-				# tryout parallel implementation - later, this should be abstracted out of course. 
 				ppservers = ()
 				job_server = pp.Server(ppservers=ppservers)
 				self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
-				ppResults = []
-				for op in rmOperatorList:
-					opex = job_server.submit(op.execute, (), (), ("subprocess",))
-					ppResults.append(opex)
+	#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
+				ppResults = [job_server.submit(ExecCommandLine,(rm.runcmd,),(),('subprocess','tempfile',)) for rm in rmOperatorList]
+				for rm in ppResults:
+					rm()
 					
-				for opex in ppResults:
-					opex()
-					
-				job_server.print_stats()
-		
+				job_server.print_stats()		
 		self.opfNameList = opfNameList
 		if toSurf:
 			self.convertVolumeToSurface()
