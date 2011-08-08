@@ -43,7 +43,7 @@ foreach ROI { T I P PgtI R1 R2 } {
 	SendLinkedVarGroup overlay
 	set gaLinkedVars(fslope) $fslope
 	SendLinkedVarGroup overlay
-	sclv_smooth 10 0
+	sclv_smooth 5 0
 	
 	# set the view back to its original position
 	make_lateral_view

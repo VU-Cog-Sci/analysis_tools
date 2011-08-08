@@ -102,11 +102,9 @@ class RetinotopicMappingSession(Session):
 				self.logger.info("run parallel surface projection")
 				self.logger.info("Starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 				ppResults = []
-				for vts in vtsList:
-					vtsex = job_server.submit(vts.execute, (), (), ("subprocess",))
-					ppResults.append(vtsex)
-				for vtsex in ppResults:
-					vtsex()
+				ppResults = [job_server.submit(ExecCommandLine,(sp.runcmd,),(),('subprocess','tempfile',)) for sp in vtsList]
+				for sp in ppResults:
+					sp()
 				job_server.print_stats()
 		
 	
@@ -203,7 +201,7 @@ class RetinotopicMappingSession(Session):
 						pl.savefig(self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][rawInputFileNames.index(rd)]], extension = '_' + hemi + '_' + roi + '.png' ))
 					
 #				pp.close()
-#		pl.show()
+		pl.draw()
 	
 	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
 	
@@ -212,6 +210,7 @@ class RetinotopicMappingSession(Session):
 			REDict = {
 			'---HEMI---': hemi,
 			'---CONDITION---': condition, 
+			'---CONDITIONFILENAME---': condition.replace('/', '_'), 
 			'---FIGPATH---': os.path.join(self.stageFolder(stage = 'processed/mri/'), condition, 'surf'),
 			'---NAME---': self.subject.standardFSID,
 			'---BASE_Y_ROTATION---': str(y_rotation),

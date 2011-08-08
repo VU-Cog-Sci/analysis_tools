@@ -3,6 +3,7 @@
 
 set hemiSphere "---HEMI---"
 set condition "---CONDITION---"
+set conditionfilename "---CONDITIONFILENAME---"
 set name "---NAME---"
 set base_y_rotation "---BASE_Y_ROTATION---"
 set exit_when_ready "---EXIT---"
@@ -122,7 +123,8 @@ for {set i 0} {$i < $nrimages} {incr i} {
 	} elseif {$l == 3} {
 	    set label "$i"
 	}
-	set fN [format "---FIGPATH---/%s_%s_%s_%s_%s.tiff" $name $condition $hemiSphere $label $base_y_rotation]
+	
+	set fN [format "---FIGPATH---/%s_%s_%s_%s_%s.tiff" $name $conditionfilename $hemiSphere $label $base_y_rotation]
 	save_tiff $fN
 	rotate_brain_x [ expr { -$rot * $i } ]
 }
