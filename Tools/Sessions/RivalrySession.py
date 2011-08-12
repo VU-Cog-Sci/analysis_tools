@@ -627,6 +627,7 @@ class SphereSession(Session):
 		
 		trans = []
 		percepts = []
+		stimOnsets = []
 		timeOffset = 0.0
 		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
 			# behavior for this run, assume behavior analysis has already been run so we can load the results.			
@@ -637,16 +638,20 @@ class SphereSession(Session):
 			self.timepointsPerRun = niiFile.timepoints
 			self.runDuration = self.rtime * self.timepointsPerRun
 			
-			transitionsThisRun = self.behOps[i].buttonEvents[:-2] # throw away last transitions.
+			transitionsThisRun = self.behOps[i].buttonEvents[1:-1] # throw away last transitions and first transitions because they correlate with stimulus onset.
 			transitionsThisRun[:,1] = transitionsThisRun[:,1] + timeOffset
+			
+			onsetsThisRun = [1, timeOffset + 16.0, timeOffset + 16.5]
 			
 			perceptsThisRun = self.behOps[i].percepts	# keep all percepts
 			perceptsThisRun[:,[1,2]] = perceptsThisRun[:,[1,2]] + timeOffset
 			
 			trans.append(transitionsThisRun)
 			percepts.append(perceptsThisRun)
+			stimOnsets.append(onsetsThisRun)
 		self.allTransitions = np.vstack(trans)
 		self.allPercepts = np.vstack(percepts)
+		self.allStimOnsets = np.vstack(stimOnsets)
 		
 		self.logger.debug('gathered behavioral data from all runs')
 		
@@ -668,7 +673,7 @@ class SphereSession(Session):
 		
 #		separate out different percepts - looking at onsets
 #		eventArray = [eventData[ones,1], eventData[twos,1]]
-		eventArray = [eventData[:,1]]
+		eventArray = [eventData[:,1], self.allStimOnsets[:,1]]
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s', str(roiData.shape), str(eventData.shape[0]))
 		# mean data over voxels for this analysis
 #		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, TR = 0.65, deconvolutionInterval = 16.0)
@@ -677,25 +682,25 @@ class SphereSession(Session):
 			roiDataM = roiData.mean(axis = 1)
 			roiDataVar = roiData.var(axis = 1)
 			for e in range(len(eventArray)):
-				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,30.0*0.65])
-				eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,30.0*0.65])
+				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,20.0*0.65])
+	#			eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,20.0*0.65])
 				zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
 				d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
-				dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
-				pl.plot(d[:,0], d[:,1]-d[zero_index,1], c = color, alpha = 0.75)
-				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = color, alpha = 0.1)
-				pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = color, alpha = 0.75, ls = '--')
+	#			dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
+				pl.plot(d[:,0], d[:,1]-d[zero_index,1], c = np.roll(np.array(color), e), alpha = 0.75)
+				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = np.roll(np.array(color), e), alpha = 0.1)
+	#			pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = np.roll(np.array(color), e), alpha = 0.75, ls = '--')
 		
 	def deconvolveEvents(self):
 		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
-		colors = np.linspace(0,1,len(areas))
+		colors = np.linspace(0.6,1,len(areas))
 		fig = pl.figure(figsize = (4,12))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		for i in range(len(areas)):
 			s = fig.add_subplot(len(areas),1,i+1)
 			self.deconvolveEventsFromRoi(areas[i], color = (colors[i],0,0))
 			s.set_title(areas[i])
-			s.set_ylim((-0.05,0.25))
+			s.set_ylim((-0.1,0.175))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 		
 	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25, run_width = 1):
@@ -723,23 +728,21 @@ class SphereSession(Session):
 		dM = d.designMatrix[whichSamplesAllRuns]
 		rD = roiData[whichSamplesAllRuns]
 		
-#		pl.plot(dM)
-#		pl.figure()
-#		pl.plot(whichSamplesAllRuns)
-#		pl.draw()
-		
 		from ..Operators.ArrayOperator import DecodingOperator
 		
-		# use median thresholding for transition feature indexing
-		over_median = dM[:,0] > np.median(dM[:,0])
+		# or not use median
+		over_median = (dM[:,0] - dM[:,1]) > 0
 		under_median = -over_median
 		
 		om_indices = np.arange(over_median.shape[0])[over_median]
 		um_indices = np.arange(over_median.shape[0])[under_median]
 		
 		nr_runs = np.min([om_indices.shape[0], um_indices.shape[0]])
-#		run_width = 5
-		dec = DecodingOperator(rD, decoder = 'LDA', fullOutput = True)
+		dec = DecodingOperator(rD, decoder = 'svmLin', fullOutput = True)
+		
+		if run_width == 0:
+			run_width = whichSamplesAllRuns.sum() / len(self.conditionDict['sphere'])
+			self.whichSamplesAllRuns = whichSamplesAllRuns
 		
 		decodingResultsArray = []
 		for i in range(0, nr_runs-run_width, run_width):
@@ -750,7 +753,7 @@ class SphereSession(Session):
 			trainingsLabels = np.concatenate(( -np.ones((nr_runs-run_width)), np.ones((nr_runs-run_width)) ))
 			testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
 			
-			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)			
+			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
 			decodingResultsArray.append([testThisRun, res])
 		
 		allData = [self.allPercepts, d.designMatrix, whichSamplesAllRuns, decodingResultsArray]
@@ -772,6 +775,8 @@ class SphereSession(Session):
 	
 	def timeForDecodingResults(self, run_width = 1):
 		areas = ['V1','V2','MT','lh.precentral','superiorfrontal','pIPS','inferiorparietal','superiorparietal']
+		if run_width == 0:
+			run_width = self.whichSamplesAllRuns.sum() / len(self.conditionDict['sphere'])
 		fileNameList = [os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + str(run_width) + '_' + area + '.pickle') for area in areas]
 		# take behavior from the first file
 		f = open(fileNameList[0])
@@ -787,8 +792,8 @@ class SphereSession(Session):
 		
 		dM = d[1][d[2]]
 		
-		# use median thresholding for feature indexing
-		over_median = dM[:,0] > np.median(dM[:,0])
+		# or not use median
+		over_median = (dM[:,0] - dM[:,1]) > 0
 		under_median = -over_median
 		
 		om_indices = np.arange(over_median.shape[0])[over_median]
@@ -848,4 +853,42 @@ class SphereSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 		
 		
+	def mapDecodingRoi(self, roi, mask = '_visual', sampleInterval = 75):
+		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = mask )
+		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
+		whichPercepts = percepts[:,0] == 66
+		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
+		eventData = [eventData[whichPercepts], eventData[-whichPercepts]]
+		
+		from ..Operators.ImageOperator import Design
+		
+		d = Design(roiData.shape[0], 0.65, subSamplingRatio = 100)
+		# percept 1 regressor
+		d.addRegressor(eventData[0])
+		# percept 2 regressor
+		d.addRegressor(eventData[1])
+		
+		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
+		
+		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
+		whichSamplesAllRuns = (withinRunIndices > sampleInterval) * (withinRunIndices < (self.timepointsPerRun - sampleInterval))
+		
+		dM = d.designMatrix[whichSamplesAllRuns]
+		rD = roiData[whichSamplesAllRuns]
+		
+		from ..Operators.ArrayOperator import DecodingOperator
+		
+		# or not use median
+		over_median = (dM[:,0] - dM[:,1]) > 0
+		under_median = -over_median
+		
+		om_indices = np.arange(over_median.shape[0])[over_median]
+		um_indices = np.arange(over_median.shape[0])[under_median]
+		
+		allmean = roiData[whichSamplesAllRuns].mean(axis = 0)
+		pattern, opattern, upattern = (roiData[whichSamplesAllRuns][om_indices].mean(axis = 0)-roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)), roiData[whichSamplesAllRuns][om_indices].mean(axis = 0), roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)
+		pl.plot(np.array([np.linalg.norm((t-allmean) * pattern) for t in roiData[whichSamplesAllRuns]]))
+		pl.plot(5 * dM/np.max(dM))
+		pl.show()
+
 		
