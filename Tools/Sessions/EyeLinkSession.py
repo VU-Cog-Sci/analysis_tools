@@ -340,8 +340,6 @@ class TAESession(EyeLinkSession):
 		
 		self.test_orientation_indices = [self.parameter_data['test_orientation'] == t for t in self.test_orientations]
 		self.rectified_test_orientation_indices = [self.rectified_test_orientations == t for t in self.test_orientations]
-		
-		
 	
 	def fit_condition(self, boolean_array, sub_plot, title, plot_range = [-5,5], x_label = '', y_label = '', make_plot = True, create_globals = True):
 		"""fits the data in self.parameter_data[boolean_array] with a standard TAE psychometric curve and plots the data and result in sub_plot. It sets the title of the subplot, too."""
@@ -699,7 +697,7 @@ class TAESession(EyeLinkSession):
 			
 			# scatter plot of the actual data points
 			sub_plot.scatter(self.spatial_frequencies, np.array(nr_ones, dtype = np.float32) / np.array(nr_samples, dtype = np.float32), facecolor = (1.0,1.0,1.0), edgecolor = 'k', alpha = 1.0, linewidth = 1.25, s = nr_samples)
-
+			
 			# line plot of the fitted curve
 			sub_plot.plot(np.linspace(plot_range[0],plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0],plot_range[1], 500)), c = 'k', linewidth = 1.75)
 			# line plot of chance
@@ -710,7 +708,7 @@ class TAESession(EyeLinkSession):
 			# and the boundaries of the confidence interval on this point
 			sub_plot.axvline(x=pf.getCI(1)[0], c = 'r', alpha = 0.55, linewidth = 1.25)
 			sub_plot.axvline(x=pf.getCI(1)[1], c = 'r', alpha = 0.55, linewidth = 1.25)
-
+			
 #			sub_plot.set_title(title, fontsize=9)
 			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 
@@ -772,6 +770,7 @@ class TAESession(EyeLinkSession):
 		self.logger.info('imported behavioral distilled results from ' + 'results_' + str(self.wildcard) + results_name)
 		h5f.close()
 	
+
 
 class TEAESession(EyeLinkSession):
 	"""TEAESession analyzes the results of TEAE experiments"""
@@ -1174,32 +1173,44 @@ class SASession(EyeLinkSession):
 		pars = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
 		
 		ms_data = []
-		fig = pl.figure(figsize = (16,3))
+		fig = pl.figure(figsize = (12,6))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1, top = 0.95)
 		ids_gains = []
 		for (i, trial_block_vel_data, trial_block_par_sacc_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, par_sacs, sacs, xy_data, pars):
 			ms_data.append([])
+			s = fig.add_subplot(len(vel_data),1,i+1)
+			print trial_block_sacc_data[0].dtype
 			for (j, trial_vel_data, trial_par_sacc_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_par_sacc_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
-				s_data = self.analyze_saccades_for_trial(trial_ps, trial_sacc_data, trial_par_sacc_data, trial_xy_data, trial_vel_data)
-				ms_data[-1].append(s_data)
-				ids_gains.append([s_data[0], s_data[2]])
-#			pl.plot(np.asarray(saccade_data[-1])[:,0], np.asarray(saccade_data[-1])[:,1], colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 10 )
-			sufficient_gain = np.asarray(saccade_data[-1])[:,2] > 0.6
-			pl.plot(np.asarray(saccade_data[-1])[sufficient_gain,0], np.asarray(saccade_data[-1])[sufficient_gain,2], colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 8 )
-		ids_gains = np.array(ids_gains)
-		sufficient_gain = ids_gains[:,1] > 0.6 
-		smooth_width = 25
-		kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
-		kern = kern / kern.sum()
-#		kern = np.ones((smooth_width)) / smooth_width
-		sm_signal = np.convolve( ids_gains[sufficient_gain,1], kern, 'valid' )
-		sm_time = np.convolve( ids_gains[sufficient_gain,0] , kern, 'valid' )
-		pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
-		pl.axis([0, 750, 0.6, 1.2])
+				s_data = self.analyze_microsaccades_for_trial(trial_ps, trial_sacc_data, trial_par_sacc_data, trial_xy_data, trial_vel_data)
+				if s_data != False:
+					ms_data[-1].append([j, s_data])
+#				ids_gains.append([s_data[0], s_data[2]])
+				else:
+					ms_data[-1].append([j, None])
+#			sufficient_gain = np.asarray(ms_data[-1])[:,2] > 0.006
+				pl.plot([np.linalg.norm(p) for p in trial_vel_data[np.min(1000, trial_vel_data.shape[0]-2):,[1,2]]], colors[i], alpha = 0.25, linewidth = 1 )
+			s.set_ylim((0,500))
 		
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains_2_' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+#		ids_gains = np.array(ids_gains)
+#		sufficient_gain = ids_gains[:,1] > 0.6 
+#		smooth_width = 25
+#		kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+#		kern = kern / kern.sum()
+#		sm_signal = np.convolve( ids_gains[sufficient_gain,1], kern, 'valid' )
+#		sm_time = np.convolve( ids_gains[sufficient_gain,0] , kern, 'valid' )
+#		pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
+#		pl.axis([0, 750, 0.0, 0.3])
+#		pl.savefig(os.path.join(self.base_directory, 'figs', 'micro_saccade_gains_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'post_sacc_fixation_velocities_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		print ms_data[i][j][1].dtype
+		for i in ms_data.len():
+			for j in ms_data[i].len():
+				if ms_data[i][j][1] != None:
+					print i, j, ms_data[i][j][1]['start_time']
+					
+		
 	
-	def analyze_microsaccades_for_trial(self, parameters, saccades, parameter_saccades, xy_data, vel_data, blinks ):
+	def analyze_microsaccades_for_trial(self, parameters, saccades, parameter_saccades, xy_data, vel_data ):
 		"""
 		Takes all the data for a given trial, i.e. parameters, eyelink gaze and velocity data, el_saccades and so forth.
 		Distills the necessary parameters for this trial, such as saccade amplitude and the like.
@@ -1209,11 +1220,11 @@ class SASession(EyeLinkSession):
 		if len(parameter_saccades) > 1:
 			self.logger.debug('more than one saccade in trial #' + str(parameters['trial_nr']) + ' from parameters' )
 			el_sacc = parameter_saccades[0]
-		if len(saccades) > 1:
-			self.logger.debug('more than one saccade in trial #' + str(parameters['trial_nr']) + ' from own computation - amplitudes: ' + str(sacc['amplitude'] / parameters['pixels_per_degree']) )
-			sacc = saccades[0]
-		
-		
+		which_saccades_are_microsaccades = (sacc['duration'] > 1.0) * (sacc['amplitude'] < 200)
+		if sacc[which_saccades_are_microsaccades].shape[0] > 0:
+			return sacc[which_saccades_are_microsaccades]
+		else:
+			return False
 	
 	def analyze_saccades_for_trial(self, parameters, saccades, parameter_saccades, xy_data, vel_data ):
 		"""
@@ -1238,7 +1249,6 @@ class SASession(EyeLinkSession):
 		set_sacc_ampl_pix = np.linalg.norm(np.array(pre_fix_pix)-np.array(sacc_target_pix))
 		set_sacc_ampl = set_sacc_ampl_pix / parameters['pixels_per_degree']
 		
-		print vel_data.shape
 		# parameters from the saccades, both detected by eyelink and by our computation
 		el_sacc_timestamp = np.array(el_sacc['start_timestamp'])
 		el_saccade_latency = el_sacc_timestamp - xy_data[0,0]
