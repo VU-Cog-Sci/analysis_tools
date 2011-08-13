@@ -657,11 +657,11 @@ class SphereSession(Session):
 		
 		return self.allTransitions, self.allPercepts
 	 
-	def deconvolveEventsFromRoi(self, roi, color = 'k'):
+	def deconvolveEventsFromRoi(self, roi, color = 'k', mask = '_visual'):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
 		
-		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = '_visual' )
+		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = mask )
 		eventData = self.allTransitions
 		# split out two types of events
 		[ones, twos] = [np.abs(eventData[:,0]) == 66, np.abs(eventData[:,0]) == 67]
@@ -691,14 +691,14 @@ class SphereSession(Session):
 				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = np.roll(np.array(color), e), alpha = 0.1)
 	#			pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = np.roll(np.array(color), e), alpha = 0.75, ls = '--')
 		
-	def deconvolveEvents(self):
+	def deconvolveEvents(self, mask):
 		areas = ['V1','V2','V3A','pIPS','lateraloccipital','MT','lh.precentral','superiorfrontal','inferiorparietal','superiorparietal']
 		colors = np.linspace(0.6,1,len(areas))
 		fig = pl.figure(figsize = (4,12))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		for i in range(len(areas)):
 			s = fig.add_subplot(len(areas),1,i+1)
-			self.deconvolveEventsFromRoi(areas[i], color = (colors[i],0,0))
+			self.deconvolveEventsFromRoi(areas[i], color = (colors[i],0,0), mask = mask)
 			s.set_title(areas[i])
 			s.set_ylim((-0.1,0.175))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
@@ -853,7 +853,7 @@ class SphereSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 		
 		
-	def mapDecodingRoi(self, roi, mask = '_visual', sampleInterval = 75):
+	def mapDecodingRoi(self, roi, mask = '_neg-visual', sampleInterval = 50):
 		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = mask )
 		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
 		whichPercepts = percepts[:,0] == 66
@@ -867,7 +867,6 @@ class SphereSession(Session):
 		d.addRegressor(eventData[0])
 		# percept 2 regressor
 		d.addRegressor(eventData[1])
-		
 		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
 		
 		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
@@ -877,6 +876,7 @@ class SphereSession(Session):
 		rD = roiData[whichSamplesAllRuns]
 		
 		from ..Operators.ArrayOperator import DecodingOperator
+		from scipy.stats import *
 		
 		# or not use median
 		over_median = (dM[:,0] - dM[:,1]) > 0
@@ -885,10 +885,33 @@ class SphereSession(Session):
 		om_indices = np.arange(over_median.shape[0])[over_median]
 		um_indices = np.arange(over_median.shape[0])[under_median]
 		
-		allmean = roiData[whichSamplesAllRuns].mean(axis = 0)
-		pattern, opattern, upattern = (roiData[whichSamplesAllRuns][om_indices].mean(axis = 0)-roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)), roiData[whichSamplesAllRuns][om_indices].mean(axis = 0), roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)
-		pl.plot(np.array([np.linalg.norm((t-allmean) * pattern) for t in roiData[whichSamplesAllRuns]]))
-		pl.plot(5 * dM/np.max(dM))
-		pl.show()
-
+#		allmean = roiData[whichSamplesAllRuns].mean(axis = 0)
+#		pattern, opattern, upattern = (roiData[whichSamplesAllRuns][om_indices].mean(axis = 0)-roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)), roiData[whichSamplesAllRuns][om_indices].mean(axis = 0), roiData[whichSamplesAllRuns][um_indices].mean(axis = 0)
+		fig = pl.figure(figsize = (5,8))
+		s = fig.add_subplot(2,1,1)
+		s.set_title(roi + mask)
+		pl.plot(0.5 - 0.5 * dM/np.max(dM))
+		
+#		ops = np.array([spearmanr(t, opattern)[0] for t in roiData[whichSamplesAllRuns]])
+#		ups = np.array([spearmanr(t, upattern)[0] for t in roiData[whichSamplesAllRuns]])
+		
+#		s = fig.add_subplot(3,1,2)
+#		pl.plot(ops-ups)
+#		pl.plot(0.5 * (( ops-ups ) < 0 ))
+#		
+#		print spearmanr(ops-ups, dM[:,0])
+		
+		betas, sse, rank, sing = sp.linalg.lstsq( dM, rD, overwrite_a = True, overwrite_b = True )
+		
+		ops = np.array([spearmanr(t, betas[0])[0] for t in roiData[whichSamplesAllRuns]])
+		ups = np.array([spearmanr(t, betas[1])[0] for t in roiData[whichSamplesAllRuns]])
+		s = fig.add_subplot(2,1,2)
+		pl.plot(ops-ups)
+		pl.plot(0.5 * (( ops-ups ) < 0 ))
+		print spearmanr(-(ops-ups), dM[:,0]-dM[:,1])
+		
+		nc = (1.0 + (np.sign(-(ops-ups)) * np.sign(dM[:,0]-dM[:,1])).sum() / float(ops.shape[0])) / 2.0
+		print nc
+		
+		return [spearmanr(-(ops-ups), dM[:,0]), nc]
 		

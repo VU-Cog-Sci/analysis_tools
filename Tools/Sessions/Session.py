@@ -402,7 +402,7 @@ class Session(PathConstructor):
 				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()
 		
-	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__'):
+	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
 		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/' + originalMaskFolder ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		self.logger.info('Taking masks ' + str(roiFileNames))
@@ -411,7 +411,8 @@ class Session(PathConstructor):
 			rois.append(NiftiImage(roi))
 		
 		# at this point, we're going to replenish the masks in the masks folder. We delete all .nii.gz files in that folder
-		os.system('rm ' + self.runFile(stage = 'processed/mri/masks/', base = '*' ) )
+		if delete_older_files:
+			os.system('rm ' + self.runFile(stage = 'processed/mri/masks/', base = '*' ) )
 		
 		if statMasks:
 			for statMask in statMasks:
@@ -427,7 +428,7 @@ class Session(PathConstructor):
 						statMaskData = NiftiImage(self.runFile(stage = 'processed/mri/masks/stat/', base = statMask )).data
 				for rn in range(len(rois)):
 					imo = ImageMaskingOperator(rois[rn], maskObject = statMaskData, thresholds = thresholds, outputFileName = self.runFile(stage = 'processed/mri/masks/', base = os.path.split(rois[rn].filename)[1][:-7] + '_' + statMask, extension = '' ))
-					imo.applyAllMasks(maskFunction = maskFunction )
+					imo.applyAllMasks( maskFunction = maskFunction )
 					
 				if toSurf:
 					# convert the statistical masks to surfaces
@@ -469,7 +470,6 @@ class Session(PathConstructor):
 				roi = [roi]
 			runData = []
 			for thisRoi in roi:
-				print thisRoi
 				# get ROI
 				if thisRoi[:2] in ['lh','rh']:	# single - hemisphere roi
 					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/' + thisRoi + whichMask, extension = '.npy')):
@@ -478,9 +478,9 @@ class Session(PathConstructor):
 						thisRoiData = np.array([])
 				else: # combine both hemispheres in one roi
 					if os.path.isfile(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.npy')):
-						l = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.npy'))[0]
-						r = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + whichMask, extension = '.npy'))[0]
-						thisRoiData = np.hstack((l,r))
+						ld = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/lh.' + thisRoi + whichMask, extension = '.npy'))[0]
+						rd = np.load(self.runFile(stage = 'processed/mri', run = self.runList[r], base = 'masked/rh.' + thisRoi + whichMask, extension = '.npy'))[0]
+						thisRoiData = np.hstack((ld,rd))
 					else:
 						thisRoiData = np.array([])
 				if thisRoiData.shape[0] > 0:
