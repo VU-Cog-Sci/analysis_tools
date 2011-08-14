@@ -854,7 +854,7 @@ class SphereSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 	
 	
-	def mapDecodingRoi(self, roiData, sampleInterval = 60):
+	def mapDecodingRoi(self, roiData, intervalForFit = [25,325], intervalForTest = [25,325]):
 		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
 		whichPercepts = percepts[:,0] == 66
 		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
@@ -870,10 +870,11 @@ class SphereSession(Session):
 		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
 		
 		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
-		whichSamplesAllRuns = (withinRunIndices > sampleInterval) * (withinRunIndices < (self.timepointsPerRun - sampleInterval))
+		whichTrainSamplesAllRuns = (withinRunIndices > intervalForFit[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForFit[1]))
+		whichTestSamplesAllRuns = (withinRunIndices > intervalForTest[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForTest[1]))
 		
-		dM = d.designMatrix[whichSamplesAllRuns]
-		rD = roiData[whichSamplesAllRuns]
+		dM = d.designMatrix[whichTrainSamplesAllRuns]
+		rD = roiData[whichTrainSamplesAllRuns]
 		
 		from ..Operators.ArrayOperator import DecodingOperator
 		from scipy.stats import *
@@ -887,13 +888,13 @@ class SphereSession(Session):
 		
 		betas, sse, rank, sing = sp.linalg.lstsq( dM, rD, overwrite_a = True, overwrite_b = True )
 		
-		ops = np.array([spearmanr(t, betas[0])[0] for t in roiData[whichSamplesAllRuns]])
-		ups = np.array([spearmanr(t, betas[1])[0] for t in roiData[whichSamplesAllRuns]])
+		ops = np.array([spearmanr(t, betas[0])[0] for t in roiData[whichTestSamplesAllRuns]])
+		ups = np.array([spearmanr(t, betas[1])[0] for t in roiData[whichTestSamplesAllRuns]])
 		
 		nc = (1.0 + (np.sign(-(ops-ups)) * np.sign(dM[:,0]-dM[:,1])).sum() / float(ops.shape[0])) / 2.0
 		return [spearmanr(-(ops-ups), dM[:,0]), nc]
 	
-	def mapDecoding(self, areas = ['V1','V2',['V3v','V3d'],'V3A',['inferiorparietal','superiorparietal']], masks = ['_visual','_neg-visual']):
+	def mapDecoding(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],'V3A',['inferiorparietal','superiorparietal']], masks = ['_visual','_neg-visual']):
 		def autolabel(rects):
 			# attach some text labels
 			for rect in rects:
@@ -959,7 +960,7 @@ class SphereSession(Session):
 		newImage.save()
 	
 	
-	def eccenMapDecoding(self, areas = ['V1','V2',['V3v','V3d'],'V3A']):#,'V3A',['inferiorparietal','superiorparietal']
+	def eccenMapDecoding(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],'V3A','V4',['inferiorparietal','superiorparietal']]):#,'V3A',['inferiorparietal','superiorparietal']
 		eccenFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz'))
 		statFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'visual.nii.gz'))
 		
@@ -970,18 +971,19 @@ class SphereSession(Session):
 		
 		colors = [(i/float(len(areas)), 1.0 - i/float(len(areas)), 0.0) for i in range(len(areas))]
 		res = []
-#		pl.figure()
+		fig = pl.figure(figsize = (4,10))
 		for (i, a) in zip(range(len(areas)), areas):
-			res.append(self.eccenMapDecodingFromRoi(eccenFile, statFile, allFuncData, area = a))
+			s = fig.add_subplot(len(areas),1,i+1)
+			res.append(self.eccenMapDecodingFromRoi(eccenFile, statFile, allFuncData, s = s, area = a))
 			s = pl.twinx()
 			pl.plot(res[-1][:,0], res[-1][:,1], c = colors[0])
 			s.set_ylabel('percentage correct', fontsize=9)
 			s.set_xlim([0,2*pi])
 			s.set_title(str(a))
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), str(a) + '_eccen_phase_vs_stat.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eccen_phase_vs_stat.pdf'))
 		res = np.array(res)
 	
-	def eccenMapDecodingFromRoi(self, eccenFile, statFile, allFuncData, subfig = None, area = ['V1']):
+	def eccenMapDecodingFromRoi(self, eccenFile, statFile, allFuncData, s = None, area = ['V1']):
 		if area.__class__.__name__ == 'str':
 			area = [area]
 		roiData = []
@@ -998,30 +1000,29 @@ class SphereSession(Session):
 		# shift the phase back by 0.5 pi
 		erd = np.fmod(eccenRoiData + 3.75 * pi, (2.0 * pi))
 		ers = np.argsort(erd)
-		if True:
-			erdT = np.concatenate((erd[ers]-(2*pi), erd[ers], erd[ers]+(2*pi)))
-			srdT = np.tile(statRoiData[ers],3)
-			fig = pl.figure()
-			s = fig.add_subplot(111)
-			pl.plot(erdT, srdT, 'ro', alpha = 0.25)
+		erdT = np.concatenate((erd[ers]-(2*pi), erd[ers], erd[ers]+(2*pi)))
+		srdT = np.tile(statRoiData[ers],3)
 		
-			smooth_width = 200
-			kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
-			kern = kern / kern.sum()
-			sm_signal = np.convolve( srdT, kern, 'valid' )
-			sm_ph = np.convolve( erdT, kern, 'valid' )
-			pl.plot(sm_ph, sm_signal, 'r')
-			pl.plot(np.linspace(0,2* pi,200), np.zeros((200)), 'k--')
-			s.set_xlim([0,2*pi])
-			s.set_xlabel('eccen phase, 0 = fovea', fontsize=9)
-			s.set_ylabel('Z score', fontsize=9)
+		pl.plot(erdT, srdT, 'ro', alpha = 0.25)
+		
+		smooth_width = 200
+		kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+		kern = kern / kern.sum()
+		sm_signal = np.convolve( srdT, kern, 'valid' )
+		sm_ph = np.convolve( erdT, kern, 'valid' )
+		pl.plot(sm_ph, sm_signal, 'r')
+		pl.plot(np.linspace(0,2* pi,200), np.zeros((200)), 'k--')
+		s.set_xlim([0,2*pi])
+		s.set_xlabel('eccen phase, 0 = fovea', fontsize=9)
+		s.set_ylabel('Z score', fontsize=9)
 		
 		nrBins = 5
 #		nrVoxInBins = int(np.ceil(erd.shape[0] / float(nrBins)))
-		nrVoxInBins = max(int(np.ceil(erd.shape[0] / float(nrBins))), 50)
+		nrVoxInBins = min(int(np.ceil(erd.shape[0] / float(nrBins))), 80)
+#		nrVoxInBins = 50
 		res = []
-		for i in np.arange(erd.shape[0]-nrVoxInBins):
-			res.append([np.mean(erd[ers[i:nrVoxInBins+i]]), self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]] )[1]])
-		print nrVoxInBins, res
+		for i in np.arange(0, erd.shape[0]-nrVoxInBins, 40):
+			res.append([np.mean(erd[ers[i:nrVoxInBins+i]]), self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]], intervalForFit = [75,325], intervalForTest = [75,325])[1]])
+		print nrVoxInBins, erd.shape[0]
 		return np.array(res)
 	
