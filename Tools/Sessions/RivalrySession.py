@@ -873,20 +873,21 @@ class SphereSession(Session):
 		# percept 2 regressor
 		d.addRegressor(eventData[1])
 		# now take the difference of the two and substitute
-		d.designMatrix = d.designMatrix[:,0] - d.designMatrix[:,1]
+		d.rawDesignMatrix = list(d.rawDesignMatrix[0] - d.rawDesignMatrix[1])
 		
 		# transition events
-		transitionEvents = np.hstack((np.ones(percepts.shape[0]), percepts[:,1], np.ones(percepts.shape[0]) * 0.5))
+		transitionEvents = np.vstack((percepts[:,0], percepts[:,1], np.ones(percepts.shape[0]) * 0.5)).T
+		print transitionEvents
 		d.addRegressor(transitionEvents)
 		
 		# stimulus on events
-		stimulusOnEvents = [[1, 16.0 + i * (self.timepointsPerRun * self.rtime), (self.timepointsPerRun * self.rtime) - 16 + i * (self.timepointsPerRun * self.rtime)] for i in len(self.scanConditionDict['sphere'])]
+		stimulusOnEvents = [[1, 16.0 + i * (self.timepointsPerRun * self.rtime), (self.timepointsPerRun * self.rtime) - 16 + i * (self.timepointsPerRun * self.rtime)] for i in range(len(self.conditionDict['sphere']))]
 		d.addRegressor(stimulusOnEvents)
 		
 		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
 		
 		# what timepoints to use for training and testing...
-		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
+		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)
 		whichTrainSamplesAllRuns = (withinRunIndices > intervalForFit[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForFit[1]))
 		whichTestSamplesAllRuns = (withinRunIndices > intervalForTest[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForTest[1]))
 		
@@ -1028,7 +1029,7 @@ class SphereSession(Session):
 		pl.plot(erdT, srdT, 'ro', alpha = 0.25)
 		
 		smooth_width = 200
-		kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+		kern = norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
 		kern = kern / kern.sum()
 		sm_signal = np.convolve( srdT, kern, 'valid' )
 		sm_ph = np.convolve( erdT, kern, 'valid' )
