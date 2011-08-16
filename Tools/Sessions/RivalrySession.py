@@ -8,6 +8,7 @@ Copyright (c) 2009 TK. All rights reserved.
 """
 
 from Session import *
+from scipy.stats import *
 
 class RivalryReplaySession(Session):
 	def analyzeBehavior(self):
@@ -673,7 +674,8 @@ class SphereSession(Session):
 		
 #		separate out different percepts - looking at onsets
 #		eventArray = [eventData[ones,1], eventData[twos,1]]
-		eventArray = [eventData[:,1], self.allStimOnsets[:,1]]
+#		eventArray = [eventData[:,1], self.allStimOnsets[:,1]]
+		eventArray = [eventData[:,1]]
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s', str(roiData.shape), str(eventData.shape[0]))
 		# mean data over voxels for this analysis
 #		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, TR = 0.65, deconvolutionInterval = 16.0)
@@ -682,27 +684,30 @@ class SphereSession(Session):
 			roiDataM = roiData.mean(axis = 1)
 			roiDataVar = roiData.var(axis = 1)
 			for e in range(len(eventArray)):
-				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,20.0*0.65])
+				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-6.0*0.65,24.0*0.65])
 	#			eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,20.0*0.65])
 				zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
-				d = eraOp.run(binWidth = 3.0, stepSize = 0.25)
+				d = eraOp.run(binWidth = 3.25, stepSize = 0.25)
 	#			dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
 				pl.plot(d[:,0], d[:,1]-d[zero_index,1], c = np.roll(np.array(color), e), alpha = 0.75)
 				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = np.roll(np.array(color), e), alpha = 0.1)
 	#			pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = np.roll(np.array(color), e), alpha = 0.75, ls = '--')
 		
-	def deconvolveEvents(self, mask):
-		areas = ['V1','V2',['V3v','V3d'],'V3A','lh.precentral','superiorfrontal',['inferiorparietal','superiorparietal']]
-		colors = np.linspace(0.6,1,len(areas))
-		fig = pl.figure(figsize = (4,12))
+	def deconvolveEvents(self, masks = ['_visual','_neg-visual']):
+		areas = ['V1',['V2v','V2d'],['V3v','V3d']] # ,'V3A',['inferiorparietal','superiorparietal'],'lh.precentral','superiorfrontal'
+		
+		fig = pl.figure(figsize = (5,7))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
 		for i in range(len(areas)):
 			print areas[i]
 			s = fig.add_subplot(len(areas),1,i+1)
-			self.deconvolveEventsFromRoi(areas[i], color = (colors[i],0,0), mask = mask)
+			colors = np.linspace(0.2,1,len(masks))
+			for m in range(len(masks)):
+				self.deconvolveEventsFromRoi(areas[i], color = (colors[m],0,0), mask = masks[m])
+			
 			s.set_title(areas[i])
-			s.set_ylim((-0.1,0.175))
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.png'))
+			s.set_ylim((-0.05,0.135))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
 	
 	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25, run_width = 1):
 		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
@@ -867,29 +872,43 @@ class SphereSession(Session):
 		d.addRegressor(eventData[0])
 		# percept 2 regressor
 		d.addRegressor(eventData[1])
+		# now take the difference of the two and substitute
+		d.designMatrix = d.designMatrix[:,0] - d.designMatrix[:,1]
+		
+		# transition events
+		transitionEvents = np.hstack((np.ones(percepts.shape[0]), percepts[:,1], np.ones(percepts.shape[0]) * 0.5))
+		d.addRegressor(transitionEvents)
+		
+		# stimulus on events
+		stimulusOnEvents = [[1, 16.0 + i * (self.timepointsPerRun * self.rtime), (self.timepointsPerRun * self.rtime) - 16 + i * (self.timepointsPerRun * self.rtime)] for i in len(self.scanConditionDict['sphere'])]
+		d.addRegressor(stimulusOnEvents)
+		
 		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
 		
+		# what timepoints to use for training and testing...
 		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
 		whichTrainSamplesAllRuns = (withinRunIndices > intervalForFit[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForFit[1]))
 		whichTestSamplesAllRuns = (withinRunIndices > intervalForTest[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForTest[1]))
 		
+		# What percepts were dominant, used for later testing
+		whatPercept = d.designMatrix[:,0] > 0
+		wP = whatPercept[whichTestSamplesAllRuns]
+		
+		# this is the data that goes into the GLM
 		dM = d.designMatrix[whichTrainSamplesAllRuns]
 		rD = roiData[whichTrainSamplesAllRuns]
 		
-		from ..Operators.ArrayOperator import DecodingOperator
-		from scipy.stats import *
-		
-		# or not use median
-		over_median = (dM[:,0] - dM[:,1]) > 0
-		under_median = -over_median
-		
-		om_indices = np.arange(over_median.shape[0])[over_median]
-		um_indices = np.arange(over_median.shape[0])[under_median]
-		
+		# GLM
 		betas, sse, rank, sing = sp.linalg.lstsq( dM, rD, overwrite_a = True, overwrite_b = True )
 		
-		ops = np.array([spearmanr(t, betas[0])[0] for t in roiData[whichTestSamplesAllRuns]])
-		ups = np.array([spearmanr(t, betas[1])[0] for t in roiData[whichTestSamplesAllRuns]])
+		# spearman correlation 
+		patternTimeCoursesCorr = np.array([[spearmanr(t, b)[0] for b in betas] for t in roiData[whichTestSamplesAllRuns]])
+		corrDecoding = np.sign(wP * patternTimeCoursesCorr)
+		
+		# projection
+		patternTimeCoursesProj = np.dot(betas, roiData[whichTestSamplesAllRuns])
+		corrDecoding = np.sign(wP * patternTimeCoursesProj)
+		
 		
 		nc = (1.0 + (np.sign(-(ops-ups)) * np.sign(dM[:,0]-dM[:,1])).sum() / float(ops.shape[0])) / 2.0
 		return [spearmanr(-(ops-ups), dM[:,0]), nc]
