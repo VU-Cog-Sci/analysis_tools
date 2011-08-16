@@ -872,6 +872,8 @@ class SphereSession(Session):
 		d.addRegressor(eventData[0])
 		# percept 2 regressor
 		d.addRegressor(eventData[1])
+		
+		print d.rawDesignMatrix
 		# now take the difference of the two and substitute
 		d.rawDesignMatrix = list(d.rawDesignMatrix[0] - d.rawDesignMatrix[1])
 		
