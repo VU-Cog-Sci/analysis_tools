@@ -219,7 +219,7 @@ class Session(PathConstructor):
 					ExecCommandLine('cp ' + r.rawDataFilePath + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
 			# behavioral files will be copied during analysis
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
+	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -265,18 +265,24 @@ class Session(PathConstructor):
 			self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
 			ExecCommandLine('cp ' + self.originalReferenceFunctionalVolume + ' ' + self.referenceFunctionalFileName )
 		
-			# register to both freesurfer anatomical and fsl MNI template
-			# actual registration - BBRegister to freesurfer subject
-			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = False )
-			bbR.execute()
-			# after registration, see bbregister log file for reg check
+			if bb:
+				# register to both freesurfer anatomical and fsl MNI template
+				# actual registration - BBRegister to freesurfer subject
+				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = False )
+				bbR.execute()
+				# after registration, see bbregister log file for reg check
 					
 			if flirt:
 				# actual registration - Flirt to MNI brain
 				flR = FlirtOperator( self.referenceFunctionalFileName )
 				flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ) )
 				flR.execute()
+				invFlR = InvertFlirtOperator(self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ))
+				invFlR.configure()
+				invFlR.execute()
+				
+				flRInv = '/usr/local/fsl/bin/convert_xfm -omat /Users/tk/Documents/research/experiments/control/data/full_pilot/data/MC/MC_160811/processed/mri/reg/flirt_controlMC_inv.mtx -inverse /Users/tk/Documents/research/experiments/control/data/full_pilot/data/MC/MC_160811/processed/mri/reg/flirt_controlMC.mtx'
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
@@ -341,7 +347,7 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
-	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 1.0/60.0, 'lowpass': 1.0/6.0}):#, 'percentsignalchange'
+	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data
@@ -352,7 +358,7 @@ class Session(PathConstructor):
 			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
 				if op == 'highpass':
 					ifO = FSLMathsOperator(funcFile)
-					ifO.configureHPF(nr_samples_hp = filterFreqs['lowpass'])
+					ifO.configureHPF(nr_samples_hp = filterFreqs['highpass'] )
 		#			ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
 		#			ifO.configure(frequency = filterFreqs['highpass'])
 					ifO.execute()

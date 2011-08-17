@@ -165,12 +165,28 @@ class FlirtOperator( CommandLineOperator ):
 			runcmd += ' -interp sinc '
 		
 		self.runcmd = runcmd
-		
-	def configure(self, outputFileName = None, transformMatrixFileName = None, sinc = True, resample = True):
-		"""
-		standard configure is configureRun instead of apply
-		"""
-		self.configureRun( outputFileName = outputFileName, transformMatrixFileName = transformMatrixFileName, sinc = sinc, resample = resample)
+	
+	class InvertFlirtOperator( CommandLineOperator ):
+		"""docstring for FlirtOperator"""
+		def __init__(self, inputObject, cmd = 'source ~/.bash_profile_fsl ; /usr/local/fsl/bin/convert_xfm', **kwargs):
+			"""
+			other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+			"""
+			# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+			super(InvertFlirtOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+	
+		def configure(self, outputFileName = None):
+			"""
+			standard configure is configureRun instead of apply
+			"""
+			if outputFileName:
+				self.outputFileName = outputFileName
+			else:
+				self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_inv.mtx'
+			runcmd = self.cmd
+			runcmd += ' -omat ' + self.outputFileName
+			runcmd += ' -inverse ' + self.inputFileName
+			self.runcmd = runcmd
 	
 	
 class BETOperator( CommandLineOperator ):
@@ -285,7 +301,7 @@ class FSLMathsOperator( CommandLineOperator ):
 		else:
 			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_hpf' + standardMRIExtension
 			
-		meanArgs = {'-bptf ': str() + ' -1.0'}
+		meanArgs = {'-bptf ': str(nr_samples_hp) + ' -1.0'}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
 
 

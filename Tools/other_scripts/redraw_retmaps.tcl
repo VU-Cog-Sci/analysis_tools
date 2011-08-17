@@ -86,7 +86,7 @@ set angle_offset 0.5
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
-set smoothsteps 3
+set smoothsteps 2
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh
