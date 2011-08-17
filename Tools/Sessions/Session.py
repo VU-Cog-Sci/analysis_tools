@@ -276,7 +276,7 @@ class Session(PathConstructor):
 			if flirt:
 				# actual registration - Flirt to MNI brain
 				flR = FlirtOperator( self.referenceFunctionalFileName )
-				flR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ) )
+				flR.configureRun( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ) )
 				flR.execute()
 				invFlR = InvertFlirtOperator(self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mtx' ))
 				invFlR.configure()
