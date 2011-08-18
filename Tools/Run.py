@@ -35,10 +35,14 @@ class Run(object):
 		if not hasattr(self, 'condition'):
 			self.condition = ''
 		
+
 		if hasattr(self, 'rawDataFilePath'):
-			self.dateTime = os.path.getctime(self.rawDataFilePath)
+			if os.path.isfile(self.rawDataFilePath)			:
+				self.dateTime = os.path.getctime(self.rawDataFilePath)
+			else:
+				print 'rawDataFilePath is not file.'
 		elif hasattr(self, 'behaviorFile'):
-#			self.dateTime = os.path.getctime(self.behaviorFile)
+			#			self.dateTime = os.path.getctime(self.behaviorFile)
 			self.dateTime = datetime.date.today()
 		elif hasattr(self, 'eyeFile'):
 			self.dateTime = os.path.getctime(self.eyeFile)

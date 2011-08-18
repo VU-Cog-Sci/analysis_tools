@@ -94,16 +94,16 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		results in creation of a mask file which can be accessed later
 		"""
 		# F-value mask from eccen experiment
-		eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')
-		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
-		imO = ImageMaskingOperator(inputObject = eccenFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
+#		eccenFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz')
+#		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
+#		imO = ImageMaskingOperator(inputObject = eccenFile, maskObject = fixPeripheryFile, thresholds = [exclusionThreshold])
 		# change the first frame of the mask and input data (-log p-value) to its absolute value
-		imO.maskData[0] = np.abs(imO.maskData[0])
-		imO.inputData[0] = np.abs(imO.inputData[0])
-		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
-		maskImage = NiftiImage(maskedDataArray)
-		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen_mask-' + str(exclusionThreshold) + '.nii.gz')
-		maskImage.save()
+#		imO.maskData[0] = np.abs(imO.maskData[0])
+#		imO.inputData[0] = np.abs(imO.inputData[0])
+#		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
+#		maskImage = NiftiImage(maskedDataArray)
+#		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen_mask-' + str(exclusionThreshold) + '.nii.gz')
+#		maskImage.save()
 		# F-value mask from polar - fix map experiment
 		polarFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar.nii.gz')
 		fixPeripheryFile = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['fix_periphery'][0]]), 'polar.nii.gz')
@@ -161,7 +161,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']], maskFile = 'polar_mask-2.0.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = True ):
+	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']], maskFile = 'polar_mask-2.0.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
