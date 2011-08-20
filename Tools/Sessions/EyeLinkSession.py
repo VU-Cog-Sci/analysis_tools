@@ -90,9 +90,9 @@ class EyeLinkSession(object):
 			ExecCommandLine('cp ' + behavior_files[i] + ' ' + os.path.join(self.base_directory, 'raw', behavior_files[i]) )
 			ExecCommandLine('cp ' + eye_files[i] + ' ' + os.path.join(self.base_directory, 'raw', eye_files[i]) )
 	
-	def convert_edf(self, check_answers = True, compute_velocities = True):
+	def convert_edf(self, check_answers = True, compute_velocities = True, raw_file_directory = 'raw'):
 		"""docstring for convert_edf"""
-		os.chdir(os.path.join(self.base_directory, 'raw'))
+		os.chdir(os.path.join(self.base_directory, raw_file_directory))
 		# what files are there to analyze?
 		edf_files = subprocess.Popen('ls ' + self.wildcard + '*.edf', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
 		msg_files = subprocess.Popen('ls ' + self.wildcard + '*.msg', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
@@ -1288,3 +1288,4 @@ class SASession(EyeLinkSession):
 		
 		self.logger.info('distilled saccades from paramaters' )
 		return [pre_step_saccades, post_step_saccades]
+	

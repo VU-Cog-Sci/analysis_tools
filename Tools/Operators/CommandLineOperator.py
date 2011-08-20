@@ -109,7 +109,7 @@ class MCFlirtOperator( CommandLineOperator ):
 
 class FlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = 'source ~/.bash_profile_fsl ; flirt', referenceFileName = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz', costFunction = 'normmi', **kwargs):
+	def __init__(self, inputObject, cmd = 'flirt', referenceFileName = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -168,7 +168,7 @@ class FlirtOperator( CommandLineOperator ):
 	
 class InvertFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = 'source ~/.bash_profile_fsl ; /usr/local/fsl/bin/convert_xfm', **kwargs):
+	def __init__(self, inputObject, cmd = '/usr/local/fsl/bin/convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
