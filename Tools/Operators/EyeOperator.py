@@ -122,7 +122,7 @@ class ASLEyeOperator( EyeOperator ):
 
 class EyelinkOperator( EyeOperator ):
 	"""docstring for EyelinkOperator"""
-	def __init__(self, inputObject, split = True, **kwargs):
+	def __init__(self, inputObject, split = True, date_format = 'python_experiment', **kwargs):
 		super(EyelinkOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
 		if os.path.splitext(self.inputObject)[-1] == '.edf':
@@ -140,13 +140,23 @@ class EyelinkOperator( EyeOperator ):
 				self.messageFile = eac.messageOutputFileName
 				self.gazeFile = eac.gazeOutputFileName
 				self.convertGazeData()
-			
-			# recover time of experimental run from filename
-			timeStamp = self.inputFileName.split('_')[-2:]
-			[y, m, d] = [int(t) for t in timeStamp[0].split('-')]
-			[h, mi, s] = [int(t) for t in timeStamp[1].split('.')[:-1]]
-			self.timeStamp = datetime(y, m, d, h, mi, s)
-			self.timeStamp_numpy = np.array([y, m, d, h, mi, s], dtype = np.int)
+				
+			if date_format == 'python_experiment':
+				# recover time of experimental run from filename
+				timeStamp = self.inputFileName.split('_')[-2:]
+				[y, m, d] = [int(t) for t in timeStamp[0].split('-')]
+				[h, mi, s] = [int(t) for t in timeStamp[1].split('.')[:-1]]
+				self.timeStamp = datetime(y, m, d, h, mi, s)
+				self.timeStamp_numpy = np.array([y, m, d, h, mi, s], dtype = np.int)
+			else:
+				timeStamp = self.inputFileName.split('_')[-1].split('.edf')[0]
+				print timeStamp
+				[d, m] = [int(t) for t in timeStamp.split('|')[1].split('-')]
+				[h, mi] = [int(t) for t in timeStamp.split('|')[0].split('.')] 
+				self.timeStamp = datetime(2010, m, d, h, mi, 11)
+				self.timeStamp_numpy = np.array([2010, m, d, h, mi, 0], dtype = np.int)
+				
+				
 		else:
 			self.logger.warning('Input object is not an edf file')
 	
@@ -335,8 +345,15 @@ class EyelinkOperator( EyeOperator ):
 			self.parameters = bhO.parameters
 			for i in range(len(self.parameters)):
 				self.parameters[i].update({'trial_nr' : float(i)})
+				if not self.parameters[i].has_key('answer'):
+					self.parameters[i].update({'answer' : float(-10000)})
 			
 		# now create parameters and types for hdf5 file table of trial parameters
+		if not self.parameters[0].has_key('answer'):
+			self.parameters[0].update({'answer' : float(-10000)})
+		if not self.parameters[0].has_key('confidence'):
+			self.parameters[0].update({'confidence' : float(-10000)})
+		
 		self.parameterTypeDictionary = np.dtype([(k, np.float64) for k in self.parameters[0].keys()])
 	
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):

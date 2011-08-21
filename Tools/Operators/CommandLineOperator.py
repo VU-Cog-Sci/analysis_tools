@@ -210,7 +210,7 @@ class BETOperator( CommandLineOperator ):
 		else:
 			runcmd += ' ' + os.path.splitext(self.inputFileName)[0] + '_NB'
 		# configure parameters - will perhaps make this amenable
-		runcmd += ' -f 0.5 -g 0 -m '
+		runcmd += ' -f 0.4 -g 0 -m '
 		self.runcmd = runcmd
 	
 
@@ -623,7 +623,7 @@ class EDF2ASCOperator( CommandLineOperator ):
 		self.intermediatecmd = self.cmd
 		self.intermediatecmd += settings
 		
-		self.gazcmd = self.intermediatecmd + ' -s "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.gazeOutputFileName
-		self.msgcmd = self.intermediatecmd + ' -e "'+self.inputFileName+'"; mv ' + standardOutputFileName + ' ' + self.messageOutputFileName
+		self.gazcmd = self.intermediatecmd + ' -s "'+self.inputFileName+'"; mv ' + standardOutputFileName.replace('|', '\|') + ' ' + self.gazeOutputFileName.replace('|', '\|')
+		self.msgcmd = self.intermediatecmd + ' -e "'+self.inputFileName+'"; mv ' + standardOutputFileName.replace('|', '\|') + ' ' + self.messageOutputFileName.replace('|', '\|')
 		
 		self.runcmd = self.gazcmd + '; ' + self.msgcmd

@@ -85,8 +85,18 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		Take the eye movement data for the runs in this session
 		"""
 		for ri in self.scanTypeDict['epi_bold']:
-			self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
-			self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
+			if os.path.splitext(self.runList[ri].eyeLinkFile)[-1] != '.edf':
+				self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
+				self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
+			else:
+				import pickle
+				self.runList[ri].eyeOp = EyelinkOperator( inputObject = self.runList[ri].eyeLinkFile, date_format = 'obj_c__experiment' )
+				self.runList[ri].eyeOp.loadData()
+				self.runList[ri].eyeOp.findELEvents()
+				self.runList[ri].eyeOp.findRecordingParameters()
+				f = open(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pickle'), 'w')
+				pickle.dump(self.runList[ri].eyeOp, f)
+				f.close()
 	
 	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0):
 		"""
@@ -776,4 +786,4 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 #			fig.set_title(roi)
 			pl.draw()
 		pl.show()
-		
+	

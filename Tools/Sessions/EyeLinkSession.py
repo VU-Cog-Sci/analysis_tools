@@ -103,7 +103,7 @@ class EyeLinkSession(object):
 		eyelink_fos = []
 		for f in edf_files_no_ext:
 			# check which files are already split - and get their data. 
-			# if they haven't been split, split then and then import their data
+			# if they haven't been split, split them and then import their data
 			if f not in msg_files_no_ext:
 				elo = EyelinkOperator( inputObject = f+'.edf', split = True )
 			else:
@@ -1289,3 +1289,28 @@ class SASession(EyeLinkSession):
 		self.logger.info('distilled saccades from paramaters' )
 		return [pre_step_saccades, post_step_saccades]
 	
+
+
+class MREyeLinkSession(EyeLinkSession):
+	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
+		self.ID = ID
+		self.subject = subject
+		self.project_name = project_name
+		self.experiment_name = experiment_name
+		self.wildcard = wildcard
+		self.base_directory = base_directory
+		
+		self.hdf5_filename = os.path.join(self.base_directory, 'processed/eye', self.subject.initials + '.hdf5')
+		
+		self.saccade_dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')])
+
+		# add logging for this session
+		# sessions create their own logging file handler
+		self.loggingLevel = loggingLevel
+		self.logger = logging.getLogger( self.__class__.__name__ )
+		self.logger.setLevel(self.loggingLevel)
+		addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.base_directory, 'log', 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
+		loggingLevelSetup()
+		for handler in logging_handlers:
+			self.logger.addHandler(handler)
+		self.logger.info('starting analysis of session ' + str(self.ID))
