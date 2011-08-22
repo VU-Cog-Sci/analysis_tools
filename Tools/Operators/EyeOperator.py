@@ -155,10 +155,12 @@ class EyelinkOperator( EyeOperator ):
 				[h, mi] = [int(t) for t in timeStamp.split('|')[0].split('.')] 
 				self.timeStamp = datetime(2010, m, d, h, mi, 11)
 				self.timeStamp_numpy = np.array([2010, m, d, h, mi, 0], dtype = np.int)
-				
+		elif os.path.splitext(self.inputObject)[-1] == '.hdf5':
+			self.inputFileName = self.inputObject
+			self.hdf5_filename = self.inputObject
 				
 		else:
-			self.logger.warning('Input object is not an edf file')
+			self.logger.warning('Input object is not an edf or hdf5 file')
 	
 	def convertGazeData(self):
 		# take out non-readable string elements in order to load numpy array
@@ -424,7 +426,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, tableFile = '', name = 'bla', compute_velocities = True):
+	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = True, check_answers = True):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
@@ -432,17 +434,17 @@ class EyelinkOperator( EyeOperator ):
 			self.logger.error('cannot process data into no table')
 			return
 		
-		self.tableFileName = tableFile
+		self.hdf5_filename = hdf5_filename
 		self.runName = name
-		if not os.path.isfile(self.tableFileName):
-			self.logger.info('starting table file ' + self.tableFileName)
-			h5file = openFile(self.tableFileName, mode = "w", title = "Eye file")
+		if not os.path.isfile(self.hdf5_filename):
+			self.logger.info('starting table file ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "w", title = "Eye file")
 		else:
-			self.logger.info('opening table file ' + self.tableFileName)
-			h5file = openFile(self.tableFileName, mode = "a", title = "Eye file")
+			self.logger.info('opening table file ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "a", title = "Eye file")
 		try:
 			h5file.getNode(where = '/', name=self.runName, classname='Group')
-			self.logger.info('data file ' + self.inputFileName + ' already in ' + self.tableFileName)
+			self.logger.info('data file ' + self.inputFileName + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
 			self.logger.info('Adding group ' + self.runName + ' to this file')
@@ -450,7 +452,7 @@ class EyelinkOperator( EyeOperator ):
 			
 			# create all the parameters, events and such if they haven't already been created.
 			if not hasattr(self, 'parameters'):
-				self.findAll()
+				self.findAll(check_answers = check_answers)
 				
 			# create a table for the parameters of this run's trials
 			thisRunParameterTable = h5file.createTable(thisRunGroup, 'trial_parameters', self.parameterTypeDictionary, 'Parameters for trials in run ' + self.inputFileName)
@@ -532,5 +534,211 @@ class EyelinkOperator( EyeOperator ):
 			del(self.normedVelocityData)
 			del(self.fourierSmoothedVelocityData)
 			del(self.normedSmoothedVelocityData)
+	
+	def import_parameters(self, run_name = 'run_'):
+		parameter_data = []
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if run_name in r._v_name:
+				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
+				# perhaps later a more elegant solution is possible
+				this_dtype = np.array(r.trial_parameters.read().dtype.names)
+				if len(parameter_data) == 0:	# if the first run, we construct a dtype_array
+					dtype_array = this_dtype
+				else:	# common denominator by intersection
+					dtype_array = np.intersect1d(dtype_array, this_dtype)
+				parameter_data.append(np.array(r.trial_parameters.read()))
+		parameter_data = [p[:][dtype_array] for p in parameter_data]
+		self.parameter_data = np.concatenate(parameter_data)
+		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
+		h5f.close()
+	
+	def get_EL_samples_per_trial(self, run_name = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity'):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		run = None
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if run_name == r._v_name:
+				run = r
+				break
+		if run == None:
+			self.logger.error('No run named ' + run_name + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+		timings = run.trial_times.read()
+		gaze_timestamps = run.gaze_data.read()[:,0]
+
+		# select data_type
+		if data_type == 'smoothed_velocity':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,-1]
+		elif data_type == 'smoothed_velocity_x':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0]
+		elif data_type == 'smoothed_velocity_y':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1]
+		elif data_type == 'smoothed_velocity_xy':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]]
+		elif data_type == 'velocity':
+			all_data_of_requested_type = run.velocity_data.read()[:,-1]
+		elif data_type == 'velocity_x':
+			all_data_of_requested_type = run.velocity_data.read()[:,0]
+		elif data_type == 'velocity_y':
+			all_data_of_requested_type = run.velocity_data.read()[:,1]
+		elif data_type == 'velocity_xy':
+			all_data_of_requested_type = run.velocity_data.read()[:,[0,1]]
+		elif data_type == 'gaze_xy':
+			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]]
+		elif data_type == 'gaze_x':
+			all_data_of_requested_type = run.gaze_data.read()[:,1]
+		elif data_type == 'gaze_y':
+			all_data_of_requested_type = run.gaze_data.read()[:,2]
+		elif data_type == 'smoothed_gaze_xy':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,[0,1]]
+		elif data_type == 'smoothed_gaze_x':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,0]
+		elif data_type == 'smoothed_gaze_y':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1]
+		elif data_type == 'pupil_size':
+			all_data_of_requested_type = run.gaze_data.read()[:,3]
+			
+		# run for loop for actual data
+		export_data = []
+		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+			export_data.append([])
+			for t in timings[trial_range[0]:trial_range[1]]:
+				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+				which_samples = (gaze_timestamps >= phase_timestamps[trial_phase_range[0]]) * (gaze_timestamps <= phase_timestamps[trial_phase_range[1]])
+				export_data[-1].append(np.vstack((gaze_timestamps[which_samples].T, all_data_of_requested_type[which_samples].T)).T)
+		# clean-up
+		h5f.close()
+		return export_data
+	
+	def get_EL_events_per_trial(self, run_name = '', trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'saccades'):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		run = None
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if run_name == r._v_name:
+				run = r
+				break
+		if run == None:
+			self.logger.error('No run named ' + run_name + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+		timings = run.trial_times.read()
+		
+		if data_type == 'saccades':
+			table = run.saccades_from_EL
+		elif data_type == 'fixations':
+			table = run.fixations_from_EL
+		elif data_type == 'blinks':
+			table = run.blinks_from_EL
+			
+		# run for loop for actual data
+		export_data = []
+		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+			export_data.append([])
+			for t in timings[trial_range[0]:trial_range[1]]:
+				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+				where_statement = '(start_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (start_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
+				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
+		h5f.close()
+		return export_data
+	
+	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 26.365, plot = False):
+		"""
+		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
+		L determines the threshold - standard set at 5 median-based standard deviations from the median
+		"""
+		minimum_saccade_duration = 12 # in ms, as we assume the sampling to be
+		
+		if xy_velocity_data == None:
+			vel_data = np.zeros(xydata.shape)
+			vel_data[1:] = np.diff(xydata, axis = 0)
+		else:
+			vel_data = xy_velocity_data
+			
+		if sample_times == None:
+			sample_times = np.arange(vel_data.shape[1])
+			
+		# median-based standard deviation
+		med = np.median(vel_data, axis = 0)
+		scaled_vel_data = vel_data/np.mean(np.sqrt(((vel_data - med)**2)), axis = 0)
+		
+		# when are we above the threshold, and when were the crossings
+		over_threshold = (np.array([np.linalg.norm(s) for s in scaled_vel_data]) > l)
+		# integers instead of bools preserve the sign of threshold transgression
+		over_threshold_int = np.array(over_threshold, dtype = np.int16)
+		
+		# crossings come in pairs
+		threshold_crossings_int = np.concatenate([[0], np.diff(over_threshold_int)])
+		threshold_crossing_indices = np.arange(threshold_crossings_int.shape[0])[threshold_crossings_int != 0]
+		
+		# check for shorter saccades and gaps
+		tci = []
+		sacc_on = False
+		for i in range(0, threshold_crossing_indices.shape[0]):
+			# last transgression, is an offset of a saccade
+			if i == threshold_crossing_indices.shape[0]-1:
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1:
+					tci.append(threshold_crossing_indices[i])
+					sacc_on = False # be complete
+				else: pass
+			# first transgression, start of a saccade
+			elif i == 0:
+				if threshold_crossings_int[threshold_crossing_indices[i]] == 1:
+					tci.append(threshold_crossing_indices[i])
+					sacc_on = True
+				else: pass
+			elif threshold_crossings_int[threshold_crossing_indices[i]] == 1 and sacc_on == False: # start of a saccade that occurs without a prior saccade en route
+				tci.append(threshold_crossing_indices[i])
+				sacc_on = True
+			# don't want to add any point that borders on a too-short interval
+			elif (threshold_crossing_indices[i+1] - threshold_crossing_indices[i] <= minimum_saccade_duration):
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1: # offset but the next is too short - disregard offset
+					pass
+				elif threshold_crossings_int[threshold_crossing_indices[i]] == 1: # onset but the next is too short - disregard offset if there is already a previous saccade going on
+					if sacc_on: # there already is a saccade going on - no need to include this afterbirth
+						pass
+					else:	# this should have been caught earlier
+						tci.append(threshold_crossing_indices[i])
+						sacc_on = True
+			elif (threshold_crossing_indices[i] - threshold_crossing_indices[i-1] <= minimum_saccade_duration):
+				if threshold_crossings_int[threshold_crossing_indices[i]] == -1: # offset but the previous one is too short - use offset offset
+					if sacc_on:
+						tci.append(threshold_crossing_indices[i])
+						sacc_on = False
+			# but add anything else
+			else:
+				tci.append(threshold_crossing_indices[i])
+				if threshold_crossings_int[threshold_crossing_indices[i]] == 1:
+					sacc_on = True
+				else:
+					sacc_on = False
+					
+		threshold_crossing_indices = np.array(tci)
+		
+		if threshold_crossing_indices.shape[0] > 0:
+			saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
+			
+			# construct saccades:
+			for i in range(0,sample_times[threshold_crossing_indices].shape[0]-1,2):
+				j = i/2
+				saccades[j]['start_time'] = sample_times[threshold_crossing_indices[i]] - sample_times[0]
+				saccades[j]['end_time'] = sample_times[threshold_crossing_indices[i+1]] - sample_times[0]
+				saccades[j]['start_point'][:] = xy_data[threshold_crossing_indices[i],:]
+				saccades[j]['end_point'][:] = xy_data[threshold_crossing_indices[i+1],:]
+				saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
+				saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
+				saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
+				saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / (saccades[j]['vector'][1] + 0.00001))
+				saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+		else: saccades = np.array([])
+		
+		if plot:
+			fig = pl.figure(figsize = (8,3))
+#			pl.plot(sample_times[:vel_data[0].shape[0]], vel_data[0], 'r')
+#			pl.plot(sample_times[:vel_data[0].shape[0]], vel_data[1], 'c')
+			pl.plot(sample_times[:scaled_vel_data.shape[0]], np.abs(scaled_vel_data), 'k', alpha = 0.5)
+			pl.plot(sample_times[:scaled_vel_data.shape[0]], np.array([np.linalg.norm(s) for s in scaled_vel_data]), 'b')
+			if saccades.shape[0] > 0:
+				pl.scatter(sample_times[threshold_crossing_indices], np.ones((sample_times[threshold_crossing_indices].shape[0]))* 10, s = 25, color = 'k')
+			pl.ylim([-20,20])
+			
+		return saccades
+		
 	
 	

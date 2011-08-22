@@ -95,8 +95,30 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				self.runList[ri].eyeOp.findELEvents()
 				self.runList[ri].eyeOp.findRecordingParameters()
 				f = open(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pickle'), 'w')
-				pickle.dump(self.runList[ri].eyeOp, f)
+				pickle.dump([self.runList[ri].eyeOp.gazeData, self.runList[ri].eyeOp.msgData], f)
 				f.close()
+	
+	def secondaryEyeMovementAnalysis(self):
+		for ri in self.scanTypeDict['epi_bold']:
+			f = open(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pickle'), 'r')
+			[gazeData, msgData] = pickle.load(f)
+			f.close()
+			
+			startTime = re.findall(re.compile('MSG\t([\d\.]+)\tTrial Phase: stimPresentationPhase'), msgData)[0]
+			sampleRate = int(re.findall(re.compile('MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'), msgData)[0][0])
+			
+			startPoint = np.arange(gazeData.shape[0])[gazeData[:,0] == float(startTime)][0] 
+			startPoint += 8 * int(sampleRate)
+			endPoint = startPoint + int(sampleRate) * 256
+			
+			subsampling = 10
+			
+			xData = gazeData[startPoint:endPoint:subsampling, 1].reshape([128,sampleRate*2 / subsampling])
+			
+			pl.figure()
+			pl.plot(xData.T)
+			pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf'))
+			pl.draw()
 	
 	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0):
 		"""
@@ -429,7 +451,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		
 	
 	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 30, maskThreshold = 4.0, smooth = True, smoothSize = 15 ):
-		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
+		self.conditionDataForRegions(add_eccen = False, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}

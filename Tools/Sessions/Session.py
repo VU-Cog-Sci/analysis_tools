@@ -215,9 +215,12 @@ class Session(PathConstructor):
 						niiFile.save()
 				self.logger.info('place nii files in hierarchy')
 				# copy raw files
-				for r in self.runList:
-					ExecCommandLine('cp ' + r.rawDataFilePath + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
+				ExecCommandLine('cp ' + r.rawDataFilePath + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
 			# behavioral files will be copied during analysis
+			if hasattr(r, 'eyeLinkFilePath'):
+				elO = EyelinkOperator(r.eyeLinkFilePath)
+				ExecCommandLine('cp ' + os.path.splitext(r.eyeLinkFilePath)[0] + '.* ' + self.runFolder(stage = 'processed/eye', run = r ) )
+				elO.processIntoTable(tableFile = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
 		"""
