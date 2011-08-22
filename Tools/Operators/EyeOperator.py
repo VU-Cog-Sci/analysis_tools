@@ -549,6 +549,7 @@ class EyelinkOperator( EyeOperator ):
 					dtype_array = np.intersect1d(dtype_array, this_dtype)
 				parameter_data.append(np.array(r.trial_parameters.read()))
 		parameter_data = [p[:][dtype_array] for p in parameter_data]
+		self.timings = r.trial_times.read()
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
@@ -562,7 +563,7 @@ class EyelinkOperator( EyeOperator ):
 				break
 		if run == None:
 			self.logger.error('No run named ' + run_name + ' in this session\'s hdf5 file ' + self.hdf5_filename )
-		timings = run.trial_times.read()
+		self.timings = run.trial_times.read()
 		gaze_timestamps = run.gaze_data.read()[:,0]
 
 		# select data_type
@@ -601,7 +602,7 @@ class EyelinkOperator( EyeOperator ):
 		export_data = []
 		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
 			export_data.append([])
-			for t in timings[trial_range[0]:trial_range[1]]:
+			for t in self.timings[trial_range[0]:trial_range[1]]:
 				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
 				which_samples = (gaze_timestamps >= phase_timestamps[trial_phase_range[0]]) * (gaze_timestamps <= phase_timestamps[trial_phase_range[1]])
 				export_data[-1].append(np.vstack((gaze_timestamps[which_samples].T, all_data_of_requested_type[which_samples].T)).T)
