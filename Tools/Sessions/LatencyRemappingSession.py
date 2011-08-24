@@ -52,10 +52,19 @@ class LatencyRemappingSession(Session):
 			stim_onsets = np.arange(0,nrsamples*tr,tr*2)
 			design = np.vstack((stim_onsets, stim_durations, trial_types))
 			stim_locations = np.unique(trial_types)
+			segmented_design = [] # [[[0,tr * nrsamples]]]	# the mean value for regression
 			for i in range(3):
 				this_location_design = design[:,design[2] == stim_locations[i]]
-				print this_location_design
 				this_location_design[2] = 1
+				# print out design file for fsl analysis
 				np.savetxt( self.runFile(stage = 'processed/mri', run = run, postFix = ['design',str(i)], extension = '.txt'), this_location_design.T, fmt = '%3.1f', delimiter = '\t')
-		
+				segmented_design.append(this_location_design[[0,1]])
+			irO = ImageRegressOperator( niiFile, segmented_design )
+			res = irO.execute()
+			tstats = np.array([ b for b in res['betas'] ], dtype = np.float32) #  / np.sqrt(res['sse'])
+			print tstats.shape
+			tFile = NiftiImage(tstats)
+			tFile.filename = self.runFile(stage = 'processed/mri', run = run, postFix = ['T'], extension = '.nii.gz')
+			tFile.header = niiFile.header
+			tFile.save()
 		

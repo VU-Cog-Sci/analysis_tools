@@ -293,24 +293,25 @@ class ImageRegressOperator(ImageOperator):
 		self.design = Design(nrTimePoints = self.inputObject.timepoints, rtime = self.inputObject.rtime)
 		self.design.configure(regressors)
 	
-	def execute(self, outputFormat = ['betas']):
+	def execute(self, outputFormat = ['betas','sse','rank','sing']):
 		"""docstring for execute"""
 		super(ImageRegressOperator, self).execute()
 		origShape = self.inputObject.data.shape
-		designShape = self.design.convolvedDesign.shape
+		designShape = self.design.designMatrix.shape
 		fitData = self.inputObject.data.reshape(self.inputObject.timepoints,-1).astype(np.float32)
-		design = self.design.convolvedDesign.astype(np.float32)
+		design = self.design.designMatrix.astype(np.float32)
 		self.betas, self.sse, self.rank, self.sing = sp.linalg.lstsq( design, fitData, overwrite_a = True, overwrite_b = True )
+		self.logger.info('regress operator betas & sse shape ' + str(self.betas.shape) + ' ' + str(self.sse.shape) + ' rank ' + str(self.rank) + ' from design shaped ' + str(designShape) + ' and data shaped ' + str(origShape))
 		returnDict = {}
 		if 'betas' in outputFormat: 
-			returnDict['betas'] = self.betas
-		if 'sses' in outputFormat:
-			returnDict['sses'] = self.sse
+			returnDict['betas'] = self.betas.reshape(np.concatenate(([designShape[1]], origShape[1:])))
+		if 'sse' in outputFormat:
+			returnDict['sse'] = self.sse.reshape(origShape[1:])
 		if 'rank' in outputFormat:
 			returnDict['rank'] = self.rank
 		if 'sing' in outputFormat:
 			returnDict['sing'] = self.sing
-			
+		return returnDict
 	
 
 class Filter1D(object):
