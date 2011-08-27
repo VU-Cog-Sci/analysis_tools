@@ -72,23 +72,52 @@ class LatencyRemappingSession(Session):
 		elif run.condition == 'Mapper':
 			pass
 	
-	def amplitude_analysis_all_runs(self):
+	def amplitude_analysis_all_runs(self, run_length = 480):
 		self.mapper_amplitude_data = []
 		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
 			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
 		self.remapping_amplitude_data = []
-		for r in [self.runList[i] for i in self.conditionDict['Remapping']]:
+		for (k, r) in zip(range(len(self.conditionDict['Remapping'])), [self.runList[i] for i in self.conditionDict['Remapping']]):
 			self.remapping_amplitude_data.append(self.amplitude_analysis_one_run(r))
+			self.remapping_amplitude_data[-1][0] += k * run_length
+			self.remapping_amplitude_data[-1][1] += k * run_length
+		all_early_saccade_times = np.hstack([i[0] for i in self.remapping_amplitude_data])
+		all_late_saccade_times = np.hstack([i[1] for i in self.remapping_amplitude_data])
+		# should change the median split to a 4-way split or something
+		eventData = [all_early_saccade_times, all_late_saccade_times]
+		f = pl.figure()
+		plotnr = 1
+		areas = ['V1','V2','V3','V3AB','V4']
+		for i in range(len(areas)):
+			print areas[i]
+			s = f.add_subplot(len(areas),1,plotnr)
+			roiData = self.gatherRIOData([areas[i]], whichRuns = self.conditionDict['Remapping'], whichMask = '_center' )
+			roiDataM = roiData.mean(axis = 1)
+			for e in range(len(eventData)):
+				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 2.0, eventObject = eventData[e], interval = [-5.0,15.0])
+				zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
+				d = eraOp.run(binWidth = 4.0, stepSize = 0.5)
+				pl.plot(d[:,0], d[:,1]-d[zero_index,1], c = ['r','g'][e], alpha = 0.75)
+				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = ['r','g'][e], alpha = 0.1)
+			s.set_title(areas[i])
+			s.axis([-5,15,-0.1,0.1])
+			plotnr += 1
+		pl.show()
 	
 	def amplitude_analysis_one_run(self, run):
 		if run.condition == 'Remapping':
-			if not hasattr(run, 'saccade_latencies'):
+			if not hasattr(run, 'saccade_stimulus_latencies'):
 				# this will prepare for our present analysis
 				self.saccade_latency_analysis_one_run(run, plot = False)
-				# look at times. 
-				run.first_TR_timestamp = run.events[run.events[:]['unicode'] == 't'][0]['EL_timestamp']
-				print run.timings['trial_phase_timestamps'][:,:,1]-run.first_TR_timestamp
-				
+			# look at times. 
+			run.first_TR_timestamp = run.events[run.events[:]['unicode'] == 't'][0]['EL_timestamp']
+			run.stimulus_on_times =  run.timings['trial_phase_timestamps'][:,0,0]-run.first_TR_timestamp
+			run.saccade_instruction_times =  run.timings['trial_phase_timestamps'][:,1,0]-run.first_TR_timestamp
+			run.stimulus_off_times =  run.timings['trial_phase_timestamps'][:,2,0]-run.first_TR_timestamp
+			
+			above_median, below_median = run.saccade_stimulus_latencies > np.median(run.saccade_stimulus_latencies), run.saccade_stimulus_latencies <= np.median(run.saccade_stimulus_latencies)
+			return [(run.stimulus_off_times[above_median] + run.saccade_stimulus_latencies[above_median])/1000.0, (run.stimulus_off_times[below_median] + run.saccade_stimulus_latencies[below_median])/1000.0]
+			
 		elif run.condition == 'Mapper':
 			pass
 			
