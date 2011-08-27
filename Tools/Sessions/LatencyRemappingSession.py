@@ -32,40 +32,66 @@ class LatencyRemappingSession(Session):
 		for r in [self.runList[i] for i in self.conditionDict['Remapping']]:
 			self.remapping_parameter_data.append(self.parameter_analysis_one_run(r))
 	
-	def saccade_latency_analysis_one_run(self, run):
+	def saccade_latency_analysis_one_run(self, run, plot = True):
 		if run.condition == 'Remapping':
 			# get EL Data
 			elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
 			elO.import_parameters(run_name = 'bla')
 			el_saccades = elO.get_EL_events_per_trial(run_name = 'bla', trial_ranges = [[0,-1]], trial_phase_range = [2,4], data_type = 'saccades')[0] # just a single list instead of more than one....
-			first_saccades_not_too_fast = [(el_saccades[i][:]['start_timestamp'] - el_gaze_data[i][0,0]) > 200.0 for i in range(len(el_gaze_data))] # if not this, early microsaccades count as full early saccades but they're not. 200 ms is arbitrary but looks okay from the data.
 			el_gaze_data = elO.get_EL_samples_per_trial(run_name = 'bla', trial_ranges = [[0,-1]], trial_phase_range = [2,4], data_type = 'gaze_x')[0] # just a single list instead of more than one....
+			first_saccades_not_too_fast = [(el_saccades[i][:]['start_timestamp'] - el_gaze_data[i][0,0]) > 200.0 for i in range(len(el_gaze_data))] # if not this, early microsaccades count as full early saccades but they're not. 200 ms is arbitrary but looks okay from the data.
 			phase_durations_of_interest = np.array([np.diff(pt) for pt in elO.timings['trial_phase_timestamps'][:,1:,0]])
+			# incorporate saccade knowledge into run.
+			run.saccade_stimulus_latencies = np.array([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] - phase_durations_of_interest[i,0] for i in range(len(el_gaze_data))])
+			run.timings = elO.timings
+			run.parameter_data = elO.parameter_data
+			run.events = elO.events
+			if plot:
 			# start plotting info
-			f = pl.figure(figsize = (8,2))
-			sf = f.add_subplot(1,1,1)
-			sf.set_xlabel('time, [ms]', fontsize=9)
-			sf.set_ylabel('position on screen')
-			sf.set_xlim([0,2000])
-			for i in range(len(el_gaze_data)):
-				el_gaze_data[i] = np.array(el_gaze_data[i])
-				pl.plot(el_gaze_data[i][::10,0] - el_gaze_data[i][0,0], el_gaze_data[i][::10,1], alpha = 0.3, linewidth = 1.5, c = 'k')
-			sf = sf.twinx()
-			pl.hist(phase_durations_of_interest[:,0], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'r', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'trial_phase_0' )
-			pl.hist([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] for i in range(len(el_gaze_data))], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'g', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'saccade' )
-			pl.hist([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] - phase_durations_of_interest[i,0] for i in range(len(el_gaze_data))], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'b', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'lag' )
-#			sf.set_xlabel('time, [ms]', fontsize=9)
-			sf.set_ylabel('histo')
-			sf.axis([0,2000,0,40])
-			sf.legend()
-			pl.draw()
-			# save figure and save saccade latencies per trial
-			pl.savefig(self.runFile(stage = 'processed/eye', run = run, postFix = ['sacc_lat'], extension = '.pdf'))
-			run.saccade_latencies = np.array([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] - phase_durations_of_interest[i,0] for i in range(len(el_gaze_data))])
+				f = pl.figure(figsize = (8,2))
+				sf = f.add_subplot(1,1,1)
+				sf.set_xlabel('time, [ms]', fontsize=9)
+				sf.set_ylabel('position on screen')
+				sf.set_xlim([0,1000])
+				for i in range(len(el_gaze_data)):
+					el_gaze_data[i] = np.array(el_gaze_data[i])
+					pl.plot(el_gaze_data[i][::10,0] - el_gaze_data[i][0,0], el_gaze_data[i][::10,1], alpha = 0.3, linewidth = 1.5, c = 'k')
+				sf = sf.twinx()
+				pl.hist(phase_durations_of_interest[:,0], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'r', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'trial_phase_0' )
+				pl.hist([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] for i in range(len(el_gaze_data))], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'g', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'saccade' )
+				pl.hist([el_saccades[i][first_saccades_not_too_fast[i]]['start_timestamp'][0] - el_gaze_data[i][0,0] - phase_durations_of_interest[i,0] for i in range(len(el_gaze_data))], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'b', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'lag' )
+	#			sf.set_xlabel('time, [ms]', fontsize=9)
+				sf.set_ylabel('histo')
+				sf.axis([0,1000,0,40])
+				sf.legend()
+				pl.draw()
+				# save figure and save saccade latencies per trial
+				pl.savefig(self.runFile(stage = 'processed/eye', run = run, postFix = ['sacc_lat'], extension = '.pdf'))
+			
 		
 		elif run.condition == 'Mapper':
 			pass
-			# print el_saccades, elO.timings.dtype, elO.timings
+	
+	def amplitude_analysis_all_runs(self):
+		self.mapper_amplitude_data = []
+		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
+			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
+		self.remapping_amplitude_data = []
+		for r in [self.runList[i] for i in self.conditionDict['Remapping']]:
+			self.remapping_amplitude_data.append(self.amplitude_analysis_one_run(r))
+	
+	def amplitude_analysis_one_run(self, run):
+		if run.condition == 'Remapping':
+			if not hasattr(run, 'saccade_latencies'):
+				# this will prepare for our present analysis
+				self.saccade_latency_analysis_one_run(run, plot = False)
+				# look at times. 
+				run.first_TR_timestamp = run.events[run.events[:]['unicode'] == 't'][0]['EL_timestamp']
+				print run.timings['trial_phase_timestamps'][:,:,1]-run.first_TR_timestamp
+				
+		elif run.condition == 'Mapper':
+			pass
+			
 	
 	def parameter_analysis_one_run(self, run):
 		elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))

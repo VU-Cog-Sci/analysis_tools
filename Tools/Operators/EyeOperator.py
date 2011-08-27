@@ -136,10 +136,11 @@ class EyelinkOperator( EyeOperator ):
 				from CommandLineOperator import EDF2ASCOperator
 				eac = EDF2ASCOperator(self.inputFileName)
 				eac.configure()
-				eac.execute()
 				self.messageFile = eac.messageOutputFileName
 				self.gazeFile = eac.gazeOutputFileName
-				self.convertGazeData()
+				if not os.path.isfile(eac.messageOutputFileName):
+					eac.execute()
+					self.convertGazeData()
 				
 			if date_format == 'python_experiment':
 				# recover time of experimental run from filename
@@ -317,6 +318,9 @@ class EyelinkOperator( EyeOperator ):
 			eventStrings = self.findOccurences(thisRE)
 			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'unicode':e[5],'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
 		self.events = events
+		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('unicode', '|S25'), ('modifier', np.float64), ('presentation_time', np.float64)])
+		
+		print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 		
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
 		parameters = []
@@ -430,7 +434,7 @@ class EyelinkOperator( EyeOperator ):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
-		if tableFile == '':
+		if hdf5_filename == '':
 			self.logger.error('cannot process data into no table')
 			return
 		
@@ -463,6 +467,19 @@ class EyelinkOperator( EyeOperator ):
 					trial[par] = tr[par]
 				trial.append()
 			thisRunParameterTable.flush()
+			
+			# create a table for the events of this run's trials
+			thisRunEventTable = h5file.createTable(thisRunGroup, 'events', self.eventTypeDictionary, 'Events for trials in run ' + self.inputFileName)
+			# fill up the table
+			trial = thisRunEventTable.row
+			for tr in self.events:								# per trial
+				if len(tr) > 0:
+					for ev in tr:								# per event per trial
+						for var in ev.keys():					# per variable in the event.
+							print ev[var], var
+							trial[var] = ev[var]
+						trial.append()
+			thisRunEventTable.flush()
 			
 			# create a table for the saccades from the eyelink of this run's trials
 			thisRunSaccadeTable = h5file.createTable(thisRunGroup, 'saccades_from_EL', self.saccadesTypeDictionary, 'Saccades for trials in run ' + self.inputFileName)
@@ -550,6 +567,7 @@ class EyelinkOperator( EyeOperator ):
 				parameter_data.append(np.array(r.trial_parameters.read()))
 		parameter_data = [p[:][dtype_array] for p in parameter_data]
 		self.timings = r.trial_times.read()
+		self.events = r.events.read()
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
