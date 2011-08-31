@@ -73,7 +73,7 @@ class DeconvolutionOperator(EventDataOperator):
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()
 		self.rawDeconvolvedTimeCourse = self.h()
-		self.deconvolvedTimeCoursesPerEventType = self.rawDeconvolvedTimeCourse.reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval))
+		self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse.reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval)))
 		
 	def upsampleDataTimeSeries(self):
 		"""upsampleDataTimeSeries takes a timeseries of data points
@@ -82,6 +82,8 @@ class DeconvolutionOperator(EventDataOperator):
 		self.workingDataArray = (np.ones((int(self.ratio),self.dataArray.shape[0])) * self.dataArray).T.ravel()
 #		self.workingDataArray = np.array([self.dataArray for i in range(int(self.ratio))]).transpose().ravel()
 		self.logger.debug('upsampled from %s to %s according to ratio %s', str(self.dataArray.shape), str(self.workingDataArray.shape), str(self.ratio))
+#		pl.figure()
+#		pl.plot(self.workingDataArray)
 	
 	def designMatrixFromVector(self, eventTimesVector):
 		"""designMatrixFromVector creates a deconvolution design matrix from 
