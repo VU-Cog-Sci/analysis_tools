@@ -260,7 +260,8 @@ class Design(object):
 		
 		return regressorValues
 	
-	def convolveWithHRF(self, hrfType = 'doubleGamma', hrfParameters = {'a1':6, 'a2':12, 'b1': 0.9, 'b2': 0.9, 'c':0.35}):
+	def convolveWithHRF(self, hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}):
+		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {'a1':6, 'a2':12, 'b1': 0.9, 'b2': 0.9, 'c':0.35}
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/self.subSamplingRatio), **hrfParameters)')
@@ -298,8 +299,8 @@ class ImageRegressOperator(ImageOperator):
 		super(ImageRegressOperator, self).execute()
 		origShape = self.inputObject.data.shape
 		designShape = self.design.designMatrix.shape
-		fitData = self.inputObject.data.reshape(self.inputObject.timepoints,-1).astype(np.float32)
-		design = self.design.designMatrix.astype(np.float32)
+		fitData = self.inputObject.data.reshape(self.inputObject.timepoints,-1).astype(np.float64)
+		design = self.design.designMatrix.astype(np.float64)
 		self.betas, self.sse, self.rank, self.sing = sp.linalg.lstsq( design, fitData, overwrite_a = True, overwrite_b = True )
 		self.logger.info('regress operator betas & sse shape ' + str(self.betas.shape) + ' ' + str(self.sse.shape) + ' rank ' + str(self.rank) + ' from design shaped ' + str(designShape) + ' and data shaped ' + str(origShape))
 		returnDict = {}

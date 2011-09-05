@@ -52,6 +52,7 @@ class LatencyRemappingSession(Session):
 			run.saccades = el_saccades
 			run.gaze_data = el_gaze_data
 			
+			run.correct_saccades = []
 			for i in range(len(el_gaze_data)):
 				if len(run.saccades[i]) == 1:
 					x_diff = run.saccades[i][run.first_saccades_not_too_small_not_too_fast[i]]['start_x'] - run.saccades[i][run.first_saccades_not_too_small_not_too_fast[i]]['end_x']
@@ -78,7 +79,7 @@ class LatencyRemappingSession(Session):
 				sf.set_xlim([0,1000])
 				for i in range(len(el_gaze_data)):
 					el_gaze_data[i] = np.array(el_gaze_data[i])
-					color = ['k','r'][int(run.correct_saccades[i])]
+					color = ['r','k'][int(run.correct_saccades[i])]
 					pl.plot(el_gaze_data[i][::10,0] - el_gaze_data[i][0,0], el_gaze_data[i][::10,1], alpha = 0.3, linewidth = 1.5, c = color)
 				sf = sf.twinx()
 				pl.hist(phase_durations_of_interest[:,0], edgecolor = (0.0,0.0,0.0), alpha = 0.25, color = 'r', normed = False, rwidth = 0.5, histtype = 'stepfilled', label = 'trial_phase_0' )
@@ -94,9 +95,19 @@ class LatencyRemappingSession(Session):
 			
 		
 		elif run.condition == 'Mapper':
-			pass
+			elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
+			elO.import_parameters(run_name = 'bla')
+			el_saccades = elO.get_EL_events_per_trial(run_name = 'bla', trial_ranges = [[0,-1]], trial_phase_range = [2,4], data_type = 'saccades')[0] # just a single list instead of more than one....
+			el_gaze_data = elO.get_EL_samples_per_trial(run_name = 'bla', trial_ranges = [[0,-1]], trial_phase_range = [2,4], data_type = 'gaze_x')[0] # just a single list instead of more than one....
+			phase_durations_of_interest = np.array([np.diff(pt) for pt in elO.timings['trial_phase_timestamps'][:,1:,0]])
+			# incorporate knowledge into run.
+			run.timings = elO.timings
+			run.parameter_data = elO.parameter_data
+			run.events = elO.events
+			run.saccades = el_saccades
+			run.gaze_data = el_gaze_data
 	
-	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'era', mask = '_center'):
+	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'dec', mask = '_center'):
 		self.mapper_amplitude_data = []
 		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
 			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
@@ -111,7 +122,7 @@ class LatencyRemappingSession(Session):
 		eventData = all_saccade_times_by_latency
 		f = pl.figure(figsize = (7,12))
 		plotnr = 1
-		areas = ['V1','V2','V3','V3AB','inferiorparietal']
+		areas = ['V1','V2','V3','V3AB','V4','inferiorparietal','superiorparietal']
 		colors = [(1.0-i,0.0,i) for i in np.linspace(0,1,len(all_saccade_times_by_latency))]
 		for i in range(len(areas)):
 			print areas[i]
@@ -133,7 +144,7 @@ class LatencyRemappingSession(Session):
 				for e in range(len(eventData)):
 					pl.plot(times, np.array(all_results_this_area)[e], c = colors[e])
 			elif analysis_type == 'dec':
-				decOp = DeconvolutionOperator(inputObject = np.array([roiDataM]), eventObject = eventData, deconvolutionSampleDuration = 0.5)
+				decOp = DeconvolutionOperator(inputObject = np.array([roiDataM]), eventObject = eventData, deconvolutionSampleDuration = 1.0, deconvolutionInterval = 6.0)
 				for e in range(len(eventData)):
 					pl.plot(decOp.deconvolvedTimeCoursesPerEventType[e], c = colors[e])
 #					print np.arange(0, decOp.deconvolvedTimeCoursesPerEventType[e].shape[0] * decOp.nrSamplesInInterval, decOp.nrSamplesInInterval), decOp.deconvolvedTimeCoursesPerEventType[e]
@@ -177,11 +188,11 @@ class LatencyRemappingSession(Session):
 		elif run.condition == 'Mapper':
 			pass
 	
-	def amplitude_analysis_one_run_all_trials_sep(self, run, mask = '_center'):
+	def amplitude_analysis_one_run_all_trials_sep(self, run, mask = '_center', roi = 'V1'):
 		if run.condition == 'Remapping':
 			if not hasattr(run, 'saccade_stimulus_latencies'):
 				# this will prepare for our present analysis
-				self.saccade_latency_analysis_one_run(run, plot = True)
+				self.saccade_latency_analysis_one_run(run, plot = False)
 			# look at times. 
 			run.first_TR_timestamp = run.events[run.events[:]['unicode'] == 't'][0]['EL_timestamp']
 			run.stimulus_on_times =  run.timings['trial_phase_timestamps'][:,0,0]-run.first_TR_timestamp
@@ -190,30 +201,92 @@ class LatencyRemappingSession(Session):
 			
 			latency_indices = np.argsort(run.saccade_stimulus_latencies)
 			# latency_indices = np.argsort(run.saccade_times)
-#			bin_width = np.floor((latency_indices.shape[0])/nr_bins)
-#			bin_limits = np.arange(0, latency_indices.shape[0], bin_width)[:nr_bins]
-			
-			#return_times = [(run.stimulus_on_times[latency_indices[bin:bin+bin_width]])/1000.0 for bin in bin_limits]
-			#return_times = [(run.stimulus_on_times[latency_indices[bin:bin+bin_width]] + run.saccade_stimulus_latencies[latency_indices[bin:bin+bin_width]])/1000.0 for bin in bin_limits]
-#			return_times = [(run.stimulus_off_times[latency_indices[bin:bin+bin_width]] + run.saccade_stimulus_latencies[latency_indices[bin:bin+bin_width]])/1000.0 for bin in bin_limits]
-			#return_times = [(run.saccade_instruction_times[latency_indices[bin:bin+bin_width]] + run.saccade_stimulus_latencies[latency_indices[bin:bin+bin_width]])/1000.0 for bin in bin_limits]
-			return_times = [(run.stimulus_off_times[latency_indices[i]] + run.saccade_stimulus_latencies[latency_indices[i]])/1000.0 for i in range(len(latency_indices))]
+			return_times = np.array([(run.stimulus_off_times[latency_indices[i]] + run.saccade_stimulus_latencies[latency_indices[i]])/1000.0 for i in range(len(latency_indices))])
+			correct_return_times = return_times[run.correct_saccades]
 			# construct trial-based design
+			correct_trial_parameters = run.parameter_data[run.correct_saccades]
+			np.stimulus_orientation_indices = np.array([correct_trial_parameters['orientation'] == orient for orient in np.unique(correct_trial_parameters['orientation'])])
+			np.what_stimulus_is_remapped_indices = np.array([correct_trial_parameters['saccade_direction'] == direction for direction in np.unique(correct_trial_parameters['saccade_direction'])])
 			
+			remapped_orientations_indices = np.stimulus_orientation_indices - np.what_stimulus_is_remapped_indices
+			remapped_orientations_times = [correct_return_times[ro] for ro in remapped_orientations_indices]
+			per_saccade_design = []
 			
-			return return_times
-
+#			for i in range(len(remapped_orientations_times)):
+#				for j in range(len(remapped_orientations_times[i])):
+#					per_saccade_design.append([[remapped_orientations_times[i][j], 0.05, 1.0]])
+			for i in range(correct_return_times.shape[0]):
+				per_saccade_design.append([[correct_return_times[i], 0.05, 1.0]])
+			per_saccade_design = np.array(per_saccade_design)
+			irO = ImageRegressOperator( NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf','hpf'], extension = '.nii.gz')), per_saccade_design )
+			voxel_data = self.gatherRIOData(roi, [run.indexInSession], whichMask = mask) 
+			betas, sse, rank, sing = sp.linalg.lstsq( irO.design.designMatrix, voxel_data, overwrite_a = True, overwrite_b = True )
+			return [correct_return_times, betas]
+			
 		elif run.condition == 'Mapper':
-			pass
+			if not hasattr(run, 'parameter_data'):
+				# this will prepare for our present analysis
+				self.saccade_latency_analysis_one_run(run, plot = False)
+			
+			stimulus_locations = np.sign((run.parameter_data[:]['contrast_L'] - run.parameter_data[:]['contrast_R']) * run.parameter_data[:]['stim_eccentricity'])
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf','hpf'], extension = '.nii.gz'))
+			tr, nrsamples = niiFile.rtime, niiFile.timepoints
+			stim_onsets = np.arange(0,nrsamples*tr,tr*2)
+			
+			stimulus_locations_indices = np.array([stimulus_locations  == tt for tt in np.unique(stimulus_locations)])
+			stimulus_orientation_indices = np.array([run.parameter_data[:]['orientation'] == orient for orient in np.unique(run.parameter_data[:]['orientation'])])
+			
+			training_regressors = []
+			trial_types = []
+#			i = 0
+			for stim_loc in stimulus_locations_indices:
+				for stim_orient in stimulus_orientation_indices:
+					training_regressors.append([stim_onsets[(stim_loc * stim_orient)], 2.0 * np.ones(stim_onsets[(stim_loc * stim_orient)].shape[0]), np.ones(stim_onsets[(stim_loc * stim_orient)].shape[0])])
+			training_regressors = np.array(training_regressors)
+			
+			irO = ImageRegressOperator( niiFile, [t.T for t in training_regressors] )
+			
+			voxel_data = self.gatherRIOData(roi, [run.ID], whichMask = mask) 
+			betas, sse, rank, sing = sp.linalg.lstsq( irO.design.designMatrix, voxel_data, overwrite_a = False, overwrite_b = False )
+			center_predictor = betas[2]-betas[3]
+			
+			if False:
+				f = pl.figure(figsize = (4,10))
+				f.add_subplot(511)
+				pl.plot(irO.design.designMatrix)
+				f.add_subplot(512)
+				for i in range(len(irO.design.rawDesignMatrix)):
+					pl.plot(irO.design.rawDesignMatrix[i][::irO.design.subSamplingRatio])
+				f.add_subplot(513)
+				pl.plot(irO.design.hrfKernel[::irO.design.subSamplingRatio])
+				f.add_subplot(514)
+				plot(np.dot(center_predictor, voxel_data.T))
+				f.add_subplot(515)
+				plot(irO.design.designMatrix[:,[2,3]])
+			
+				pl.draw()
+			return betas
+			
 	
 	def amplitude_analysis_all_runs_all_trials_sep(self, run_length = 480, mask = '_center'):
 		self.mapper_amplitude_data = []
 		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
-			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
+			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run_all_trials_sep(r))
 		self.remapping_amplitude_data = []
-		for (k, r) in zip(range(len(self.conditionDict['Remapping'])), [self.runList[i] for i in self.conditionDict['Remapping']]):
-			self.remapping_amplitude_data.append(self.amplitude_analysis_one_run_all_trials_sep(r, mask = mask))
-		
+		f = pl.figure()
+		areas = ['V1','V2','V3','V3AB','V4','inferiorparietal','superiorparietal']
+		for roi in areas:
+			s = f.add_subplot(len(areas),1,areas.index(roi)+1)
+			self.remapping_amplitude_data.append([])
+			for (k, r) in zip(range(len(self.conditionDict['Remapping'])), [self.runList[i] for i in self.conditionDict['Remapping']]):
+				self.remapping_amplitude_data[-1].append(self.amplitude_analysis_one_run_all_trials_sep(r, mask = mask, roi = roi))
+			sac_latencies = np.concatenate([rm[0] for rm in self.remapping_amplitude_data[-1]])
+			sac_betas = np.concatenate([rm[1] for rm in self.remapping_amplitude_data[-1]])
+			time_order = np.argsort(sac_latencies)
+#			pl.plot( sac_latencies[time_order], np.median(sac_betas[time_order], axis = 1) )
+			imshow(np.array([np.sort(hmm) for hmm in sac_betas[time_order]]))
+			pl.draw()
+		pl.show()
 	
 	def parameter_analysis_one_run(self, run):
 		elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
