@@ -513,7 +513,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		return outputData
 	
 	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
-		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
+		self.conditionDataForRegions(add_eccen = False, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
 			self.collapsedPhaseDiffDict = {}
@@ -553,8 +553,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiffPP.pdf' ))
 		return outputData
 	
-	def collapsePhaseDifferencesHorVer(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', nrBins = 6, maskThreshold = 4.0 ):
-		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
+	def collapsePhaseDifferencesHorVer(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', nrBins = 6, maskThreshold = 3.0 ):
+		self.conditionDataForRegions(add_eccen = False, regions = [['V1','V2','V3'],['V3AB','V4']], maskThreshold = maskThreshold ) # [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']]
 		
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
 			self.collapsedPhaseDiffDict = {}
@@ -590,6 +590,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.collapsedPhaseDiffDict.update( {baseCondition + '_HV': outputData} )
 		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiffHV.pdf' ))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiffHV.npy' ), outputData)
+		
 		return outputData
 
 	
@@ -809,3 +811,25 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			pl.draw()
 		pl.show()
 	
+
+	def behavior(self):
+		dPrimes = []
+		for (i, c) in zip(range(len(self.conditionDict)), self.conditionDict.keys()):
+			conditionAnswers = []
+			for r in self.conditionDict[c]:
+				wrO = WedgeRemappingOperator( self.runFile(stage = 'processed/behavior', run = self.runList[r], extension = '.dat' )  )
+				wrO.segmentOutputData()
+				wrO.collectResponsesAfterColorChanges()
+				conditionAnswers.append(wrO.answerList)
+			# now concatenate all trials for all runs in one condition
+			conditionAnswers = np.vstack(conditionAnswers)
+			(hits, misses, corr_rej, fa) = ((conditionAnswers[:,-2] == 1.).sum(), (conditionAnswers[:,-2] == 0.).sum(), (conditionAnswers[:,-2] == 2.).sum(), (conditionAnswers[:,-2] == -1.).sum())
+			hit_rate, fa_rate = (float(hits) / (hits + misses), float(fa) / (fa + corr_rej))
+			if fa_rate == 0.0:
+				fa_rate = 0.01
+			if hit_rate == 1.0:
+				hit_rate = 0.99
+			zH, zF = sp.stats.norm.ppf(hit_rate), sp.stats.norm.ppf(fa_rate)
+			dPrimes.append(zH-zF)
+		print self.conditionDict.keys()
+		np.save(os.path.join(self.stageFolder(stage = 'processed/behavior' ), 'dPrime.npy'), np.array(dPrimes))

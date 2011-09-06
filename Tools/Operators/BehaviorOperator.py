@@ -381,3 +381,77 @@ class SphereBehaviorOperator(BehaviorOperator):
 		self.percepts = np.vstack((self.transitionEvents[:,0], self.transitionEvents[:,1], np.concatenate((self.transitionEvents[1:,1], [lastStimulusTime])))).T
 		# np.hstack(, np.concatenate((self.transitionEvents[-1], lastStimulusTime)) )
 	
+standardNrVolumes = 124
+standardTR = 2
+standardNrSecsBeforeCountingForSelfReqAvgs = 8.0
+standardPeriodDuration = 32.0
+standardPermittedResponseLag = 1.5
+
+class WedgeRemappingOperator(BehaviorOperator):
+	def __init__(self, inputObject, **kwargs):
+		super(WedgeRemappingOperator, self).__init__(inputObject = inputObject, **kwargs)
+		self.importFile()
+	
+	def importFile(self):
+		f = open(self.inputFileName)
+		stringArray = f.readlines()
+		f.close()
+		
+		inputs = []
+		outputs = []
+		for i in range(1,len(stringArray),4):
+			inputs.append( np.array(stringArray[i].split('\t')[:-1],dtype = float) )
+			outputData = np.array(stringArray[i+2].split('\t')[:-1],dtype = float)
+			outputs.append(outputData.reshape(len(outputData)/4,4))
+		
+		if i == 1:	# only one line of data - one trial per run
+			self.inputParams = inputs[0]
+			self.outputData = outputs[0]
+		else: 		# more trials per run
+			self.inputParams = np.array(inputs, dtype = float)	# these are all the same size (128), so convertable to array
+			self.outputData = outputs							# these likely differ in size, so don't convert to numpy
+	
+	def segmentOutputData(self):
+		self.stimColorEvents = self.outputData[(self.outputData[:,2]==5003)+(self.outputData[:,2]==5004)]
+		self.colorResponseEvents = self.outputData[self.outputData[:,2]==49]
+		self.scannerTREvents = self.outputData[self.outputData[:,2]==96]
+		if len(self.scannerTREvents) > 0:	# this occurs when there were no TRs
+			startTime = self.scannerTREvents[0][1]
+		else:
+			startTime = self.outputData[self.outputData[:,2] == 0.1,1][0]
+		# correct for start time offset
+		self.stimColorEvents[:,1] =  self.stimColorEvents[:,1] - startTime
+		self.colorResponseEvents[:,1] =  self.colorResponseEvents[:,1] - startTime
+		self.scannerTREvents[:,1] =  self.scannerTREvents[:,1] - startTime
+	
+	def collectResponsesAfterColorChanges(self, permittedResponseLag = standardPermittedResponseLag):
+		answers = []
+		for colorEvent in self.stimColorEvents:
+			laterColorResponses = self.colorResponseEvents[self.colorResponseEvents[:,1]>colorEvent[1]]
+			if len(laterColorResponses) > 0:
+				latestResponse = laterColorResponses[0]
+				responseLag = latestResponse[1] - colorEvent[1]
+				if responseLag < permittedResponseLag:	# correct answer
+					answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 1, responseLag])
+				else: # answer too late
+					answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 0, responseLag])
+			else: # no answer
+				answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 0, 0])
+		noColorEventIndices = np.array([((self.stimColorEvents[:,1] < i[1]) * (self.stimColorEvents[:,1] > i[0])).sum() == 0 for i in np.vstack((np.arange(0,263), np.arange(1,264))).T])
+		faEvents = np.ones((263,3))
+		faEvents[:,1] = np.arange(1,264) * faEvents[:,1]
+		faEvents[:,2] = -1 * faEvents[:,2]
+		self.noColorEvents = faEvents[noColorEventIndices]
+		for colorEvent in self.noColorEvents:
+			laterColorResponses = self.colorResponseEvents[self.colorResponseEvents[:,1]>colorEvent[1]]
+			if len(laterColorResponses) > 0:
+				latestResponse = laterColorResponses[0]
+				responseLag = latestResponse[1] - colorEvent[1]
+				if responseLag < permittedResponseLag:	# false alarm
+					answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], -1, responseLag])
+				else: # answer too late - no false alarm
+					answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 2, responseLag])
+			else: # no answer	- correct rejection
+				answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 2, 0])
+		self.answerList = np.array(answers, dtype = float)
+	

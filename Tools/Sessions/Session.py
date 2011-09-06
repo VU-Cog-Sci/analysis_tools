@@ -178,7 +178,7 @@ class Session(PathConstructor):
 		if 'spectro' in self.scanTypeList:
 			self.scanTypeDict.update({'spectro': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]})
 		
-		print self.scanTypeDict
+#		print self.scanTypeDict
 		
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
@@ -221,6 +221,8 @@ class Session(PathConstructor):
 				elO = EyelinkOperator(r.eyeLinkFilePath)
 				ExecCommandLine('cp ' + os.path.splitext(r.eyeLinkFilePath)[0] + '.* ' + self.runFolder(stage = 'processed/eye', run = r ) )
 				elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
+			if hasattr(r, 'rawBehaviorFile'):
+				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
 		"""
