@@ -115,8 +115,11 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			
 			xData = gazeData[startPoint:endPoint:subsampling, 1].reshape([128,sampleRate*2 / subsampling])
 			
-			pl.figure()
-			pl.plot(xData.T)
+			pl.figure(figsize = (8,3))
+			pl.plot(xData.T, c = 'k', alpha = 0.2, linewidth = 0.5)
+			pl.fill([0.0,(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 8.0,0.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
+			pl.fill([(sampleRate*2 / subsampling) / 2.0, 5*(sampleRate*2 / subsampling) / 8.0, 5*(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 2.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
+			pl.axis([0,(sampleRate*2 / subsampling),-1000,1000])
 			pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf'))
 			pl.draw()
 	

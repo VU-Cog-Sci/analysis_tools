@@ -106,10 +106,25 @@ class MCFlirtOperator( CommandLineOperator ):
 		
 		self.runcmd = runcmd
 	
+class MRIConvertOperator( CommandLineOperator ):
+	def __init__(self, inputObject, cmd = 'mri_convert', **kwargs): # source ~/.bash_profile_fsl ; 
+		"""
+		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+		"""
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(MRIConvertOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+		self.costFunction = costFunction
+	
+	def configure(output_type = '.nii.gz'):
+		self.outputFileName = os.path.splitext(self.inputFileName)[0] + output_type
+		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName
+		
+	
+
 
 class FlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = 'flirt', referenceFileName = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ; 
+	def __init__(self, inputObject, referenceFileName = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -182,13 +197,36 @@ class InvertFlirtOperator( CommandLineOperator ):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_inv.mtx'
+			self.outputFileName = os.path.splitext(self.inputFileName)[0] + '_inv.mat'
 		runcmd = self.cmd
 		runcmd += ' -omat ' + self.outputFileName
 		runcmd += ' -inverse ' + self.inputFileName
 		self.runcmd = runcmd
 	
-	
+class ConcatFlirtOperator( CommandLineOperator ):
+	"""docstring for FlirtOperator"""
+	def __init__(self, inputObject, cmd = '/usr/local/fsl/bin/convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
+		"""
+		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+		"""
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(ConcatFlirtOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, secondInputFile, outputFileName = None):
+		"""
+		standard configure is configureRun instead of apply
+		"""
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.splitext(self.inputFileName)[0] + '_concat.mat'
+		runcmd = self.cmd
+		runcmd += ' -omat ' + self.outputFileName
+		runcmd += ' -concat ' + self.secondInputFile
+		runcmd += ' ' + self.inputFileName
+		self.runcmd = runcmd
+
+
 class BETOperator( CommandLineOperator ):
 	"""
 	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB  -f 0.5 -g 0 -m
