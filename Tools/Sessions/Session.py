@@ -504,7 +504,7 @@ class Session(PathConstructor):
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
-	def importStatMask(self, statMaskFile, reregisterSession = False):
+	def importStatMask(self, statMaskFile, registrationEPIFile, reregisterSession = True, force_operations = True, use_subject_anat = True):
 		"""
 		statmask is to be converted to anatomical space for this subject, 
 		after that from anatomical to present session epi format.
@@ -512,41 +512,55 @@ class Session(PathConstructor):
 		# create some of the names involved
 		statMaskName = os.path.split(os.path.splitext(statMaskFile)[0])[1]
 		concatenatedRegistrationFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg/'), statMaskName + '.mat')
-		registeredStatMaskName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), statMaskName + '.nii.gz')
+		registeredToAnatStatMaskName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), statMaskName + '_anat_brain.nii.gz')
+		registeredToAnatSessionFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg/'), 'session_to_anat_brain.nii.gz')
+		registeredToSessionStatMaskName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), statMaskName + '.nii.gz')
 		
-		# convert subject's anatomical to nii.gz.
-		convO = MRIConvertOperator(inputObject = os.path.join(os.environ('SUBJECTS_DIR'), self.FSsubject, 'mri', 'brain.mgz'))
-		convO.configure()
-		convO.run()
+		self.logger.info('starting import of mask file ' + statMaskFile + ' named ' + statMaskName)
 		
+		if use_subject_anat:
+			# convert subject's anatomical to nii.gz.
+			convO = MRIConvertOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.mgz'))
+			convO.configure()
+			if not os.path.isfile(convO.outputFileName) or force_operations:
+				convO.execute()
+			reg_target = convO.outputFileName
+		else:
+			reg_target = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz'
+			
 		# register the statmask
-		statMask_flO = FlirtOperator(inputObject = statMaskFile, referenceFileName = convO.outputFileName)
-		statMask_flO.configureRun()
-		statMask_flO.run()
+		statMask_flO = FlirtOperator(inputObject = registrationEPIFile, referenceFileName = reg_target)
+		statMask_flO.configureRun(outputFileName = registeredToAnatStatMaskName, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 ') # , extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
+		if not os.path.isfile(statMask_flO.outputFileName) or force_operations:
+			statMask_flO.execute()
 		
 		if reregisterSession:
 			# register the session's epi data
-			sessionEPI_flO = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']), referenceFileName = convO.outputFileName)
-			sessionEPI_flO.configureRun()
-			sessionEPI_flO.run()
+			sessionEPI_flO = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), referenceFileName = reg_target)
+			sessionEPI_flO.configureRun(outputFileName = registeredToAnatSessionFileName, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 ') #, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
+			if not os.path.isfile(sessionEPI_flO.outputFileName) or force_operations:
+				sessionEPI_flO.execute()
 		
 			# invert the session's epi registration
 			sessionEPI_inv_flO = InvertFlirtOperator(inputObject = sessionEPI_flO.transformMatrixFileName)
 			sessionEPI_inv_flO.configure()
-			sessionEPI_inv_flO.run()
+			if not os.path.isfile(sessionEPI_inv_flO.outputFileName) or force_operations:
+				sessionEPI_inv_flO.execute()
 			
-			inverseTransformFile = sessionEPI_inv_flO.transformMatrixFileName
+			inverseTransformFile = sessionEPI_inv_flO.outputFileName
 		else:
 			# these two steps above this one have already been done in registerSession, so:
 			inverseTransformFile =  self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mat' )
 		
 		# concatenate registrations
 		ccO = ConcatFlirtOperator(inputObject = statMask_flO.transformMatrixFileName)
-		ccO.configure(inverseTransformFile, outputFileName = concatenatedRegistrationFileName)
-		ccO.run()
+		ccO.configure(secondInputFile = inverseTransformFile, outputFileName = concatenatedRegistrationFileName)
+		if not os.path.isfile(ccO.outputFileName) or force_operations:
+			ccO.execute()
 		
 		# apply the transform
 		final_flO = FlirtOperator(inputObject = statMaskFile, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
-		final_flO.configureApply(concatenatedRegistrationFileName, outputFileName = registeredStatMaskName)
-		final_flO.run()
+		final_flO.configureApply(concatenatedRegistrationFileName, outputFileName = registeredToSessionStatMaskName)
+		if not os.path.isfile(final_flO.outputFileName) or force_operations:
+			final_flO.execute()
 		

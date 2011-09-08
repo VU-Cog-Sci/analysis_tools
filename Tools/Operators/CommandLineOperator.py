@@ -109,13 +109,10 @@ class MCFlirtOperator( CommandLineOperator ):
 class MRIConvertOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_convert', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
-		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
-		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		super(MRIConvertOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
-		self.costFunction = costFunction
 	
-	def configure(output_type = '.nii.gz'):
+	def configure(self, output_type = '.nii.gz'):
 		self.outputFileName = os.path.splitext(self.inputFileName)[0] + output_type
 		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName
 		
@@ -149,13 +146,15 @@ class FlirtOperator( CommandLineOperator ):
 		applycmd += ' -in ' + self.inputFileName
 		applycmd += ' -ref ' + self.referenceFileName
 		applycmd += ' -init ' + self.transformMatrixFileName
+		applycmd += ' -o ' + self.outputFileName
+		
 		if sinc:
 			applycmd += ' -interp sinc '
 		
 		self.runcmd = applycmd
 		
 	
-	def configureRun(self, outputFileName = None, transformMatrixFileName = None, sinc = True, resample = True):
+	def configureRun(self, outputFileName = None, transformMatrixFileName = None, sinc = True, resample = True, extra_args = ''):
 		"""
 		run runs actual transformation calculation
 		"""
@@ -179,6 +178,8 @@ class FlirtOperator( CommandLineOperator ):
 		if sinc:
 			runcmd += ' -interp sinc '
 		
+		runcmd += extra_args
+		
 		self.runcmd = runcmd
 	
 class InvertFlirtOperator( CommandLineOperator ):
@@ -198,6 +199,7 @@ class InvertFlirtOperator( CommandLineOperator ):
 			self.outputFileName = outputFileName
 		else:
 			self.outputFileName = os.path.splitext(self.inputFileName)[0] + '_inv.mat'
+		self.transformMatrixFileName = self.outputFileName
 		runcmd = self.cmd
 		runcmd += ' -omat ' + self.outputFileName
 		runcmd += ' -inverse ' + self.inputFileName
@@ -220,6 +222,8 @@ class ConcatFlirtOperator( CommandLineOperator ):
 			self.outputFileName = outputFileName
 		else:
 			self.outputFileName = os.path.splitext(self.inputFileName)[0] + '_concat.mat'
+		self.transformMatrixFileName = self.outputFileName
+		self.secondInputFile = secondInputFile
 		runcmd = self.cmd
 		runcmd += ' -omat ' + self.outputFileName
 		runcmd += ' -concat ' + self.secondInputFile

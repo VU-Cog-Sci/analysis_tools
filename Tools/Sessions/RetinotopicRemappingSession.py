@@ -151,7 +151,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar_mask-' + str(exclusionThreshold) + '.nii.gz')
 		maskImage.save()
 	
-	def collectConditionFiles(self, add_eccen = False):
+	def collectConditionFiles(self, add_eccen = True):
 		"""
 		Returns the highest-level selfreqavg output files for the conditions in conditionDict
 		"""
@@ -453,8 +453,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 
 		
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 30, maskThreshold = 4.0, smooth = True, smoothSize = 15 ):
-		self.conditionDataForRegions(add_eccen = False, maskThreshold = maskThreshold )
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 30, maskThreshold = 4.0, smooth = True, smoothSize = 5 ):
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
@@ -506,7 +506,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 					histData = h2f[histData.shape[0]:histData.shape[0]*2,histData.shape[1]:histData.shape[1]*2]
 					
 #					pl.imshow(filt, extent = (-pi,pi,-pi,pi), alpha = 0.5)
-				pl.imshow(histData, extent = (-pi,pi,-pi,pi), alpha = 0.5)
+				pl.imshow(histData, extent = (-pi,pi,-pi,pi))
 				plotNr += 1
 				outputData[-1].append(histData)
 				totalData[-1].append(np.array([baseData, circDiffData]))
@@ -516,7 +516,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		return outputData
 	
 	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
-		self.conditionDataForRegions(add_eccen = False, maskThreshold = maskThreshold )
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
 			self.collapsedPhaseDiffDict = {}
