@@ -685,6 +685,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			
 		allDiffs.append( allDiffs[1]/allDiffs[0] )
 		allDiffs.append( allDiffs[2]/allDiffs[0] )
+		allDiffs.append( allDiffs[3]/allDiffs[0] )
+		allDiffs.append( (allDiffs[1] - allDiffs[2]) )
+		allDiffs.append( (allDiffs[1] - allDiffs[2]) / allDiffs[0] )
 		
 		allDiffs = np.array(allDiffs)
 		
@@ -699,9 +702,33 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		nF.header = f2.header
 		nF.save()
 		
+		frames = {'full':0, 'remap':1, 'perihery':2, 'remap2':3, 'remap_full':4, 'peripheral_full': 5, 'remap2_full':6, 'remap-peri':7, 'remap-peri_full':8}
 		vts = VolToSurfOperator(inputObject = nF)
-		vts.configure(frames = {'full':0, 'remap':1, 'perihery':2, 'remap2':3, 'remap_full':4, 'peripheral_full': 5, 'remap2_full':6}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
+		vts.configure(frames = frames, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_'), surfSmoothingFWHM = 0.5, surfType = 'paint' )
 		vts.execute()
+		
+		# split functional file
+		for fr in frames.keys():
+			outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_' + fr + '.nii.gz')
+			print outputFileName, frames[fr], fr
+			tf = NiftiImage(np.array([nF.data[frames[fr]]]))
+			tf.header = nF.header
+			tf.filename = outputFileName
+			tf.save()
+		
+		# resample to standard subject fsaverage
+		for fr in frames.keys():
+			for h in ['lh','rh']:
+				inputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'res_' + fr + '-' + h + '.w')
+				outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/figs/surf'), 'fsa_' + fr + '-' + h + '.w')
+				sts = SurfToSurfOperator(inputObject = inputFileName)
+				sts.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'fsaverage', hemi = h, outputFileName = outputFileName, insmooth = 10)
+				if not os.path.isfile(outputFileName):
+					sts.execute()
+				
+				mscO = MRISConvertOperator(outputFileName)
+				mscO.configure(surfaceFile = os.path.join(os.environ['SUBJECTS_DIR'], 'fsaverage', 'surf', h + '.inflated'))
+				mscO.execute()
 	
 	def smoothRoiDataOverTime(self, data, start, end, width = 1, start_out = 4, end_out = 4):
 		timepoints_per_run = end-start

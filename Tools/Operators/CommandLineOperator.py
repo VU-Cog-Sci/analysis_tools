@@ -491,6 +491,41 @@ class SurfToVolOperator( CommandLineOperator ):
 		self.runcmd = self.runcmd[:-2]
 		self.runcmd += ' &'
 	
+class SurfToSurfOperator( CommandLineOperator ):
+	"""docstring for SurfToVolOperator"""
+	def __init__(self, inputObject, cmd = 'mri_surf2surf', **kwargs):
+		super(SurfToSurfOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, fsSourceSubject = '', fsTargetSubject = '', hemi = None, outputFileName = None, insmooth = 5, intype = 'paint', outtype = 'paint' ):
+		"""docstring for configure"""		
+		# mri_surf2surf --hemi rh --srcsubject ico --srcsurfval icodata-rh --src_type bfloat --trgsubject bert --trgsurfval ./bert-ico-rh.w --trg_type paint
+		self.runcmd = self.cmd + ' --srcsubject ' + fsSourceSubject
+		self.runcmd += ' --srcsurfval ' + self.inputFileName
+		self.runcmd += ' --trgsubject ' + fsTargetSubject
+		self.runcmd += ' --hemi ' + hemi
+		self.runcmd += ' --trgsurfval ' + outputFileName
+		self.runcmd += ' --fwhm-src ' + str(insmooth)
+		self.runcmd += ' --src_type ' + intype
+		self.runcmd += ' --trg_type ' + outtype
+#		self.runcmd += ' ;\n'
+		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
+#		self.runcmd = self.runcmd[:-2]
+#		self.runcmd += ' &'
+
+class MRISConvertOperator( CommandLineOperator ):
+	"""docstring for SurfToVolOperator"""
+	def __init__(self, inputObject, cmd = 'mris_convert', **kwargs):
+		super(MRISConvertOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+	
+	def configure(self, outputFileName = None, surfaceFile = 'inflated'):
+		if outputFileName == None:
+			self.outputFileName = os.path.splitext(self.inputFileName)[0] + '.asc'
+		else:
+			self.outputFileName = outputFileName
+		
+		self.runcmd = self.cmd + ' ' + self.inputFileName
+#		self.runcmd += ' ' + surfaceFile
+		self.runcmd += ' ' + self.outputFileName
 
 class LabelToVolOperator( CommandLineOperator ):
 	"""docstring for LabelToVolOperator"""
