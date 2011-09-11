@@ -1188,7 +1188,7 @@ class SASession(EyeLinkSession):
 				else:
 					ms_data[-1].append([j, None])
 #			sufficient_gain = np.asarray(ms_data[-1])[:,2] > 0.006
-				pl.plot([np.linalg.norm(p) for p in trial_vel_data[np.min(1000, trial_vel_data.shape[0]-2):,[1,2]]], colors[i], alpha = 0.25, linewidth = 1 )
+				pl.plot([np.linalg.norm(p) for p in trial_vel_data[:,[1,2]]], colors[i], alpha = 0.25, linewidth = 1 )
 			s.set_ylim((0,500))
 		
 #		ids_gains = np.array(ids_gains)
@@ -1203,8 +1203,8 @@ class SASession(EyeLinkSession):
 #		pl.savefig(os.path.join(self.base_directory, 'figs', 'micro_saccade_gains_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'post_sacc_fixation_velocities_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		print ms_data[i][j][1].dtype
-		for i in ms_data.len():
-			for j in ms_data[i].len():
+		for i in range(len(ms_data)):
+			for j in range(len(ms_data[i])):
 				if ms_data[i][j][1] != None:
 					print i, j, ms_data[i][j][1]['start_time']
 					

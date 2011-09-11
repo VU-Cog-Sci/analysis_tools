@@ -725,10 +725,11 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sts.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'fsaverage', hemi = h, outputFileName = outputFileName, insmooth = 10)
 				if not os.path.isfile(outputFileName):
 					sts.execute()
-				
-				mscO = MRISConvertOperator(outputFileName)
-				mscO.configure(surfaceFile = os.path.join(os.environ['SUBJECTS_DIR'], 'fsaverage', 'surf', h + '.inflated'))
-				mscO.execute()
+					
+				# converting the surface to ascii is not necessary when using mri_preprocess and mri_glmfit
+#				mscO = MRISConvertOperator(outputFileName)
+#				mscO.configure(surfaceFile = os.path.join(os.environ['SUBJECTS_DIR'], 'fsaverage', 'surf', h + '.inflated'))
+#				mscO.execute()
 	
 	def smoothRoiDataOverTime(self, data, start, end, width = 1, start_out = 4, end_out = 4):
 		timepoints_per_run = end-start
