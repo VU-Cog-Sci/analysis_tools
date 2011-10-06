@@ -530,7 +530,7 @@ class Session(PathConstructor):
 			
 		# register the statmask
 		statMask_flO = FlirtOperator(inputObject = registrationEPIFile, referenceFileName = reg_target)
-		statMask_flO.configureRun(outputFileName = registeredToAnatStatMaskName, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 ') # , extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
+		statMask_flO.configureRun(outputFileName = registeredToAnatStatMaskName) # , extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
 		if not os.path.isfile(statMask_flO.outputFileName) or force_operations:
 			statMask_flO.execute()
 		

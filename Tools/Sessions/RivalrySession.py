@@ -9,6 +9,7 @@ Copyright (c) 2009 TK. All rights reserved.
 
 from Session import *
 from scipy.stats import *
+from itertools import *
 
 class RivalryReplaySession(Session):
 	def analyzeBehavior(self):
@@ -631,11 +632,11 @@ class SphereSession(Session):
 		stimOnsets = []
 		timeOffset = 0.0
 		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
-			# behavior for this run, assume behavior analysis has already been run so we can load the results.			
+			# behavior for this run, assume behavior analysis has already been run so we can load the results.
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
 			timeOffset = i * niiFile.rtime * niiFile.timepoints
 			
-			self.rtime = niiFile.rtime
+			self.rtime = round(niiFile.rtime * 100.0) / 100.0 # rtime precision is 10 ms
 			self.timepointsPerRun = niiFile.timepoints
 			self.runDuration = self.rtime * self.timepointsPerRun
 			
@@ -859,40 +860,44 @@ class SphereSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 	
 	
-	def mapDecodingRoi(self, roiData, intervalForFit = [25,325], intervalForTest = [25,325]):
+	def mapDecodingRoi(self, roiData, intervalForFit = [25,325], intervalForTest = [25,325], output_type = 'project'):
 		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
 		whichPercepts = percepts[:,0] == 66
 		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
 		eventData = [eventData[whichPercepts], eventData[-whichPercepts]]
+		# construct single regressor for both percepts
+		eventData[1][:,-1] = -1
+		eventData = np.concatenate((eventData[0],eventData[1]))
+		eventData = eventData[np.argsort(eventData[:,0])]
+		
+		# construct where a TR falls inside a percept
+		allTRTimes = np.arange(0, 0.65 * roiData.shape[0], 0.65) + 0.0001
+		stimOffEvents = np.array([[-16.0 + i * (self.timepointsPerRun * self.rtime), 16, 0] for i in range(len(self.conditionDict['sphere'])+2)])
+		
+		allPerceptEventsForLastPerceptAnalysis = np.vstack((eventData, stimOffEvents))
+		allPerceptEventsForLastPerceptAnalysis = allPerceptEventsForLastPerceptAnalysis[np.argsort(allPerceptEventsForLastPerceptAnalysis[:,0])]
+#		import pdb; pdb.set_trace()
+		lP = np.array([[allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] < t][-1,-1],t - allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] < t][-1,0], allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] > t][0,0] - t] for t in allTRTimes])
 		
 		from ..Operators.ImageOperator import Design
 		
 		d = Design(roiData.shape[0], 0.65, subSamplingRatio = 100)
-		# percept 1 regressor
-		d.addRegressor(eventData[0])
-		# percept 2 regressor
-		d.addRegressor(eventData[1])
-		
-		print d.rawDesignMatrix
-		# now take the difference of the two and substitute
-		d.rawDesignMatrix = list(d.rawDesignMatrix[0] - d.rawDesignMatrix[1])
-		
-		# transition events
+		# add percept regressor
+		d.addRegressor(eventData)
+		# transition events which we regress out - check what happens if we do or do not do this - well nothing since we're not interested in the T scores
 		transitionEvents = np.vstack((percepts[:,0], percepts[:,1], np.ones(percepts.shape[0]) * 0.5)).T
-		print transitionEvents
 		d.addRegressor(transitionEvents)
-		
-		# stimulus on events
-		stimulusOnEvents = [[1, 16.0 + i * (self.timepointsPerRun * self.rtime), (self.timepointsPerRun * self.rtime) - 16 + i * (self.timepointsPerRun * self.rtime)] for i in range(len(self.conditionDict['sphere']))]
+		# stimulus on events - these regressed out always
+		stimulusOnEvents = [[1, 16.0 + i * (self.timepointsPerRun * self.rtime), (self.timepointsPerRun * self.rtime) - 16] for i in range(len(self.conditionDict['sphere']))]
 		d.addRegressor(stimulusOnEvents)
 		
-		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
+		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9})
 		
 		# what timepoints to use for training and testing...
 		withinRunIndices = np.mod(np.arange(roiData.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)
-		whichTrainSamplesAllRuns = (withinRunIndices > intervalForFit[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForFit[1]))
-		whichTestSamplesAllRuns = (withinRunIndices > intervalForTest[0]) * (withinRunIndices < (self.timepointsPerRun - intervalForTest[1]))
-		
+		whichTrainSamplesAllRuns = (withinRunIndices > intervalForFit[0]) * (withinRunIndices < intervalForFit[1])
+		whichTestSamplesAllRuns = (withinRunIndices > intervalForTest[0]) * (withinRunIndices < intervalForTest[1])
+			
 		# What percepts were dominant, used for later testing
 		whatPercept = d.designMatrix[:,0] > 0
 		wP = whatPercept[whichTestSamplesAllRuns]
@@ -900,21 +905,24 @@ class SphereSession(Session):
 		# this is the data that goes into the GLM
 		dM = d.designMatrix[whichTrainSamplesAllRuns]
 		rD = roiData[whichTrainSamplesAllRuns]
+		lP = lP[whichTrainSamplesAllRuns]
 		
 		# GLM
 		betas, sse, rank, sing = sp.linalg.lstsq( dM, rD, overwrite_a = True, overwrite_b = True )
 		
-		# spearman correlation 
-		patternTimeCoursesCorr = np.array([[spearmanr(t, b)[0] for b in betas] for t in roiData[whichTestSamplesAllRuns]])
-		corrDecoding = np.sign(wP * patternTimeCoursesCorr)
-		corrAccuracy = (1.0 + (corrDecoding.sum() / corrDecoding.shape[0])) / 2.0
-		
-		# projection
-		patternTimeCoursesProj = np.dot(betas, roiData[whichTestSamplesAllRuns])
-		projDecoding = np.sign(wP * patternTimeCoursesProj)
-		projAccuracy = (1.0 + (projDecoding.sum() / projDecoding.shape[0])) / 2.0
-		
-		return [corrDecoding, corrAccuracy, projDecoding, projAccuracy]
+		if output_type == 'corr':
+			# spearman correlation 
+			patternTimeCourses = np.array([spearmanr(t, betas[0])[0] for t in roiData[whichTestSamplesAllRuns]])
+			perceptsDecoding = np.sign(wP * patternTimeCourses)
+			accuracy = (1.0 + (perceptsDecoding.sum() / perceptsDecoding.shape[0])) / 2.0
+			
+		elif output_type == 'project':
+			# projection
+			patternTimeCourses = np.dot(betas[0] / np.sqrt(sse), roiData[whichTestSamplesAllRuns].T)
+			perceptsDecoding = np.sign(wP * patternTimeCourses)
+			accuracy = (1.0 + (perceptsDecoding.sum() / perceptsDecoding.shape[0])) / 2.0
+			
+		return {'patternTimeCourse': patternTimeCourses, 'perceptsDecoding':perceptsDecoding, 'accuracy':accuracy, 'betas':betas[-1], 'betas.mean':betas[-1].mean(), 'design_matrix':dM, 'perceptTimeForTR': lP, 'boldTimeCourse': rD.mean(axis = 1)}
 	
 	def mapDecoding(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],'V3A',['inferiorparietal','superiorparietal']], masks = ['_visual','_neg-visual']):
 		def autolabel(rects):
@@ -964,25 +972,26 @@ class SphereSession(Session):
 		autolabel(rects1)
 		autolabel(rects2)
 	
-	def takeEccenPhaseToFuncSpace(self, eccenFolder = ''):
+	def takePhaseSurfacesToFuncSpace(self, folder = '', fn = 'eccen'):
 		for hemi in ['lh','rh']:
-			stvO = SurfToVolOperator(os.path.join(eccenFolder, 'phase-' + hemi + '.w'))
+			stvO = SurfToVolOperator(os.path.join(folder, 'phase-' + hemi + '.w'))
 			stvO.configure(
 							templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), 
 							register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), 
 							fsSubject = self.subject.standardFSID, 
-							outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz'),
+							outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz'),
 							hemispheres = [hemi]
 							)
 			stvO.execute()
 		# join eccen files
-		eccenData = np.array([NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen-lh.nii.gz')).data, NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen-rh.nii.gz')).data]).sum(axis = 0)
-		newImage = NiftiImage(eccenData)
-		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz')
+		phaseData = np.array([NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).data, NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-rh.nii.gz')).data]).sum(axis = 0)
+		newImage = NiftiImage(phaseData)
+		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
 		newImage.save()
 	
 	
-	def eccenMapDecoding(self, areas = ['V1',['V2v','V2d'],['V3v','V3d']]):#,'V3A',['inferiorparietal','superiorparietal'], ,'V3A','V4',['inferiorparietal','superiorparietal']
+	def eccenMapDecoding(self, areas = [['V1','V2v','V2d','V3v','V3d'],['V3A','V3B','V7?','MT'],['V4','LO1','LO2','fusiform','parahippocampal','inferiortemporal'],['superiorparietal','inferiorparietal','supramarginal','precuneus']]):#,'V3A',['inferiorparietal','superiorparietal'], ,'V3A','V4',['inferiortemporal','fusiform','parahippocampal'], 'V1',['V2v','V2d'],['V3v','V3d'],
+	# ['V1',['V2v','V2d'],['V3v','V3d'],['V3A','V3B','V7?'],'V4',['LO1','LO2'],'MT',['superiorparietal','inferiorparietal','supramarginal','precuneus']]
 		eccenFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz'))
 		statFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'visual.nii.gz'))
 		
@@ -993,22 +1002,53 @@ class SphereSession(Session):
 		
 		colors = [(i/float(len(areas)), 1.0 - i/float(len(areas)), 0.0) for i in range(len(areas))]
 		res = []
-		fig = pl.figure(figsize = (4,10))
+		fig = pl.figure(figsize = (7,10))
+		plnr = 1
+		patternTimeCourses = []
+		allPhases = []
+		allAcc = []
 		for (i, a) in zip(range(len(areas)), areas):
-			s = fig.add_subplot(len(areas),1,i+1)
-			res.append(self.eccenMapDecodingFromRoi(eccenFile, statFile, allFuncData, s = s, area = a))
+			s = fig.add_subplot(len(areas),2,plnr)
+			res.append(self.eccenMapDecodingFromRoi(eccenFile, statFile, allFuncData, s = s, area = a, nrBins = 15))
 			s = pl.twinx()
-			pl.plot(res[-1][:,0], res[-1][:,1], c = colors[0])
+			phases = np.array([r['phase'] for r in res[-1]])
+			accuracy = np.array([r['accuracy'] for r in res[-1]])
+			betas = np.array([r['betas.mean'] for r in res[-1]])
+			patternTimeCourses.append(np.array([r['patternTimeCourse'] for r in res[-1]]))
+			pl.plot(phases, accuracy, c = colors[0])
 			s.set_ylabel('percentage correct', fontsize=9)
 			s.set_xlim([0,2*pi])
 			s.set_title(str(a))
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eccen_phase_vs_stat.pdf'))
+			plnr += 1
+			s = fig.add_subplot(len(areas),2,plnr)
+			pl.plot(accuracy - accuracy.mean(), betas - betas.mean(), 'o', mfc = 'w', mec = 'k')
+			pl.text(-0.02, 0, "$\rho$:%1.3f, p:%1.3f" % tuple(spearmanr(betas, accuracy)), fontsize=11)
+			s.set_ylabel('beta')
+			s.set_xlabel('perc correct')
+			plnr += 1
+			allPhases.append(phases)
+			allAcc.append(accuracy)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eccen_phase_vs_stat_acc.pdf'))
 		pl.draw()
-		res = np.array(res)
+		
+		fig = pl.figure(figsize = (7,3))
+		s = fig.add_subplot(111)
+		for i in range(len(areas)):
+			pl.plot(allPhases[i], allAcc[i], marker = '--', c = colors[i], label = str(areas[i]))
+		s.axis([0,2*pi,0.50,0.65])
+		leg = pl.legend()
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eccen_phase_vs_accuracy.pdf'))
+		pl.draw()	
 		return res
 		
 	
-	def eccenMapDecodingFromRoi(self, eccenFile, statFile, allFuncData, s = None, area = ['V1']):
+	def eccenMapDecodingFromRoi(self, eccenFile, statFile, allFuncData, s = None, area = ['V1'], nrBins = 15, binningType = 'nrVoxels'):
 		if area.__class__.__name__ == 'str':
 			area = [area]
 		roiData = []
@@ -1028,9 +1068,9 @@ class SphereSession(Session):
 		erdT = np.concatenate((erd[ers]-(2*pi), erd[ers], erd[ers]+(2*pi)))
 		srdT = np.tile(statRoiData[ers],3)
 		
-		pl.plot(erdT, srdT, 'ro', alpha = 0.25)
+		pl.plot(erdT, srdT, 'ro', alpha = 0.25, ms = 4)
 		
-		smooth_width = 200
+		smooth_width = 100
 		kern = norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
 		kern = kern / kern.sum()
 		sm_signal = np.convolve( srdT, kern, 'valid' )
@@ -1039,15 +1079,83 @@ class SphereSession(Session):
 		pl.plot(np.linspace(0,2* pi,200), np.zeros((200)), 'k--')
 		s.set_xlim([0,2*pi])
 		s.set_xlabel('eccen phase, 0 = fovea', fontsize=9)
-		s.set_ylabel('Z score', fontsize=9)
+		s.set_ylabel('beta weight', fontsize=9)
 		
-		nrBins = 5
-#		nrVoxInBins = int(np.ceil(erd.shape[0] / float(nrBins)))
-		nrVoxInBins = min(int(np.ceil(erd.shape[0] / float(nrBins))), 100)
-#		nrVoxInBins = 50
 		res = []
-		for i in np.arange(0, erd.shape[0]-nrVoxInBins, 50):
-			res.append([np.mean(erd[ers[i:nrVoxInBins+i]]), self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]], intervalForFit = [75,325], intervalForTest = [75,325])[3]])
-		print nrVoxInBins, erd.shape[0]
-		return np.array(res)
+		if binningType == 'nrVoxels':	# if the bins have to be equally large
+			nrVoxInBins = int(np.ceil(erd.shape[0] / float(nrBins)))
+	#		nrVoxInBins = min(int(np.ceil(erd.shape[0] / float(nrBins))), 100)
+	#		nrVoxInBins = 50
+			for i in np.arange(0, erd.shape[0]-nrVoxInBins, nrVoxInBins):
+				thisRes = self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]], intervalForFit = [50,325], intervalForTest = [50,325])
+				thisRes.update({'phase':np.mean(erd[ers[i:nrVoxInBins+i]])})
+				res.append(thisRes)
+		elif binningType == 'byPhase':
+			binEdges = np.linspace(0,2*pi,nrBins+1)
+			binEdges = np.vstack((binEdges[:-1], binEdges[1:])).T
+			indices = [(erd > be[0]) * (erd < be[1]) for be in binEdges]
+			for i in range(nrBins):
+				thisRes = self.mapDecodingRoi( roiData = funcData[:,indices[i]], intervalForFit = [50,325], intervalForTest = [50,325])
+				thisRes.update({'phase':np.mean(erd[indices[i]])})
+				res.append(thisRes)
+		return res
 	
+	def eccenMapDecodingCorr(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],['V3A','V3B','V7?'],'V4',['LO1','LO2'],'MT',['superiorparietal','inferiorparietal','supramarginal','precuneus']]):
+		"""docstring for eccenMapDecodingCorr"""
+		
+		import nitime
+		#Import the time-series objects:
+		from nitime.timeseries import TimeSeries
+		#Import the analysis objects:
+		from nitime.analysis import CorrelationAnalyzer, CoherenceAnalyzer
+		#Import utility functions:
+		from nitime.utils import percent_change
+		from nitime.viz import drawmatrix_channels, drawgraph_channels, plot_xcorr
+		
+		eccenFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz'))
+		statFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'visual.nii.gz'))
+		
+		allFuncData = []
+		for r in self.conditionDict['sphere']:
+			allFuncData.append(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] )).data)
+		allFuncData = np.vstack(allFuncData)
+		
+		nrBins = 8
+		fig = pl.figure(figsize = (7,10))
+		plnr = 1
+		
+		res = []
+		patternTimeCourses = []
+		boldTimeCourses = []
+		shownames = ['V1','V2','V3','V3ab7','V4','VV','MT','ant_par']
+		names = []
+		for (i, a) in zip(range(len(areas)), areas):
+			s = fig.add_subplot(len(areas),1,plnr)
+			res.append(self.eccenMapDecodingFromRoi(eccenFile, statFile, allFuncData, s = s, area = a, nrBins = nrBins, binningType = 'byPhase'))
+			for j in range(nrBins):
+				names.append(shownames[i] + '_' + str(j))
+				patternTimeCourses.append(res[-1][j]['patternTimeCourse'])
+				boldTimeCourses.append(res[-1][j]['boldTimeCourse'])
+				trAndPerceptTimes = res[-1][j]['perceptTimeForTR']
+			plnr += 1
+		
+		print trAndPerceptTimes
+		
+		ts = TimeSeries(np.array(patternTimeCourses), sampling_interval = self.rtime)
+		ts.metadata['roi'] = np.array(names)
+		
+		#Initialize the correlation analyzer
+		C = CorrelationAnalyzer(ts)
+		
+		#Display the correlation matrix
+		fig01 = drawmatrix_channels(C.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern.pdf') )
+		ts2 = TimeSeries(np.array(boldTimeCourses), sampling_interval = self.rtime)
+		ts2.metadata['roi'] = np.array(names)
+		
+		#Initialize the correlation analyzer
+		C2 = CorrelationAnalyzer(ts2)
+		
+		#Display the correlation matrix
+		fig02 = drawmatrix_channels(C2.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_bold.pdf') )		

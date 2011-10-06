@@ -1179,7 +1179,7 @@ class SASession(EyeLinkSession):
 		for (i, trial_block_vel_data, trial_block_par_sacc_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps) in zip(range(len(vel_data)), vel_data, par_sacs, sacs, xy_data, pars):
 			ms_data.append([])
 			s = fig.add_subplot(len(vel_data),1,i+1)
-			print trial_block_sacc_data[0].dtype
+#			print trial_block_sacc_data[0].dtype
 			for (j, trial_vel_data, trial_par_sacc_data, trial_sacc_data, trial_xy_data, trial_ps) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_par_sacc_data, trial_block_sacc_data, trial_block_xy_data, trial_block_ps):
 				s_data = self.analyze_microsaccades_for_trial(trial_ps, trial_sacc_data, trial_par_sacc_data, trial_xy_data, trial_vel_data)
 				if s_data != False:
@@ -1202,11 +1202,12 @@ class SASession(EyeLinkSession):
 #		pl.axis([0, 750, 0.0, 0.3])
 #		pl.savefig(os.path.join(self.base_directory, 'figs', 'micro_saccade_gains_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'post_sacc_fixation_velocities_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
-		print ms_data[i][j][1].dtype
+#		print ms_data[i][j][1].dtype
 		for i in range(len(ms_data)):
 			for j in range(len(ms_data[i])):
 				if ms_data[i][j][1] != None:
 					print i, j, ms_data[i][j][1]['start_time']
+		print c
 					
 		
 	
@@ -1220,7 +1221,7 @@ class SASession(EyeLinkSession):
 		if len(parameter_saccades) > 1:
 			self.logger.debug('more than one saccade in trial #' + str(parameters['trial_nr']) + ' from parameters' )
 			el_sacc = parameter_saccades[0]
-		which_saccades_are_microsaccades = (sacc['duration'] > 1.0) * (sacc['amplitude'] < 200)
+		which_saccades_are_microsaccades = (sacc['duration'] > 3.0) * (sacc['amplitude'] < 200)
 		if sacc[which_saccades_are_microsaccades].shape[0] > 0:
 			return sacc[which_saccades_are_microsaccades]
 		else:
