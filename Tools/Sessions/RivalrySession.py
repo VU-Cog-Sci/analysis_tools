@@ -860,7 +860,7 @@ class SphereSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'decoding_multiple_areas_' + str(run_width) + '.pdf'))
 	
 	
-	def mapDecodingRoi(self, roiData, intervalForFit = [25,325], intervalForTest = [25,325], output_type = 'project'):
+	def mapDecodingRoi(self, roiData, intervalForFit = [25,325], intervalForTest = [25,325], output_type = 'project', hemodynamic_lag_for_percepts = 4.0):
 		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
 		whichPercepts = percepts[:,0] == 66
 		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
@@ -877,7 +877,11 @@ class SphereSession(Session):
 		allPerceptEventsForLastPerceptAnalysis = np.vstack((eventData, stimOffEvents))
 		allPerceptEventsForLastPerceptAnalysis = allPerceptEventsForLastPerceptAnalysis[np.argsort(allPerceptEventsForLastPerceptAnalysis[:,0])]
 #		import pdb; pdb.set_trace()
-		lP = np.array([[allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] < t][-1,-1],t - allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] < t][-1,0], allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] > t][0,0] - t] for t in allTRTimes])
+		lP = np.array([[
+						allPerceptEventsForLastPerceptAnalysis[allPerceptEventsForLastPerceptAnalysis[:,0] < t][-1,-1], 
+						t - allPerceptEventsForLastPerceptAnalysis[(allPerceptEventsForLastPerceptAnalysis[:,0] + hemodynamic_lag_for_percepts) < t][-1,0], 
+						allPerceptEventsForLastPerceptAnalysis[(allPerceptEventsForLastPerceptAnalysis[:,0] + hemodynamic_lag_for_percepts) > t][0,0] - t
+						] for t in allTRTimes])
 		
 		from ..Operators.ImageOperator import Design
 		
@@ -921,6 +925,14 @@ class SphereSession(Session):
 			patternTimeCourses = np.dot(betas[0] / np.sqrt(sse), roiData[whichTestSamplesAllRuns].T)
 			perceptsDecoding = np.sign(wP * patternTimeCourses)
 			accuracy = (1.0 + (perceptsDecoding.sum() / perceptsDecoding.shape[0])) / 2.0
+			
+			fig = pl.figure(figsize = (10,3))
+			s = fig.add_subplot(111)
+			pl.plot(patternTimeCourses, 'r')
+			s = pl.twinx()
+			pl.plot(wP-0.5, 'g')
+			pl.plot(rD.mean(axis = 1)-rD.mean(), 'b')
+			pl.draw()
 			
 		return {'patternTimeCourse': patternTimeCourses, 'perceptsDecoding':perceptsDecoding, 'accuracy':accuracy, 'betas':betas[-1], 'betas.mean':betas[-1].mean(), 'design_matrix':dM, 'perceptTimeForTR': lP, 'boldTimeCourse': rD.mean(axis = 1)}
 	
@@ -1087,7 +1099,7 @@ class SphereSession(Session):
 	#		nrVoxInBins = min(int(np.ceil(erd.shape[0] / float(nrBins))), 100)
 	#		nrVoxInBins = 50
 			for i in np.arange(0, erd.shape[0]-nrVoxInBins, nrVoxInBins):
-				thisRes = self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]], intervalForFit = [50,325], intervalForTest = [50,325])
+				thisRes = self.mapDecodingRoi( roiData = funcData[:,ers[i:nrVoxInBins+i]], intervalForFit = [100,325], intervalForTest = [100,325])
 				thisRes.update({'phase':np.mean(erd[ers[i:nrVoxInBins+i]])})
 				res.append(thisRes)
 		elif binningType == 'byPhase':
@@ -1095,12 +1107,12 @@ class SphereSession(Session):
 			binEdges = np.vstack((binEdges[:-1], binEdges[1:])).T
 			indices = [(erd > be[0]) * (erd < be[1]) for be in binEdges]
 			for i in range(nrBins):
-				thisRes = self.mapDecodingRoi( roiData = funcData[:,indices[i]], intervalForFit = [50,325], intervalForTest = [50,325])
+				thisRes = self.mapDecodingRoi( roiData = funcData[:,indices[i]], intervalForFit = [100,325], intervalForTest = [100,325])
 				thisRes.update({'phase':np.mean(erd[indices[i]])})
 				res.append(thisRes)
 		return res
 	
-	def eccenMapDecodingCorr(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],['V3A','V3B','V7?'],'V4',['LO1','LO2'],'MT',['superiorparietal','inferiorparietal','supramarginal','precuneus']]):
+	def eccenMapDecodingCorr(self, areas = ['V1',['V2v','V2d'],['V3v','V3d'],['V3A','V3B','V7?'],['superiorparietal','inferiorparietal','supramarginal','precuneus']]):
 		"""docstring for eccenMapDecodingCorr"""
 		
 		import nitime
@@ -1117,7 +1129,7 @@ class SphereSession(Session):
 		
 		allFuncData = []
 		for r in self.conditionDict['sphere']:
-			allFuncData.append(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] )).data)
+			allFuncData.append(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf','Z'] )).data)
 		allFuncData = np.vstack(allFuncData)
 		
 		nrBins = 8
@@ -1127,7 +1139,7 @@ class SphereSession(Session):
 		res = []
 		patternTimeCourses = []
 		boldTimeCourses = []
-		shownames = ['V1','V2','V3','V3ab7','V4','VV','MT','ant_par']
+		shownames = ['V1','V2','V3','V3ab7','ant_par']
 		names = []
 		for (i, a) in zip(range(len(areas)), areas):
 			s = fig.add_subplot(len(areas),1,plnr)
@@ -1139,23 +1151,59 @@ class SphereSession(Session):
 				trAndPerceptTimes = res[-1][j]['perceptTimeForTR']
 			plnr += 1
 		
-		print trAndPerceptTimes
+		trPerceptTimeRatios = trAndPerceptTimes[:,1] / (trAndPerceptTimes[:,1] + trAndPerceptTimes[:,2])
+		patternTimeCourses = np.array(patternTimeCourses)
+		boldTimeCourses = np.array(boldTimeCourses)
 		
-		ts = TimeSeries(np.array(patternTimeCourses), sampling_interval = self.rtime)
-		ts.metadata['roi'] = np.array(names)
+		# analyse this without regard for time in percept
+		if True:
+			ts = TimeSeries(np.array(patternTimeCourses), sampling_interval = self.rtime)
+			ts.metadata['roi'] = np.array(names)
 		
-		#Initialize the correlation analyzer
-		C = CorrelationAnalyzer(ts)
+			#Initialize the correlation analyzer
+			C = CorrelationAnalyzer(ts)
 		
-		#Display the correlation matrix
-		fig01 = drawmatrix_channels(C.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
-		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern.pdf') )
-		ts2 = TimeSeries(np.array(boldTimeCourses), sampling_interval = self.rtime)
-		ts2.metadata['roi'] = np.array(names)
+			#Display the correlation matrix
+			fig01 = drawmatrix_channels(C.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+			pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern.pdf') )
+			ts2 = TimeSeries(np.array(boldTimeCourses), sampling_interval = self.rtime)
+			ts2.metadata['roi'] = np.array(names)
 		
-		#Initialize the correlation analyzer
-		C2 = CorrelationAnalyzer(ts2)
+			#Initialize the correlation analyzer
+			C2 = CorrelationAnalyzer(ts2)
 		
-		#Display the correlation matrix
-		fig02 = drawmatrix_channels(C2.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
-		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_bold.pdf') )		
+			#Display the correlation matrix
+			fig02 = drawmatrix_channels(C2.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+			pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_bold.pdf') )		
+		
+		# analyse this with regard for time in percept - time in seconds and time in total percept duration ratio
+		if True:
+			indicesTime, indicesRatio = np.argsort(trAndPerceptTimes[:,1]), np.argsort(trPerceptTimeRatios)
+			nrTimeBins = 8
+			nrTimesPerBin = int(floor(trAndPerceptTimes.shape[0] / float(nrTimeBins)))
+			ratioResults = []
+			for i in range(nrTimeBins):
+				# per time
+				ts = TimeSeries(patternTimeCourses[:,indicesTime[i * nrTimesPerBin:(i+1) * nrTimesPerBin]], sampling_interval = self.rtime)
+				ts.metadata['roi'] = np.array(names)
+				C = CorrelationAnalyzer(ts)
+				#Display the correlation matrix
+				fig01 = drawmatrix_channels(C.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+				pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern_time_' + str(i) + '.pdf') )
+				# per ratio
+				ts = TimeSeries(patternTimeCourses[:,indicesRatio[i * nrTimesPerBin:(i+1) * nrTimesPerBin]], sampling_interval = self.rtime)
+				ts.metadata['roi'] = np.array(names)
+				C = CorrelationAnalyzer(ts)
+				#Display the correlation matrix
+				fig01 = drawmatrix_channels(C.corrcoef, np.array(names), size=[12., 12.], color_anchor=0)
+				ratioResults.append(C.corrcoef)
+				pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern_ratio_' + str(i) + '.pdf') )
+		ratioResults = np.array(ratioResults)	# time, areacombinations
+		corrOverTimeBetweenAreas = np.array([[spearmanr(range(nrTimeBins), r)[0] for r in rr] for rr in np.transpose(ratioResults,(1,2,0))])
+		corrOverTimeBetweenAreasPVal = np.array([[spearmanr(range(nrTimeBins), r)[1] for r in rr] for rr in np.transpose(ratioResults,(1,2,0))])
+		whatPVals = corrOverTimeBetweenAreasPVal > 0.05
+		corrOverTimeBetweenAreas[whatPVals] = 0.0
+		print corrOverTimeBetweenAreas.shape, C.corrcoef.shape
+		fig01 = drawmatrix_channels(corrOverTimeBetweenAreas, np.array(names), size=[12., 12.], color_anchor=0)
+		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern_corr_over_time_ratio.pdf') )
+#		import pdb; pdb.set_trace()
