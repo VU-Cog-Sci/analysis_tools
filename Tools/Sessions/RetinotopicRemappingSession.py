@@ -176,6 +176,10 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				images[-1].append(NiftiImage(thisConditionFile))
 		return images
 		
+	def rescaleEccenFile(self, phase_offset = 0.0, phase_to_degree_ratio = 1.0):
+		"""docstring for rescaleEccenFile"""
+		self.eccenImage = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'eccen.nii.gz'))
+		
 	
 	def maskFiles(self, dataFiles, maskFile = None, maskThreshold = 5.0, maskFrame = 0, nrVoxels = False, flat = False):
 		# anatomical or statistical mask?

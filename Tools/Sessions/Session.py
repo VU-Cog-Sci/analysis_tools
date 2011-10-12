@@ -224,7 +224,7 @@ class Session(PathConstructor):
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
+	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = False, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -274,7 +274,7 @@ class Session(PathConstructor):
 				# register to both freesurfer anatomical and fsl MNI template
 				# actual registration - BBRegister to freesurfer subject
 				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = False )
+				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
 				bbR.execute()
 				# after registration, see bbregister log file for reg check
 					
@@ -504,7 +504,7 @@ class Session(PathConstructor):
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
-	def importStatMask(self, statMaskFile, registrationEPIFile, reregisterSession = True, force_operations = True, use_subject_anat = True):
+	def importStatMask(self, statMaskFile, registrationEPIFile, reregisterSession = True, force_operations = True, use_subject_anat = True, reg_method = 'bbregister'):
 		"""
 		statmask is to be converted to anatomical space for this subject, 
 		after that from anatomical to present session epi format.
@@ -527,12 +527,20 @@ class Session(PathConstructor):
 			reg_target = convO.outputFileName
 		else:
 			reg_target = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz'
-			
-		# register the statmask
-		statMask_flO = FlirtOperator(inputObject = registrationEPIFile, referenceFileName = reg_target)
-		statMask_flO.configureRun(outputFileName = registeredToAnatStatMaskName) # , extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
-		if not os.path.isfile(statMask_flO.outputFileName) or force_operations:
-			statMask_flO.execute()
+		
+		if reg_method == 'flirt':
+			# register the statmask
+			statMask_flO = FlirtOperator(inputObject = registrationEPIFile, referenceFileName = reg_target)
+			statMask_flO.configureRun(outputFileName = registeredToAnatStatMaskName) # , extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
+			if not os.path.isfile(statMask_flO.outputFileName) or force_operations:
+				statMask_flO.execute()
+			maskRegFile = statMask_flO.transformMatrixFileName
+		elif reg_method == 'bbregister':
+			bbR1 = BBRegisterOperator( registrationEPIFile, FSsubject = self.subject.standardFSID )
+			bbR1.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register_' + os.path.splitext(os.path.splitext(os.path.split(statMaskFile)[1])[0])[0], postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+			if not os.path.isfile(bbR1.transformMatrixFileName) or force_operations:
+				bbR1.execute()
+			maskRegFile = bbR1.flirtOutputFileName
 		
 		if reregisterSession:
 			# register the session's epi data
@@ -540,9 +548,17 @@ class Session(PathConstructor):
 			sessionEPI_flO.configureRun(outputFileName = registeredToAnatSessionFileName, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 ') #, extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 '
 			if not os.path.isfile(sessionEPI_flO.outputFileName) or force_operations:
 				sessionEPI_flO.execute()
-		
+			
+			bbR2 = BBRegisterOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), FSsubject = self.subject.standardFSID )
+			bbR2.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register_session_for_' + os.path.splitext(os.path.splitext(os.path.split(statMaskFile)[1])[0])[0], postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+			if not os.path.isfile(bbR2.transformMatrixFileName) or force_operations:
+				bbR2.execute()
+			
 			# invert the session's epi registration
-			sessionEPI_inv_flO = InvertFlirtOperator(inputObject = sessionEPI_flO.transformMatrixFileName)
+			if reg_method == 'flirt':
+				sessionEPI_inv_flO = InvertFlirtOperator(inputObject = sessionEPI_flO.transformMatrixFileName)
+			elif reg_method == 'bbregister':
+				sessionEPI_inv_flO = InvertFlirtOperator(inputObject = bbR2.flirtOutputFileName)
 			sessionEPI_inv_flO.configure()
 			if not os.path.isfile(sessionEPI_inv_flO.outputFileName) or force_operations:
 				sessionEPI_inv_flO.execute()
@@ -553,7 +569,7 @@ class Session(PathConstructor):
 			inverseTransformFile =  self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mat' )
 		
 		# concatenate registrations
-		ccO = ConcatFlirtOperator(inputObject = statMask_flO.transformMatrixFileName)
+		ccO = ConcatFlirtOperator(inputObject = maskRegFile)
 		ccO.configure(secondInputFile = inverseTransformFile, outputFileName = concatenatedRegistrationFileName)
 		if not os.path.isfile(ccO.outputFileName) or force_operations:
 			ccO.execute()

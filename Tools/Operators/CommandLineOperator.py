@@ -121,7 +121,7 @@ class MRIConvertOperator( CommandLineOperator ):
 
 class FlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, referenceFileName = '/usr/local/fsl/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ; 
+	def __init__(self, inputObject, referenceFileName = '$FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -184,7 +184,7 @@ class FlirtOperator( CommandLineOperator ):
 	
 class InvertFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = '/usr/local/fsl/bin/convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
+	def __init__(self, inputObject, cmd = 'convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -207,7 +207,7 @@ class InvertFlirtOperator( CommandLineOperator ):
 	
 class ConcatFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = '/usr/local/fsl/bin/convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
+	def __init__(self, inputObject, cmd = 'convert_xfm', **kwargs): # source ~/.bash_profile_fsl ; 
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -282,8 +282,8 @@ class BBRegisterOperator( CommandLineOperator ):
 		runcmd += ' --init-fsl'
 		# specify these options dependent on run arguments
 		if flirtOutputFile:
-			self.flirtOutputFileName = os.path.join(os.path.split(transformMatrixFileName)[0], 'register_flirt_BB.mtx')
-			runcmd += ' --fsl ' + self.flirtOutputFileName
+			self.flirtOutputFileName = os.path.splitext(transformMatrixFileName)[0] + '_flirt_BB.mtx'
+			runcmd += ' --fslmat ' + self.flirtOutputFileName
 		
 		self.runcmd = runcmd
 	
@@ -615,7 +615,7 @@ class ParRecConversionOperator( CommandLineOperator ):
 		
 
 class FEATOperator( CommandLineOperator ):
-	"""docstring for MCFlirtOperator"""
+	"""docstring for FEATOperator"""
 	def __init__(self, inputObject, **kwargs):
 		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'source ~/.bash_profile_fsl ; feat ', **kwargs)
 		self.featFile = self.inputObject
@@ -682,9 +682,13 @@ class RetMapReDrawOperator( CommandLineOperator ):
 		self.runcmd = runcmd
 
 class EDF2ASCOperator( CommandLineOperator ):
-	"""docstring for EDF2ASCOperator"""
+	"""
+	EDF2ASCOperator will convert an edf file to a pair of output files, one containing the gaze samples (.gaz) and another containing all the messages/events (.msg). 
+	It uses edf2asc command-line executable, which is assumed to be on the $PATH. 
+	Missing values are imputed as 0.0001, time is represented as a floating point number for 2000Hz sampling.
+	"""
 	def __init__(self, inputObject, **kwargs):
-		super(EDF2ASCOperator, self).__init__(inputObject = inputObject, cmd = '/Applications/EyeLink/EDF_Access_API/Example/edf2asc', **kwargs)
+		super(EDF2ASCOperator, self).__init__(inputObject = inputObject, cmd = 'edf2asc', **kwargs)
 		
 	def configure(self, gazeOutputFileName = None, messageOutputFileName = None, settings = ' -t -miss 0.0001 -ftime'):
 		if gazeOutputFileName == None:
