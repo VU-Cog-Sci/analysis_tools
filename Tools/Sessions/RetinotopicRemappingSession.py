@@ -383,6 +383,9 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.fitResults = np.array(fitResults)
 		self.allPhaseDiffs = allPhaseDiffs
 		self.phaseHists = np.array(phaseHists)
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitResults.npy' ), self.fitResults)
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDiffs.npy' ), self.allPhaseDiffs)
+		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fitPhaseDifferences.pdf' ))
 	
 	def collapsePhaseDifferences(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery'],['sacc_map','remap']], maskThreshold = 4.0, nrVoxels = False):
@@ -455,8 +458,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.axis([0.5,1,0,1])
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'fix_map', binSize = 30, maskThreshold = 4.0, smooth = False, smoothSize = 5 ):
-		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 3.0, smooth = True, smoothSize = 3 ):
+		self.conditionDataForRegions(add_eccen = True, regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']], maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
@@ -479,6 +482,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				summedArray = - ( self.maskedConditionData[i][cond1][0] + self.maskedConditionData[i][cond2][0] == 0.0 )
 				# base phase data based on eccen which is the last data file in maskedConditionData
 				if baseCondition == 'eccen':
+					summedArray = summedArray * (-( self.maskedConditionData[i][-1][9] == 0.0 ))
 					baseData = self.maskedConditionData[i][-1][9][summedArray]
 				else:
 				 	baseData = self.maskedConditionData[i][self.conditionDict.keys().index(baseCondition)][9][summedArray]
@@ -515,6 +519,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		self.phasePhaseHistogramDict.update( {baseCondition: outputData} )
 		self.phasePhaseTotalDict.update( {baseCondition: totalData} )
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_' + baseCondition + '.pdf' ))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_raw_' + baseCondition + '.npy' ), np.array(totalData))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_hist_' + baseCondition + '.npy' ), np.array(outputData))
 		return outputData
 	
 	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
