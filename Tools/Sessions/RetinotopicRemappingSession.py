@@ -201,11 +201,13 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = False ):
+	def conditionDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4',['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
 		['V1', 'V2', 'V3', 'V3AB', 'V4']
+		['V1','V2','V3'],['V3AB','V4'],['lateraloccipital','lingual','fusiform'],['cuneus','precuneus','inferiorparietal','superiorparietal']
+		['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']
 		['pericalcarine','lateraloccipital','lingual','fusiform','cuneus','precuneus','inferiorparietal', 'superiorparietal']
 		"""
 		self.rois = regions
@@ -458,8 +460,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.axis([0.5,1,0,1])
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 3.0, smooth = True, smoothSize = 3 ):
-		self.conditionDataForRegions(add_eccen = True, regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']], maskThreshold = maskThreshold )
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 3.0, smooth = True, smoothSize = 12, stretch = 1.0 ):
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold ) # , regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']]
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
@@ -496,7 +498,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				s.set_yticks([-pi,-pi/2.0,0,pi/2.0,pi])
 				s.set_yticklabels(['-$\pi$','-$\pi/2$','0','$\pi/2$','$\pi$'])
 				if baseCondition == 'eccen':
-					histData = np.histogram2d(positivePhases(baseData) * np.cos( circDiffData ), positivePhases(baseData) * np.sin( circDiffData ), [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)] )[0]
+					histData = np.histogram2d(positivePhases(baseData) * stretch * np.cos( circDiffData ), positivePhases(baseData) * stretch * np.sin( circDiffData ), [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)], normed = True )[0]
 				else:
 					histData = np.histogram2d(baseData,circDiffData, [np.linspace(-pi,pi,binSize),np.linspace(-pi,pi,binSize)])[0]
 				

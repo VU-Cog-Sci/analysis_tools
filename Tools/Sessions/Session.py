@@ -504,7 +504,7 @@ class Session(PathConstructor):
 			data.append(np.hstack(runData))
 		return np.vstack(data)
 	
-	def importStatMask(self, statMaskFile, registrationEPIFile, reregisterSession = True, force_operations = True, use_subject_anat = True, reg_method = 'bbregister'):
+	def importStatMask(self, statMaskFile, registrationEPIFile, reregisterSession = True, force_operations = False, use_subject_anat = True, reg_method = 'bbregister', force_final = True):
 		"""
 		statmask is to be converted to anatomical space for this subject, 
 		after that from anatomical to present session epi format.
@@ -571,12 +571,12 @@ class Session(PathConstructor):
 		# concatenate registrations
 		ccO = ConcatFlirtOperator(inputObject = maskRegFile)
 		ccO.configure(secondInputFile = inverseTransformFile, outputFileName = concatenatedRegistrationFileName)
-		if not os.path.isfile(ccO.outputFileName) or force_operations:
+		if not os.path.isfile(ccO.outputFileName) or force_final:
 			ccO.execute()
 		
 		# apply the transform
 		final_flO = FlirtOperator(inputObject = statMaskFile, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
 		final_flO.configureApply(concatenatedRegistrationFileName, outputFileName = registeredToSessionStatMaskName)
-		if not os.path.isfile(final_flO.outputFileName) or force_operations:
+		if not os.path.isfile(final_flO.outputFileName) or force_final:
 			final_flO.execute()
 		

@@ -1,10 +1,10 @@
 #!/bin/csh -f
 
-set name = DB_290910db
+set name = OC_250711
 set hemi = rh
 
 setenv eccendir eccen/11/surf
-setenv polardir polar/5/surf
+setenv polardir polar/surf
 
 #setenv flatzrot 110
 #setenv flatscale 1.4
@@ -30,7 +30,7 @@ setenv revphaseflag 1
 ##########use inflated to make cuts using retino data
 
 #tksurfer -$name $hemi inflated -tcl $FREESURFER_HOME/lib/tcl/eccen-flat.tcl
-tksurfer -$name $hemi inflated -tcl $FREESURFER_HOME/lib/tcl/eccen-views.tcl
+#tksurfer -$name $hemi inflated -tcl $FREESURFER_HOME/lib/tcl/eccen-views.tcl
 
 setenv rgbname polar
 #setenv fthresh 0.4

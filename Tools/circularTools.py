@@ -83,7 +83,7 @@ def circularStandardDeviationFromNoiseSD( real, imag, noiseSD ):
 def fitVonMises( data, initial = [0,pi] ):
 	# negative log likelihood sum is to be minimized, this maximized the likelihood
 	vmL = lambda v : -np.sum(np.log( vonmises.pdf(v[0] ,v[1] , data) ))
-	return fmin(vmL, initial) # , xtol=0.000001, ftol=0.000001
+	return fmin(vmL, initial, xtol=0.000001, ftol=0.000001) # 
 	
 def bootstrapVonMisesFits( data, nrDraws = 100, nrRepetitions = 1000 ):
 	nrSamples = data.shape[0]
