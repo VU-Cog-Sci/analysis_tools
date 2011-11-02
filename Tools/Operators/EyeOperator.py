@@ -149,13 +149,16 @@ class EyelinkOperator( EyeOperator ):
 				[h, mi, s] = [int(t) for t in timeStamp[1].split('.')[:-1]]
 				self.timeStamp = datetime(y, m, d, h, mi, s)
 				self.timeStamp_numpy = np.array([y, m, d, h, mi, s], dtype = np.int)
-			else:
+			elif date_format == 'c_experiment':
 				timeStamp = self.inputFileName.split('_')[-1].split('.edf')[0]
-				print timeStamp
 				[d, m] = [int(t) for t in timeStamp.split('|')[1].split('-')]
 				[h, mi] = [int(t) for t in timeStamp.split('|')[0].split('.')] 
 				self.timeStamp = datetime(2010, m, d, h, mi, 11)
 				self.timeStamp_numpy = np.array([2010, m, d, h, mi, 0], dtype = np.int)
+			else:
+				self.timeStamp = datetime.now()
+				self.timeStamp_numpy = np.array([2011, 0, 0, 0, 0, 0], dtype = np.int)
+				
 		elif os.path.splitext(self.inputObject)[-1] == '.hdf5':
 			self.inputFileName = self.inputObject
 			self.hdf5_filename = self.inputObject
@@ -166,13 +169,14 @@ class EyelinkOperator( EyeOperator ):
 	def convertGazeData(self):
 		# take out non-readable string elements in order to load numpy array
 		f = open(self.gazeFile)
-		workingString = f.read()
+		self.workingString = f.read()
 		f.close()
 		
-		workingString = re.sub(re.compile('	\.\.\.'), '', workingString)
+		self.workingString = re.sub(re.compile('	*\.+'), '', self.workingString)
+		os.system('rm -rf ' + self.gazeFile)
 		
 		of = open(self.gazeFile, 'w')
-		of.write(workingString)
+		of.write(self.workingString)
 		of.close()
 		
 		gd = np.loadtxt(self.gazeFile)
@@ -180,7 +184,7 @@ class EyelinkOperator( EyeOperator ):
 		# deleting the first data point of a session shouldn't matter at all..
 		if bool(gd.shape[0] % 2):
 			gd = gd[1:]
-		np.save( self.gazeFile, gd.astype(np.float32) )
+		np.save( self.gazeFile, gd.astype(np.float64) )
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
 		
 	
@@ -289,6 +293,7 @@ class EyelinkOperator( EyeOperator ):
 			
 		self.nrTrials = len(self.stopTrialStrings)
 		self.trials = np.hstack((self.trialStarts, self.trialEnds))
+		print self.trials.shape
 			
 		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
@@ -322,7 +327,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 		
-	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)'):
+	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)', add_parameters = None):
 		parameters = []
 		# if there are no duplicates in the edf file
 		trialCounter = 0
@@ -340,8 +345,9 @@ class EyelinkOperator( EyeOperator ):
 				else:
 					# assuming all these parameters are numeric
 					thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings])
-					thisTrialParameters.update({'trial_nr' : float(i), 'seen': 0.0})
+					thisTrialParameters.update({'trial_nr': float(i), 'seen': 0.0})
 					parameters.append(thisTrialParameters)
+					trialCounter += 1
 		
 		if len(parameters) > 0:		# there were parameters in the edf file
 			self.parameters = parameters
@@ -360,7 +366,11 @@ class EyelinkOperator( EyeOperator ):
 		if not self.parameters[0].has_key('confidence'):
 			self.parameters[0].update({'confidence' : float(-10000)})
 		
-		self.parameterTypeDictionary = np.dtype([(k, np.float64) for k in self.parameters[0].keys()])
+		ptd = [(k, np.float64) for k in np.unique(np.concatenate([k.keys() for k in self.parameters]))]
+		if add_parameters != None:
+			for par in add_parameters:
+				ptd.append(par, np.float64)
+		self.parameterTypeDictionary = np.dtype(ptd)
 	
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
 		"""
@@ -476,7 +486,6 @@ class EyelinkOperator( EyeOperator ):
 				if len(tr) > 0:
 					for ev in tr:								# per event per trial
 						for var in ev.keys():					# per variable in the event.
-							print ev[var], var
 							trial[var] = ev[var]
 						trial.append()
 			thisRunEventTable.flush()
@@ -515,13 +524,14 @@ class EyelinkOperator( EyeOperator ):
 			# create a table for the trial times of this run's trials
 			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
 			trial = thisRunTimeTable.row
-			for (i, tr) in zip(range(len(self.trials)), self.trials):
-				trial['trial_start_EL_timestamp'] = tr[0]
-				trial['trial_start_index'] = tr[1]
-				trial['trial_start_exp_timestamp'] = tr[2]
-				trial['trial_end_EL_timestamp'] = tr[3]
-				trial['trial_end_index'] = tr[4]
-				trial['trial_end_exp_timestamp'] = tr[5]
+			print self.trials.shape
+			for i in range(self.nrTrials):
+				trial['trial_start_EL_timestamp'] = self.trials[i][0]
+				trial['trial_start_index'] = self.trials[i][1]
+				trial['trial_start_exp_timestamp'] = self.trials[i][2]
+				trial['trial_end_EL_timestamp'] = self.trials[i][3]
+				trial['trial_end_index'] = self.trials[i][4]
+				trial['trial_end_exp_timestamp'] = self.trials[i][5]
 				trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i][:self.nrPhaseStarts])
 				trial.append()
 			thisRunTimeTable.flush()

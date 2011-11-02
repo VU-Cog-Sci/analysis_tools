@@ -51,7 +51,7 @@ class EyeLinkSession(object):
 			os.mkdir(os.path.join( base_directory, project_name, experiment_name, self.subject.initials ))
 		except OSError:
 			pass
-		self.base_directory = os.path.join( base_directory, project_name, experiment_name, self.subject.initials )
+		self.project_directory = base_directory
 		
 		self.create_folder_hierarchy()
 		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
@@ -71,6 +71,16 @@ class EyeLinkSession(object):
 	
 	def create_folder_hierarchy(self):
 		"""docstring for createFolderHierarchy"""
+		this_dir = self.project_directory
+		for d in [self.project_name, self.experiment_name, self.subject.initials]:
+			try:
+				this_dir = os.path.join(this_dir, d)
+				os.mkdir(this_dir)
+			except OSError:
+				pass
+		
+		self.base_directory = os.path.join( self.project_directory, self.project_name, self.experiment_name, self.subject.initials )
+		
 		# check for basic directory
 		for p in ['raw','processed','figs','log']:
 			try:
@@ -137,49 +147,54 @@ class EyeLinkSession(object):
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
 	
-	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity'):
+	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity', scaling_factor = 1.0):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
-			if self.wildcard + '_run_' + str(run_index) == r._v_name:
-				run = r
-				break
+			if not isinstance(run_index, str):
+				if self.wildcard + '_run_' + str(run_index) == r._v_name:
+					run = r
+					break
+			else:
+				if run_index == r._v_name:
+					run = r
+					break
 		if run == None:
 			self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
 		timings = run.trial_times.read()
-		gaze_timestamps = run.gaze_data.read()[:,0]
+		gaze_timestamps = run.gaze_data.read()[:,0] / scaling_factor
 		
 		# select data_type
 		if data_type == 'smoothed_velocity':
-			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,-1]
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,-1] / scaling_factor
 		elif data_type == 'smoothed_velocity_x':
-			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0]
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0] / scaling_factor
 		elif data_type == 'smoothed_velocity_y':
-			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1]
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1] / scaling_factor
 		elif data_type == 'smoothed_velocity_xy':
-			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]]
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]] / scaling_factor
 		elif data_type == 'velocity':
-			all_data_of_requested_type = run.velocity_data.read()[:,-1]
+			all_data_of_requested_type = run.velocity_data.read()[:,-1] / scaling_factor
 		elif data_type == 'velocity_x':
-			all_data_of_requested_type = run.velocity_data.read()[:,0]
+			all_data_of_requested_type = run.velocity_data.read()[:,0] / scaling_factor
 		elif data_type == 'velocity_y':
-			all_data_of_requested_type = run.velocity_data.read()[:,1]
+			all_data_of_requested_type = run.velocity_data.read()[:,1] / scaling_factor
 		elif data_type == 'velocity_xy':
-			all_data_of_requested_type = run.velocity_data.read()[:,[0,1]]
+			all_data_of_requested_type = run.velocity_data.read()[:,[0,1]] / scaling_factor
 		elif data_type == 'gaze_xy':
-			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]]
+			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]] / scaling_factor
 		elif data_type == 'gaze_x':
-			all_data_of_requested_type = run.gaze_data.read()[:,1]
+			all_data_of_requested_type = run.gaze_data.read()[:,1] / scaling_factor
 		elif data_type == 'gaze_y':
-			all_data_of_requested_type = run.gaze_data.read()[:,2]
+			all_data_of_requested_type = run.gaze_data.read()[:,2] / scaling_factor
 		elif data_type == 'smoothed_gaze_xy':
-			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,[0,1]]
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,[0,1]] / scaling_factor
 		elif data_type == 'smoothed_gaze_x':
-			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,0]
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,0] / scaling_factor
 		elif data_type == 'smoothed_gaze_y':
-			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1]
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1] / scaling_factor
 		elif data_type == 'pupil_size':
-			all_data_of_requested_type = run.gaze_data.read()[:,3]
+			all_data_of_requested_type = run.gaze_data.read()[:,3] / scaling_factor
 		
 		# run for loop for actual data
 		export_data = []
@@ -769,8 +784,268 @@ class TAESession(EyeLinkSession):
 					self.confidence_minima = r.confidence_minima.read()
 		self.logger.info('imported behavioral distilled results from ' + 'results_' + str(self.wildcard) + results_name)
 		h5f.close()
+		
 	
 
+
+class SB_AMSession(EyeLinkSession):
+	"""docstring for Split brain AM Session"""
+	def process_behavioral_data(self, run = None, masking_array = None):
+		"""docstring for preprocess_behavioral_data"""
+		if not hasattr(self, 'parameter_data') or run != None:
+			if run == None:
+				self.import_parameters()
+			else:
+				self.import_parameters(run_name = 'run_' + run)
+		
+		if masking_array == None:
+			masking_array = np.ones((self.parameter_data.shape[0]), dtype = bool)
+		
+#		print masking_array.shape, self.parameter_data.shape
+		hvrs = np.unique(self.parameter_data['hvr'])
+		# mask parameter_array
+		pd = self.parameter_data[masking_array]
+		
+		cd = []
+		
+		cond = 0 # This is the ambiguous apparent motion condition
+		cond_data = pd[pd['fake'] == cond]
+		cond_data_per_hvr = [cond_data[cond_data['hvr'] == hvr] for hvr in hvrs]
+		cd.append([((hvr['answer'])+1.0)/2.0 for hvr in cond_data_per_hvr])
+		
+		cond = 1 # the real motion condition
+		cond_data = pd[pd['fake'] == cond]
+		cds = [cond_data[cond_data['direction'] == -1], cond_data[cond_data['direction'] == 1]]
+		cond_data_per_hvr = [[cd_per_d[cd_per_d['hvr'] == hvr] for hvr in hvrs] for cd_per_d in cds]
+		cd.append([((-hvr['answer'])+1.0)/2.0 for hvr in cond_data_per_hvr[0]])
+		cd.append([((-hvr['answer'])+1.0)/2.0 for hvr in cond_data_per_hvr[1]])
+			
+		cond = 2 # the unambiguous apparent motion condition
+		cond_data = pd[pd['fake'] == cond]
+		cond_data_per_hvr = [cond_data[cond_data['hvr'] == hvr] for hvr in hvrs]
+		cd.append([((hvr['answer'])+1.0)/2.0 for hvr in cond_data_per_hvr])
+			
+		cond = 3 # the unambiguous apparent motion condition - 2 
+		cond_data = pd[pd['fake'] == cond]
+		cond_data_per_hvr = [cond_data[cond_data['hvr'] == hvr] for hvr in hvrs]
+		cd.append([((hvr['answer'])+1.0)/2.0 for hvr in cond_data_per_hvr])
+		
+		self.hvrs = hvrs
+		self.cd = cd
+	
+	def plot_conditions(self, plot_range = None, run = None):
+		"""docstring for plot_conditions"""
+		real_hvrs = self.hvrs**2.0
+		if plot_range == None:
+			plot_range = [(self.hvrs[0]-0.05) ** 2.0, (self.hvrs[-1]+0.1) ** 2.0]
+		
+		f = pl.figure(figsize = (9,6))
+		plot_nr = 1
+		colors = [(1.0,0.0,0.0), (0.25,0.25,0.25), (0.75,0.75,0.75), (0.25,0.25,0.25), (0.75,0.75,0.75)]
+		pfs = []
+		for i in [1,2,0,3,4]:
+			if i in [1,0]:
+				sub_plot = f.add_subplot(2,1,plot_nr)
+			
+			nr_ones, nr_samples = [r.sum() for r in self.cd[i]], [r.shape[0] for r in self.cd[i]]
+			fit_data = zip(real_hvrs, nr_ones, nr_samples)
+		
+			# and we fit the data
+			pf = BootstrapInference(fit_data, sigmoid = 'gauss', core = 'ab', nafc = 1, cuts = [0.25,0.5,0.75], gammaislambda = True)
+			# and let the package do a bootstrap sampling of the resulting fits
+			pf.sample()
+			pfs.append([pf.estimate, pf.getCI(1), fit_data])
+		
+			# scatter plot of the actual data points
+			sub_plot.semilogx(real_hvrs, np.array(nr_ones) / np.array(nr_samples), marker = 'o', mec = colors[i], mfc = 'w', alpha = 0.75, linewidth = 0.0, mew = 2.0)
+		
+			# line plot of the fitted curve
+			sub_plot.semilogx(np.linspace(plot_range[0], plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0], plot_range[1], 500)), c = colors[i], linestyle = '--', linewidth = 2.5, alpha = 0.75)
+		
+			# sub_plot.axvline(x=pf.estimate[0], c = colors[i], alpha = 0.7, linewidth = 2.25)
+			# # and the boundaries of the confidence interval on this point
+			# sub_plot.axvline(x=pf.getCI(1)[0], c = colors[i], alpha = 0.55, linewidth = 1.25, linestyle = '--')
+			# sub_plot.axvline(x=pf.getCI(1)[1], c = colors[i], alpha = 0.55, linewidth = 1.25, linestyle = '--')
+		
+			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
+			
+			
+			if i == 0:
+				sub_plot.set_title(self.subject.firstName + ' apparent motion')
+				sub_plot.set_xlabel('Aspect Ratio')
+				sub_plot.set_ylabel('Ratio Vertical')
+			if i == 1:
+				sub_plot.set_title(self.subject.firstName + ' multi-frame motion')
+				sub_plot.set_ylabel('Ratio Vertical')
+			
+			if i == 1:
+				plot_nr += 1
+		self.pfs = pfs
+		if run == None:
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'psychometric_curves_' + self.subject.initials + '.pdf'))
+			f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '.pickle'), 'w')
+		else:
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'psychometric_curves_' + self.subject.initials + '_' + str(run) + '.pdf'))
+			f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '_' + str(run) + '.pickle'), 'w')			
+		pickle.dump([self.cd, self.hvrs, pfs], f)
+		f.close()
+	
+	def import_distilled_behavioral_results(self, run = None):
+		"""import results from psychometric pickle file"""
+		if not hasattr(self, 'parameter_data') or run != None:
+			if run == None:
+				self.import_parameters()
+			else:
+				self.import_parameters(run_name = 'run_' + run)
+		
+		f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '.pickle'), 'r')
+		[self.cd, self.hvrs, self.pfs] = pickle.load(f)
+		f.close()
+		return self.cd, self.hvrs, self.pfs, self.parameter_data
+	
+	def EL_analysis(self, screen_center = [840, 525], plot = False):
+		"""docstring for EL_analysis"""
+		
+		screen_center = np.array(screen_center)
+		all_fixation_deviations = []
+		for run_nr in [0,1,2,3]:
+			h5f = openFile(self.hdf5_filename, mode = "r" )
+			run = None
+			for r in h5f.iterNodes(where = '/', classname = 'Group'):
+				if self.subject.initials + '_' + str(run_nr) + '_run_0' == r._v_name:
+					run = r
+					break
+			if run == None:
+				self.logger.error('No run named ' + self.subject.initials + '_' + str(run_nr) + '_run_0' + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+				return
+			else:
+				self.import_parameters(run_name = self.subject.initials + '_' + str(run_nr) + '_run_0')
+			
+			nr_trials_this_run = self.parameter_data.shape[0]
+			this_run_EL_data = self.get_EL_samples_per_trial(run_index = self.subject.initials + '_' + str(run_nr) + '_run_0', trial_ranges = [[0,nr_trials_this_run]], trial_phase_range = [0,-1], data_type = 'gaze_xy', scaling_factor = 10.0)
+			
+			if plot:
+				f = pl.figure(figsize = (8,6))
+				s = f.add_subplot(111)
+			mean_fixation_during_stim_presentation = []
+			for i, trial in enumerate(self.parameter_data):
+				EL_trial_data = np.array(this_run_EL_data[0][i])
+				delay_ms = [trial['delay'] * 16.6666, (trial['delay'] + 2.0 * trial['stim_duration'] + trial['isi']) * 16.6666]
+				time_points_stim_presentation_indices = (EL_trial_data[:,0] > (delay_ms[0] + EL_trial_data[0,0])) * (EL_trial_data[:,0] < (delay_ms[1] + EL_trial_data[0,0]))
+				this_trial_data_during_stim_pres = EL_trial_data[time_points_stim_presentation_indices]
+				if plot:
+					pl.plot(EL_trial_data[time_points_stim_presentation_indices][:,1] - screen_center[0], EL_trial_data[time_points_stim_presentation_indices][:,2] - screen_center[1], 'g-', alpha = 0.15)
+				mean_fixation_during_stim_presentation.append((EL_trial_data[time_points_stim_presentation_indices][:,1] - screen_center[0]).mean())
+			if plot:
+				s.axis([-screen_center[0], screen_center[0], -screen_center[1], screen_center[1]])
+			mean_fixation_during_stim_presentation = np.array(mean_fixation_during_stim_presentation)
+			
+			# split up into 24 trial blocks
+			# fitting linear curves to the whole thing for detrending with a linear trend fit
+			from scipy import polyval, polyfit
+			
+			nr_calibration_blocks = int(ceil(len(mean_fixation_during_stim_presentation) / 24.0))
+			for i in range(nr_calibration_blocks):
+				trial_indices = np.arange(i * 24, min((i+1) * 24, mean_fixation_during_stim_presentation.shape[0]))
+				data_points = mean_fixation_during_stim_presentation[trial_indices]
+				indices = trial_indices - trial_indices[0]
+				(ar,br) = polyfit(indices,data_points,1)
+				trendline = polyval([ar,br], indices)
+				mean_fixation_during_stim_presentation[trial_indices] = data_points - trendline
+			# data is now detrended in the x direction
+			
+			# we'll do this judgment later. for now just pass on distilled distances
+			which_trials_left_right = np.array(mean_fixation_during_stim_presentation) > np.median(mean_fixation_during_stim_presentation)
+			which_trials_center_surround = np.abs(np.array(mean_fixation_during_stim_presentation)) < np.median(np.abs(mean_fixation_during_stim_presentation))
+			
+			# this separation is now done on a median-split basis. 
+			# we could opt to regress through the data depending on fixation error per trial, fitting separate psychometric curves for each batch. 
+			# then, we could pearson correlate the resulting PSEs with average fixation error in that interval.
+			# perhaps too geeky? - not at all
+			
+			all_fixation_deviations = np.hstack((all_fixation_deviations, mean_fixation_during_stim_presentation))
+		self.all_fixation_deviations = np.array(all_fixation_deviations)
+		self.import_parameters()	# re-create parameter array
+	
+	def analyze_after_EL_split(self, nr_bins = 3):
+		"""docstring for analyze_after_EL_split("""
+		self.EL_analysis()
+		order = np.argsort(np.abs(self.all_fixation_deviations))
+		nr_trials_per_bin = self.all_fixation_deviations.shape[0]/float(nr_bins)
+		all_trials = np.zeros(self.all_fixation_deviations.shape, dtype = bool)
+		fp = []
+		fd = []
+		self.process_behavioral_data(masking_array = np.ones(self.all_fixation_deviations.shape, dtype = bool))
+		self.plot_conditions(run = 'all')
+		fd.append([self.pfs[2][-1], self.pfs[4][-1]])
+		for i in range(nr_bins):
+			masking_array = all_trials
+			masking_array[order[round(i * nr_trials_per_bin):round((i+1) * nr_trials_per_bin)]] = True
+			self.process_behavioral_data(masking_array = masking_array)
+			self.plot_conditions(run = i)
+			fp.append([self.pfs[2][0][0], self.pfs[2][1]])
+			fd.append([self.pfs[2][-1], self.pfs[4][-1]])
+		# now re-plot the difference between ambiguous and unambiguously vertical apparent motion 
+		fd = np.array(fd)
+		base_unamb_ratios = np.array(fd[0,1,:,1] / fd[0,1,:,2])
+		all_unamb_ratios = np.array([f[1,:,1] / f[1,:,2] for f in fd[range(1,len(fd))]])
+		all_amb_ratios = np.array([f[0,:,1] / f[0,:,2] for f in fd[range(1,len(fd))]])
+		amb_unamb_base_diffs = np.array([base_unamb_ratios-a for a in all_amb_ratios])
+		amb_unamb_all_diffs = all_unamb_ratios - all_amb_ratios
+		
+		if amb_unamb_all_diffs.shape[0] == 2:
+			print sp.stats.ttest_1samp(amb_unamb_all_diffs[0] - amb_unamb_all_diffs[1], 0)
+			
+		# prepare the plot
+		colors = ['r' for i in range(nr_bins)]
+		alphas = np.linspace(0.3,1.0,nr_bins)
+		shvrs = np.sqrt(self.hvrs)
+		
+		f = pl.figure(figsize = (9,3))
+		s = f.add_subplot(1,1,1)
+		plot_range = [(shvrs[0]-0.05) ** 2.0, (shvrs[-1]+0.1) ** 2.0]
+		for i in range(amb_unamb_all_diffs.shape[0]):
+			s.semilogx(self.hvrs, amb_unamb_all_diffs[i], alpha = alphas[i], marker = 'o', mec = colors[i], mfc = 'w', linewidth = 0.0, mew = 2.0, ms = 12.0)
+			s.semilogx(self.hvrs, amb_unamb_all_diffs[i], alpha = alphas[i], c = colors[i], linestyle = '--', linewidth = 2.5)
+		s.set_xlabel('Aspect Ratio')
+		s.set_ylabel('Difference ambiguous/unambiguous')
+		s.axis([plot_range[0], plot_range[1], -0.5, 1.2])
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_' + self.subject.initials + '_all' + '.pdf'))
+		
+		f = pl.figure(figsize = (4,3))
+		s = f.add_subplot(1,1,1)
+		means = amb_unamb_all_diffs.mean(axis = 1)
+		stds = amb_unamb_all_diffs.std(axis = 1) / sqrt(amb_unamb_all_diffs.shape[-1])
+		wheres = np.linspace(0,0.2,means.shape[0])
+		for i, w in enumerate(wheres):
+			pl.bar( w, means[i], width = 0.1, align = 'center', yerr = stds[i], color = colors[i], alpha = alphas[i], ecolor = 'k', linewidth = 1.0, edgecolor = 'w')
+		s.axis([-0.1, 0.3, -0.5, 1.2])
+		s.set_ylabel('Difference ambiguous/unambiguous')
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_bar_' + self.subject.initials + '_all' + '.pdf'))
+	
+		f = pl.figure(figsize = (9,3))
+		s = f.add_subplot(1,1,1)
+		plot_range = [(shvrs[0]-0.05) ** 2.0, (shvrs[-1]+0.1) ** 2.0]
+		for i in range(amb_unamb_all_diffs.shape[0]):
+			s.semilogx(self.hvrs, amb_unamb_base_diffs[i], alpha = alphas[i], marker = 'o', mec = colors[i], mfc = 'w', linewidth = 0.0, mew = 2.0, ms = 12.0)
+			s.semilogx(self.hvrs, amb_unamb_base_diffs[i], alpha = alphas[i], c = colors[i], linestyle = '--', linewidth = 2.5)
+		s.set_xlabel('Aspect Ratio')
+		s.set_ylabel('Difference ambiguous/unambiguous')
+		s.axis([plot_range[0], plot_range[1], -0.5, 1.2])
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_' + self.subject.initials + '_unamb' + '.pdf'))
+		
+		f = pl.figure(figsize = (4,3))
+		s = f.add_subplot(1,1,1)
+		means = amb_unamb_base_diffs.mean(axis = 1)
+		stds = amb_unamb_base_diffs.std(axis = 1) / sqrt(amb_unamb_all_diffs.shape[-1])
+		wheres = np.linspace(0,0.2,means.shape[0])
+		for i, w in enumerate(wheres):
+			pl.bar( w, means[i], width = 0.1, align = 'center', yerr = stds[i], color = colors[i], alpha = alphas[i], ecolor = 'k', linewidth = 1.0, edgecolor = 'w')
+		s.axis([-0.1, 0.3, -0.5, 1.2])
+		s.set_ylabel('Difference ambiguous/unambiguous')
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_bar_' + self.subject.initials + '_unamb' + '.pdf'))
+	
+	
 
 class TEAESession(EyeLinkSession):
 	"""TEAESession analyzes the results of TEAE experiments"""
@@ -1304,7 +1579,7 @@ class MREyeLinkSession(EyeLinkSession):
 		self.hdf5_filename = os.path.join(self.base_directory, 'processed/eye', self.subject.initials + '.hdf5')
 		
 		self.saccade_dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')])
-
+		
 		# add logging for this session
 		# sessions create their own logging file handler
 		self.loggingLevel = loggingLevel
@@ -1315,3 +1590,4 @@ class MREyeLinkSession(EyeLinkSession):
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
 		self.logger.info('starting analysis of session ' + str(self.ID))
+	

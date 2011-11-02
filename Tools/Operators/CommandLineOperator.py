@@ -704,7 +704,7 @@ class EDF2ASCOperator( CommandLineOperator ):
 		self.intermediatecmd = self.cmd
 		self.intermediatecmd += settings
 		
-		self.gazcmd = self.intermediatecmd + ' -s "'+self.inputFileName+'"; mv ' + standardOutputFileName.replace('|', '\|') + ' ' + self.gazeOutputFileName.replace('|', '\|')
+		self.gazcmd = self.intermediatecmd + ' -s -nflags "'+self.inputFileName+'"; mv ' + standardOutputFileName.replace('|', '\|') + ' ' + self.gazeOutputFileName.replace('|', '\|')
 		self.msgcmd = self.intermediatecmd + ' -e "'+self.inputFileName+'"; mv ' + standardOutputFileName.replace('|', '\|') + ' ' + self.messageOutputFileName.replace('|', '\|')
 		
 		self.runcmd = self.gazcmd + '; ' + self.msgcmd
