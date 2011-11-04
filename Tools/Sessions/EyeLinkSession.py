@@ -833,7 +833,7 @@ class SB_AMSession(EyeLinkSession):
 		self.hvrs = hvrs
 		self.cd = cd
 	
-	def plot_conditions(self, plot_range = None, run = None):
+	def plot_conditions(self, plot_range = None, run = None, conditions = [1,2,0,3,4]):
 		"""docstring for plot_conditions"""
 		real_hvrs = self.hvrs**2.0
 		if plot_range == None:
@@ -843,8 +843,8 @@ class SB_AMSession(EyeLinkSession):
 		plot_nr = 1
 		colors = [(1.0,0.0,0.0), (0.25,0.25,0.25), (0.75,0.75,0.75), (0.25,0.25,0.25), (0.75,0.75,0.75)]
 		pfs = []
-		for i in [1,2,0,3,4]:
-			if i in [1,0]:
+		for i in conditions:
+			if i in [ conditions[0], conditions[2]]:
 				sub_plot = f.add_subplot(2,1,plot_nr)
 			
 			nr_ones, nr_samples = [r.sum() for r in self.cd[i]], [r.shape[0] for r in self.cd[i]]
@@ -858,27 +858,19 @@ class SB_AMSession(EyeLinkSession):
 		
 			# scatter plot of the actual data points
 			sub_plot.semilogx(real_hvrs, np.array(nr_ones) / np.array(nr_samples), marker = 'o', mec = colors[i], mfc = 'w', alpha = 0.75, linewidth = 0.0, mew = 2.0)
-		
 			# line plot of the fitted curve
 			sub_plot.semilogx(np.linspace(plot_range[0], plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0], plot_range[1], 500)), c = colors[i], linestyle = '--', linewidth = 2.5, alpha = 0.75)
-		
-			# sub_plot.axvline(x=pf.estimate[0], c = colors[i], alpha = 0.7, linewidth = 2.25)
-			# # and the boundaries of the confidence interval on this point
-			# sub_plot.axvline(x=pf.getCI(1)[0], c = colors[i], alpha = 0.55, linewidth = 1.25, linestyle = '--')
-			# sub_plot.axvline(x=pf.getCI(1)[1], c = colors[i], alpha = 0.55, linewidth = 1.25, linestyle = '--')
-		
 			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 			
-			
-			if i == 0:
+			if i == conditions[2]:
 				sub_plot.set_title(self.subject.firstName + ' apparent motion')
 				sub_plot.set_xlabel('Aspect Ratio')
 				sub_plot.set_ylabel('Ratio Vertical')
-			if i == 1:
+			if i == conditions[0]:
 				sub_plot.set_title(self.subject.firstName + ' multi-frame motion')
 				sub_plot.set_ylabel('Ratio Vertical')
 			
-			if i == 1:
+			if i == conditions[0]:
 				plot_nr += 1
 		self.pfs = pfs
 		if run == None:
@@ -903,7 +895,7 @@ class SB_AMSession(EyeLinkSession):
 		f.close()
 		return self.cd, self.hvrs, self.pfs, self.parameter_data
 	
-	def EL_analysis(self, screen_center = [840, 525], plot = False):
+	def EL_analysis(self, screen_center = [840, 525], plot = False, display_latency = 5.6):
 		"""docstring for EL_analysis"""
 		
 		screen_center = np.array(screen_center)
@@ -930,7 +922,7 @@ class SB_AMSession(EyeLinkSession):
 			mean_fixation_during_stim_presentation = []
 			for i, trial in enumerate(self.parameter_data):
 				EL_trial_data = np.array(this_run_EL_data[0][i])
-				delay_ms = [trial['delay'] * 16.6666, (trial['delay'] + 2.0 * trial['stim_duration'] + trial['isi']) * 16.6666]
+				delay_ms = [trial['delay'] * 16.6666, (trial['delay'] + 2.0 * trial['stim_duration'] + trial['isi']) * 16.6666 + display_latency]
 				time_points_stim_presentation_indices = (EL_trial_data[:,0] > (delay_ms[0] + EL_trial_data[0,0])) * (EL_trial_data[:,0] < (delay_ms[1] + EL_trial_data[0,0]))
 				this_trial_data_during_stim_pres = EL_trial_data[time_points_stim_presentation_indices]
 				if plot:
@@ -967,55 +959,66 @@ class SB_AMSession(EyeLinkSession):
 		self.all_fixation_deviations = np.array(all_fixation_deviations)
 		self.import_parameters()	# re-create parameter array
 	
-	def analyze_after_EL_split(self, nr_bins = 3):
+	def analyze_after_EL_split(self, nr_bins = 3, max_aspect_ratio = 0.9):
 		"""docstring for analyze_after_EL_split("""
 		self.EL_analysis()
 		order = np.argsort(np.abs(self.all_fixation_deviations))
-		nr_trials_per_bin = self.all_fixation_deviations.shape[0]/float(nr_bins)
-		all_trials = np.zeros(self.all_fixation_deviations.shape, dtype = bool)
-		fp = []
-		fd = []
-		self.process_behavioral_data(masking_array = np.ones(self.all_fixation_deviations.shape, dtype = bool))
+		self.process_behavioral_data()
 		self.plot_conditions(run = 'all')
-		fd.append([self.pfs[2][-1], self.pfs[4][-1]])
-		for i in range(nr_bins):
-			masking_array = all_trials
-			masking_array[order[round(i * nr_trials_per_bin):round((i+1) * nr_trials_per_bin)]] = True
-			self.process_behavioral_data(masking_array = masking_array)
-			self.plot_conditions(run = i)
-			fp.append([self.pfs[2][0][0], self.pfs[2][1]])
-			fd.append([self.pfs[2][-1], self.pfs[4][-1]])
-		# now re-plot the difference between ambiguous and unambiguously vertical apparent motion 
-		fd = np.array(fd)
-		base_unamb_ratios = np.array(fd[0,1,:,1] / fd[0,1,:,2])
-		all_unamb_ratios = np.array([f[1,:,1] / f[1,:,2] for f in fd[range(1,len(fd))]])
-		all_amb_ratios = np.array([f[0,:,1] / f[0,:,2] for f in fd[range(1,len(fd))]])
-		amb_unamb_base_diffs = np.array([base_unamb_ratios-a for a in all_amb_ratios])
-		amb_unamb_all_diffs = all_unamb_ratios - all_amb_ratios
+		unamb_result = np.array([self.pfs[2][-1], self.pfs[4][-1]])
 		
-		if amb_unamb_all_diffs.shape[0] == 2:
-			print sp.stats.ttest_1samp(amb_unamb_all_diffs[0] - amb_unamb_all_diffs[1], 0)
+		where_ambiguous = self.parameter_data['fake'] == 0
+		nr_trials_per_bin = round(where_ambiguous.sum()/float(nr_bins))
+		real_hvrs = self.hvrs**2.0
+		
+		fd = []
+		fe = []
+		for i in range(nr_bins):
+			cond_data = self.parameter_data[order[where_ambiguous][round(i * nr_trials_per_bin):round((i+1) * nr_trials_per_bin)]]
+			this_fix_error = np.abs(self.all_fixation_deviations)[order[where_ambiguous][round(i * nr_trials_per_bin):round((i+1) * nr_trials_per_bin)]]
+			this_fix_error_mean = np.mean(np.abs(self.all_fixation_deviations)[order[where_ambiguous][round(i * nr_trials_per_bin):round((i+1) * nr_trials_per_bin)]])
+			cond_data_per_hvr = [cond_data[cond_data['hvr'] == hvr] for hvr in self.hvrs]
+			answers = [((hvr['answer'][np.abs(hvr['answer'])==1])+1.0)/2.0 for hvr in cond_data_per_hvr]
+			fd.append(zip(real_hvrs, [r.sum() for r in answers], [r.shape[0] for r in answers]))
+			fe.append(this_fix_error[cond_data['hvr'] < max_aspect_ratio])
+		fd = np.array(fd)
+		fe = np.array(fe)
+		unamb_ratios = unamb_result[-1,:,1] / unamb_result[-1,:,2]
+		fd2 = np.array([f[:,1]/f[:,2] for f in fd])
+		amb_unamb_base_diffs = np.array([unamb_ratios - k for k in fd2])[:,self.hvrs<max_aspect_ratio]
+		mean_fe = np.array([np.mean(f/43.0) for f in fe])
+		
+		print sp.stats.ttest_1samp(amb_unamb_base_diffs[0] - amb_unamb_base_diffs[-1], 0)
+		print mean_fe
+		print amb_unamb_base_diffs.shape
+		
+		if nr_bins > 2:
+			print sp.stats.f_oneway(*tuple(amb_unamb_base_diffs))
+			print sp.stats.spearmanr(mean_fe, sp.stats.nanmean(amb_unamb_base_diffs, axis = 1))
+			print sp.stats.linregress(mean_fe, sp.stats.nanmean(amb_unamb_base_diffs, axis = 1))
 			
-		# prepare the plot
+		# prepare the plots
 		colors = ['r' for i in range(nr_bins)]
 		alphas = np.linspace(0.3,1.0,nr_bins)
 		shvrs = np.sqrt(self.hvrs)
-		
-		f = pl.figure(figsize = (9,3))
-		s = f.add_subplot(1,1,1)
 		plot_range = [(shvrs[0]-0.05) ** 2.0, (shvrs[-1]+0.1) ** 2.0]
-		for i in range(amb_unamb_all_diffs.shape[0]):
-			s.semilogx(self.hvrs, amb_unamb_all_diffs[i], alpha = alphas[i], marker = 'o', mec = colors[i], mfc = 'w', linewidth = 0.0, mew = 2.0, ms = 12.0)
-			s.semilogx(self.hvrs, amb_unamb_all_diffs[i], alpha = alphas[i], c = colors[i], linestyle = '--', linewidth = 2.5)
-		s.set_xlabel('Aspect Ratio')
-		s.set_ylabel('Difference ambiguous/unambiguous')
-		s.axis([plot_range[0], plot_range[1], -0.5, 1.2])
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_' + self.subject.initials + '_all' + '.pdf'))
+		
+		if nr_bins <= 4:
+			f = pl.figure(figsize = (9,3))
+			s = f.add_subplot(1,1,1)
+			for i in range(amb_unamb_base_diffs.shape[0]):
+				s.semilogx(self.hvrs[self.hvrs<max_aspect_ratio], amb_unamb_base_diffs[i], alpha = alphas[i], marker = 'o', mec = colors[i], mfc = 'w', linewidth = 0.0, mew = 2.0, ms = 12.0)
+				s.semilogx(self.hvrs[self.hvrs<max_aspect_ratio], amb_unamb_base_diffs[i], alpha = alphas[i], c = colors[i], linestyle = '--', linewidth = 2.5)
+			s.set_xlabel('Aspect Ratio')
+			s.set_ylabel('Difference ambiguous/unambiguous')
+			s.axis([plot_range[0], plot_range[1], -0.5, 1.2])
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_' + self.subject.initials + '_all' + '.pdf'))
+		
 		
 		f = pl.figure(figsize = (4,3))
 		s = f.add_subplot(1,1,1)
-		means = amb_unamb_all_diffs.mean(axis = 1)
-		stds = amb_unamb_all_diffs.std(axis = 1) / sqrt(amb_unamb_all_diffs.shape[-1])
+		means = sp.stats.nanmean(amb_unamb_base_diffs, axis = 1)
+		stds = sp.stats.nanstd(amb_unamb_base_diffs, axis = 1) / sqrt(amb_unamb_base_diffs.shape[-1])
 		wheres = np.linspace(0,0.2,means.shape[0])
 		for i, w in enumerate(wheres):
 			pl.bar( w, means[i], width = 0.1, align = 'center', yerr = stds[i], color = colors[i], alpha = alphas[i], ecolor = 'k', linewidth = 1.0, edgecolor = 'w')
@@ -1023,28 +1026,7 @@ class SB_AMSession(EyeLinkSession):
 		s.set_ylabel('Difference ambiguous/unambiguous')
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_bar_' + self.subject.initials + '_all' + '.pdf'))
 	
-		f = pl.figure(figsize = (9,3))
-		s = f.add_subplot(1,1,1)
-		plot_range = [(shvrs[0]-0.05) ** 2.0, (shvrs[-1]+0.1) ** 2.0]
-		for i in range(amb_unamb_all_diffs.shape[0]):
-			s.semilogx(self.hvrs, amb_unamb_base_diffs[i], alpha = alphas[i], marker = 'o', mec = colors[i], mfc = 'w', linewidth = 0.0, mew = 2.0, ms = 12.0)
-			s.semilogx(self.hvrs, amb_unamb_base_diffs[i], alpha = alphas[i], c = colors[i], linestyle = '--', linewidth = 2.5)
-		s.set_xlabel('Aspect Ratio')
-		s.set_ylabel('Difference ambiguous/unambiguous')
-		s.axis([plot_range[0], plot_range[1], -0.5, 1.2])
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_' + self.subject.initials + '_unamb' + '.pdf'))
 		
-		f = pl.figure(figsize = (4,3))
-		s = f.add_subplot(1,1,1)
-		means = amb_unamb_base_diffs.mean(axis = 1)
-		stds = amb_unamb_base_diffs.std(axis = 1) / sqrt(amb_unamb_all_diffs.shape[-1])
-		wheres = np.linspace(0,0.2,means.shape[0])
-		for i, w in enumerate(wheres):
-			pl.bar( w, means[i], width = 0.1, align = 'center', yerr = stds[i], color = colors[i], alpha = alphas[i], ecolor = 'k', linewidth = 1.0, edgecolor = 'w')
-		s.axis([-0.1, 0.3, -0.5, 1.2])
-		s.set_ylabel('Difference ambiguous/unambiguous')
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'diffs_EL_sep_bar_' + self.subject.initials + '_unamb' + '.pdf'))
-	
 	
 
 class TEAESession(EyeLinkSession):
