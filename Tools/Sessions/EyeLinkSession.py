@@ -857,17 +857,21 @@ class SB_AMSession(EyeLinkSession):
 			pfs.append([pf.estimate, pf.getCI(1), fit_data])
 		
 			# scatter plot of the actual data points
-			sub_plot.semilogx(real_hvrs, np.array(nr_ones) / np.array(nr_samples), marker = 'o', mec = colors[i], mfc = 'w', alpha = 0.75, linewidth = 0.0, mew = 2.0)
-			# line plot of the fitted curve
-			sub_plot.semilogx(np.linspace(plot_range[0], plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0], plot_range[1], 500)), c = colors[i], linestyle = '--', linewidth = 2.5, alpha = 0.75)
+			
+			if i == 0:
+				# line plot of the fitted curve
+				sub_plot.semilogx(real_hvrs, np.array(nr_ones) / np.array(nr_samples), marker = 'o', mec = colors[i], mfc = 'w', alpha = 0.75, linewidth = 0, mew = 2.0, linestyle = '--', c = colors[i])
+				sub_plot.semilogx(np.linspace(plot_range[0], plot_range[1], 500), pf.evaluate(np.linspace(plot_range[0], plot_range[1], 500)), c = colors[i], linestyle = '--', linewidth = 2.5, alpha = 1.0)
+			else:
+				sub_plot.semilogx(real_hvrs, np.array(nr_ones) / np.array(nr_samples), marker = 'o', mec = colors[i], mfc = 'w', alpha = 0.75, linewidth = 2.5, mew = 2.0, linestyle = '--', c = colors[i])
 			sub_plot.axis([plot_range[0], plot_range[1], -0.025, 1.025])
 			
 			if i == conditions[2]:
-				sub_plot.set_title(self.subject.firstName + ' apparent motion')
+				sub_plot.set_title(self.subject.initials + ' apparent motion')
 				sub_plot.set_xlabel('Aspect Ratio')
 				sub_plot.set_ylabel('Ratio Vertical')
 			if i == conditions[0]:
-				sub_plot.set_title(self.subject.firstName + ' multi-frame motion')
+				sub_plot.set_title(self.subject.initials + ' multi-frame motion')
 				sub_plot.set_ylabel('Ratio Vertical')
 			
 			if i == conditions[0]:
@@ -880,6 +884,18 @@ class SB_AMSession(EyeLinkSession):
 			pl.savefig(os.path.join(self.base_directory, 'figs', 'psychometric_curves_' + self.subject.initials + '_' + str(run) + '.pdf'))
 			f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '_' + str(run) + '.pickle'), 'w')			
 		pickle.dump([self.cd, self.hvrs, pfs], f)
+		
+		h5f = openFile(self.hdf5_filename, mode = "a" )
+		if 'results_' + str(self.wildcard) in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
+			h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard), recursive = True)
+			
+		resultsGroup = h5f.createGroup('/', 'results_' + str(self.wildcard), 'results created at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		
+		h5f.createArray(resultsGroup, 'fit_data', np.array([p[-1] for p in self.pfs], dtype = np.float64), 'fit_data')
+		h5f.createArray(resultsGroup, 'fit_parameters', np.array([p[0] for p in self.pfs], dtype = np.float64), 'fit_parameters')
+		h5f.createArray(resultsGroup, 'confidence_intervals', np.array([p[1] for p in self.pfs], dtype = np.float64), 'confidence_intervals')
+		h5f.close()
+		
 		f.close()
 	
 	def import_distilled_behavioral_results(self, run = None):
@@ -959,13 +975,27 @@ class SB_AMSession(EyeLinkSession):
 		self.all_fixation_deviations = np.array(all_fixation_deviations)
 		self.import_parameters()	# re-create parameter array
 	
-	def analyze_after_EL_split(self, nr_bins = 3, max_aspect_ratio = 0.9):
+	def analyze_after_EL_split(self, nr_bins = 3, max_aspect_ratio = 3.0):
 		"""docstring for analyze_after_EL_split("""
 		self.EL_analysis()
 		order = np.argsort(np.abs(self.all_fixation_deviations))
 		self.process_behavioral_data()
 		self.plot_conditions(run = 'all')
 		unamb_result = np.array([self.pfs[2][-1], self.pfs[4][-1]])
+		
+		print 'difference between hor and vert unambiguous apparent motion p-value: '
+		unamb_diffs = (np.array(self.pfs[3][-1])[:,1] / np.array(self.pfs[3][-1])[:,-1]) - (np.array(self.pfs[4][-1])[:,1] / np.array(self.pfs[4][-1])[:,-1])
+		print unamb_diffs
+		print sp.stats.ttest_1samp(unamb_diffs, 0)
+		print 'anova:'
+		print sp.stats.f_oneway((np.array(self.pfs[3][-1])[:,1] / np.array(self.pfs[3][-1])[:,-1]), (np.array(self.pfs[4][-1])[:,1] / np.array(self.pfs[4][-1])[:,-1]))
+		
+		print 'difference between hor and vert unambiguous smooth motion motion p-value: '
+		smooth_diffs = (np.array(self.pfs[0][-1])[:,1] / np.array(self.pfs[0][-1])[:,-1]) - (np.array(self.pfs[1][-1])[:,1] / np.array(self.pfs[1][-1])[:,-1])
+		print smooth_diffs
+		print sp.stats.ttest_1samp(smooth_diffs, 0)
+		print 'anova:'
+		print sp.stats.f_oneway((np.array(self.pfs[0][-1])[:,1] / np.array(self.pfs[0][-1])[:,-1]), (np.array(self.pfs[1][-1])[:,1] / np.array(self.pfs[1][-1])[:,-1]))
 		
 		where_ambiguous = self.parameter_data['fake'] == 0
 		nr_trials_per_bin = round(where_ambiguous.sum()/float(nr_bins))
