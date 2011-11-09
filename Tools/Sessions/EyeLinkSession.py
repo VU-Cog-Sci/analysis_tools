@@ -1377,8 +1377,8 @@ class SASession(EyeLinkSession):
 		finds saccades in a session 
 		"""
 		self.logger.debug('importing data from run # ' + str(run_index) + ' for saccade detection')
-		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy')
-		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity_xy')
+		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy', scaling_factor = 10.0)
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity_xy', scaling_factor = 10.0)
 		
 		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
 		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
