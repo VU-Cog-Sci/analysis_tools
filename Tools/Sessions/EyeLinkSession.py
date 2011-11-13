@@ -147,7 +147,7 @@ class EyeLinkSession(object):
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
 	
-	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity', scaling_factor = 1.0):
+	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
@@ -165,22 +165,18 @@ class EyeLinkSession(object):
 		gaze_timestamps = run.gaze_data.read()[:,0] / scaling_factor
 		
 		# select data_type
-		if data_type == 'smoothed_velocity':
-			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,-1] / scaling_factor
-		elif data_type == 'smoothed_velocity_x':
+		if data_type == 'smoothed_velocity_x':
 			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0] / scaling_factor
 		elif data_type == 'smoothed_velocity_y':
 			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1] / scaling_factor
 		elif data_type == 'smoothed_velocity_xy':
 			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]] / scaling_factor
-		elif data_type == 'velocity':
-			all_data_of_requested_type = run.velocity_data.read()[:,-1] / scaling_factor
 		elif data_type == 'velocity_x':
-			all_data_of_requested_type = run.velocity_data.read()[:,0] / scaling_factor
+			all_data_of_requested_type = run.gaze_data.read()[:,[4]] / scaling_factor
 		elif data_type == 'velocity_y':
-			all_data_of_requested_type = run.velocity_data.read()[:,1] / scaling_factor
+			all_data_of_requested_type = run.gaze_data.read()[:,[5]] / scaling_factor
 		elif data_type == 'velocity_xy':
-			all_data_of_requested_type = run.velocity_data.read()[:,[0,1]] / scaling_factor
+			all_data_of_requested_type = run.gaze_data.read()[:,[4,5]] / scaling_factor
 		elif data_type == 'gaze_xy':
 			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]] / scaling_factor
 		elif data_type == 'gaze_x':
@@ -237,7 +233,7 @@ class EyeLinkSession(object):
 		h5f.close()
 		return export_data
 	
-	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 26.365, plot = False):
+	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 33.0, plot = False):
 		"""
 		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 		L determines the threshold - standard set at 5 median-based standard deviations from the median
@@ -1223,7 +1219,7 @@ class SASession(EyeLinkSession):
 	def plot_velocity_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
 		"""create a single - file pdf plotting the normed velocity of the eye position in all trials"""
 		
-		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity')
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'velocity_xy')
 		sacc_data = self.get_EL_events_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'saccades')
 		
 		durations = []
@@ -1342,7 +1338,7 @@ class SASession(EyeLinkSession):
 				s.annotate('Gain of step: ' + str(np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))/np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_endpoint_x'], trial_ps['saccade_endpoint_y']]))), (20,400), va="top", ha="left", size = 6 )
 				s.annotate('Amplitude of actual saccade: ' + str(np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint))) + ' gain: ' + str(np.linalg.norm(np.array(sacc_startpoint)-np.array(sacc_endpoint))/np.linalg.norm(np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']]) - np.array([trial_ps['saccade_target_x'], trial_ps['saccade_target_y']]))), (20,350), va="top", ha="left", size = 6 )
 				s = f.add_subplot(122)
-				s.plot( trial_vel_data[:,0] - trial_vel_data[0,0], trial_vel_data[:,-1], c = colors[i], linewidth = 2.5, alpha = 0.25 ) # np.min([nr_plot_points, trial_vel_data.shape[0]])
+				s.plot( trial_vel_data[:,0] - trial_vel_data[0,0], np.array([np.linalg.norm(tvd) for tvd in trial_vel_data[:,[1,2]]]), c = colors[i], linewidth = 2.5, alpha = 0.25 ) # np.min([nr_plot_points, trial_vel_data.shape[0]])
 					
 				if len(trial_sacc_data) > 0:
 					s.axvline(el_saccade_latency, c = colors[i], alpha = 0.7, linewidth = 1.25)
@@ -1377,21 +1373,31 @@ class SASession(EyeLinkSession):
 		finds saccades in a session 
 		"""
 		self.logger.debug('importing data from run # ' + str(run_index) + ' for saccade detection')
-		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy', scaling_factor = 10.0)
-		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'smoothed_velocity_xy', scaling_factor = 10.0)
+		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy', scaling_factor = 1.0)
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'velocity_xy', scaling_factor = 1.0)
 		
 		self.import_parameters(run_name = self.wildcard + '_run_' + str(run_index))
 		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
+		
+		if plot:
+			from matplotlib.backends.backend_pdf import PdfPages
+			pp = PdfPages(os.path.join(self.base_directory, 'figs', 'saccades' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 		saccades = []
 		for (i, trial_block_vel_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, gaze_data):
 			saccades.append([])
 			for (j, trial_vel_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_gaze_data):
-				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0], pixels_per_degree = self.parameter_data[0]['pixels_per_degree'], plot = plot)
+				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0], pixels_per_degree = 1.0, plot = plot)
 				if saccs.shape[0] > 0:
 					saccades[-1].append(saccs)
 				else:
 					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
+				if plot:
+					pp.savefig()
+					pl.close()
+		
+		if plot:
+			pp.close()
 				
 		self.logger.debug('Detected saccades using velocity algorithm from run # ' + str(run_index))
 		return saccades, gaze_data, vel_data
@@ -1411,7 +1417,7 @@ class SASession(EyeLinkSession):
 		else:
 			return
 	
-	def analyze_saccades_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], plot_saccades = False, which_saccade_detection_procedure = 'el' ):
+	def analyze_saccades_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], plot_saccades = False, which_saccade_detection_procedure = 'el', gain_threshold = 0.6 ):
 		
 		sacs, xy_data, vel_data = self.find_saccades_per_trial_for_run( run_index = run_index, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, plot = plot_saccades )
 		if plot_saccades:
@@ -1434,13 +1440,14 @@ class SASession(EyeLinkSession):
 					ids_gains.append([s_data[0], s_data[1]])
 #			pl.plot(np.asarray(saccade_data[-1])[:,0], np.asarray(saccade_data[-1])[:,1], colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 10 )
 			if which_saccade_detection_procedure == 'el':
-				sufficient_gain = np.asarray(saccade_data[-1])[:,2] > 0.6
+				sufficient_gain = np.asarray(saccade_data[-1])[:,2] > gain_threshold
 				pl.plot(np.asarray(saccade_data[-1])[sufficient_gain,0], np.asarray(saccade_data[-1])[sufficient_gain,2], colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 8 )
 			else:
-				sufficient_gain = np.asarray(saccade_data[-1])[:,1] > 0.6
+				sufficient_gain = np.asarray(saccade_data[-1])[:,1] > gain_threshold
 				pl.plot(np.asarray(saccade_data[-1])[sufficient_gain,0], np.asarray(saccade_data[-1])[sufficient_gain,1], colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 8 )
 		ids_gains = np.array(ids_gains)
-		sufficient_gain = ids_gains[:,1] > 0.6 
+#		import pdb; pdb.set_trace()
+		sufficient_gain = ids_gains[:,1] > gain_threshold
 		smooth_width = 25
 		kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
 		kern = kern / kern.sum()
@@ -1448,7 +1455,7 @@ class SASession(EyeLinkSession):
 		sm_signal = np.convolve( ids_gains[sufficient_gain,1], kern, 'valid' )
 		sm_time = np.convolve( ids_gains[sufficient_gain,0] , kern, 'valid' )
 		pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
-		pl.axis([0, 750, 0.6, 1.2])
+		pl.axis([trial_ranges[0][0], trial_ranges[-1][-1], 0.6, 1.3])
 		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains_2_' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 	
@@ -1516,7 +1523,7 @@ class SASession(EyeLinkSession):
 	
 	def analyze_saccades_for_trial(self, parameters, saccades, parameter_saccades, xy_data, vel_data ):
 		"""
-		Takes alle the data for a given trial, i.e. parameters, eyelink gaze and velocity data, el_saccades and so forth.
+		Takes all the data for a given trial, i.e. parameters, eyelink gaze and velocity data, el_saccades and so forth.
 		Distills the necessary parameters for this trial, such as saccade amplitude and the like.
 		"""
 		sacc = saccades
