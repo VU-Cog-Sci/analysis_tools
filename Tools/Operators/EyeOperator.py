@@ -172,7 +172,8 @@ class EyelinkOperator( EyeOperator ):
 		self.workingString = f.read()
 		f.close()
 		
-		self.workingString = re.sub(re.compile('	*\.+'), '', self.workingString)
+		# optimize this so that it doesn't delete the periods in the float time, for example.
+		self.workingString = re.sub(re.compile('\t*\.\.\.+'), '', self.workingString)
 		os.system('rm -rf ' + self.gazeFile)
 		
 		of = open(self.gazeFile, 'w')
