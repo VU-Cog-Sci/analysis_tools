@@ -1495,13 +1495,13 @@ class SASession(EyeLinkSession):
 #		pl.plot( sm_time, sm_signal, color = 'k', alpha = 0.85, linewidth = 2.75 )
 #		pl.axis([0, 750, 0.0, 0.3])
 #		pl.savefig(os.path.join(self.base_directory, 'figs', 'micro_saccade_gains_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
-		pl.savefig(os.path.join(self.base_directory, 'figs', 'post_sacc_fixation_velocities_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'post_sacc_fixation_velocities_' + str(self.wildcard) + '_run_' + str(run_index) + '.png'))
 #		print ms_data[i][j][1].dtype
 		for i in range(len(ms_data)):
 			for j in range(len(ms_data[i])):
 				if ms_data[i][j][1] != None:
-					print i, j, ms_data[i][j][1]['start_time']
-		print c
+					print i, j, ms_data[i][j][1]['start_time'], ms_data[i][j][1]['peak_velocity'], ms_data[i][j][1]['amplitude'], ms_data[i][j][1]['duration']
+#		print c
 					
 		
 	
