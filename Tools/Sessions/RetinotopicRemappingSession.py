@@ -256,6 +256,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.subplots_adjust(wspace=0.4)
 		plotNr = 1
 		combs = list(combinations(range(len(self.conditionDict)),2))
+		self.logger.debug( str(self.conditionDict) + str(combs) )
 		self.histoResults = np.zeros((len(combs),len(self.maskedConditionData), nrBins, nrBins))
 		for (c,comb) in zip(range(len(combs)), combs):
 			for i in range(len(self.maskedConditionData)):
