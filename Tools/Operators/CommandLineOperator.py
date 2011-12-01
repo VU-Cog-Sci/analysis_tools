@@ -615,9 +615,9 @@ class ParRecConversionOperator( CommandLineOperator ):
 		
 
 class FEATOperator( CommandLineOperator ):
-	"""docstring for FEATOperator"""
+	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'source ~/.bash_profile_fsl ; feat ', **kwargs)
+		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat ', **kwargs)
 		self.featFile = self.inputObject
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
