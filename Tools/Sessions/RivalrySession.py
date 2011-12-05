@@ -620,7 +620,7 @@ class SphereSession(Session):
 		behOps = []
 		for r in self.scanTypeDict['epi_bold']:
 			# do principal analysis, keys vary across dates but taken care of within behavior function
-			thisFileName = self.runFile(stage = 'processed/behavior/', run = self.runList[r], extension = '.txt')
+			thisFileName = self.runFile(stage = 'processed/behavior/', run = self.runList[r], extension = '.dat')
 			bO = SphereBehaviorOperator(thisFileName)
 			behOps.append(bO)
 		self.behOps = behOps
@@ -640,7 +640,7 @@ class SphereSession(Session):
 			self.timepointsPerRun = niiFile.timepoints
 			self.runDuration = self.rtime * self.timepointsPerRun
 			
-			transitionsThisRun = self.behOps[i].buttonEvents[1:-1] # throw away last transitions and first transitions because they correlate with stimulus onset.
+			transitionsThisRun = self.behOps[i].buttonEvents[1:-1].copy() # throw away last transitions and first transitions because they correlate with stimulus onset.
 			transitionsThisRun[:,1] = transitionsThisRun[:,1] + timeOffset
 			
 			onsetsThisRun = [1, timeOffset + 16.0, timeOffset + 16.5]
@@ -658,7 +658,55 @@ class SphereSession(Session):
 		self.logger.debug('gathered behavioral data from all runs')
 		
 		return self.allTransitions, self.allPercepts
-	 
+	
+	def setupFeatEventFiles(self, buffer_time = 16):
+		"""creates event text files for transition events and stim on period"""
+		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
+			thisNiiFile = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'])
+			thisEvtFile = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'evt'], extension = '.txt')
+			thisOoFile = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'onoff'], extension = '.txt')
+			
+			niiFile = NiftiImage(thisNiiFile)
+			runDuration = niiFile.rtime * niiFile.timepoints
+			
+			onsets = self.behOps[i].buttonEvents[1:-1,1]
+			fsfEvtData = np.array([[o, 0.5, 1] for o in onsets])
+			fsfOoData = np.array([[buffer_time, runDuration-buffer_time, 1]])
+			
+			np.savetxt(thisEvtFile, fsfEvtData, fmt = '%3.2f', delimiter = '\t')
+			np.savetxt(thisOoFile, fsfOoData, fmt = '%3.2f', delimiter = '\t')
+		
+	def runTransitionFeats(self):
+		# remove previous feat directories
+		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
+			try:
+				self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'], extension = '.feat'))
+				os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'], extension = '.feat'))
+				os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'], extension = '.fsf'))
+			except OSError:
+				pass
+				
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
+			runDuration = niiFile.rtime * niiFile.timepoints
+			# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+			thisFeatFile = '/Volumes/7.2_DD/7T/analysis/trans_onoff_one_run.fsf'
+			REDict = {
+			'---TR---': 			str(niiFile.rtime),
+			'---NR_FRAMES---': 		str(niiFile.timepoints),
+			'---NII_FILE---': 		self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']), 
+			'---ONOFF_FILE---': 	self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'onoff'], extension = '.txt'), 
+			'---TRANS_FILE---': 	self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'evt'], extension = '.txt')
+			}
+			featFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '.fsf')
+			featOp = FEATOperator(inputObject = thisFeatFile)
+			if i == range(len(self.scanTypeDict['epi_bold']))[-1]:
+				featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+			else:
+				featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+			self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+			# run feat
+			featOp.execute()
+	
 	def deconvolveEventsFromRoi(self, roi, color = 'k', mask = '_visual'):
 		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
 		self.logger.info('starting deconvolution for roi %s', roi)
