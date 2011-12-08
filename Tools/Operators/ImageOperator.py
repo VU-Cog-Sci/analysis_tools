@@ -197,11 +197,11 @@ class PercentSignalChangeOperator(ImageOperator):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = self.inputObject.filename[:-7] + '_PSC.nii.gz'
+			self.outputFileName = self.inputObject.filename[:-7] + '_psc.nii.gz'
 	
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
-		pscData = 100.0 * (self.inputObject.data / meanImage)
+		pscData = (100.0 * (self.inputObject.data / meanImage)) - 100.0
 		outputFile = NiftiImage(pscData.astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
 		

@@ -35,7 +35,6 @@ class Run(object):
 		if not hasattr(self, 'condition'):
 			self.condition = ''
 		
-
 		if hasattr(self, 'rawDataFilePath'):
 			if os.path.isfile(self.rawDataFilePath)			:
 				self.dateTime = os.path.getctime(self.rawDataFilePath)

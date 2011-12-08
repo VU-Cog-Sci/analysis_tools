@@ -351,21 +351,26 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 			
-	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}):#, 'percentsignalchange'
+	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf']):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
 		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel
-			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf'] ))
+			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = funcPostFix ))
 			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
 				if op == 'highpass':
 					ifO = FSLMathsOperator(funcFile)
 					ifO.configureHPF(nr_samples_hp = filterFreqs['highpass'] )
 		#			ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
 		#			ifO.configure(frequency = filterFreqs['highpass'])
-					ifO.execute()
+					if not self.parallelize:
+						ifO.execute()
+					else:
+						if r == self.scanTypeDict['epi_bold'][0]:
+							ifs = []
+						ifs.append(ifO)
 					funcFile = NiftiImage(ifO.outputFileName)
 				if op == 'lowpass':
 					ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
@@ -378,8 +383,18 @@ class Session(PathConstructor):
 					funcFile = NiftiImage(pscO.outputFileName)
 				if op == 'zscore':
 					zscO = ZScoreOperator(funcFile)
-					zscO.execute()
+					# zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
+		if self.parallelize and 'highpass' in operations:
+			# tryout parallel implementation - later, this should be abstracted out of course. 
+			ppservers = ()
+			job_server = pp.Server(ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+			ppResults = [job_server.submit(ExecCommandLine,(ifO.runcmd,),(),('subprocess','tempfile',)) for ifO in ifs]
+			for ifOf in ppResults:
+				ifOf()
+
+			job_server.print_stats()
 		
 	
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2005s'):
