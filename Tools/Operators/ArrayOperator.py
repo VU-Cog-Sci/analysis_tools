@@ -15,6 +15,7 @@ try:
 except ValueError:
 	import scipy.stats as stats
 
+from math import *
 
 
 class ArrayOperator(Operator):
@@ -68,7 +69,7 @@ class DeconvolutionOperator(EventDataOperator):
 		self.deconvolutionInterval = deconvolutionInterval
 		
 		self.ratio = TR / deconvolutionSampleDuration
-		self.nrSamplesInInterval = self.deconvolutionInterval / deconvolutionSampleDuration
+		self.nrSamplesInInterval = floor(self.deconvolutionInterval / deconvolutionSampleDuration)
 		
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()
@@ -154,15 +155,7 @@ class EventRelatedAverageOperator(EventDataOperator):
 		self.averagingIntervals = np.array([[t, t + binWidth] for t in np.arange(self.interval[0], self.interval[1] - binWidth, stepSize)])
 		self.output = np.array([self.averageEventsInTimeInterval(i) for i in self.averagingIntervals])
 		return self.output
-	
 
-		# for decoding we need the following:
-		from shogun.Features import SparseRealFeatures, RealFeatures, Labels
-		from shogun.Kernel import GaussianKernel
-		from shogun.Classifier import LibSVM
-		from shogun.Classifier import SVMLin
-		
-		
 from shogun.Features import SparseRealFeatures, RealFeatures, Labels
 from shogun.Kernel import GaussianKernel, LinearKernel, AvgDiagKernelNormalizer
 from shogun.Classifier import LibSVM
