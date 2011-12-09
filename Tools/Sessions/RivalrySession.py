@@ -1032,24 +1032,6 @@ class SphereSession(Session):
 		autolabel(rects1)
 		autolabel(rects2)
 	
-	def takePhaseSurfacesToFuncSpace(self, folder = '', fn = 'eccen'):
-		for hemi in ['lh','rh']:
-			stvO = SurfToVolOperator(os.path.join(folder, 'phase-' + hemi + '.w'))
-			stvO.configure(
-							templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), 
-							register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), 
-							fsSubject = self.subject.standardFSID, 
-							outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz'),
-							hemispheres = [hemi]
-							)
-			stvO.execute()
-		# join eccen files
-		phaseData = np.array([NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).data, NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-rh.nii.gz')).data]).sum(axis = 0)
-		newImage = NiftiImage(phaseData)
-		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
-		newImage.save()
-	
-	
 	def eccenMapDecoding(self, areas = [['V1','V2v','V2d','V3v','V3d'],['V3A','V3B','V7?','MT'],['V4','LO1','LO2','fusiform','parahippocampal','inferiortemporal'],['superiorparietal','inferiorparietal','supramarginal','precuneus']]):#,'V3A',['inferiorparietal','superiorparietal'], ,'V3A','V4',['inferiortemporal','fusiform','parahippocampal'], 'V1',['V2v','V2d'],['V3v','V3d'],
 	# ['V1',['V2v','V2d'],['V3v','V3d'],['V3A','V3B','V7?'],'V4',['LO1','LO2'],'MT',['superiorparietal','inferiorparietal','supramarginal','precuneus']]
 		eccenFile = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , 'eccen.nii.gz'))
