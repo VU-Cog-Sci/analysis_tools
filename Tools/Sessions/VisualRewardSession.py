@@ -452,7 +452,79 @@ class VisualRewardSession(Session):
 	
 
 
-
-
-
-
+	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], plot = True):
+		"""
+		correlates two types of data from regions of interest with one another, but more generally than the other function. 
+		This function allows you to specify from what file and what type of stat you are going to correlate with one another.
+		Specifically, the data_pairs argument is a list of two-item lists which specify the to be correlated stats
+		"""
+		from scipy import stats
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		corrs = np.zeros((len(rois), len(data_pairs)))
+		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
+		if reward_h5file != None:
+			# there was a file and it has data in it
+			if plot:	
+				fig = pl.figure(figsize = (len(rois)*3, 3))
+			for roi in rois:
+				if plot: 
+					s = fig.add_subplot(1, len(rois), rois.index(roi) + 1)
+					s.set_title(roi, fontsize=9)
+				for i in range(len(data_pairs)):
+					if data_pairs[i][0][0] == 'mapper':
+						cope1 = self.roi_data_from_hdf(mapper_h5file, run, roi, data_pairs[i][0][1])
+					elif data_pairs[i][0][0] == 'reward':
+						cope1 = self.roi_data_from_hdf(reward_h5file, run, roi, data_pairs[i][0][1])
+					
+					if data_pairs[i][1][0] == 'mapper':
+						cope2 = self.roi_data_from_hdf(mapper_h5file, run, roi, data_pairs[i][1][1])
+					elif data_pairs[i][1][0] == 'reward':
+						cope2 = self.roi_data_from_hdf(reward_h5file, run, roi, data_pairs[i][1][1])
+					if cope1 != None and cope2 != None:
+						if plot:
+							pl.plot(cope1[:,0], cope2[:,0], marker = 'o', ms = 3, mec = 'w', c = colors[i], mew = 0.5, alpha = 0.75, linewidth = 0) # , alpha = 0.25
+							s.set_xlabel('-'.join(data_pairs[i][0]), fontsize=9)
+							if rois.index(roi) == 0:
+								s.set_ylabel('-'.join(data_pairs[i][1]), fontsize=9)
+						srs = stats.spearmanr(cope1, cope2)
+						corrs[rois.index(roi), i] = srs[0]
+					else:
+						self.logger.info('No data to correlate for ' + str(data_pairs[i]) + ' ' + str(roi))
+		if plot:
+			pl.draw()
+			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'scatter_' + str(run.ID) + '.pdf')
+			pl.savefig(pdf_file_name)
+		reward_h5file.close()
+		mapper_h5file.close()
+		return corrs
+	
+	def correlate_data(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], scatter_plots = False):
+		"""
+		correlate reward run cope values with one another from all reward runs separately.
+		"""
+		all_corrs = []
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			all_corrs.append(self.correlate_data_from_run(run = r, rois = rois, data_pairs = data_pairs, plot = scatter_plots))
+			
+		cs = np.array(all_corrs)
+		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
+		
+		fig = pl.figure(figsize = (4, len(rois)*1.5))
+		pl.subplots_adjust(hspace=0.4, wspace=0.4)
+		for roi in rois:
+			s = fig.add_subplot(len(rois), 1, rois.index(roi) + 1)
+			s.grid()
+			for i in range(cs.shape[-1]):
+				pl.plot(np.arange(6), cs[:,rois.index(roi),i], colors[i], linewidth = 2.5, alpha = 0.75)
+			s.set_title(roi, fontsize=9)
+			if rois.index(roi) == len(rois)-1:
+				s.set_xlabel('run number', fontsize=9)
+			if rois.index(roi) == 3:
+				s.set_ylabel('spearman $R$', fontsize=9)
+			s.axis([-0.25,5.35,-1,1])
+			# designate bad runs:
+			s.axvspan(3.75, 4.25, facecolor='y', alpha=0.25, edgecolor = 'w')
+			s.axvspan(1.75, 2.25, facecolor='y', alpha=0.25, edgecolor = 'w')
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spearman_rho_over_runs.pdf'))
+		return all_corrs
