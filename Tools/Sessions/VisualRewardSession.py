@@ -302,8 +302,7 @@ class VisualRewardSession(Session):
 					corrs[rois.index(roi), 1] = srs[1][0]
 		if plot:
 			pl.draw()
-			pdf_file = self.runFile(stage = 'processed/mri', run = run, postFix = ['scatter'], extension = '.pdf')
-			pdf_file_name = os.path.join(os.path.split(pdf_file)[0], 'figs', os.path.split(pdf_file)[1])
+			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), str(run.ID) +  '_'.join(copes) + '.pdf')
 			pl.savefig(pdf_file_name)
 		reward_h5file.close()
 		mapper_h5file.close()
@@ -350,8 +349,8 @@ class VisualRewardSession(Session):
 		pl.ylabel('Spearman correlation')
 		pl.xticks(np.arange(len(rois))+width, rois )
 		s.set_xlim(-0.5, meancs.shape[0]+2.5)
-		pl.legend( (rects1[0], rects2[0]), ('Visual', 'Reward') )
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spearman_rho_bar_over_runs.pdf'))
+		pl.legend( (rects1[0], rects2[0]), tuple(copes) )
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spearman_rho_bar_over_runs' + '_'.join(copes) + '.pdf'))
 		
 		# average across runs - but take out runs with lower confidence
 		meancs = cs[[0,1,3,5]].mean(axis = 0)
@@ -366,8 +365,8 @@ class VisualRewardSession(Session):
 		pl.ylabel('Spearman correlation')
 		pl.xticks(np.arange(len(rois))+width, rois )
 		s.set_xlim(-0.5, meancs.shape[0]+2.5)
-		pl.legend( (rects1[0], rects2[0]), ('Visual', 'Reward') )
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spearman_rho_bar_over_runs_high_conf.pdf'))
+		pl.legend( (rects1[0], rects2[0]), tuple(copes) )
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spearman_rho_bar_over_runs_high_conf' + '_'.join(copes) + '.pdf'))
 		
 		return all_corrs
 	
@@ -423,10 +422,10 @@ class VisualRewardSession(Session):
 		else:
 			interval = [-1.5,15.0]
 			zero_timesignals = eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[0], interval = interval)
-			zero_time_signal = eraO.run(binWidth = 3.0, stepSize = 0.75)
+			zero_time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
 			for i in range(1, event_data.shape[0]):
 				eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[i], interval = interval)
-				time_signal = eraO.run(binWidth = 3.0, stepSize = 0.75)
+				time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
 				pl.plot(time_signal[:,0], time_signal[:,1] - time_signal[time_signal[:,0] == 0,1] - zero_time_signal[:,1], ['r','r','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i]) #  - time_signal[time_signal[:,0] == 0,1]
 			s.set_title('event-related average' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
@@ -443,14 +442,14 @@ class VisualRewardSession(Session):
 		mapper_h5file.close()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'all_deconv_' + roi + '_' + mask_type + '_' + analysis_type + '.pdf'))
 		pl.show()
-
+	
 	def deconvolve(self, threshold = 4.0, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], analysis_type = 'deconvolution'):
 		for roi in rois:
 			self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos')
 			self.deconvolve_roi(roi, -threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			self.deconvolve_roi(roi, threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'pos')
 			self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
-
+	
 
 
 
