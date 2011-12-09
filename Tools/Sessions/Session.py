@@ -594,4 +594,22 @@ class Session(PathConstructor):
 		final_flO.configureApply(concatenatedRegistrationFileName, outputFileName = registeredToSessionStatMaskName)
 		if not os.path.isfile(final_flO.outputFileName) or force_final:
 			final_flO.execute()
-		
+	
+	def takePhaseSurfacesToFuncSpace(self, folder = '', fn = 'eccen'):
+		for hemi in ['lh','rh']:
+			stvO = SurfToVolOperator(os.path.join(folder, 'phase-' + hemi + '.w'))
+			stvO.configure(
+							templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), 
+							register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), 
+							fsSubject = self.subject.standardFSID, 
+							outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz'),
+							hemispheres = [hemi]
+							)
+			stvO.execute()
+		# join eccen files
+		phaseData = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).data + NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-rh.nii.gz')).data
+		newImage = NiftiImage(phaseData)
+		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
+		newImage.save()
+
+	
