@@ -224,12 +224,14 @@ class Session(PathConstructor):
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = False, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label'):
+	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = False, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
 		motion correct it and mean the motion corrected first epi_bold to serve as the target for the registration.
 		the contrast argument indicates the contrast of the reference image in epi_bold space that is to be registered.
+		Then we may choose to run flirt on the epi-bold (recommended against) or run flirt on the fs segmented brain file in the
+		subject's fs folder, which we recommend. 
 		"""
 		self.logger.info('register files')
 		# setup what to register to
@@ -260,7 +262,7 @@ class Session(PathConstructor):
 				mcFirst.execute()
 				#  and average it over time. 
 				fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ) )
-				# in principle taking the temporal mean in superfluous (done by mcflirt too) but oh well
+				# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
 				fslM.configureTMean()
 				fslM.execute()		
 			
@@ -277,13 +279,21 @@ class Session(PathConstructor):
 				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
 				bbR.execute()
 				# after registration, see bbregister log file for reg check
-					
+			
 			if flirt:
-				# actual registration - Flirt to MNI brain
-				flR = FlirtOperator( self.referenceFunctionalFileName )
-				flR.configureRun( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mat' ) )
-				flR.execute()
-				invFlR = InvertFlirtOperator(self.runFile(stage = 'processed/mri/reg', base = 'flirt', postFix = [self.ID], extension = '.mat' ))
+				# Flirt the freesurfer segmented brain to MNI brain
+				os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz'))
+				flRT1 = FlirtOperator( os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz')  )
+				flRT1.configureRun( transformMatrixFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.nii.gz') )
+				flRT1.execute()
+				
+			if MNI:
+				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+				cfO = ConcatFlirtOperator(bbR.flirtOutputFileName)
+				cfO.configure(secondInputFile = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'MNI'], extension = '.mat' ))
+				cfO.execute()
+				invFlR = InvertFlirtOperator(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'MNI'], extension = '.mat' ))
 				invFlR.configure()
 				invFlR.execute()
 				
@@ -350,7 +360,7 @@ class Session(PathConstructor):
 				fMcf()
 			
 			job_server.print_stats()
-			
+	
 	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf']):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
