@@ -59,7 +59,11 @@ class VisualRewardSession(Session):
 			blank_silence_trials = -(visual_trials + sound_trials)
 			blank_sound_trials = (-visual_trials) * sound_trials
 			
+			# print condition_labels
+			# print 'sound'
 			# print elO.parameter_data[visual_sound_trials]['sound'], elO.parameter_data[visual_silence_trials]['sound'],elO.parameter_data[blank_silence_trials]['sound'], elO.parameter_data[blank_sound_trials]['sound']
+			# print 'contrast'
+			# print elO.parameter_data[visual_sound_trials]['contrast'], elO.parameter_data[visual_silence_trials]['contrast'],elO.parameter_data[blank_silence_trials]['contrast'], elO.parameter_data[blank_sound_trials]['contrast']
 			
 			for (cond, label) in zip([visual_sound_trials, visual_silence_trials, blank_silence_trials, blank_sound_trials], condition_labels):
 				try:
@@ -190,10 +194,10 @@ class VisualRewardSession(Session):
 								'reward_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
 								
 								'blinks': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
-								'blank_silence': os.path.join(this_feat, 'stats', 'pe2.nii.gz'),
-								'blank_sound': os.path.join(this_feat, 'stats', 'pe3.nii.gz'),
-								'visual_silence': os.path.join(this_feat, 'stats', 'pe4.nii.gz'),
-								'visual_sound': os.path.join(this_feat, 'stats', 'pe5.nii.gz'),
+								'blank_silence': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+								'blank_sound': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+								'visual_silence': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+								'visual_sound': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
 								
 								'fix_reward_silence': os.path.join(this_feat, 'stats', 'cope7.nii.gz'),
 								'visual_reward_silence': os.path.join(this_feat, 'stats', 'cope8.nii.gz'),
@@ -226,7 +230,7 @@ class VisualRewardSession(Session):
 			# general info we want in all hdf files
 			stat_files.update({
 								'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
-								'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']),
+								'input_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final two, we need to pre-setup the retinotopic mapping data
 								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
 								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
@@ -449,11 +453,11 @@ class VisualRewardSession(Session):
 			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
-			interval = [-1.5,10.5]
+			interval = [-1.5,16.5]
 			# zero_timesignals = eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[0], interval = interval)
 			# zero_time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
 			for i in range(event_data.shape[0]):
-				eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[i], interval = interval)
+				eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[i], TR = tr, interval = interval)
 				time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
 				pl.plot(time_signal[:,0], time_signal[:,1] - time_signal[time_signal[:,0] == 0,1], ['r','r','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 			s.set_title('event-related average' + roi + ' ' + mask_type + ' ' + analysis_type)
@@ -473,7 +477,7 @@ class VisualRewardSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/er/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
 		pl.show()
 	
-	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], analysis_type = 'deconvolution'):
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], analysis_type = 'deconvolution'):
 		for roi in rois:
 			self.deconvolve_roi(roi, threshold, mask_type = 'center_surround_Z', analysis_type = analysis_type, mask_direction = 'pos')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')

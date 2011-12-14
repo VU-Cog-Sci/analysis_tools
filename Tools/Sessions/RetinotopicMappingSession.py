@@ -218,6 +218,6 @@ class RetinotopicMappingSession(Session):
 			}
 			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
 			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition.replace('/', '_') + '.tcl')
-			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = True )
+			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = False )
 			# run 
 			rmtOp.execute()
