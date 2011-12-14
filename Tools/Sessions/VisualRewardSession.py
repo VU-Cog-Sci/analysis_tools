@@ -256,7 +256,7 @@ class VisualRewardSession(Session):
 			self.logger.info('no table file ' + self.hdf5_filename + 'found for stat mask')
 			return None
 		else:
-			self.logger.info('opening table file ' + self.hdf5_filename)
+			# self.logger.info('opening table file ' + self.hdf5_filename)
 			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
 		return h5file
 	
@@ -268,7 +268,7 @@ class VisualRewardSession(Session):
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
 			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-			self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
 			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
 				if len(roi_name._v_name.split('.')) > 1:
@@ -363,12 +363,14 @@ class VisualRewardSession(Session):
 		s = fig.add_subplot(111)
 		width = 0.35
 		pl.plot([-1, 10], [0,0], 'k', linewidth = 0.5)
-		rects1 = pl.bar(np.arange(meancs.shape[0]), height = meancs[:,0], width = width, yerr = sdcs[:,0], color='g', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5))
-		rects2 = pl.bar(np.arange(meancs.shape[0])+width, height = meancs[:,1], width = width, yerr = sdcs[:,1], color='r', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5))
+		rects1 = pl.bar(np.arange(meancs.shape[0]), height = meancs[:,0], width = width, yerr = sdcs[:,0], color='g', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5), capsize = 0)
+		rects2 = pl.bar(np.arange(meancs.shape[0])+width, height = meancs[:,1], width = width, yerr = sdcs[:,1], color='r', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5), capsize = 0)
 		pl.ylabel('Spearman correlation')
 		pl.xticks(np.arange(len(rois))+width, rois )
 		s.set_xlim(-0.5, meancs.shape[0]+2.5)
-		pl.legend( (rects1[0], rects2[0]), tuple(copes) )
+		leg = pl.legend( (rects1[0], rects2[0]), tuple(copes), fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'cope_spearman_rho_bar_over_runs' + '_'.join(copes) + '.pdf'))
 		
 		# average across runs - but take out runs with lower confidence
@@ -379,12 +381,13 @@ class VisualRewardSession(Session):
 		s = fig.add_subplot(111)
 		width = 0.35
 		pl.plot([-1, 10], [0,0], 'k', linewidth = 0.5)
-		rects1 = pl.bar(np.arange(meancs.shape[0]), height = meancs[:,0], width = width, yerr = sdcs[:,0], color='g', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5))
-		rects2 = pl.bar(np.arange(meancs.shape[0])+width, height = meancs[:,1], width = width, yerr = sdcs[:,1], color='r', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5))
+		rects1 = pl.bar(np.arange(meancs.shape[0]), height = meancs[:,0], width = width, yerr = sdcs[:,0], color='g', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5), capsize = 0)
+		rects2 = pl.bar(np.arange(meancs.shape[0])+width, height = meancs[:,1], width = width, yerr = sdcs[:,1], color='r', alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 2.5, ecolor = (0.5, 0.5, 0.5), capsize = 0)
 		pl.ylabel('Spearman correlation')
 		pl.xticks(np.arange(len(rois))+width, rois )
 		s.set_xlim(-0.5, meancs.shape[0]+2.5)
-		pl.legend( (rects1[0], rects2[0]), tuple(copes) )
+		pl.legend( (rects1[0], rects2[0]), tuple(copes), fancybox = True)
+		leg.get_frame().set_alpha(0.5)
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'cope_spearman_rho_bar_over_runs_high_conf' + '_'.join(copes) + '.pdf'))
 		
 		return all_corrs
@@ -456,8 +459,9 @@ class VisualRewardSession(Session):
 			s.set_title('event-related average' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		s.set_xlabel('time [s]')
-		s.set_ylabel('percent signal change')
-		leg = s.legend()
+		# s.set_ylabel('percent signal change')
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
 		if leg:
 			for t in leg.get_texts():
 			    t.set_fontsize('small')    # the legend text fontsize
@@ -489,44 +493,55 @@ class VisualRewardSession(Session):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
-		roi_data = np.zeros((len(stats_types), len(self.conditionDict['reward']), mapping_mask.sum()))
+		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'input_data')
+		
+		roi_data = np.zeros((len(stats_types), len(self.conditionDict['reward']), int(mapping_mask.sum())))
 		for i, stat in enumerate(stats_types):
 			for j, r in enumerate([self.runList[rew] for rew in self.conditionDict['reward']]):
-				roi_data[i,j,:] = self.roi_data_from_hdf(reward_h5file, r, roi, stat)[mapping_mask]
+				rd = self.roi_data_from_hdf(reward_h5file, r, roi, stat).ravel()
+				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'input_data').mean(axis = 1).ravel()
+				roi_data[i,j] = rd[mapping_mask] / sd[mapping_mask]
 		
 		reward_h5file.close()
 		mapper_h5file.close()
 		
 		return roi_data
 		
-	def mean_stats(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], threshold = 3.5, mask_type = 'center_surround_Z', stats_types = ['blank_silence', 'blank_sound', 'visual_silence', 'visual_sound'], mask_direction = 'pos' ):
+	def mean_stats(self, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], threshold = 2.3, mask_type = 'center_Z', stats_types = ['blank_silence', 'blank_sound', 'visual_silence', 'visual_sound'], mask_direction = 'pos' ):
 		"""docstring for mean_stats"""
 		res = []
 		for roi in rois:
 			res.append(self.mean_stats_for_roi(roi, threshold = threshold, mask_type = mask_type, stats_types = stats_types, mask_direction = mask_direction))
-		res = np.array(res)
-		mean_res = res.mean(axis = 2)
-		std_res = 1.96 * res.std(axis = 2) / sqrt(len(self.conditionDict['reward']))
+		# res = np.array(res)
+		
+		diff_res = []
+		for d in res:
+			# over rois
+			dr = (d[1:,:,:] - d[0,:,:]).mean(axis = 2)
+			diff_res.append([dr.mean(axis = 1), 1.96 * dr.std(axis = 1) / sqrt(dr.shape[1])])
+		
+		diff_res = np.array(diff_res)
 		
 		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
 		
 		fig = pl.figure(figsize = (12, 4))
 		pl.subplots_adjust(left = 0.05, right = 0.97)
 		s = fig.add_subplot(111)
-		width = 1.0 / (mean_res.shape[1] + 1)
+		width = 1.0 / (diff_res.shape[1] + 2)
 		pl.plot([-1, len(rois) + 1.0], [0,0], 'k', linewidth = 0.5)
 		rects = []
-		for i in range(mean_res.shape[1]):
-			rects.append(pl.bar(np.arange(mean_res.shape[0])+(i*+width), height = mean_res[:,i], width = width, yerr = std_res[:,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5)))
-		pl.ylabel('Spearman correlation')
+		for i in range(diff_res.shape[2]):
+			rects.append(pl.bar(np.arange(diff_res.shape[0])+(i*+width), height = diff_res[:,0,i], width = width, yerr = diff_res[:,1,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5), capsize = 0))
+		pl.ylabel('beta [a.u.]')
 		pl.xticks(np.arange(len(rois))+width, rois )
-		s.set_xlim(-0.5, mean_res.shape[0]+4.5)
-		leg = pl.legend( tuple([r[0] for r in rects]), tuple(stats_types[:]) )
+		s.set_xlim(-0.5, diff_res.shape[0]+.5)
+		leg = pl.legend( tuple([r[0] for r in rects]), tuple([st.replace('sound', 'reward').replace('blank','fix') for st in stats_types[1:]]), fancybox = True)
+		leg.get_frame().set_alpha(0.5)
 		if leg:
 			for t in leg.get_texts():
-			    t.set_fontsize(6)    # the legend text fontsize
+			    t.set_fontsize(9)    # the legend text fontsize
 			for l in leg.get_lines():
-			    l.set_linewidth(1.5)  # the legend line width
+			    l.set_linewidth(2.5)  # the legend line width
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'betas.pdf'))
 		
 		return res
@@ -545,7 +560,7 @@ class VisualRewardSession(Session):
 		if reward_h5file != None:
 			# there was a file and it has data in it
 			if plot:	
-				fig = pl.figure(figsize = (len(rois)*3, 3))
+				fig = pl.figure(figsize = (len(rois)*4, 3))
 			for roi in rois:
 				if plot: 
 					s = fig.add_subplot(1, len(rois), rois.index(roi) + 1)
@@ -563,7 +578,10 @@ class VisualRewardSession(Session):
 					
 					if cope1 != None and cope2 != None:
 						if plot:
-							pl.plot(cope1[:,0], cope2[:,0], marker = 'o', ms = 3, mec = 'w', c = colors[i], mew = 0.5, alpha = 0.25, linewidth = 0) # , alpha = 0.25
+							(ar,br)=polyfit(cope1[:,0], cope2[:,0], 1)
+							xr=polyval([ar,br],cope1[:,0])
+							pl.plot(cope1[:,0], xr, colors[i] + '-', alpha = 0.25, linewidth = 1.5)
+							pl.plot(cope1[:,0], cope2[:,0], marker = 'o', ms = 3, mec = 'w', c = colors[i], mew = 0.5, alpha = 0.125, linewidth = 0) # , alpha = 0.25
 							s.set_xlabel('-'.join(data_pairs[i][0]), fontsize=9)
 							if rois.index(roi) == 0:
 								s.set_ylabel('-'.join(data_pairs[i][1]), fontsize=9)
@@ -620,17 +638,81 @@ class VisualRewardSession(Session):
 		pl.plot([-1, len(rois) + 1.0], [0,0], 'k', linewidth = 0.5)
 		rects = []
 		for i in range(meancs.shape[1]):
-			rects.append(pl.bar(np.arange(meancs.shape[0])+(i*+width), height = meancs[:,i], width = width, yerr = sdcs[:,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5)))
+			rects.append(pl.bar(np.arange(meancs.shape[0])+(i*+width), height = meancs[:,i], width = width, yerr = sdcs[:,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5), capsize = 0))
 		pl.ylabel('Spearman correlation')
 		pl.xticks(np.arange(len(rois))+width, rois )
-		s.set_xlim(-0.5, meancs.shape[0]+4.5)
-		leg = pl.legend( tuple([r[0] for r in rects]), tuple(comparison_names) )
+		s.set_xlim(-0.5, meancs.shape[0]+2.5)
+		leg = pl.legend( tuple([r[0] for r in rects]), tuple(comparison_names), fancybox = True)
+		leg.get_frame().set_alpha(0.5)
 		if leg:
 			for t in leg.get_texts():
-			    t.set_fontsize(6)    # the legend text fontsize
+			    t.set_fontsize(9)    # the legend text fontsize
 			for l in leg.get_lines():
 			    l.set_linewidth(1.5)  # the legend line width
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_bar_over_runs.pdf'))
 		
 		return all_corrs
 	
+	def histogram_data_from_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', stats_types = ['visual_reward_fix_reward','visual_silence_fix_silence'], mask_direction = 'pos'):
+		"""docstring for mean_stats"""
+		"""docstring for mean_stats_for_roi"""
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		
+		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'input_data')
+		
+		roi_data = np.zeros((len(stats_types), len(self.conditionDict['reward']), int(mapping_mask.sum())))
+		for i, stat in enumerate(stats_types):
+			for j, r in enumerate([self.runList[rew] for rew in self.conditionDict['reward']]):
+				rd = self.roi_data_from_hdf(reward_h5file, r, roi, stat).ravel()
+				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'input_data').mean(axis = 1).ravel()
+				roi_data[i,j] = rd[mapping_mask] / sd[mapping_mask]
+		
+		reward_h5file.close()
+		mapper_h5file.close()
+		
+		return roi_data
+	
+	def histogram(self, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], threshold = 3.5, mask_type = 'center_surround_Z', stats_types = ['visual_reward_fix_reward','visual_silence_fix_silence'], mask_direction = 'pos'):
+		"""docstring for mean_stats"""
+		res = []
+		for roi in rois:
+			res.append(self.histogram_data_from_roi(roi, threshold = threshold, mask_type = mask_type, stats_types = stats_types, mask_direction = mask_direction))
+		# res = np.array(res)
+		
+		diff_res = []
+		for d in res:
+			# over rois
+			diff_res.append(d[0] - d[1])
+		
+		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
+		
+		fig = pl.figure(figsize = (15, 8))
+		pl.subplots_adjust(left = 0.05, right = 0.97, hspace=0.4, wspace=0.4)
+		for i, roi_data in enumerate(diff_res):
+			for j, run_roi_data in enumerate(roi_data):
+				s = fig.add_subplot(len(rois), roi_data.shape[0], j+1 + roi_data.shape[0]*i)
+				s.axvspan(-0.000001, 0.000001, facecolor='k', alpha=1.0, edgecolor = 'k')
+				pl.hist(run_roi_data, bins = 20, alpha = 0.5, range = [-0.25, 0.25], normed = True, histtype = 'stepfilled', color = colors[i], linewidth = 2.0 )
+				wilc = sp.stats.wilcoxon(run_roi_data)
+				s.set_title(rois[i] + ' run ' + str(j+1))
+				s.set_xlim([-0.25, 0.25])
+				pl.text(-0.2,2,'p-value: ' + '%1.4f'%wilc[1])
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'beta_histograms_' + '-'.join(stats_types) + '.pdf'))
+		pl.draw()
+		return diff_res
+		
+	
+	
+	
+
+
+
