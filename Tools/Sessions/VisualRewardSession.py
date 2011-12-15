@@ -230,7 +230,8 @@ class VisualRewardSession(Session):
 			# general info we want in all hdf files
 			stat_files.update({
 								'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
-								'input_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final two, we need to pre-setup the retinotopic mapping data
 								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
 								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
@@ -408,6 +409,7 @@ class VisualRewardSession(Session):
 		run_duration = tr * nr_trs
 		
 		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
 		
 		reward_h5file = self.hdf5_file('reward')
 		mapper_h5file = self.hdf5_file('mapper')
@@ -416,7 +418,7 @@ class VisualRewardSession(Session):
 		roi_data = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'input_data'))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
 			this_run_events = []
 			for cond in conds:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -443,27 +445,60 @@ class VisualRewardSession(Session):
 		
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
-		fig = pl.figure(figsize = (7, 3))
-		s = fig.add_subplot(111)
+		fig = pl.figure(figsize = (9, 5))
+		s = fig.add_subplot(211)
+		s.axhline(0, -10, 30, linewidth = 0.25)
 		
 		if analysis_type == 'deconvolution':
 			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = 12.0)
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-				pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['r','r','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i])
+				pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
-			interval = [-1.5,16.5]
+			interval = [-3.0,19.5]
 			# zero_timesignals = eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[0], interval = interval)
 			# zero_time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
+			time_signals = []
 			for i in range(event_data.shape[0]):
 				eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[i], TR = tr, interval = interval)
 				time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
-				pl.plot(time_signal[:,0], time_signal[:,1] - time_signal[time_signal[:,0] == 0,1], ['r','r','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
-			s.set_title('event-related average' + roi + ' ' + mask_type + ' ' + analysis_type)
+				zero_zero_means = time_signal[:,1] - time_signal[time_signal[:,0] == 0,1]
+				s.fill_between(time_signal[:,0], zero_zero_means + time_signal[:,2]/np.sqrt(time_signal[:,3]), zero_zero_means - time_signal[:,2]/np.sqrt(time_signal[:,3]), color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
+				pl.plot(time_signal[:,0], zero_zero_means, ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+				time_signals.append(zero_zero_means)
+			s.set_title('event-related average ' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		s.set_xlabel('time [s]')
-		# s.set_ylabel('percent signal change')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		s = fig.add_subplot(212)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		
+		if analysis_type == 'deconvolution':
+			# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = 12.0)
+			# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
+			# 	pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i])
+			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
+		
+		else:
+			time_signals = np.array(time_signals)
+			for i in range(0, event_data.shape[0], 2):
+				ts_diff = -(time_signals[i] - time_signals[i+1])
+				pl.plot(time_signal[:,0], ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+			s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('$\Delta$ % signal change')
+		s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
 		leg = s.legend(fancybox = True)
 		leg.get_frame().set_alpha(0.5)
 		if leg:
@@ -474,8 +509,9 @@ class VisualRewardSession(Session):
 			
 		reward_h5file.close()
 		mapper_h5file.close()
+		
+		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/er/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
-		pl.show()
 	
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], analysis_type = 'deconvolution'):
 		for roi in rois:
@@ -497,13 +533,13 @@ class VisualRewardSession(Session):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
-		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'input_data')
+		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'hpf_data')
 		
 		roi_data = np.zeros((len(stats_types), len(self.conditionDict['reward']), int(mapping_mask.sum())))
 		for i, stat in enumerate(stats_types):
 			for j, r in enumerate([self.runList[rew] for rew in self.conditionDict['reward']]):
 				rd = self.roi_data_from_hdf(reward_h5file, r, roi, stat).ravel()
-				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'input_data').mean(axis = 1).ravel()
+				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'hpf_data').mean(axis = 1).ravel()
 				roi_data[i,j] = rd[mapping_mask] / sd[mapping_mask]
 		
 		reward_h5file.close()
@@ -511,7 +547,7 @@ class VisualRewardSession(Session):
 		
 		return roi_data
 		
-	def mean_stats(self, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], threshold = 2.3, mask_type = 'center_Z', stats_types = ['blank_silence', 'blank_sound', 'visual_silence', 'visual_sound'], mask_direction = 'pos' ):
+	def mean_stats(self, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], threshold = 2.3, mask_type = 'center_Z', stats_types = ['blank_silence', 'visual_sound', 'visual_silence', 'blank_sound'], mask_direction = 'pos' ):
 		"""docstring for mean_stats"""
 		res = []
 		for roi in rois:
@@ -526,7 +562,8 @@ class VisualRewardSession(Session):
 		
 		diff_res = np.array(diff_res)
 		
-		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
+		colors = ['g', 'g', 'b', 'k', 'y', 'm', 'c']
+		alphas = [1.0, 0.5, 1.0, 0.5, 1.0, 0.5, 1.0, 05]
 		
 		fig = pl.figure(figsize = (12, 4))
 		pl.subplots_adjust(left = 0.05, right = 0.97)
@@ -534,12 +571,12 @@ class VisualRewardSession(Session):
 		width = 1.0 / (diff_res.shape[1] + 2)
 		pl.plot([-1, len(rois) + 1.0], [0,0], 'k', linewidth = 0.5)
 		rects = []
-		for i in range(diff_res.shape[2]):
-			rects.append(pl.bar(np.arange(diff_res.shape[0])+(i*+width), height = diff_res[:,0,i], width = width, yerr = diff_res[:,1,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5), capsize = 0))
+		for i in np.arange(diff_res.shape[2]):
+			rects.append(pl.bar(np.arange(diff_res.shape[0])+(i*+width), height = diff_res[:,0,i], width = width, yerr = diff_res[:,1,i], color=colors[i], alpha = alphas[i], edgecolor = (1.0,1.0,1.0), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5), capsize = 0))
 		pl.ylabel('beta [a.u.]')
 		pl.xticks(np.arange(len(rois))+width, rois )
 		s.set_xlim(-0.5, diff_res.shape[0]+.5)
-		leg = pl.legend( tuple([r[0] for r in rects]), tuple([st.replace('sound', 'reward').replace('blank','fix') for st in stats_types[1:]]), fancybox = True)
+		leg = pl.legend( tuple([r[0] for r in rects]), tuple([st.replace('sound', 'reward').replace('blank','fix').replace('silence','no_reward') for st in stats_types[1:]]), fancybox = True)
 		leg.get_frame().set_alpha(0.5)
 		if leg:
 			for t in leg.get_texts():
@@ -550,7 +587,7 @@ class VisualRewardSession(Session):
 		
 		return res
 
-	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], plot = True):
+	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], plot = True, which_mapper_run = 0):
 		"""
 		correlates two types of data from regions of interest with one another, but more generally than the other function. 
 		This function allows you to specify from what file and what type of stat you are going to correlate with one another.
@@ -571,12 +608,12 @@ class VisualRewardSession(Session):
 					s.set_title(roi, fontsize=9)
 				for i in range(len(data_pairs)):
 					if data_pairs[i][0][0] == 'mapper':
-						cope1 = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, data_pairs[i][0][1])
+						cope1 = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][which_mapper_run]], roi, data_pairs[i][0][1])
 					elif data_pairs[i][0][0] == 'reward':
 						cope1 = self.roi_data_from_hdf(reward_h5file, run, roi, data_pairs[i][0][1])
 					
 					if data_pairs[i][1][0] == 'mapper':
-						cope2 = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, data_pairs[i][1][1])
+						cope2 = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][which_mapper_run]], roi, data_pairs[i][1][1])
 					elif data_pairs[i][1][0] == 'reward':
 						cope2 = self.roi_data_from_hdf(reward_h5file, run, roi, data_pairs[i][1][1])
 					
@@ -601,13 +638,13 @@ class VisualRewardSession(Session):
 		mapper_h5file.close()
 		return corrs
 	
-	def correlate_data(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], scatter_plots = False):
+	def correlate_data(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], scatter_plots = False, which_mapper_run = 0):
 		"""
 		correlate reward run cope values with one another from all reward runs separately.
 		"""
 		all_corrs = []
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			all_corrs.append(self.correlate_data_from_run(run = r, rois = rois, data_pairs = data_pairs, plot = scatter_plots))
+			all_corrs.append(self.correlate_data_from_run(run = r, rois = rois, data_pairs = data_pairs, plot = scatter_plots, which_mapper_run = which_mapper_run))
 			
 		cs = np.array(all_corrs)
 		colors = ['r', 'g', 'b', 'k', 'y', 'm', 'c']
@@ -623,8 +660,8 @@ class VisualRewardSession(Session):
 			s.set_title(roi, fontsize=9)
 			if rois.index(roi) == len(rois)-1:
 				s.set_xlabel('run number', fontsize=9)
-			if rois.index(roi) == 3:
-				s.set_ylabel('spearman $R$', fontsize=9)
+			if rois.index(roi) == 2:
+				s.set_ylabel('spearman correlation', fontsize=9)
 			s.axis([-0.25,5.35,-1,1])
 			# designate bad runs:
 			s.axvspan(3.75, 4.25, facecolor='y', alpha=0.25, edgecolor = 'w')
@@ -655,6 +692,30 @@ class VisualRewardSession(Session):
 			    l.set_linewidth(1.5)  # the legend line width
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_bar_over_runs.pdf'))
 		
+		# average across runs - but take out runs with lower confidence
+		meancs = cs[[0,1,3,5]].mean(axis = 0)
+		sdcs = 1.96 * cs[[0,1,3,5]].std(axis = 0) / sqrt(4) 
+		
+		fig = pl.figure(figsize = (12, 4))
+		pl.subplots_adjust(left = 0.05, right = 0.97)
+		s = fig.add_subplot(111)
+		width = 1.0 / (meancs.shape[1] + 1)
+		pl.plot([-1, len(rois) + 1.0], [0,0], 'k', linewidth = 0.5)
+		rects = []
+		for i in range(meancs.shape[1]):
+			rects.append(pl.bar(np.arange(meancs.shape[0])+(i*+width), height = meancs[:,i], width = width, yerr = sdcs[:,i], color=colors[i], alpha = 0.7, edgecolor = (0.5, 0.5, 0.5), linewidth = 0.0, ecolor = (0.5, 0.5, 0.5), capsize = 0))
+		pl.ylabel('Spearman correlation')
+		pl.xticks(np.arange(len(rois))+width, rois )
+		s.set_xlim(-0.5, meancs.shape[0]+2.5)
+		leg = pl.legend( tuple([r[0] for r in rects]), tuple(comparison_names), fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize(9)    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(1.5)  # the legend line width
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_bar_over_runs_HC.pdf'))
+		
 		return all_corrs
 	
 	def histogram_data_from_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', stats_types = ['visual_reward_fix_reward','visual_silence_fix_silence'], mask_direction = 'pos'):
@@ -671,13 +732,13 @@ class VisualRewardSession(Session):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
-		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'input_data')
+		input_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, 'hpf_data')
 		
 		roi_data = np.zeros((len(stats_types), len(self.conditionDict['reward']), int(mapping_mask.sum())))
 		for i, stat in enumerate(stats_types):
 			for j, r in enumerate([self.runList[rew] for rew in self.conditionDict['reward']]):
 				rd = self.roi_data_from_hdf(reward_h5file, r, roi, stat).ravel()
-				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'input_data').mean(axis = 1).ravel()
+				sd = self.roi_data_from_hdf(reward_h5file, r, roi, 'hpf_data').mean(axis = 1).ravel()
 				roi_data[i,j] = rd[mapping_mask] / sd[mapping_mask]
 		
 		reward_h5file.close()
@@ -713,10 +774,4 @@ class VisualRewardSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'beta_histograms_' + '-'.join(stats_types) + '.pdf'))
 		pl.draw()
 		return diff_res
-		
 	
-	
-	
-
-
-

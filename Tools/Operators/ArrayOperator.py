@@ -147,14 +147,21 @@ class EventRelatedAverageOperator(EventDataOperator):
 			if thisData.shape[1] == self.intervalRange.shape[0]:
 				self.eventData[:,i] = thisData
 	
-	def averageEventsInTimeInterval(self, averagingInterval):
+	def averageEventsInTimeInterval(self, averagingInterval, output_raw_data = False):
 		theseData = self.eventData[:,( self.eventSampleTimes > averagingInterval[0] ) * ( self.eventSampleTimes <= averagingInterval[1] )].ravel()
-		return [averagingInterval[0] + (averagingInterval[1] - averagingInterval[0]) / 2.0, theseData.mean(), theseData.std(), theseData.shape[0]]
+		if not output_raw_data:
+			return [averagingInterval[0] + (averagingInterval[1] - averagingInterval[0]) / 2.0, theseData.mean(), theseData.std(), theseData.shape[0]]
+		else:
+			return [averagingInterval[0] + (averagingInterval[1] - averagingInterval[0]) / 2.0, theseData.mean(), theseData.std(), theseData.shape[0], theseData]
 	
-	def run(self, binWidth = 2.0, stepSize = 0.5):
+	def run(self, binWidth = 2.0, stepSize = 0.5, output_raw_data = False):
 		self.averagingIntervals = np.array([[t, t + binWidth] for t in np.arange(self.interval[0], self.interval[1] - binWidth, stepSize)])
-		self.output = np.array([self.averageEventsInTimeInterval(i) for i in self.averagingIntervals])
-		return self.output
+		self.output = [self.averageEventsInTimeInterval(i, output_raw_data) for i in self.averagingIntervals]
+		if output_raw_data:
+			return self.output
+		else:
+			self.output = np.array(self.output)
+			return self.output
 
 from shogun.Features import SparseRealFeatures, RealFeatures, Labels
 from shogun.Kernel import GaussianKernel, LinearKernel, AvgDiagKernelNormalizer
