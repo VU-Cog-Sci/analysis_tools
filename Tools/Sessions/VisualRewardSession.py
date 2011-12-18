@@ -441,25 +441,26 @@ class VisualRewardSession(Session):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
-		print roi_data[mapping_mask,:].mean()
-		
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
 		fig = pl.figure(figsize = (9, 5))
 		s = fig.add_subplot(211)
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
+		time_signals = []
 		if analysis_type == 'deconvolution':
-			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = 12.0)
+			interval = [0.0,16.0]
+			
+			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-				pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+				time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
 			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
 			interval = [-3.0,19.5]
 			# zero_timesignals = eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[0], interval = interval)
 			# zero_time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
-			time_signals = []
 			for i in range(event_data.shape[0]):
 				eraO = EventRelatedAverageOperator(inputObject = np.array([timeseries]), eventObject = event_data[i], TR = tr, interval = interval)
 				time_signal = eraO.run(binWidth = 3.0, stepSize = 1.5)
@@ -487,7 +488,10 @@ class VisualRewardSession(Session):
 			# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = 12.0)
 			# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
 			# 	pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i])
-			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
+			for i in range(0, event_data.shape[0], 2):
+				ts_diff = -(time_signals[i] - time_signals[i+1])
+				pl.plot(np.linspace(0,12,deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+				s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
 			time_signals = np.array(time_signals)
@@ -512,6 +516,8 @@ class VisualRewardSession(Session):
 		
 		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/er/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
+		
+		return [event_data, timeseries]
 	
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], analysis_type = 'deconvolution'):
 		for roi in rois:

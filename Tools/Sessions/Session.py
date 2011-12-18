@@ -288,6 +288,7 @@ class Session(PathConstructor):
 				flRT1.execute()
 				
 			if MNI:
+				# this bbregisteroperatory does not actually execute.
 				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
 				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
 				cfO = ConcatFlirtOperator(bbR.flirtOutputFileName)
