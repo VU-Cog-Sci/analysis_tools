@@ -80,11 +80,8 @@ class DeconvolutionOperator(EventDataOperator):
 		"""upsampleDataTimeSeries takes a timeseries of data points
 		 and upsamples them according to 
 		the ratio between TR and deconvolutionSampleDuration."""
-		self.workingDataArray = (np.ones((int(self.ratio),self.dataArray.shape[0])) * self.dataArray).T.ravel()
-#		self.workingDataArray = np.array([self.dataArray for i in range(int(self.ratio))]).transpose().ravel()
-		self.logger.debug('upsampled from %s to %s according to ratio %s', str(self.dataArray.shape), str(self.workingDataArray.shape), str(self.ratio))
-#		pl.figure()
-#		pl.plot(self.workingDataArray)
+		self.workingDataArray = np.tile(self.dataArray,int(self.ratio)).reshape(int(self.ratio),self.dataArray.shape[0]).T.ravel()
+		self.logger.info('upsampled from %s to %s according to ratio %s', str(self.dataArray.shape), str(self.workingDataArray.shape), str(self.ratio))
 	
 	def designMatrixFromVector(self, eventTimesVector):
 		"""designMatrixFromVector creates a deconvolution design matrix from 
@@ -92,12 +89,11 @@ class DeconvolutionOperator(EventDataOperator):
 		deconvolutionSampleDuration interval and thus discretizes them. 
 		Afterwards, it creates a matrix by shifting the discretized array
 		nrSamplesInInterval times. """
-		startArray = np.zeros(self.workingDataArray.shape[0])
-		startArray[np.array((eventTimesVector * self.deconvolutionSampleDuration).round(),dtype = int)] = 1.0
 		allArray = np.zeros((self.nrSamplesInInterval,self.workingDataArray.shape[0]))
-		allArray[0] = startArray
-		for i in range(1,int(self.nrSamplesInInterval)):
-			allArray[i,i:] = startArray[:-i]
+		for i in range(0,int(self.nrSamplesInInterval)):
+			which_further_time_points = ((eventTimesVector / self.deconvolutionSampleDuration) + i).round()
+			which_further_time_points = np.array(which_further_time_points[which_further_time_points < self.workingDataArray.shape[0]], dtype = int)
+			allArray[i,which_further_time_points] = 1
 		return np.mat(allArray)
 	
 	def createDesignMatrix(self):
