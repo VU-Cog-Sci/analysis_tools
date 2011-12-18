@@ -404,7 +404,7 @@ class Session(PathConstructor):
 			ppResults = [job_server.submit(ExecCommandLine,(ifO.runcmd,),(),('subprocess','tempfile',)) for ifO in ifs]
 			for ifOf in ppResults:
 				ifOf()
-
+				
 			job_server.print_stats()
 		
 	

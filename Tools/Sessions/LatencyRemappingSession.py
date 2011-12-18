@@ -107,13 +107,13 @@ class LatencyRemappingSession(Session):
 			run.saccades = el_saccades
 			run.gaze_data = el_gaze_data
 	
-	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'dec', mask = '_center'):
+	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'dec', mask = '_center', nr_bins = 3):
 		self.mapper_amplitude_data = []
 		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
 			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
 		self.remapping_amplitude_data = []
 		for (k, r) in zip(range(len(self.conditionDict['Remapping'])), [self.runList[i] for i in self.conditionDict['Remapping']]):
-			self.remapping_amplitude_data.append(self.amplitude_analysis_one_run(r, nr_bins = 3))
+			self.remapping_amplitude_data.append(self.amplitude_analysis_one_run(r, nr_bins = nr_bins))
 			for i in range(len(self.remapping_amplitude_data[-1])):
 				self.remapping_amplitude_data[-1][i] += k * run_length
 		all_saccade_times_by_latency = [np.hstack([i[k] for i in self.remapping_amplitude_data]) for k in range(len(self.remapping_amplitude_data[-1]))]
@@ -123,7 +123,7 @@ class LatencyRemappingSession(Session):
 		f = pl.figure(figsize = (7,12))
 		plotnr = 1
 		areas = ['V1','V2','V3','V3AB','V4','inferiorparietal','superiorparietal']
-		colors = [(1.0-i,0.0,i) for i in np.linspace(0,1,len(all_saccade_times_by_latency))]
+		colors = [(i/2.0,0.0,1-fmod(i,1.0)) for i in np.linspace(0,2,len(all_saccade_times_by_latency))]
 		for i in range(len(areas)):
 			print areas[i]
 			s = f.add_subplot(len(areas),1,plotnr)
@@ -132,11 +132,9 @@ class LatencyRemappingSession(Session):
 			if analysis_type == 'era':
 				all_results_this_area = []
 				for e in range(len(eventData)):
-					eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 2.0, eventObject = eventData[e], interval = [-4.0,24.0])
+					eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 2.0, eventObject = eventData[e], interval = [-0.0,10.0])
 					zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
-					d = eraOp.run(binWidth = 4.0, stepSize = 0.5)
-#					pl.plot(d[:,0],d[:,1]-d[zero_index,1], c = colors[e], alpha = 0.75)
-#					pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = colors[e], alpha = 0.1)
+					d = eraOp.run(binWidth = 2.0, stepSize = 0.5)
 					all_results_this_area.append(d[:,1])
 					times = d[:,0] 
 				pl.imshow(np.array(all_results_this_area), extent = [times[0], times[-1], 0, len(eventData)])
@@ -144,17 +142,12 @@ class LatencyRemappingSession(Session):
 				for e in range(len(eventData)):
 					pl.plot(times, np.array(all_results_this_area)[e], c = colors[e])
 			elif analysis_type == 'dec':
-				decOp = DeconvolutionOperator(inputObject = np.array([roiDataM]), eventObject = eventData, deconvolutionSampleDuration = 1.0, deconvolutionInterval = 6.0)
+				decOp = DeconvolutionOperator(inputObject = np.array(roiDataM), eventObject = eventData, TR = 2.0, deconvolutionSampleDuration = 1.0, deconvolutionInterval = 10.0)
 				for e in range(len(eventData)):
 					pl.plot(decOp.deconvolvedTimeCoursesPerEventType[e], c = colors[e])
-#					print np.arange(0, decOp.deconvolvedTimeCoursesPerEventType[e].shape[0] * decOp.nrSamplesInInterval, decOp.nrSamplesInInterval), decOp.deconvolvedTimeCoursesPerEventType[e]
-#					np.arange(0, decOp.deconvolvedTimeCoursesPerEventType[e].shape[0] * decOp.nrSamplesInInterval, decOp.nrSamplesInInterval), 
 			s.set_title(areas[i])
-	#		s.set_xlim([0,12])
 			plotnr += 1
-#		s.set_xlabel(str(mean_saccade_latency_per_bin))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'era_visual_areas'+ mask +'.pdf'))
-#		pl.show()
 	
 	def amplitude_analysis_one_run(self, run, nr_bins = 2):
 		if run.condition == 'Remapping':

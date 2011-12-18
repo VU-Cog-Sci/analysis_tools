@@ -455,7 +455,7 @@ class VisualRewardSession(Session):
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
 				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 				time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
-			s.set_title('deconvolution' + roi + ' ' + mask_type + ' ' + analysis_type)
+			s.set_title('deconvolution' + roi + ' ' + mask_type)
 		
 		else:
 			interval = [-3.0,19.5]
@@ -468,7 +468,7 @@ class VisualRewardSession(Session):
 				s.fill_between(time_signal[:,0], zero_zero_means + time_signal[:,2]/np.sqrt(time_signal[:,3]), zero_zero_means - time_signal[:,2]/np.sqrt(time_signal[:,3]), color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
 				pl.plot(time_signal[:,0], zero_zero_means, ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 				time_signals.append(zero_zero_means)
-			s.set_title('event-related average ' + roi + ' ' + mask_type + ' ' + analysis_type)
+			s.set_title('event-related average ' + roi + ' ' + mask_type)
 		
 		s.set_xlabel('time [s]')
 		s.set_ylabel('% signal change')
@@ -490,7 +490,7 @@ class VisualRewardSession(Session):
 			# 	pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i])
 			for i in range(0, event_data.shape[0], 2):
 				ts_diff = -(time_signals[i] - time_signals[i+1])
-				pl.plot(np.linspace(0,12,deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 				s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
