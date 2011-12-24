@@ -625,6 +625,218 @@ class SphereSession(Session):
 			behOps.append(bO)
 		self.behOps = behOps
 	
+	def mask_stats_to_hdf(self, run_type = 'sphere_presto', postFix = ['mcf']):
+		"""
+		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
+		"""
+		
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('Taking masks ' + str(anatRoiFileNames))
+		rois, roinames = [], []
+		for roi in anatRoiFileNames:
+			rois.append(NiftiImage(roi))
+			roinames.append(os.path.split(roi)[1][:-7])
+			
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		if os.path.isfile(self.hdf5_filename):
+			os.system('rm ' + self.hdf5_filename)
+		
+		if not os.path.isfile(self.hdf5_filename):
+			self.logger.info('starting table file ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		else:
+			self.logger.info('opening table file ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+			
+		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+			"""loop over runs, and try to open a group for this run's data"""
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+			try:
+				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				self.logger.info('data files from ' + this_feat + ' already in ' + self.hdf5_filename)
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + this_feat)
+				
+			"""
+			Now, take different stat masks based on the run_type
+			"""
+			stat_files = {
+							'stim_on_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+							'stim_on_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+							'stim_on_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+							
+							'alternation_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+							'alternation_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+							'alternation_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+							
+							'either_F': os.path.join(this_feat, 'stats', 'zfstat3.nii.gz'),
+							
+							}
+							
+			# general info we want in all hdf files
+			stat_files.update({
+								'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
+								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								# for these final one, we need to pre-setup the retinotopic mapping data
+								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+			})
+			# we need the following precaution for the fifth subject with no eccen mapping data
+			if os.path.isfile(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz')):
+				stat_files.update({'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz')})
+			
+			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+			for (roi, roi_name) in zip(rois, roinames):
+				try:
+					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+					
+				for (i, sf) in enumerate(stat_files.keys()):
+					# loop over stat_files and rois
+					# to mask the stat_files with the rois:
+					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+		h5file.close()
+	
+	def hdf5_file(self, run_type = 'sphere_presto'):
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		if not os.path.isfile(self.hdf5_filename):
+			self.logger.info('no table file ' + self.hdf5_filename + 'found for stat mask')
+			return None
+		else:
+			# self.logger.info('opening table file ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
+		return h5file
+
+
+	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
+		"""
+		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
+		"""
+		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
+		try:
+			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			roi_names = []
+			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
+				if len(roi_name._v_name.split('.')) > 1:
+					hemi, area = roi_name._v_name.split('.')
+					if roi_wildcard == area:
+						roi_names.append(roi_name._v_name)
+			if len(roi_names) == 0:
+				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
+				return None
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('No group ' + this_run_group_name + ' in this file')
+			return None
+
+		all_roi_data = []
+		for roi_name in roi_names:
+			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
+		all_roi_data_np = np.hstack(all_roi_data).T
+		return all_roi_data_np
+	
+	def deconvolve_roi(self, roi, thresholds = [[2.3, 10.3],[-10.3, -2.3]], mask_type = 'stim_on_Z'):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+		self.gatherBehavioralData()
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['sphere_presto'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		h5file = self.hdf5_file('sphere_presto')
+		cond_labels = ['inside','outside']
+		roi_data = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['sphere_presto']]:
+			roi_data.append(self.roi_data_from_hdf(h5file, r, roi, 'psc_hpf_data'))
+			nr_runs += 1
+			
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		roi_data_per_run = demeaned_roi_data
+		roi_data = np.hstack(demeaned_roi_data)
+		
+		# mask data
+		mask_data = np.array([self.roi_data_from_hdf(h5file, self.runList[i], roi, mask_type) for i in self.conditionDict['sphere_presto']]).mean(axis = 0)
+		if mask_type == 'eccen_phase':
+			mask_data = np.fmod(mask_data[:,0] + 2 * pi, 2 * pi)
+		# thresholding of mapping data stat values
+		masks = [(mask_data > thr[0]) * (mask_data < thr[1]) for thr in thresholds]
+		
+		timeseries = [roi_data[m,:].mean(axis = 0) for m in masks]
+		
+		fig = pl.figure(figsize = (9, 3.5))
+		s = fig.add_subplot(111)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		
+		colors = [np.ones((3)) * graylevel for graylevel in np.linspace(0.25, 0.75, len(thresholds))]
+		
+		# event_data = np.array([self.allTransitions[self.allTransitions[:,0] < self.allTransitions[:,0].mean(),1], self.allTransitions[self.allTransitions[:,0] > self.allTransitions[:,0].mean(),1]])
+		event_data = [self.allTransitions[:,1], self.allStimOnsets[:,1]]
+		interval = [0.0,16.0]
+		
+		print event_data
+				
+		decos = [DeconvolutionOperator(inputObject = t, eventObject = event_data, TR = tr, deconvolutionSampleDuration = tr, deconvolutionInterval = interval[1]) for t in timeseries]
+		# erops = [EventRelatedAverageOperator(inputObject = np.array([t]), TR = 0.65, eventObject = event_data, interval = [-6.0*0.65,24.0*0.65]) for t in timeseries]
+		for i, d in enumerate(decos):
+			pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[0], c = colors[i], alpha = 1.0, label = cond_labels[0])
+			pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[1], c = colors[i], alpha = 1.0, linestyle = '--')
+			# zero_index = np.arange(erops[i].intervalRange.shape[0])[np.abs(erops[i].intervalRange).min() == np.abs(erops[i].intervalRange)]
+			# res = erops[i].run(binWidth = 4.5, stepSize = 0.325)
+			# pl.plot(res[:,0], res[:,1]-res[zero_index,1], c = colors[i], linestyle = '--', alpha = 0.75, label = cond_labels[0])
+			print d.ratio, d.rawDeconvolvedTimeCourse, d.designMatrix.shape
+		# deco_per_run = []
+		# for i, rd in enumerate(roi_data_per_run):
+		# 	event_data_this_run = event_data_per_run[i] - i * run_duration
+		# 	deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		# 	deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
+		# deco_per_run = np.array(deco_per_run)
+		# mean_deco = deco_per_run.mean(axis = 0)
+		# std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
+		# for i in range(0, mean_deco.shape[0]):
+		# 	# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+		# 	s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
+		# 	
+		s.set_title('deconvolution' + roi + ' ' + mask_type)
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+				
+		h5file.close()
+		
+		pl.draw()
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '.pdf'))
+		
+	
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4', 'LO12', 'pIPS'], analysis_type = 'deconvolution'):
+		for roi in rois:
+			bin_starts = np.linspace(0, 2*pi, 4)
+			self.deconvolve_roi(roi, np.array([bin_starts, pi/2 + bin_starts]).T, mask_type = 'eccen_phase')
+	
 	def gatherBehavioralData(self, sampleInterval = [0,0]):
 		
 		trans = []
@@ -727,9 +939,9 @@ class SphereSession(Session):
 		eventArray = [eventData[:,1]]
 		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s', str(roiData.shape), str(eventData.shape[0]))
 		# mean data over voxels for this analysis
-#		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, TR = 0.65, deconvolutionInterval = 16.0)
-#		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T, c = color)
-		if True:
+		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, deconvolutionSampleDuration = 0.65, TR = 0.65, deconvolutionInterval = 16.0)
+		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T, c = color)
+		if False:
 			roiDataM = roiData.mean(axis = 1)
 			roiDataVar = roiData.var(axis = 1)
 			for e in range(len(eventArray)):

@@ -429,7 +429,10 @@ class VisualRewardSession(Session):
 		demeaned_roi_data = []
 		for rd in roi_data:
 			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
-			
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
 		roi_data = np.hstack(demeaned_roi_data)
 		event_data = np.hstack(event_data)
 		
@@ -456,6 +459,17 @@ class VisualRewardSession(Session):
 				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 				time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
 			s.set_title('deconvolution' + roi + ' ' + mask_type)
+			deco_per_run = []
+			for i, rd in enumerate(roi_data_per_run):
+				event_data_this_run = event_data_per_run[i] - i * run_duration
+				deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+				deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
+			deco_per_run = np.array(deco_per_run)
+			mean_deco = deco_per_run.mean(axis = 0)
+			std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
+			for i in range(0, mean_deco.shape[0]):
+				# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+				s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
 		
 		else:
 			interval = [-3.0,19.5]
@@ -485,9 +499,6 @@ class VisualRewardSession(Session):
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
 		if analysis_type == 'deconvolution':
-			# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = 12.0)
-			# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-			# 	pl.plot(np.linspace(0,10,deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = conds[i])
 			for i in range(0, event_data.shape[0], 2):
 				ts_diff = -(time_signals[i] - time_signals[i+1])
 				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]

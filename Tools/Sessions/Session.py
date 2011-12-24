@@ -316,6 +316,11 @@ class Session(PathConstructor):
 									threshold = 0.001 )
 					stV.execute()
 	
+	def setupFSLRegistration(self, feat_directory):
+		if os.path.isdir(os.path.join(feat_directory, 'reg')):
+			# after having run registration we copy all /reg files into the feat directory, naming the .mat files appropriately.
+		
+	
 	def motionCorrectFunctionals(self, registerNoMC = False, diagnostics = False):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
@@ -408,7 +413,7 @@ class Session(PathConstructor):
 			job_server.print_stats()
 		
 	
-	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2005s'):
+	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2005s', template_condition = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
 		"""
@@ -435,7 +440,12 @@ class Session(PathConstructor):
 					hemi = 'rh'
 				lvo = LabelToVolOperator(lf)
 				# we convert the label files to the space of the first EPI run of the session, moving them into masks/anat.
-				lvo.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
+				if template_condition == None:
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'])
+				else:
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]], postFix = ['mcf','meanvol'])
+				
+				lvo.configure(templateFileName = template_file, hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()
 		
 	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
@@ -606,16 +616,22 @@ class Session(PathConstructor):
 		if not os.path.isfile(final_flO.outputFileName) or force_final:
 			final_flO.execute()
 	
-	def takePhaseSurfacesToFuncSpace(self, folder = '', fn = 'eccen'):
+	def takePhaseSurfacesToFuncSpace(self, folder = '', fn = 'eccen', template_condition = None):
 		for hemi in ['lh','rh']:
 			stvO = SurfToVolOperator(os.path.join(folder, 'phase-' + hemi + '.w'))
+			if template_condition == None:
+				template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'])
+			else:
+				template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]], postFix = ['mcf','meanvol'])
 			stvO.configure(
-							templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol']), 
+							templateFileName = template_file, 
 							register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), 
 							fsSubject = self.subject.standardFSID, 
 							outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz'),
 							hemispheres = [hemi]
 							)
+			# make sure it doesn't continue before there are results as nii files
+			stvO.runcmd = stvO.runcmd[:-2]
 			stvO.execute()
 		# join eccen files
 		phaseData = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).data + NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-rh.nii.gz')).data
