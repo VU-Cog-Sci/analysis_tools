@@ -224,7 +224,7 @@ class Session(PathConstructor):
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, register = True, deskull = True, bb = True, flirt = False, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True):
+	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -240,7 +240,7 @@ class Session(PathConstructor):
 		else:
 			self.FSsubject = FSsubject
 		
-		if register:
+		if prepare_register:
 			if 'inplane_anat' in self.scanTypeList:
 				# we have one or more inplane anatomicals - we take the last of these as a reference.
 				# first, we need to strip the skull though
@@ -272,7 +272,7 @@ class Session(PathConstructor):
 			self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
 			ExecCommandLine('cp ' + self.originalReferenceFunctionalVolume + ' ' + self.referenceFunctionalFileName )
 		
-			if bb:
+			if bb and prepare_register:
 				# register to both freesurfer anatomical and fsl MNI template
 				# actual registration - BBRegister to freesurfer subject
 				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
@@ -280,24 +280,57 @@ class Session(PathConstructor):
 				bbR.execute()
 				# after registration, see bbregister log file for reg check
 			
-			if flirt:
-				# Flirt the freesurfer segmented brain to MNI brain
-				os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz'))
-				flRT1 = FlirtOperator( os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz')  )
-				flRT1.configureRun( transformMatrixFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.nii.gz') )
+		if MNI:
+			self.logger.info('running registration to standard brain for this session to be applied to feat directories.')
+			# Flirt the freesurfer segmented brain to MNI brain
+			os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz'))
+			flRT1 = FlirtOperator( os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz')  )
+			flRT1.configureRun( transformMatrixFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.nii.gz') )
+			if run_flirt:
 				flRT1.execute()
 				
-			if MNI:
-				# this bbregisteroperatory does not actually execute.
-				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
-				cfO = ConcatFlirtOperator(bbR.flirtOutputFileName)
-				cfO.configure(secondInputFile = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'MNI'], extension = '.mat' ))
-				cfO.execute()
-				invFlR = InvertFlirtOperator(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'MNI'], extension = '.mat' ))
-				invFlR.configure()
-				invFlR.execute()
-				
+			# this bbregisteroperatory does not actually execute.
+			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+			cfO = ConcatFlirtOperator(bbR.flirtOutputFileName)
+			cfO.configure(secondInputFile = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'MNI'], extension = '.mat' ))
+			cfO.execute()
+			# invert func to highres 
+			invFl_Session_HR = InvertFlirtOperator(bbR.flirtOutputFileName)
+			invFl_Session_HR.configure()
+			invFl_Session_HR.execute()
+			# and func to standard
+			invFl_Session_Standard = InvertFlirtOperator(cfO.outputFileName)
+			invFl_Session_Standard.configure()
+			invFl_Session_Standard.execute()
+			# and highres to standard
+			invFl_HR_Standard = InvertFlirtOperator(flRT1.transformMatrixFileName)
+			invFl_HR_Standard.configure()
+			invFl_HR_Standard.execute()
+			
+			
+			# make feat dir and put registration files in it
+			try:
+				os.mkdir(self.stageFolder(stage = 'processed/mri/reg/feat'))
+			except OSError:
+				pass
+			# copy registration files to reg/feat directory
+			subprocess.Popen('cp ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat') + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres2standard.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + invFl_HR_Standard.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard2highres.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + bbR.flirtOutputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func2highres.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + cfO.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func2standard.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + invFl_Session_HR.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres2example_func.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + invFl_Session_Standard.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard2example_func.mat' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz') + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + flRT1.referenceFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			
+			# create example func
+			fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ) )
+			# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
+			fslM.configureTMean()
+			fslM.execute()
+			
+			subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'] ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
@@ -316,11 +349,19 @@ class Session(PathConstructor):
 									threshold = 0.001 )
 					stV.execute()
 	
-	def setupFSLRegistration(self, feat_directory):
-		if os.path.isdir(os.path.join(feat_directory, 'reg')):
-			# after having run registration we copy all /reg files into the feat directory, naming the .mat files appropriately.
+	def setupRegistrationForFeat(self, feat_directory):
+		"""apply the freesurfer/flirt registration for this session to a feat directory. This ensures that the feat results can be combined across runs and subjects without running flirt all the time."""
+		try:
+			os.mkdir(os.path.join(feat_directory,'reg'))
+		except OSError:
+			pass
 		
-	
+		if not os.path.isdir(self.stageFolder(stage = 'processed/mri/reg/feat/')):
+			self.registerSession(prepare_register = True, bb = False, MNI = True)
+		
+		os.system('cp ' + self.stageFolder(stage = 'processed/mri/reg/feat/') + '* ' + os.path.join(feat_directory,'reg/') )
+		os.system('featregapply ' + feat_directory )
+			
 	def motionCorrectFunctionals(self, registerNoMC = False, diagnostics = False):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.

@@ -10,6 +10,7 @@ Copyright (c) 2009 TK. All rights reserved.
 from Session import *
 from scipy.stats import *
 from itertools import *
+from Tools.circularTools import *
 
 class RivalryReplaySession(Session):
 	def analyzeBehavior(self):
@@ -625,6 +626,12 @@ class SphereSession(Session):
 			behOps.append(bO)
 		self.behOps = behOps
 	
+	def registerfeats(self, run_type = 'sphere_presto', postFix = ['mcf']):
+		"""run featregapply for all feat direcories in this session."""
+		for r in [self.runList[i] for i in self.conditionDict[run_type]]:
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+			self.setupRegistrationForFeat(this_feat)
+	
 	def mask_stats_to_hdf(self, run_type = 'sphere_presto', postFix = ['mcf']):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
@@ -672,7 +679,7 @@ class SphereSession(Session):
 							'alternation_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
 							'alternation_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
 							
-							'either_F': os.path.join(this_feat, 'stats', 'zfstat3.nii.gz'),
+							'either_F': os.path.join(this_feat, 'stats', 'zfstat1.nii.gz'),
 							
 							}
 							
@@ -682,7 +689,15 @@ class SphereSession(Session):
 								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final one, we need to pre-setup the retinotopic mapping data
-								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
+								# and the averaged stats for on/off and alternations
+								'stim_on_T_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'on_off_t.nii.gz'),
+								'stim_on_Z_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'on_off_z.nii.gz'),
+								'stim_on_cope_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'on_off_cope.nii.gz'),
+								'alternation_T_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'trans_t.nii.gz'),
+								'alternation_Z_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'trans_z.nii.gz'),
+								'alternation_cope_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'trans_cope.nii.gz'),
+								
 			})
 			# we need the following precaution for the fifth subject with no eccen mapping data
 			if os.path.isfile(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz')):
@@ -746,7 +761,7 @@ class SphereSession(Session):
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
 	
-	def deconvolve_roi(self, roi, thresholds = [[2.3, 10.3],[-10.3, -2.3]], mask_type = 'stim_on_Z'):
+	def deconvolve_roi(self, roi, thresholds = [[2.3, 30.3],[-30.3, -2.3]], mask_type = 'stim_on_Z'):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
@@ -771,37 +786,41 @@ class SphereSession(Session):
 			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
 		roi_data_per_run = demeaned_roi_data
 		roi_data = np.hstack(demeaned_roi_data)
+		# print roi_data.shape
 		
 		# mask data
 		mask_data = np.array([self.roi_data_from_hdf(h5file, self.runList[i], roi, mask_type) for i in self.conditionDict['sphere_presto']]).mean(axis = 0)
 		if mask_type == 'eccen_phase':
-			mask_data = np.fmod(mask_data[:,0] + 2 * pi, 2 * pi)
+			# mask_data = np.fmod(mask_data[:,0] + 2 * pi, 2 * pi)
+			cond_labels = [str(t) for t in thresholds.T[0]]
 		# thresholding of mapping data stat values
-		masks = [(mask_data > thr[0]) * (mask_data < thr[1]) for thr in thresholds]
+		masks = np.array([((mask_data > thr[0]) * (mask_data < thr[1])).ravel() for thr in thresholds])
+		# print masks.shape, [m.sum() for m in masks]
 		
-		timeseries = [roi_data[m,:].mean(axis = 0) for m in masks]
+		timeseries = np.array([roi_data[m].mean(axis = 0) for m in masks])
+		# print timeseries.shape
 		
 		fig = pl.figure(figsize = (9, 3.5))
 		s = fig.add_subplot(111)
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
-		colors = [np.ones((3)) * graylevel for graylevel in np.linspace(0.25, 0.75, len(thresholds))]
+		colors = [np.array([1.0,0.0,0.0]) * graylevel for graylevel in np.linspace(0.0, 1.0, len(thresholds))]
 		
 		# event_data = np.array([self.allTransitions[self.allTransitions[:,0] < self.allTransitions[:,0].mean(),1], self.allTransitions[self.allTransitions[:,0] > self.allTransitions[:,0].mean(),1]])
-		event_data = [self.allTransitions[:,1], self.allStimOnsets[:,1]]
+		# event_data = [self.allTransitions[:,1], self.allStimOnsets[:,1]]
+		event_data = self.allTransitions[:,1]
 		interval = [0.0,16.0]
-		
-		print event_data
 				
-		decos = [DeconvolutionOperator(inputObject = t, eventObject = event_data, TR = tr, deconvolutionSampleDuration = tr, deconvolutionInterval = interval[1]) for t in timeseries]
-		# erops = [EventRelatedAverageOperator(inputObject = np.array([t]), TR = 0.65, eventObject = event_data, interval = [-6.0*0.65,24.0*0.65]) for t in timeseries]
+		decos = [DeconvolutionOperator(inputObject = t, eventObject = [event_data], TR = tr, deconvolutionSampleDuration = tr, deconvolutionInterval = interval[1]) for t in timeseries]
+		erops = [EventRelatedAverageOperator(inputObject = np.array([t]), TR = 0.65, eventObject = event_data, interval = [-3.0,interval[1]]) for t in timeseries]
 		for i, d in enumerate(decos):
-			pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[0], c = colors[i], alpha = 1.0, label = cond_labels[0])
-			pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[1], c = colors[i], alpha = 1.0, linestyle = '--')
-			# zero_index = np.arange(erops[i].intervalRange.shape[0])[np.abs(erops[i].intervalRange).min() == np.abs(erops[i].intervalRange)]
-			# res = erops[i].run(binWidth = 4.5, stepSize = 0.325)
-			# pl.plot(res[:,0], res[:,1]-res[zero_index,1], c = colors[i], linestyle = '--', alpha = 0.75, label = cond_labels[0])
-			print d.ratio, d.rawDeconvolvedTimeCourse, d.designMatrix.shape
+			# pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[0], c = colors[i], alpha = 1.0, label = cond_labels[i])
+			# pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[1], c = colors[i], alpha = 1.0, linestyle = '--')
+			zero_index = np.arange(erops[i].intervalRange.shape[0])[np.abs(erops[i].intervalRange).min() == np.abs(erops[i].intervalRange)]
+			res = erops[i].run(binWidth = 4.55, stepSize = 0.325)
+			pl.plot(res[:,0], res[:,1]-res[zero_index,1], c = colors[i], alpha = 0.75, label = cond_labels[i])
+			s.fill_between(res[:,0], res[:,1]-res[zero_index,1] + (res[:,2] / np.sqrt(res[:,3])), res[:,1]-res[zero_index,1] - (res[:,2] / np.sqrt(res[:,3])), color = colors[i], alpha = 0.1)
+			# print d.ratio, d.rawDeconvolvedTimeCourse, d.designMatrix.shape
 		# deco_per_run = []
 		# for i, rd in enumerate(roi_data_per_run):
 		# 	event_data_this_run = event_data_per_run[i] - i * run_duration
@@ -834,8 +853,10 @@ class SphereSession(Session):
 	
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4', 'LO12', 'pIPS'], analysis_type = 'deconvolution'):
 		for roi in rois:
-			bin_starts = np.linspace(0, 2*pi, 4)
+			bin_starts = np.linspace(-pi, pi/2, 5) + 0.001
 			self.deconvolve_roi(roi, np.array([bin_starts, pi/2 + bin_starts]).T, mask_type = 'eccen_phase')
+			# self.deconvolve_roi(roi, thresholds =[[2.3, 30.3]], mask_type = 'stim_on_Z_gfeat')
+			self.deconvolve_roi(roi, thresholds = [[3.3, 30.3],[-30.3, -1.8]], mask_type = 'stim_on_Z_gfeat')
 	
 	def gatherBehavioralData(self, sampleInterval = [0,0]):
 		
@@ -901,12 +922,13 @@ class SphereSession(Session):
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']))
 			runDuration = niiFile.rtime * niiFile.timepoints
 			# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-			thisFeatFile = '/Volumes/7.2_DD/7T/analysis/trans_onoff_one_run.fsf'
+			# thisFeatFile = '/Volumes/7.2_DD/7T/analysis/trans_onoff_one_run.fsf'
+			thisFeatFile = '/Volumes/HDD/research/projects/rivalry_fMRI/7T/analysis/one_run.fsf'
 			REDict = {
 			'---TR---': 			str(niiFile.rtime),
 			'---NR_FRAMES---': 		str(niiFile.timepoints),
 			'---NII_FILE---': 		self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf']), 
-			'---ONOFF_FILE---': 	self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'onoff'], extension = '.txt'), 
+			# '---ONOFF_FILE---': 	self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'onoff'], extension = '.txt'), 
 			'---TRANS_FILE---': 	self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = ['mcf', 'evt'], extension = '.txt')
 			}
 			featFileName = self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '.fsf')
@@ -919,56 +941,118 @@ class SphereSession(Session):
 			# run feat
 			featOp.execute()
 	
-	def deconvolveEventsFromRoi(self, roi, color = 'k', mask = '_visual'):
-		"""deconvolution analysis on the bold data of rivalry runs in this session for the given roi"""
-		self.logger.info('starting deconvolution for roi %s', roi)
-		
-		roiData = self.gatherRIOData(roi, whichRuns = self.scanTypeDict['epi_bold'], whichMask = mask )
-		eventData = self.allTransitions
-		# split out two types of events
-		[ones, twos] = [np.abs(eventData[:,0]) == 66, np.abs(eventData[:,0]) == 67]
-#		all types of transition/percept events split up, both types and beginning/end separately
-#		eventArray = [eventData[eventType][ones,0], eventData[eventType][ones,0] + eventData[eventType][ones,1], eventData[eventType][twos,0], eventData[eventType][twos,0] + eventData[eventType][twos,1]]
+	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [['on_off_cope', 'trans_cope'], ['eccen_phase','trans_cope'], ['eccen_phase','on_off_cope']], plot = True, postFix = ''):
+		"""
+		correlates two types of data from regions of interest with one another, but more generally than the other function. 
+		This function allows you to specify from what file and what type of stat you are going to correlate with one another.
+		Specifically, the data_pairs argument is a list of two-item lists which specify the to be correlated stats
+		"""
+		from scipy import stats
+		h5file = self.hdf5_file()
+		corrs = np.zeros((len(rois), len(data_pairs)))
+		colors = ['r', 'g', 'b', 'y', 'm', 'c']
+		if h5file != None:
+			# there was a file and it has data in it
+			if plot:	
+				fig = pl.figure(figsize = (len(rois)*2, len(data_pairs) * 3))
+				nr_plots = 1
+			for roi in rois:
+				for i in range(len(data_pairs)):
+					cope1 = self.roi_data_from_hdf(h5file, run, roi, data_pairs[i][0])
+					cope2 = self.roi_data_from_hdf(h5file, run, roi, data_pairs[i][1])
+					if cope1 != None and cope2 != None:
+						if plot:
+							s = fig.add_subplot(len(rois), len(data_pairs), nr_plots)
+							nr_plots += 1
+							s.set_title(roi, fontsize=9)
+							nonzeros = (np.abs(cope1[:,0]) > 0.1) * (np.abs(cope2[:,0]) > 0.1)
+							# pull phases straight, or not
+							# if data_pairs[i][0].split('_')[-1] == 'phase':
+							# 	cope1[:,0] = np.fmod(cope1[:,0] + 2 * pi, 2 * pi)
+							# if data_pairs[i][1].split('_')[-1] == 'phase':
+							# 	cope1[:,0] = np.fmod(cope2[:,0] + 2 * pi, 2 * pi)
+								
+							# fit linear trend
+							(ar,br)=np.polyfit(cope1[nonzeros,0], cope2[nonzeros,0], 1)
+							xr=np.polyval([ar,br],cope1[nonzeros,0])
+							
+							# smoothing the data
+							order = np.argsort(cope1[nonzeros,0])
+							smooth_width = round(nonzeros.sum() / 10)
+							kern = stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
+							kern = kern / kern.sum()
+							cope1_s = np.convolve( cope1[nonzeros,0][order], kern, 'valid' )
+							cope2_s = np.convolve( cope2[nonzeros,0][order] , kern, 'valid' )
+							
+							# plotting the data
+							pl.plot(cope1[nonzeros,0], cope2[nonzeros,0], marker = 'o', ms = 6, mec = 'w', c = colors[i], mew = 1.5, alpha = 0.0625, linewidth = 0) # , alpha = 0.25
+							pl.plot(cope1[nonzeros,0], xr, colors[i] + '-', alpha = 0.5, linewidth = 3.5)
+							pl.plot(cope1_s, cope2_s, colors[i] + '--', alpha = 0.5, linewidth = 3.5)
+							if rois.index(roi) == len(rois)-1:
+								s.set_xlabel(data_pairs[i][0], fontsize=9)
+							# if data_pairs.index(data_pairs[i]) == 0:
+							s.set_ylabel(data_pairs[i][1], fontsize=9)
+						
+						# look at correlations between voxel patterns for the given data
+						srs = stats.spearmanr(cope1, cope2)
+						corrs[rois.index(roi), i] = srs[0]
+					else:
+						self.logger.info('No data to correlate for ' + str(data_pairs[i]) + ' ' + str(roi))
+		if plot:
+			pl.draw()
+			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), self.subject.initials + '_scatter_' + str(run.ID) + '_' + postFix + '.pdf')
+			pl.savefig(pdf_file_name)
+		h5file.close()
+		return corrs
 	
-#		combine across percepts types, but separate onsets/offsets
-#		eventArray = [eventData[eventType][:,0], eventData[eventType][:,0] + eventData[eventType][:,1]]
+	def correlate_data(self, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [['stim_on_Z', 'alternation_Z'], ['eccen_phase','alternation_Z'], ['eccen_phase','stim_on_Z']], scatter_plots = True):
+		"""
+		correlate reward run cope values with one another from all reward runs separately.
+		"""
+		all_corrs = []
+		for r in [self.runList[i] for i in self.conditionDict['sphere_presto']]:
+			all_corrs.append(self.correlate_data_from_run(run = r, rois = rois, data_pairs = data_pairs, plot = scatter_plots))
+		self.correlate_data_from_run(run = r, rois = rois, data_pairs = [['stim_on_Z_gfeat', 'alternation_Z_gfeat'], ['eccen_phase','alternation_Z_gfeat'], ['eccen_phase','stim_on_Z_gfeat']], plot = scatter_plots, postFix = 'gfeat')
+		cs = np.array(all_corrs)
+	
+	def take_retinotopic_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], values = ['alternation_Z'], nr_bins = {'eccen': 3, 'polar': 4}, offsets = {'eccen': 0.0, 'polar': 0.0}):
+		h5file = self.hdf5_file()
 		
-#		separate out different percepts - looking at onsets
-#		eventArray = [eventData[ones,1], eventData[twos,1]]
-#		eventArray = [eventData[:,1], self.allStimOnsets[:,1]]
-		eventArray = [eventData[:,1]]
-		self.logger.debug('deconvolution analysis with input data shaped: %s, and %s', str(roiData.shape), str(eventData.shape[0]))
-		# mean data over voxels for this analysis
-		decOp = DeconvolutionOperator(inputObject = roiData.mean(axis = 1), eventObject = eventArray, deconvolutionSampleDuration = 0.65, TR = 0.65, deconvolutionInterval = 16.0)
-		pl.plot(decOp.deconvolvedTimeCoursesPerEventType.T, c = color)
-		if False:
-			roiDataM = roiData.mean(axis = 1)
-			roiDataVar = roiData.var(axis = 1)
-			for e in range(len(eventArray)):
-				eraOp = EventRelatedAverageOperator(inputObject = np.array([roiDataM]), TR = 0.65, eventObject = eventArray[e], interval = [-6.0*0.65,24.0*0.65])
-	#			eraOpVar = EventRelatedAverageOperator(inputObject = np.array([roiDataVar]), TR = 0.65, eventObject = eventArray[e], interval = [-8.0*0.65,20.0*0.65])
-				zero_index = np.arange(eraOp.intervalRange.shape[0])[np.abs(eraOp.intervalRange).min() == np.abs(eraOp.intervalRange)]
-				d = eraOp.run(binWidth = 3.25, stepSize = 0.25)
-	#			dV = eraOpVar.run(binWidth = 3.0, stepSize = 0.25)
-				pl.plot(d[:,0], d[:,1]-d[zero_index,1], c = np.roll(np.array(color), e), alpha = 0.75)
-				pl.fill_between(d[:,0], (d[:,1]-d[zero_index,1]) - (d[:,2]/np.sqrt(d[:,3])), (d[:,1]-d[zero_index,1]) + (d[:,2]/np.sqrt(d[:,3])), color = np.roll(np.array(color), e), alpha = 0.1)
-	#			pl.plot(dV[:,0], dV[:,1] - dV[:,1].mean(), c = np.roll(np.array(color), e), alpha = 0.75, ls = '--')
+		data = []
+		if h5file != None:
+			# there was a file and it has data in it
+			for roi in rois:
+				data.append([])
+				# take data
+				eccen_data = self.roi_data_from_hdf(h5file, run, roi, 'eccen_phase')
+				polar_data = self.roi_data_from_hdf(h5file, run, roi, 'polar_phase')
+				# take out zeros
+				nonzeros = (eccen_data[:,0] != 0.0) + (polar_data[:,0] != 0.0)
+				# correct for offsets and rotate the phase values
+				eccen_data = positivePhases(eccen_data + offsets['eccen'])
+				polar_data = positivePhases(polar_data + offsets['polar'])
+				# the edges of the polar and eccen bins
+				bin_edges_eccen = np.array([np.linspace(0, 2*pi, nr_bins['eccen'] + 1, endpoint = False)[:-1], np.linspace(0, 2*pi, nr_bins['eccen'] + 1, endpoint = False)[1:]]).T
+				bin_edges_polar = np.array([np.linspace(0, 2*pi, nr_bins['polar'] + 1, endpoint = False)[:-1], np.linspace(0, 2*pi, nr_bins['polar'] + 1, endpoint = False)[1:]]).T
+				# boolean arrays for positions in the visual field
+				position_bins = np.array([[((eccen_data > eb[0]) * (eccen_data < eb[1]) * (polar_data > pb[0]) * (polar_data < pb[1])) for eb in bin_edges_eccen] for pb in bin_edges_polar], dtype = bool)
+				print position_bins.shape, eccen_data.shape, [[(position_bins[i,j,:,0] * nonzeros.T).sum() for j in range(nr_bins['eccen'])] for i in range(nr_bins['polar'])]
+				for value in values:
+					all_data = self.roi_data_from_hdf(h5file, run, roi, value)
+					print all_data.shape
+					position_data = [[all_data[position_bins[i,j,:,0] * nonzeros, 0] for j in range(nr_bins['eccen'])] for i in range(nr_bins['polar'])]
+					data[-1].append(position_data)
+					print position_data
+		h5file.close()
+		return data
+	
+	def take_retinotopic_data(self, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], values = ['alternation_Z'], nr_bins = {'eccen': 3, 'polar': 4}):
+		all_data = []
+		for r in [self.runList[i] for i in self.conditionDict['sphere_presto']]:
+			all_data.append(self.take_retinotopic_data_from_run(run = r, rois = rois, values = values, nr_bins = nr_bins))
+		all_data.append(self.take_retinotopic_data_from_run(run = r, rois = rois, values = [v+'_gfeat' for v in values], nr_bins = nr_bins))
 		
-	def deconvolveEvents(self, masks = ['_visual','_neg-visual']):
-		areas = ['V1',['V2v','V2d'],['V3v','V3d']] # ,'V3A',['inferiorparietal','superiorparietal'],'lh.precentral','superiorfrontal'
-		
-		fig = pl.figure(figsize = (5,7))
-		fig.subplots_adjust(wspace = 0.2, hspace = 0.4, left = 0.1, right = 0.9, bottom = 0.025, top = 0.975)
-		for i in range(len(areas)):
-			print areas[i]
-			s = fig.add_subplot(len(areas),1,i+1)
-			colors = np.linspace(0.2,1,len(masks))
-			for m in range(len(masks)):
-				self.deconvolveEventsFromRoi(areas[i], color = (colors[m],0,0), mask = masks[m])
-			
-			s.set_title(areas[i])
-			s.set_ylim((-0.05,0.135))
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'era_multiple_areas.pdf'))
+		return all_data[-1]
 	
 	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25, run_width = 1):
 		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
