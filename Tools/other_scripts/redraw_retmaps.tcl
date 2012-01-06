@@ -86,7 +86,7 @@ set angle_offset 0.5
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
-set smoothsteps 2
+set smoothsteps 0
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh
@@ -101,7 +101,7 @@ shrink 400
 
 
 scale_brain 1.6
-set nrimages 12
+set nrimages 16
 set rotation_gain 150.0
 set rot [ expr { $rotation_gain / $nrimages } ]
 

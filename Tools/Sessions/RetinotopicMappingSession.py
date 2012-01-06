@@ -71,7 +71,6 @@ class RetinotopicMappingSession(Session):
 				ppservers = ()
 				job_server = pp.Server(ppservers=ppservers)
 				self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
-	#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
 				ppResults = [job_server.submit(ExecCommandLine,(rm.runcmd,),(),('subprocess','tempfile',)) for rm in rmOperatorList]
 				for rm in ppResults:
 					rm()

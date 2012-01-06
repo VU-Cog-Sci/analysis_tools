@@ -730,8 +730,7 @@ class SphereSession(Session):
 			# self.logger.info('opening table file ' + self.hdf5_filename)
 			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
 		return h5file
-
-
+	
 	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
@@ -761,7 +760,7 @@ class SphereSession(Session):
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
 	
-	def deconvolve_roi(self, roi, thresholds = [[2.3, 30.3],[-30.3, -2.3]], mask_type = 'stim_on_Z'):
+	def deconvolve_roi(self, roi, thresholds = [[2.3, 30.3],[-30.3, -2.3]], mask_type = 'stim_on_Z', s = None):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
@@ -800,8 +799,9 @@ class SphereSession(Session):
 		timeseries = np.array([roi_data[m].mean(axis = 0) for m in masks])
 		# print timeseries.shape
 		
-		fig = pl.figure(figsize = (9, 3.5))
-		s = fig.add_subplot(111)
+		if s == None:
+			fig = pl.figure(figsize = (9, 3.5))
+			s = fig.add_subplot(111)
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
 		colors = [np.array([1.0,0.0,0.0]) * graylevel for graylevel in np.linspace(0.0, 1.0, len(thresholds))]
@@ -813,11 +813,13 @@ class SphereSession(Session):
 				
 		decos = [DeconvolutionOperator(inputObject = t, eventObject = [event_data], TR = tr, deconvolutionSampleDuration = tr, deconvolutionInterval = interval[1]) for t in timeseries]
 		erops = [EventRelatedAverageOperator(inputObject = np.array([t]), TR = 0.65, eventObject = event_data, interval = [-3.0,interval[1]]) for t in timeseries]
+		all_res = []
 		for i, d in enumerate(decos):
 			# pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[0], c = colors[i], alpha = 1.0, label = cond_labels[i])
 			# pl.plot(np.linspace(interval[0],interval[1],d.deconvolvedTimeCoursesPerEventType.shape[1]), d.deconvolvedTimeCoursesPerEventType[1], c = colors[i], alpha = 1.0, linestyle = '--')
 			zero_index = np.arange(erops[i].intervalRange.shape[0])[np.abs(erops[i].intervalRange).min() == np.abs(erops[i].intervalRange)]
 			res = erops[i].run(binWidth = 4.55, stepSize = 0.325)
+			all_res.append(res)
 			pl.plot(res[:,0], res[:,1]-res[zero_index,1], c = colors[i], alpha = 0.75, label = cond_labels[i])
 			s.fill_between(res[:,0], res[:,1]-res[zero_index,1] + (res[:,2] / np.sqrt(res[:,3])), res[:,1]-res[zero_index,1] - (res[:,2] / np.sqrt(res[:,3])), color = colors[i], alpha = 0.1)
 			# print d.ratio, d.rawDeconvolvedTimeCourse, d.designMatrix.shape
@@ -833,10 +835,10 @@ class SphereSession(Session):
 		# 	# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 		# 	s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
 		# 	
-		s.set_title('deconvolution' + roi + ' ' + mask_type)
+		s.set_title(self.subject.initials + '_' + roi + ' ' + mask_type)
 		s.set_xlabel('time [s]')
 		s.set_ylabel('% signal change')
-		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		s.set_xlim([interval[0]-1.5, interval[1]-1.5])
 		leg = s.legend(fancybox = True)
 		leg.get_frame().set_alpha(0.5)
 		if leg:
@@ -848,15 +850,23 @@ class SphereSession(Session):
 		h5file.close()
 		
 		pl.draw()
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '.pdf'))
+		if s != None:
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '.pdf'))
 		
+		return all_res
 	
-	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4', 'LO12', 'pIPS'], analysis_type = 'deconvolution'):
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4', 'LO12'], analysis_type = 'deconvolution'):
+		fig = pl.figure(figsize = (9, 1 + len(rois) * 3.5))
+		all_res = []
 		for roi in rois:
+			print roi
 			bin_starts = np.linspace(-pi, pi/2, 5) + 0.001
-			self.deconvolve_roi(roi, np.array([bin_starts, pi/2 + bin_starts]).T, mask_type = 'eccen_phase')
+			# self.deconvolve_roi(roi, np.array([bin_starts, pi/2 + bin_starts]).T, mask_type = 'eccen_phase')
 			# self.deconvolve_roi(roi, thresholds =[[2.3, 30.3]], mask_type = 'stim_on_Z_gfeat')
-			self.deconvolve_roi(roi, thresholds = [[3.3, 30.3],[-30.3, -1.8]], mask_type = 'stim_on_Z_gfeat')
+			s = fig.add_subplot(len(rois),1,rois.index(roi)+1)
+			all_res.append(self.deconvolve_roi(roi, thresholds = [[3.3, 30.3],[-30.3, -1.5]], mask_type = 'stim_on_Z_gfeat', s = s))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'stim_on_Z_gfeat.pdf'))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'stim_on_Z_gfeat.npy'), np.array(all_res))
 	
 	def gatherBehavioralData(self, sampleInterval = [0,0]):
 		
@@ -908,7 +918,7 @@ class SphereSession(Session):
 			
 			np.savetxt(thisEvtFile, fsfEvtData, fmt = '%3.2f', delimiter = '\t')
 			np.savetxt(thisOoFile, fsfOoData, fmt = '%3.2f', delimiter = '\t')
-		
+	
 	def runTransitionFeats(self):
 		# remove previous feat directories
 		for (r, i) in zip(self.scanTypeDict['epi_bold'], range(len(self.scanTypeDict['epi_bold']))):
@@ -1036,23 +1046,90 @@ class SphereSession(Session):
 				bin_edges_polar = np.array([np.linspace(0, 2*pi, nr_bins['polar'] + 1, endpoint = False)[:-1], np.linspace(0, 2*pi, nr_bins['polar'] + 1, endpoint = False)[1:]]).T
 				# boolean arrays for positions in the visual field
 				position_bins = np.array([[((eccen_data > eb[0]) * (eccen_data < eb[1]) * (polar_data > pb[0]) * (polar_data < pb[1])) for eb in bin_edges_eccen] for pb in bin_edges_polar], dtype = bool)
-				print position_bins.shape, eccen_data.shape, [[(position_bins[i,j,:,0] * nonzeros.T).sum() for j in range(nr_bins['eccen'])] for i in range(nr_bins['polar'])]
+				# print position_bins.shape, eccen_data.shape, [[(position_bins[i,j,:,0] * nonzeros.T).sum() for j in range(nr_bins['eccen'])] for i in range(nr_bins['polar'])]
 				for value in values:
 					all_data = self.roi_data_from_hdf(h5file, run, roi, value)
-					print all_data.shape
+					# print all_data.shape
 					position_data = [[all_data[position_bins[i,j,:,0] * nonzeros, 0] for j in range(nr_bins['eccen'])] for i in range(nr_bins['polar'])]
 					data[-1].append(position_data)
-					print position_data
+					# print position_data
 		h5file.close()
 		return data
 	
-	def take_retinotopic_data(self, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], values = ['alternation_Z'], nr_bins = {'eccen': 3, 'polar': 4}):
+	def take_retinotopic_data(self, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], values = ['alternation_cope'], nr_bins = {'eccen': 4, 'polar': 4}):
 		all_data = []
 		for r in [self.runList[i] for i in self.conditionDict['sphere_presto']]:
 			all_data.append(self.take_retinotopic_data_from_run(run = r, rois = rois, values = values, nr_bins = nr_bins))
-		all_data.append(self.take_retinotopic_data_from_run(run = r, rois = rois, values = [v+'_gfeat' for v in values], nr_bins = nr_bins))
+		all_data.append(self.take_retinotopic_data_from_run(run = r, rois = rois, values = [v+'_gfeat' for v in values], nr_bins = nr_bins, offsets = {'eccen': 0.0, 'polar': pi/2.0}))
+		
+		print [[all_data[-1][0][0][i][j].mean() for i in range(nr_bins['polar'])] for j in range(nr_bins['eccen'])]
 		
 		return all_data[-1]
+	
+	def new_state_decoding_roi(self, roi, data_type = 'psc_hpf_data', thresholds = [2.3, 30.3], mask_type = 'stim_on_Z'):
+		h5file = self.hdf5_file()
+		# mask data
+		mask_data = np.array([self.roi_data_from_hdf(h5file, self.runList[i], roi, mask_type) for i in self.conditionDict['sphere_presto']]).mean(axis = 0)
+		masks = ((mask_data > thresholds[0]) * (mask_data < thresholds[1])).ravel()
+		
+		these_data = []
+		for r in [self.runList[i] for i in self.conditionDict['sphere_presto']]:
+			these_data.append(self.roi_data_from_hdf(h5file, r, roi, data_type))
+		# here's the chance to do some preprocessing on these data
+		these_data = np.hstack(these_data)
+		these_masked_data = [these_data[m,:].T for m in masks]
+		
+		# incorporate behavior
+		percepts = np.vstack((self.allPercepts[:,0], self.allPercepts[:,1], self.allPercepts[:,2]-self.allPercepts[:,1])).T
+		whichPercepts = percepts[:,0] == 66
+		eventData = np.vstack([percepts[:,1], percepts[:,2], np.ones((percepts.shape[0]))]).T
+		eventData = [eventData[whichPercepts], eventData[-whichPercepts]]
+		
+		from ..Operators.ImageOperator import Design
+		
+		d = Design(these_masked_data.shape[0], 0.65, subSamplingRatio = 100)
+		# percept 1 regressor
+		d.addRegressor(eventData[0])
+		# percept 2 regressor
+		d.addRegressor(eventData[1])
+		
+		d.convolveWithHRF(hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}) 
+		
+		withinRunIndices = np.mod(np.arange(these_masked_data.shape[0]), self.timepointsPerRun) + ceil(4.0 / self.rtime)		
+		whichSamplesAllRuns = (withinRunIndices > sampleInterval) * (withinRunIndices < (self.timepointsPerRun - sampleInterval))
+		
+		dM = d.designMatrix[whichSamplesAllRuns]
+		rD = these_masked_data[whichSamplesAllRuns]
+		
+		# or not use median
+		over_median = (dM[:,0] - dM[:,1]) > 0
+		under_median = -over_median
+		
+		om_indices = np.arange(over_median.shape[0])[over_median]
+		um_indices = np.arange(over_median.shape[0])[under_median]
+		
+		nr_runs = np.min([om_indices.shape[0], um_indices.shape[0]])
+		dec = DecodingOperator(rD, decoder = 'svmLin', fullOutput = True)
+		
+		run_width = whichSamplesAllRuns.sum() / len(self.conditionDict['sphere_presto'])
+		self.whichSamplesAllRuns = whichSamplesAllRuns
+		
+		decodingResultsArray = []
+		for i in range(0, nr_runs-run_width, run_width):
+			testThisRun = (np.arange(nr_runs) >= i) * (np.arange(nr_runs) < i+run_width)
+			trainingThisRun = -testThisRun
+			trainingDataIndices = np.concatenate(( om_indices[trainingThisRun], um_indices[trainingThisRun] ))
+			testDataIndices = np.concatenate(( om_indices[testThisRun], um_indices[testThisRun] ))
+			trainingsLabels = np.concatenate(( -np.ones((nr_runs-run_width)), np.ones((nr_runs-run_width)) ))
+			testLabels = np.concatenate(( -np.ones((run_width)), np.ones((run_width)) ))
+			
+			res = dec.decode(trainingDataIndices, trainingsLabels, testDataIndices, testLabels)
+			decodingResultsArray.append([testThisRun, res])
+		
+		allData = [self.allPercepts, d.designMatrix, whichSamplesAllRuns, decodingResultsArray]
+		f = open(os.path.join(self.stageFolder(stage = 'processed/mri/sphere'), 'decodingResults_' + str(run_width) + '_' + roi + '.pickle'), 'wb')
+		pickle.dump(allData, f)
+		f.close()
 	
 	def stateDecodingFromRoi(self, roi, color = 'k', sampleInterval = 25, run_width = 1):
 		self.logger.info('starting eventRelatedDecoding for roi %s', roi)
@@ -1533,3 +1610,4 @@ class SphereSession(Session):
 		fig01 = drawmatrix_channels(corrOverTimeBetweenAreas, np.array(names), size=[12., 12.], color_anchor=0)
 		pl.savefig( os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'corr_pattern_corr_over_time_ratio.pdf') )
 #		import pdb; pdb.set_trace()
+	

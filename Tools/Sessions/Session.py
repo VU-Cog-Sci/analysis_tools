@@ -241,6 +241,17 @@ class Session(PathConstructor):
 			self.FSsubject = FSsubject
 		
 		if prepare_register:
+			# we have to make do with epi volumes. so, we motion correct the first epi_bold run
+			# prepare the motion corrected first functional	
+			mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]] ) )
+			mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
+			mcFirst.execute()
+			#  and average it over time. 
+			fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ) )
+			# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
+			fslM.configureTMean()
+			fslM.execute()		
+			
 			if 'inplane_anat' in self.scanTypeList:
 				# we have one or more inplane anatomicals - we take the last of these as a reference.
 				# first, we need to strip the skull though
@@ -255,16 +266,6 @@ class Session(PathConstructor):
 				self.logger.info('registration target is inplane_anat, ' + self.originalReferenceFunctionalVolume)
 			
 			else:
-				# we have to make do with epi volumes. so, we motion correct the first epi_bold run
-				# prepare the motion corrected first functional	
-				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]] ) )
-				mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
-				mcFirst.execute()
-				#  and average it over time. 
-				fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ) )
-				# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
-				fslM.configureTMean()
-				fslM.execute()		
 			
 				self.logger.info('using firstFunc as a registration target')
 				self.originalReferenceFunctionalVolume = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' )
@@ -324,13 +325,8 @@ class Session(PathConstructor):
 			subprocess.Popen('cp ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz') + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 			subprocess.Popen('cp ' + flRT1.referenceFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 			
-			# create example func
-			fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf'] ) )
-			# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
-			fslM.configureTMean()
-			fslM.execute()
-			
-			subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'] ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			# now take the firstFunc and create an example_func for it. 
+			subprocess.Popen('cp ' + fslM.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
