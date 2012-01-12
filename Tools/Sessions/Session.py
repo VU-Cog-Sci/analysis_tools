@@ -26,7 +26,7 @@ from ..Operators.Operator import *
 from ..Operators.CommandLineOperator import *
 from ..Operators.ImageOperator import *
 from ..Operators.BehaviorOperator import *
-from ..Operators.ArrayOperator import *
+# from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 
 class PathConstructor(object):
