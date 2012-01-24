@@ -123,7 +123,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf'))
 			pl.draw()
 	
-	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0):
+	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0, inclusion_threshold = 4.0):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition
 		results in creation of a mask file which can be accessed later
@@ -146,10 +146,38 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		# change the first frame of the mask and input data (-log p-value) to its absolute value
 		imO.maskData[0] = np.abs(imO.maskData[0])
 		imO.inputData[0] = np.abs(imO.inputData[0])
+		
+		print self.subject.initials + ' ' + str(((imO.maskData[0] > exclusionThreshold) * (imO.inputData[0] > inclusion_threshold)).sum()) + ' of ' + str((imO.maskData[0] > exclusionThreshold).sum()) + ' and ' + str((imO.inputData[0] > inclusion_threshold).sum())
+		
 		maskedDataArray = imO.applySingleMask(whichMask = maskFrame, maskThreshold = exclusionThreshold, nrVoxels = False, maskFunction = '__lt__', flat = False)
 		maskImage = NiftiImage(maskedDataArray)
 		maskImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), 'polar_mask-' + str(exclusionThreshold) + '.nii.gz')
 		maskImage.save()
+		
+		overlap_array = ((imO.maskData[0] > exclusionThreshold) * (imO.inputData[0] > inclusion_threshold))
+		excl_mask_array = (imO.maskData[0] > exclusionThreshold)
+		incl_mask_data = (imO.inputData[0] > inclusion_threshold)
+		
+		# this final part is a separate analysis per region of interest
+		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/visual_areas/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('masking functional data from files %s', str([os.path.split(f)[1] for f in roiFileNames]))
+		areas = ['V1','V2','V3','V4','V3AB']
+		rois = [[] for a in areas]
+		for i in range(len(roiFileNames)):
+			for a in areas:
+				if roiFileNames[i].split('.')[1] == a:
+					rois[areas.index(a)].append(roiFileNames[i])
+		ratios = []
+		for rs in rois:
+			thisArea = np.array(np.array([np.array(NiftiImage(roi).data, dtype = bool) for roi in rs]).sum(axis = 0), dtype = bool)
+			print areas[rois.index(rs)], (thisArea * overlap_array).sum(), (thisArea * excl_mask_array).sum(), (thisArea * incl_mask_data).sum(), float((thisArea * overlap_array).sum())/float((thisArea * incl_mask_data).sum())
+			ratios.append([(thisArea * overlap_array).sum(), (thisArea * excl_mask_array).sum(), (thisArea * incl_mask_data).sum(), float((thisArea * overlap_array).sum())/float((thisArea * incl_mask_data).sum())])
+		ratios = np.array(ratios)
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'voxel_overlap_ratios.npy'), ratios)
+		# for rn, roi in enumerate(roiFileNames):
+		# 	roi = NiftiImage(roi).data
+		# 	print os.path.split(roiFileNames[rn])[-1] + ' ' + str((overlap_array * (roi > 0)).sum()) + ' ' + str((excl_mask_array * (roi > 0)).sum()) + ' ' + str((incl_mask_data * (roi > 0)).sum())
+			
 	
 	def collectConditionFiles(self, add_eccen = True):
 		"""
@@ -201,7 +229,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				maskedConditionFiles.append(NiftiImage(imO.applySingleMask(whichMask = maskFrame, maskThreshold = maskThreshold, nrVoxels = nrVoxels, maskFunction = '__gt__', flat = flat)))
 		return maskedConditionFiles
 	
-	def conditionDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4',['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-1.5.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = False ):
+	def conditionDataForRegions(self, regions = ['V1', 'V2', 'V3', 'V3AB', 'V4',['inferiorparietal','superiorparietal']], maskFile = 'polar_mask-1.0.nii.gz', nrVoxels = False, maskThreshold = 4.0, add_eccen = False ):
 		"""
 		Produce phase-phase correlation plots across conditions.
 		['rh.V1', 'lh.V1', 'rh.V2', 'lh.V2', 'rh.V3', 'lh.V3', 'rh.V3AB', 'lh.V3AB', 'rh.V4', 'lh.V4']
@@ -461,7 +489,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				sbp.axis([0.5,1,0,1])
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
 	
-	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 3.0, smooth = True, smoothSize = 12, stretch = 1.0 ):
+	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 4.0, smooth = True, smoothSize = 12, stretch = 1.0 ):
 		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold ) # , regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']]
 		
 		if not hasattr(self, 'phasePhaseHistogramDict'):
@@ -526,7 +554,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'phaseDifferencesPerPhase_hist_' + baseCondition + '.npy' ), np.array(outputData))
 		return outputData
 	
-	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 4.0 ):
+	def collapsePhaseDifferencesPerPhase(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', binSize = 0.5, nrBins = 100, maskThreshold = 5.0 ):
 		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold )
 		
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
@@ -567,8 +595,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsedPhaseDiffPP.pdf' ))
 		return outputData
 	
-	def collapsePhaseDifferencesHorVer(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', nrBins = 6, maskThreshold = 3.0 ):
-		self.conditionDataForRegions(add_eccen = False, regions = [['V1','V2','V3'],['V3AB','V4']], maskThreshold = maskThreshold ) # [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']]
+	def collapsePhaseDifferencesHorVer(self, comparisons = [['sacc_map','fix_map'],['sacc_map','remap'],['sacc_map','fix_periphery']], baseCondition = 'fix_map', nrBins = 8, maskThreshold = 3.0 ):
+		self.conditionDataForRegions(add_eccen = False, regions = [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']], maskThreshold = maskThreshold ) # [['V1'],['V2'],['V3'],['V3AB'],['V4'],['fusiform'],['superiorparietal']]
 		
 		if not hasattr(self, 'collapsedPhaseDiffDict'):
 			self.collapsedPhaseDiffDict = {}

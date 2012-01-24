@@ -88,7 +88,8 @@ class LatencyRemappingSession(Session):
 				sf.set_xlabel('time, [ms]', fontsize=9)
 				sf.set_ylabel('histo')
 				sf.axis([0,1000,0,40])
-				sf.legend()
+				leg = sf.legend(fancybox = True, loc = 2)
+				leg.get_frame().set_alpha(0.5)
 				pl.draw()
 				# save figure and save saccade latencies per trial
 				pl.savefig(self.runFile(stage = 'processed/eye', run = run, postFix = ['sacc_lat'], extension = '.pdf'))
@@ -107,7 +108,7 @@ class LatencyRemappingSession(Session):
 			run.saccades = el_saccades
 			run.gaze_data = el_gaze_data
 	
-	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'dec', mask = '_center', nr_bins = 3):
+	def amplitude_analysis_all_runs(self, run_length = 480, analysis_type = 'dec', mask = '_center', nr_bins = 4):
 		self.mapper_amplitude_data = []
 		for r in [self.runList[i] for i in self.conditionDict['Mapper']]:
 			self.mapper_amplitude_data.append(self.amplitude_analysis_one_run(r))
@@ -128,6 +129,7 @@ class LatencyRemappingSession(Session):
 			print areas[i]
 			s = f.add_subplot(len(areas),1,plotnr)
 			roiData = self.gatherRIOData([areas[i]], whichRuns = self.conditionDict['Remapping'], whichMask = mask )
+			print roiData.shape
 			roiDataM = roiData.mean(axis = 1)
 			if analysis_type == 'era':
 				all_results_this_area = []
@@ -143,6 +145,7 @@ class LatencyRemappingSession(Session):
 					pl.plot(times, np.array(all_results_this_area)[e], c = colors[e])
 			elif analysis_type == 'dec':
 				decOp = DeconvolutionOperator(inputObject = np.array(roiDataM), eventObject = eventData, TR = 2.0, deconvolutionSampleDuration = 1.0, deconvolutionInterval = 10.0)
+				# import pdb; pdb.set_trace()
 				for e in range(len(eventData)):
 					pl.plot(decOp.deconvolvedTimeCoursesPerEventType[e], c = colors[e])
 			s.set_title(areas[i])

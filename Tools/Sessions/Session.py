@@ -424,7 +424,7 @@ class Session(PathConstructor):
 						if r == self.scanTypeDict['epi_bold'][0]:
 							ifs = []
 						ifs.append(ifO)
-					funcFile = NiftiImage(ifO.outputFileName)
+					# funcFile = NiftiImage(ifO.outputFileName)
 				if op == 'lowpass':
 					ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
 					ifO.configure(frequency = filterFreqs['lowpass'])

@@ -50,7 +50,7 @@ class VisualRewardSession(Session):
 			stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
 			
 			# trials are separated on 'sound' and 'contrast' parameters
-			sound_trials, visual_trials = np.array(elO.parameter_data['sound'], dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
+			sound_trials, visual_trials = np.array(elO.parameter_data['sound'] % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
 			
 			condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
 			# conditions are made of boolean combinations
@@ -90,9 +90,10 @@ class VisualRewardSession(Session):
 			
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-				thisFeatFile = '/Users/tk/Documents/research/experiments/reward/man/analysis/reward_more_contrasts.fsf'
+				thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
 				REDict = {
 				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
 				'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
 				'---BLANK_SILENCE_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_silence']), 	
 				'---BLANK_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_sound']), 
@@ -295,7 +296,7 @@ class VisualRewardSession(Session):
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
 
-	def correlate_copes_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], copes = ['visual_cope','reward_cope'], plot = True):
+	def correlate_copes_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3AB'], copes = ['visual_cope','reward_cope'], plot = True):
 		"""
 		correlates two types of data from regions of interest with one another
 		"""
@@ -332,7 +333,7 @@ class VisualRewardSession(Session):
 		mapper_h5file.close()
 		return corrs
 	
-	def correlate_reward_copes(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], copes = ['visual_cope','reward_cope'], scatter_plots = False):
+	def correlate_reward_copes(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3AB'], copes = ['visual_cope','reward_cope'], scatter_plots = False):
 		"""
 		correlate reward run cope values with one another from all reward runs separately.
 		"""
@@ -530,7 +531,7 @@ class VisualRewardSession(Session):
 		
 		return [event_data, timeseries]
 	
-	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], analysis_type = 'deconvolution'):
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
 		for roi in rois:
 			self.deconvolve_roi(roi, threshold, mask_type = 'center_surround_Z', analysis_type = analysis_type, mask_direction = 'pos')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
@@ -564,7 +565,7 @@ class VisualRewardSession(Session):
 		
 		return roi_data
 		
-	def mean_stats(self, rois = ['V1', 'V2', 'V3', 'V3A', 'V4'], threshold = 2.3, mask_type = 'center_Z', stats_types = ['blank_silence', 'visual_sound', 'visual_silence', 'blank_sound'], mask_direction = 'pos' ):
+	def mean_stats(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], threshold = 2.3, mask_type = 'center_Z', stats_types = ['blank_silence', 'visual_sound', 'visual_silence', 'blank_sound'], mask_direction = 'pos' ):
 		"""docstring for mean_stats"""
 		res = []
 		for roi in rois:
@@ -604,7 +605,7 @@ class VisualRewardSession(Session):
 		
 		return res
 
-	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], plot = True, which_mapper_run = 0):
+	def correlate_data_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3AB'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], plot = True, which_mapper_run = 0):
 		"""
 		correlates two types of data from regions of interest with one another, but more generally than the other function. 
 		This function allows you to specify from what file and what type of stat you are going to correlate with one another.
@@ -655,7 +656,7 @@ class VisualRewardSession(Session):
 		mapper_h5file.close()
 		return corrs
 	
-	def correlate_data(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3A'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], scatter_plots = False, which_mapper_run = 0):
+	def correlate_data(self, rois = ['V1', 'V2d', 'V2v', 'V3d', 'V3v', 'V4', 'V3AB'], data_pairs = [[['mapper', 'center_pe'], ['reward', 'visual_cope']], [['mapper', 'center_pe'], ['reward', 'reward_cope']]], scatter_plots = False, which_mapper_run = 0):
 		"""
 		correlate reward run cope values with one another from all reward runs separately.
 		"""
