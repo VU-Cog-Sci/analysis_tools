@@ -49,8 +49,8 @@ class VisualRewardSession(Session):
 			# stimulus onset thingies
 			stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
 			
-			# trials are separated on 'sound' and 'contrast' parameters
-			sound_trials, visual_trials = np.array(elO.parameter_data['sound'] % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
+			# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
+			sound_trials, visual_trials = np.array((self.which_reward + elO.parameter_data['sound']) % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
 			
 			condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
 			# conditions are made of boolean combinations
@@ -435,7 +435,8 @@ class VisualRewardSession(Session):
 		roi_data_per_run = demeaned_roi_data
 		
 		roi_data = np.hstack(demeaned_roi_data)
-		event_data = np.hstack(event_data)
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 		# mapping data
 		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
@@ -500,7 +501,7 @@ class VisualRewardSession(Session):
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
 		if analysis_type == 'deconvolution':
-			for i in range(0, event_data.shape[0], 2):
+			for i in range(0, len(event_data), 2):
 				ts_diff = -(time_signals[i] - time_signals[i+1])
 				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 				s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)

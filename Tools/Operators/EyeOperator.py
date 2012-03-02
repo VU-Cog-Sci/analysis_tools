@@ -13,7 +13,7 @@ import pickle
 
 import scipy as sp
 import scipy.fftpack
-import scipy.signal as signal
+# import scipy.signal as signal
 import numpy as np
 import matplotlib.pylab as pl
 from math import *
@@ -294,7 +294,7 @@ class EyelinkOperator( EyeOperator ):
 			
 		self.nrTrials = len(self.stopTrialStrings)
 		self.trials = np.hstack((self.trialStarts, self.trialEnds))
-		print self.trials.shape
+		# print self.trials.shape
 			
 		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
@@ -313,9 +313,11 @@ class EyelinkOperator( EyeOperator ):
 			phaseStarts = newPhases
 		self.phaseStarts = phaseStarts
 		# sometimes there are not an equal amount of phasestarts in a run.
-		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts]).min()
-		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts, 3)))
+		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts])
+		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts.max(), 3)))
 		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
+		
+#		print self.phaseStarts
 	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+), \'unicode\': u\'(\S*?)\', \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
@@ -326,7 +328,7 @@ class EyelinkOperator( EyeOperator ):
 		self.events = events
 		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('unicode', '|S25'), ('modifier', np.float64), ('presentation_time', np.float64)])
 		
-		print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
+		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 		
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)', add_parameters = None):
 		parameters = []
@@ -525,7 +527,6 @@ class EyelinkOperator( EyeOperator ):
 			# create a table for the trial times of this run's trials
 			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
 			trial = thisRunTimeTable.row
-			print self.trials.shape
 			for i in range(self.nrTrials):
 				trial['trial_start_EL_timestamp'] = self.trials[i][0]
 				trial['trial_start_index'] = self.trials[i][1]
@@ -533,8 +534,14 @@ class EyelinkOperator( EyeOperator ):
 				trial['trial_end_EL_timestamp'] = self.trials[i][3]
 				trial['trial_end_index'] = self.trials[i][4]
 				trial['trial_end_exp_timestamp'] = self.trials[i][5]
-				trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i][:self.nrPhaseStarts])
-				trial.append()
+				# check whether this session ended with a full trial, and only then append
+				if len(self.phaseStarts[i]) > 0:
+					if self.nrPhaseStarts[i] == np.max(self.nrPhaseStarts):
+						trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i])
+						# print np.array(self.phaseStarts[i][:self.nrPhaseStarts[i]]), trial['trial_phase_timestamps'][:self.nrPhaseStarts[i]]
+					# import pdb; pdb.set_trace()
+					trial.append()
+					
 			thisRunTimeTable.flush()
 			
 			# create eye arrays for the run's eye movement data
@@ -626,7 +633,12 @@ class EyelinkOperator( EyeOperator ):
 			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1]
 		elif data_type == 'pupil_size':
 			all_data_of_requested_type = run.gaze_data.read()[:,3]
-			
+		
+		# make sure we always take the last of the trials into account, too.
+		for tr in trial_ranges:
+			if tr[-1] == -1:
+				tr[-1] = self.timings.shape[0]
+		
 		# run for loop for actual data
 		export_data = []
 		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
@@ -657,6 +669,11 @@ class EyelinkOperator( EyeOperator ):
 		elif data_type == 'blinks':
 			table = run.blinks_from_EL
 			
+		# make sure we always take the last of the trials into account, too.
+		for tr in trial_ranges:
+			if tr[-1] == -1:
+				tr[-1] = self.timings.shape[0]
+		
 		# run for loop for actual data
 		export_data = []
 		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
@@ -665,6 +682,7 @@ class EyelinkOperator( EyeOperator ):
 				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
 				where_statement = '(start_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (start_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
 				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
+		# import pdb; pdb.set_trace()
 		h5f.close()
 		return export_data
 	

@@ -272,7 +272,7 @@ class Design(object):
 		# first dimension has to be time instead of condition
 		self.designMatrix = self.designMatrix.T
 			
-	def configure(self, regressors, hrfType = None ):
+	def configure(self, regressors ):
 		"""
 		configure takes the design matrix in FSL EV format and sets up the design matrix
 		"""

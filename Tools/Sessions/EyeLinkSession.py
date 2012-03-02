@@ -837,7 +837,7 @@ class SB_AMSession(EyeLinkSession):
 		
 		f = pl.figure(figsize = (9,6))
 		plot_nr = 1
-		colors = [(1.0,0.0,0.0), (0.25,0.25,0.25), (0.75,0.75,0.75), (0.25,0.25,0.25), (0.75,0.75,0.75)]
+		colors = [(0.0,0.0,1.0), (0.25,0.25,0.25), (0.75,0.75,0.75), (0.25,0.25,0.25), (0.75,0.75,0.75)]
 		pfs = []
 		for i in conditions:
 			if i in [ conditions[0], conditions[2]]:
