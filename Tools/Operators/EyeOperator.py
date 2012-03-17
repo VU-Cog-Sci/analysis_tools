@@ -198,7 +198,7 @@ class EyelinkOperator( EyeOperator ):
 			self.gazeData = np.load(self.gazeFile)
 			self.gazeData = self.gazeData.astype(np.float32)
 	
-	def findAll(self, check_answers = True):
+	def findAll(self, check_answers = False):
 		"""docstring for findAll"""
 		if not hasattr(self, 'msgData'):
 			self.loadData(get_gaze_data = False)
@@ -318,15 +318,14 @@ class EyelinkOperator( EyeOperator ):
 		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
 		
 #		print self.phaseStarts
-	
-	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+), \'unicode\': u\'(\S*?)\', \'mod\': (\d+)}\)\> at (\d+.\d)'):
+	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
 		for i in range(self.nrTrials):
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			eventStrings = self.findOccurences(thisRE)
-			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'unicode':e[5],'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
+			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
 		self.events = events
-		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('unicode', '|S25'), ('modifier', np.float64), ('presentation_time', np.float64)])
+		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
 		
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 		

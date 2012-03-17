@@ -337,13 +337,13 @@ class FSLMathsOperator( CommandLineOperator ):
 		meanArgs = {'-Tstd': ''}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
 	
-	def configureHPF(self, outputFileName = None, nr_samples_hp = 30):
+	def configureBPF(self, outputFileName = None, nr_samples_hp = 30, nr_samples_lp = -1.0):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_hpf' + standardMRIExtension
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_tf' + standardMRIExtension
 			
-		meanArgs = {'-bptf ': str(nr_samples_hp) + ' -1.0'}
+		meanArgs = {'-bptf ': str(nr_samples_hp) + ' ' + str(nr_samples_lp)}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
 
 
@@ -619,6 +619,9 @@ class FEATOperator( CommandLineOperator ):
 	def __init__(self, inputObject, **kwargs):
 		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat ', **kwargs)
 		self.featFile = self.inputObject
+		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
+		if os.uname()[1].split('.')[-2] == 'sara':
+			cmd = cmd.split(';')[-1]
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
 		"""
