@@ -404,7 +404,7 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 	
-	def rescaleFunctionals(self, operations = ['highpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf']):#, 'percentsignalchange'
+	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf']):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data
@@ -413,23 +413,17 @@ class Session(PathConstructor):
 		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = funcPostFix ))
 			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
-				if op == 'highpass':
+				if op[-4:] == 'pass':
 					ifO = FSLMathsOperator(funcFile)
-					ifO.configureHPF(nr_samples_hp = filterFreqs['highpass'] )
-		#			ifO = ImageTimeFilterOperator(funcFile, filterType = 'highpass')
-		#			ifO.configure(frequency = filterFreqs['highpass'])
+					ifO.configureBPF(nr_samples_hp = filterFreqs['highpass'], nr_samples_lp = filterFreqs['lowpass'] )
 					if not self.parallelize:
 						ifO.execute()
+						funcFile = NiftiImage(ifO.outputFileName)
 					else:
 						if r == self.scanTypeDict['epi_bold'][0]:
 							ifs = []
 						ifs.append(ifO)
 					# funcFile = NiftiImage(ifO.outputFileName)
-				if op == 'lowpass':
-					ifO = ImageTimeFilterOperator(funcFile, filterType = 'lowpass')
-					ifO.configure(frequency = filterFreqs['lowpass'])
-					ifO.execute()
-					funcFile = NiftiImage(ifO.outputFileName)
 				if op == 'percentsignalchange':
 					pscO = PercentSignalChangeOperator(funcFile)
 					pscO.execute()
@@ -438,7 +432,7 @@ class Session(PathConstructor):
 					zscO = ZScoreOperator(funcFile)
 					# zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
-		if self.parallelize and 'highpass' in operations:
+		if self.parallelize and 'bandpass' in operations:
 			# tryout parallel implementation - later, this should be abstracted out of course. 
 			ppservers = ()
 			job_server = pp.Server(ppservers=ppservers)
