@@ -294,13 +294,14 @@ class EyelinkOperator( EyeOperator ):
 			
 		self.nrTrials = len(self.stopTrialStrings)
 		self.trials = np.hstack((self.trialStarts, self.trialEnds))
+		self.which_trials_actually_exist = np.array([int(i[1]) for i in self.startTrialStrings])
 		# print self.trials.shape
 			
 		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
 	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
 		phaseStarts = []
-		for i in range(self.nrTrials):
+		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			phaseStrings = self.findOccurences(thisRE)
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
@@ -320,7 +321,7 @@ class EyelinkOperator( EyeOperator ):
 #		print self.phaseStarts
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
-		for i in range(self.nrTrials):
+		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			eventStrings = self.findOccurences(thisRE)
 			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
@@ -333,7 +334,7 @@ class EyelinkOperator( EyeOperator ):
 		parameters = []
 		# if there are no duplicates in the edf file
 		trialCounter = 0
-		for i in range(self.nrTrials):
+		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			parameterStrings = self.findOccurences(thisRE)
 			if len(parameterStrings) > 0:
@@ -373,6 +374,8 @@ class EyelinkOperator( EyeOperator ):
 			for par in add_parameters:
 				ptd.append(par, np.float64)
 		self.parameterTypeDictionary = np.dtype(ptd)
+		import pdb; pdb.set_trace()
+		
 	
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
 		"""
