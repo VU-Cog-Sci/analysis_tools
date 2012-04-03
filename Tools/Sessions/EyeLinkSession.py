@@ -15,8 +15,8 @@ import scipy.stats as stats
 import numpy as np
 import matplotlib.pylab as pl
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.transforms import Affine2D
-import mpl_toolkits.axisartist.floating_axes as floating_axes
+# from matplotlib.transforms import Affine2D
+# import mpl_toolkits.axisartist.floating_axes as floating_axes
 
 from pypsignifit import *
 from tables import *
