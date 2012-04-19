@@ -26,6 +26,7 @@ from datetime import *
 from tables import *
 
 from BehaviorOperator import NewBehaviorOperator
+from IPython import embed as shell
 
 def derivative_normal_pdf( mu, sigma, x ):
 	return -( np.exp( - ( (x - mu)**2 / (2.0 * (sigma ** 2))) ) * (x - mu)) / ( sqrt(2.0 * pi) * sigma ** 3)
@@ -196,7 +197,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		if get_gaze_data:
 			self.gazeData = np.load(self.gazeFile)
-			self.gazeData = self.gazeData.astype(np.float32)
+			self.gazeData = self.gazeData.astype(np.float64)
 	
 	def findAll(self, check_answers = False):
 		"""docstring for findAll"""
@@ -326,6 +327,9 @@ class EyelinkOperator( EyeOperator ):
 			eventStrings = self.findOccurences(thisRE)
 			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
 		self.events = events
+		#
+		# add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
+		#
 		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
 		
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
@@ -431,21 +435,21 @@ class EyelinkOperator( EyeOperator ):
 		diff_data_fft = self.fourierData.T * diff_kernel_fft
 		smoothed_data_fft = self.fourierData.T * gauss_pdf_kernel_fft
 		
-		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
+		self.fourierVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		self.normedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierVelocityData]).reshape((self.fourierVelocityData.shape[0],1))
 		
 		self.velocityData = np.hstack((self.fourierVelocityData, self.normedVelocityData))
 		self.logger.info('velocity calculation of data finished')
 		
-		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
+		self.fourierSmoothedVelocityData = self.sampleFrequency * sp.fftpack.ifft(( diff_smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		self.normedSmoothedVelocityData = np.array([np.linalg.norm(xy[0:2]) for xy in self.fourierSmoothedVelocityData]).reshape((self.fourierSmoothedVelocityData.shape[0],1))
 		
 		self.smoothedVelocityData = np.hstack((self.fourierSmoothedVelocityData, self.normedSmoothedVelocityData))
-		self.smoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float32) / self.pixelsPerDegree
+		self.smoothedGazeData = sp.fftpack.ifft(( smoothed_data_fft ).T, axis = 0).astype(np.float64) / self.pixelsPerDegree
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = True, check_answers = True):
+	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = False, check_answers = False):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
@@ -473,6 +477,26 @@ class EyelinkOperator( EyeOperator ):
 			if not hasattr(self, 'parameters'):
 				self.findAll(check_answers = check_answers)
 				
+			# create a table for the trial times of this run's trials
+			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
+			trial = thisRunTimeTable.row
+			for i in range(self.nrTrials):
+				trial['trial_start_EL_timestamp'] = self.trials[i][0]
+				trial['trial_start_index'] = self.trials[i][1]
+				trial['trial_start_exp_timestamp'] = self.trials[i][2]
+				trial['trial_end_EL_timestamp'] = self.trials[i][3]
+				trial['trial_end_index'] = self.trials[i][4]
+				trial['trial_end_exp_timestamp'] = self.trials[i][5]
+				# check whether this session ended with a full trial, and only then append
+				if len(self.phaseStarts[i]) > 0:
+					if self.nrPhaseStarts[i] == np.max(self.nrPhaseStarts):
+						trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i])
+						# print np.array(self.phaseStarts[i][:self.nrPhaseStarts[i]]), trial['trial_phase_timestamps'][:self.nrPhaseStarts[i]]
+					# import pdb; pdb.set_trace()
+					trial.append()
+					
+			thisRunTimeTable.flush()
+			
 			# create a table for the parameters of this run's trials
 			thisRunParameterTable = h5file.createTable(thisRunGroup, 'trial_parameters', self.parameterTypeDictionary, 'Parameters for trials in run ' + self.inputFileName)
 			# fill up the table
@@ -492,6 +516,8 @@ class EyelinkOperator( EyeOperator ):
 					for ev in tr:								# per event per trial
 						for var in ev.keys():					# per variable in the event.
 							trial[var] = ev[var]
+						# add timing in trial and trial # here
+						# shell()
 						trial.append()
 			thisRunEventTable.flush()
 			
@@ -526,40 +552,20 @@ class EyelinkOperator( EyeOperator ):
 				fix.append()
 			thisRunFixationsTable.flush()
 			
-			# create a table for the trial times of this run's trials
-			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
-			trial = thisRunTimeTable.row
-			for i in range(self.nrTrials):
-				trial['trial_start_EL_timestamp'] = self.trials[i][0]
-				trial['trial_start_index'] = self.trials[i][1]
-				trial['trial_start_exp_timestamp'] = self.trials[i][2]
-				trial['trial_end_EL_timestamp'] = self.trials[i][3]
-				trial['trial_end_index'] = self.trials[i][4]
-				trial['trial_end_exp_timestamp'] = self.trials[i][5]
-				# check whether this session ended with a full trial, and only then append
-				if len(self.phaseStarts[i]) > 0:
-					if self.nrPhaseStarts[i] == np.max(self.nrPhaseStarts):
-						trial['trial_phase_timestamps'] = np.array(self.phaseStarts[i])
-						# print np.array(self.phaseStarts[i][:self.nrPhaseStarts[i]]), trial['trial_phase_timestamps'][:self.nrPhaseStarts[i]]
-					# import pdb; pdb.set_trace()
-					trial.append()
-					
-			thisRunTimeTable.flush()
-			
 			# create eye arrays for the run's eye movement data
 			if not hasattr(self, 'gazeData'):
 				self.loadData()
 			
-			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData.astype(np.float32), 'Raw gaze data from ' + self.inputFileName)
+			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData.astype(np.float64), 'Raw gaze data from ' + self.inputFileName)
 			
 			if not hasattr(self, 'velocityData') and compute_velocities:
 				# make the velocities arrays if it hasn't been done yet. 
 				self.computeVelocities()
 			
 			if compute_velocities:
-				h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData.astype(np.float32), 'Raw velocity data from ' + self.inputFileName)
-				h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData.astype(np.float32), 'Smoothed gaze data from ' + self.inputFileName)
-				h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData.astype(np.float32), 'Smoothed velocity data from ' + self.inputFileName)
+				h5file.createArray(thisRunGroup, 'velocity_data', self.velocityData.astype(np.float64), 'Raw velocity data from ' + self.inputFileName)
+				h5file.createArray(thisRunGroup, 'smoothed_gaze_data', self.smoothedGazeData.astype(np.float64), 'Smoothed gaze data from ' + self.inputFileName)
+				h5file.createArray(thisRunGroup, 'smoothed_velocity_data', self.smoothedVelocityData.astype(np.float64), 'Smoothed velocity data from ' + self.inputFileName)
 			
 		h5file.close()
 	
