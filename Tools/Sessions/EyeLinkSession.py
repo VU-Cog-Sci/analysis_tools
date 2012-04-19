@@ -147,6 +147,24 @@ class EyeLinkSession(object):
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
 	
+	def import_events(self, run_name = 'run_'):
+		event_data = []
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if run_name in r._v_name:
+				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
+				# perhaps later a more elegant solution is possible
+				this_dtype = np.array(r.events.read().dtype.names)
+				if len(event_data) == 0:	# if the first run, we construct a dtype_array
+					dtype_array = this_dtype
+				else:	# common denominator by intersection
+					dtype_array = np.intersect1d(dtype_array, this_dtype)
+				event_data.append(np.array(r.events.read()))
+		event_data = [p[:][dtype_array] for p in event_data]
+		self.event_data = np.concatenate(event_data)
+		self.logger.info('imported event data from ' + str(self.event_data.shape[0]) + ' trials')
+		h5f.close()
+	
 	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
 		run = None
@@ -232,6 +250,34 @@ class EyeLinkSession(object):
 				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
 		h5f.close()
 		return export_data
+	
+	# def get_key_events_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1]):
+	# 	h5f = openFile(self.hdf5_filename, mode = "r" )
+	# 	run = None
+	# 	for r in h5f.iterNodes(where = '/', classname = 'Group'):
+	# 		if self.wildcard + '_run_' + str(run_index) == r._v_name:
+	# 			run = r
+	# 			break
+	# 	if run == None:
+	# 		self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+	# 	timings = run.trial_times.read()
+	# 	
+	# 	table = run.events
+	# 	output_dtype = dict(table.dtype.fields)
+	# 	output_dtype.update({'EL_time_from_epoch_start',np.float64})
+	# 	# run for loop for actual data
+	# 	export_data = []
+	# 	for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+	# 		export_data.append([])
+	# 		for t in timings[trial_range[0]:trial_range[1]]:
+	# 			phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+	# 			where_statement = '(EL_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (EL_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
+	# 			output_data = np.array([s[:] for s in table.where(where_statement))
+	# 			epoch_times = output_data['EL_timestamp'] - t['trial_start_EL_timestamp']
+	# 			
+	# 			export_data[-1].append( ], dtype = table.dtype))
+	# 	h5f.close()
+	# 	return export_data
 	
 	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 33.0, plot = False):
 		"""
