@@ -585,10 +585,11 @@ class AnnotationToLabelOperator( CommandLineOperator ):
 			hemispheres = ['lh','rh']
 		if subjectID == None:
 			self.logger.warning('no subjectID given. this negligence will not stand.')
-
+			
 		self.runcmd = ''
 		for hemi in hemispheres:
 			self.runcmd += self.cmd
+			self.runcmd += ' --annotation ' + annotationName
 			self.runcmd += ' --subject ' + subjectID
 			self.runcmd += ' --hemi ' + hemi
 			self.runcmd += ' --outdir ' + os.path.join(os.environ['SUBJECTS_DIR'], subjectID, 'label', annotationName)
