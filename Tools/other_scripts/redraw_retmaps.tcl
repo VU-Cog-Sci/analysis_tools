@@ -42,7 +42,7 @@ set angle_cycles 2.0    ;# adjust range
 set fthresh 0.3         ;# val/curv sigmoid zero (neg=>0)
 set fslope 1.5          ;# contast (was fsquash 2.5)
 set fmid   0.8          ;# set linear region
-set smoothsteps 10
+set smoothsteps 1
 set offset 0.20    ;# default lighting offset
 
 if { [info exists revpolarflag] } { 
