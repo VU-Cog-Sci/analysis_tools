@@ -90,7 +90,11 @@ class VisualRewardSession(Session):
 			
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-				thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
+				if os.uname()[1].split('.')[-2] == 'sara':
+					thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
+				else:
+					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
+				
 				REDict = {
 				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
@@ -102,6 +106,7 @@ class VisualRewardSession(Session):
 				}
 				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
 				featOp = FEATOperator(inputObject = thisFeatFile)
+				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
 				if r == [self.runList[i] for i in self.conditionDict['reward']][-1]:
 					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 				else:
@@ -109,6 +114,35 @@ class VisualRewardSession(Session):
 				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 				# run feat
 				featOp.execute()
+		for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+			if run_feat:
+				try:
+					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+				except OSError:
+					pass
+			
+				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+				if os.uname()[1].split('.')[-2] == 'sara':
+					thisFeatFile = '/home/knapen/projects/reward/man/analysis/mapper.fsf'
+				else:
+					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/mapper.fsf'
+				REDict = {
+				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
+				}
+				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+				featOp = FEATOperator(inputObject = thisFeatFile)
+				if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+				else:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+				# run feat
+				featOp.execute()
+			
 	
 	def project_stats(self, which_file = 'zstat', postFix = ['mcf']):
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
@@ -231,7 +265,7 @@ class VisualRewardSession(Session):
 			# general info we want in all hdf files
 			stat_files.update({
 								'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
-								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'hpf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'tf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final two, we need to pre-setup the retinotopic mapping data
 								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
@@ -327,7 +361,7 @@ class VisualRewardSession(Session):
 					corrs[rois.index(roi), 1] = srs[1][0]
 		if plot:
 			pl.draw()
-			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'copes_' + str(run.ID) +  '_'.join(copes) + '.pdf')
+			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'copes_' + str(run.ID) +  '_'.join(copes) + '.pdf')
 			pl.savefig(pdf_file_name)
 		reward_h5file.close()
 		mapper_h5file.close()
@@ -359,7 +393,7 @@ class VisualRewardSession(Session):
 			# designate bad runs:
 			s.axvspan(3.75, 4.25, facecolor='y', alpha=0.25, edgecolor = 'w')
 			s.axvspan(1.75, 2.25, facecolor='y', alpha=0.25, edgecolor = 'w')
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'cope_spearman_rho_over_runs.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'cope_spearman_rho_over_runs.pdf'))
 		
 		# average across runs
 		meancs = cs.mean(axis = 0)
@@ -377,7 +411,7 @@ class VisualRewardSession(Session):
 		leg = pl.legend( (rects1[0], rects2[0]), tuple(copes), fancybox = True)
 		leg.get_frame().set_alpha(0.5)
 		
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'cope_spearman_rho_bar_over_runs' + '_'.join(copes) + '.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'cope_spearman_rho_bar_over_runs' + '_'.join(copes) + '.pdf'))
 		
 		# average across runs - but take out runs with lower confidence
 		meancs = cs[[0,1,3,5]].mean(axis = 0)
@@ -394,7 +428,7 @@ class VisualRewardSession(Session):
 		s.set_xlim(-0.5, meancs.shape[0]+2.5)
 		pl.legend( (rects1[0], rects2[0]), tuple(copes), fancybox = True)
 		leg.get_frame().set_alpha(0.5)
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'cope_spearman_rho_bar_over_runs_high_conf' + '_'.join(copes) + '.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'cope_spearman_rho_bar_over_runs_high_conf' + '_'.join(copes) + '.pdf'))
 		
 		return all_corrs
 	
@@ -528,7 +562,7 @@ class VisualRewardSession(Session):
 		mapper_h5file.close()
 		
 		pl.draw()
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/er/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
 		
 		return [event_data, timeseries]
 	
@@ -651,7 +685,7 @@ class VisualRewardSession(Session):
 						self.logger.info('No data to correlate for ' + str(data_pairs[i]) + ' ' + str(roi))
 		if plot:
 			pl.draw()
-			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_scatter_' + str(run.ID) + '.pdf')
+			pdf_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'data_scatter_' + str(run.ID) + '.pdf')
 			pl.savefig(pdf_file_name)
 		reward_h5file.close()
 		mapper_h5file.close()
@@ -685,7 +719,7 @@ class VisualRewardSession(Session):
 			# designate bad runs:
 			s.axvspan(3.75, 4.25, facecolor='y', alpha=0.25, edgecolor = 'w')
 			s.axvspan(1.75, 2.25, facecolor='y', alpha=0.25, edgecolor = 'w')
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_over_runs.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'data_spearman_rho_over_runs.pdf'))
 		
 		# average across runs
 		meancs = cs.mean(axis = 0)
@@ -709,7 +743,7 @@ class VisualRewardSession(Session):
 			    t.set_fontsize(9)    # the legend text fontsize
 			for l in leg.get_lines():
 			    l.set_linewidth(1.5)  # the legend line width
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_bar_over_runs.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'data_spearman_rho_bar_over_runs.pdf'))
 		
 		# average across runs - but take out runs with lower confidence
 		meancs = cs[[0,1,3,5]].mean(axis = 0)
@@ -733,7 +767,7 @@ class VisualRewardSession(Session):
 			    t.set_fontsize(9)    # the legend text fontsize
 			for l in leg.get_lines():
 			    l.set_linewidth(1.5)  # the legend line width
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/scatter/'), 'data_spearman_rho_bar_over_runs_HC.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'data_spearman_rho_bar_over_runs_HC.pdf'))
 		
 		return all_corrs
 	

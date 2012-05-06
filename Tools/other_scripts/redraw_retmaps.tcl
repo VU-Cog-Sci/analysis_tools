@@ -42,7 +42,7 @@ set angle_cycles 2.0    ;# adjust range
 set fthresh 0.3         ;# val/curv sigmoid zero (neg=>0)
 set fslope 1.5          ;# contast (was fsquash 2.5)
 set fmid   0.8          ;# set linear region
-set smoothsteps 1
+set smoothsteps 3
 set offset 0.20    ;# default lighting offset
 
 if { [info exists revpolarflag] } { 
@@ -79,14 +79,14 @@ do_lighting_model -1 -1 -1 -1 $offset ;# -1 => nochange; diffuse curv (def=0.15)
 # done with the standard script - here's my coding...
 # smooth the curvature and surface before doing anything else
 set rgbname polar
-set fthresh 1.7
-set fslope 1
+set fthresh 1.2
+set fslope 0.5
 set fmid 5
 set angle_offset 0.5
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
-set smoothsteps 0
+set smoothsteps 2
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh

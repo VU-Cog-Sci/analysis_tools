@@ -265,12 +265,7 @@ class Design(object):
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/self.subSamplingRatio), **hrfParameters)')
-		self.designMatrix = np.zeros((len(self.rawDesignMatrix),self.nrTimePoints))
-		for (i, reg) in zip(np.arange(len(self.rawDesignMatrix)), self.rawDesignMatrix):
-			self.designMatrix[i] = sp.convolve(reg, self.hrfKernel, 'same')[0::round(self.subSamplingRatio * self.rtime)]
-			
-		# first dimension has to be time instead of condition
-		self.designMatrix = self.designMatrix.T
+		self.designMatrix = np.array([sp.convolve(ds, self.hrfKernel, 'full')[:-(self.hrfKernel.shape[0]-1)][::round(self.subSamplingRatio * self.rtime)] for ds in self.rawDesignMatrix]).T
 			
 	def configure(self, regressors ):
 		"""

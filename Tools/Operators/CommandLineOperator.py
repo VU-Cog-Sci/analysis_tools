@@ -176,7 +176,7 @@ class FlirtOperator( CommandLineOperator ):
 			runcmd += ' -noresample'
 		
 		if sinc:
-			runcmd += ' -interp sinc '
+			runcmd += ' -interp sinc -sincwidth 7 -sincwindow hanning '
 		
 		runcmd += extra_args
 		
@@ -622,7 +622,7 @@ class FEATOperator( CommandLineOperator ):
 		self.featFile = self.inputObject
 		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
 		if os.uname()[1].split('.')[-2] == 'sara':
-			cmd = cmd.split(';')[-1]
+			self.cmd = self.cmd.split(';')[-1]
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
 		"""

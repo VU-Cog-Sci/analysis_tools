@@ -39,7 +39,7 @@ class Run(object):
 			if os.path.isfile(self.rawDataFilePath)			:
 				self.dateTime = os.path.getctime(self.rawDataFilePath)
 			else:
-				print 'rawDataFilePath is not file.'
+				print 'rawDataFilePath %s is not file.' % self.rawDataFilePath
 		elif hasattr(self, 'behaviorFile'):
 			#			self.dateTime = os.path.getctime(self.behaviorFile)
 			self.dateTime = datetime.date.today()

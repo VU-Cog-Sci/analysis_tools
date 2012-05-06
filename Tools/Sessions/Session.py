@@ -283,10 +283,10 @@ class Session(PathConstructor):
 			
 		if MNI:
 			self.logger.info('running registration to standard brain for this session to be applied to feat directories.')
-			# Flirt the freesurfer segmented brain to MNI brain
+			# Flirt the freesurfer segmented brain to MNI brain with full search
 			os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz'))
 			flRT1 = FlirtOperator( os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain.nii.gz')  )
-			flRT1.configureRun( transformMatrixFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.nii.gz') )
+			flRT1.configureRun( transformMatrixFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'brain_MNI.nii.gz'), extra_args = ' -searchrx -180 180 -searchry -180 180 -searchrz -180 180 -dof 12 ' )
 			if run_flirt:
 				flRT1.execute()
 				
@@ -432,7 +432,7 @@ class Session(PathConstructor):
 					zscO = ZScoreOperator(funcFile)
 					# zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
-		if self.parallelize and 'bandpass' in operations:
+		if self.parallelize and operations[0][-4:] == 'pass':
 			# tryout parallel implementation - later, this should be abstracted out of course. 
 			ppservers = ()
 			job_server = pp.Server(ppservers=ppservers)

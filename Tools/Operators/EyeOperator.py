@@ -26,7 +26,7 @@ from datetime import *
 from tables import *
 
 from BehaviorOperator import NewBehaviorOperator
-from IPython import embed as shell
+# from IPython import embed as shell
 
 def derivative_normal_pdf( mu, sigma, x ):
 	return -( np.exp( - ( (x - mu)**2 / (2.0 * (sigma ** 2))) ) * (x - mu)) / ( sqrt(2.0 * pi) * sigma ** 3)
@@ -378,7 +378,7 @@ class EyelinkOperator( EyeOperator ):
 			for par in add_parameters:
 				ptd.append(par, np.float64)
 		self.parameterTypeDictionary = np.dtype(ptd)
-		import pdb; pdb.set_trace()
+		# import pdb; pdb.set_trace()
 		
 	
 	def removeDrift(self, cutoffFrequency = 0.1, cleanup = True):
