@@ -490,8 +490,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'collapsed_scatter.pdf' ))
 	
 	def phaseDifferencesPerPhase(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], baseCondition = 'sacc_map', binSize = 32, maskThreshold = 4.0, smooth = True, smoothSize = 12, stretch = 1.0 ):
-		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold, regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']] ) # , regions = [['V1','V2','V3'],['V3AB','V4'],['fusiform'],['precuneus','cuneus','inferiorparietal','superiorparietal']]
-		
+		self.conditionDataForRegions(add_eccen = True, maskThreshold = maskThreshold, regions = [['V1','V2','V3'],['V1'],['V2'],['V3'],['V3AB'],['V4'],['inferiorparietal','superiorparietal']] ) 
 		if not hasattr(self, 'phasePhaseHistogramDict'):
 			self.phasePhaseHistogramDict = {}
 		if not hasattr(self, 'phasePhaseTotalDict'):

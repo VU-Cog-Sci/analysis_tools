@@ -13,6 +13,8 @@ from ..Operators.EyeOperator import *
 from ..circularTools import *
 from pylab import *
 from nifti import *
+from IPython import embed as shell
+from tables import *
 
 class VisualRewardSession(Session):
 	"""
@@ -23,8 +25,58 @@ class VisualRewardSession(Session):
 		creates feat analysis event files for reward runs. 
 		Takes run and minimum blink duration in seconds as arguments
 		"""
-		if run.condition == 'reward':
-			# get EL Data
+		if not hasattr(self, 'dual_pilot'):
+			if run.condition == 'reward':
+				# get EL Data
+				elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
+				elO.import_parameters(run_name = 'bla')
+				el_blinks = elO.get_EL_events_per_trial(run_name = 'bla', trial_ranges = [[0,255]], trial_phase_range = [0,4], data_type = 'blinks')[0] # just a single list instead of more than one....
+				el_blinks = np.concatenate(el_blinks)
+			
+				# stimulus onsets are the trial phase indexed by 1
+				# 'trial' onsets are indexed by 0
+				experiment_start_time = (elO.timings['trial_phase_timestamps'][0,0,0] / 1000)
+			
+				# blinks
+				blink_times = (el_blinks['start_timestamp'] / 1000) - experiment_start_time 
+				blinks_during_experiment = blink_times > 0.0
+				minimum_blink_duration_indices = (el_blinks['duration'] / 1000) > minimum_blink_duration
+				blink_durations, blink_times = (el_blinks['duration'][blinks_during_experiment * minimum_blink_duration_indices] / 1000), blink_times[blinks_during_experiment * minimum_blink_duration_indices]
+			
+				try:
+					os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']))
+				except OSError:
+					pass
+				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']), np.array([blink_times, blink_durations, np.ones((blink_times.shape[0]))]).T, fmt = '%3.2f', delimiter = '\t')
+			
+				# stimulus onset thingies
+				stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
+			
+				# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
+				sound_trials, visual_trials = np.array((self.which_reward + elO.parameter_data['sound']) % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
+			
+				condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
+				# conditions are made of boolean combinations
+				visual_sound_trials = sound_trials * visual_trials
+				visual_silence_trials = visual_trials * (-sound_trials)
+				blank_silence_trials = -(visual_trials + sound_trials)
+				blank_sound_trials = (-visual_trials) * sound_trials
+			
+				# print condition_labels
+				# print 'sound'
+				# print elO.parameter_data[visual_sound_trials]['sound'], elO.parameter_data[visual_silence_trials]['sound'],elO.parameter_data[blank_silence_trials]['sound'], elO.parameter_data[blank_sound_trials]['sound']
+				# print 'contrast'
+				# print elO.parameter_data[visual_sound_trials]['contrast'], elO.parameter_data[visual_silence_trials]['contrast'],elO.parameter_data[blank_silence_trials]['contrast'], elO.parameter_data[blank_sound_trials]['contrast']
+			
+				for (cond, label) in zip([visual_sound_trials, visual_silence_trials, blank_silence_trials, blank_sound_trials], condition_labels):
+					try:
+						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
+					except OSError:
+						pass
+					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+		
+		elif self.dual_pilot == 1:
+			# get EL Data, do blink and timings irrespective of mapper or reward runs
 			elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
 			elO.import_parameters(run_name = 'bla')
 			el_blinks = elO.get_EL_events_per_trial(run_name = 'bla', trial_ranges = [[0,255]], trial_phase_range = [0,4], data_type = 'blinks')[0] # just a single list instead of more than one....
@@ -49,139 +101,286 @@ class VisualRewardSession(Session):
 			# stimulus onset thingies
 			stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
 			
-			# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
-			sound_trials, visual_trials = np.array((self.which_reward + elO.parameter_data['sound']) % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
+			if run.condition == 'mapper':
+				left_none_right = np.sign(elO.parameter_data['x_position'])
+				CW_none_CCW = np.sign(elO.parameter_data['orientation'])
+				
+				condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'left', 'right']
+				left_CW_trials = (left_none_right == -1) * (CW_none_CCW == -1)
+				left_CCW_trials = (left_none_right == -1) * (CW_none_CCW == 1)
+				right_CW_trials = (left_none_right == 1) * (CW_none_CCW == -1)
+				right_CCW_trials = (left_none_right == 1) * (CW_none_CCW == 1)
+				
+				left_trials = left_CW_trials + left_CCW_trials
+				right_trials = right_CW_trials + right_CCW_trials
+				
+				for (cond, label) in zip([left_CW_trials, left_CCW_trials, right_CW_trials, right_CCW_trials, left_trials, right_trials], condition_labels):
+					try:
+						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
+					except OSError:
+						pass
+					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+				
+			elif run.condition == 'reward':
+				# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
+				left_none_right = np.sign(elO.parameter_data['x_position'])
+				CW_none_CCW = np.sign(elO.parameter_data['orientation'])
 			
-			condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
-			# conditions are made of boolean combinations
-			visual_sound_trials = sound_trials * visual_trials
-			visual_silence_trials = visual_trials * (-sound_trials)
-			blank_silence_trials = -(visual_trials + sound_trials)
-			blank_sound_trials = (-visual_trials) * sound_trials
+				condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
+				left_CW_trials = (left_none_right == -1) * (CW_none_CCW == -1)
+				left_CCW_trials = (left_none_right == -1) * (CW_none_CCW == 1)
+				right_CW_trials = (left_none_right == 1) * (CW_none_CCW == -1)
+				right_CCW_trials = (left_none_right == 1) * (CW_none_CCW == 1)
+				
+				all_stimulus_trials = [left_CW_trials, left_CCW_trials, right_CW_trials, right_CCW_trials]
+				all_reward_trials = np.array(elO.parameter_data['sound'], dtype = bool)
+				
+				which_trials_rewarded = np.array([(trials * all_reward_trials).sum() > 0 for trials in [left_CW_trials, left_CCW_trials, right_CW_trials, right_CCW_trials]])
+				which_stimulus_rewarded = np.arange(4)[which_trials_rewarded]
+				stim_trials_rewarded = np.squeeze(np.array(all_stimulus_trials)[which_trials_rewarded])
+				
+				blank_trials_rewarded = all_reward_trials - stim_trials_rewarded
+				blank_trials_silence = -np.array(np.abs(left_none_right) + blank_trials_rewarded, dtype = bool)
+				
+				# identify rewarded condition by label
+				condition_labels[which_stimulus_rewarded] += '_rewarded'
+				
+				# reorder the conditions
+				all_stimulus_trials.pop(which_stimulus_rewarded)
+				all_stimulus_trials.append(stim_trials_rewarded)
+				# reorder the condition labels
+				reward_label = condition_labels.pop(which_stimulus_rewarded)
+				condition_labels.append(reward_label)
+				
+				condition_labels.extend( ['blank_silence','blank_rewarded'] )
+				all_stimulus_trials.extend( [blank_trials_silence, blank_trials_rewarded] )
+				
+				
+				run.condition_labels = condition_labels
+				run.all_stimulus_trials = all_stimulus_trials
+				for (cond, label) in zip(all_stimulus_trials, condition_labels):
+					try:
+						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
+					except OSError:
+						pass
+					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+				
 			
-			# print condition_labels
-			# print 'sound'
-			# print elO.parameter_data[visual_sound_trials]['sound'], elO.parameter_data[visual_silence_trials]['sound'],elO.parameter_data[blank_silence_trials]['sound'], elO.parameter_data[blank_sound_trials]['sound']
-			# print 'contrast'
-			# print elO.parameter_data[visual_sound_trials]['contrast'], elO.parameter_data[visual_silence_trials]['contrast'],elO.parameter_data[blank_silence_trials]['contrast'], elO.parameter_data[blank_sound_trials]['contrast']
-			
-			for (cond, label) in zip([visual_sound_trials, visual_silence_trials, blank_silence_trials, blank_sound_trials], condition_labels):
-				try:
-					os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
-				except OSError:
-					pass
-				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+		
+	
 	
 	def feat_reward_analysis(self, version = '', postFix = ['mcf'], run_feat = True):
 		"""
 		Runs feat analysis for all reward runs. 
 		Takes run and minimum blink duration in seconds as arguments
 		"""
-		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			self.create_feat_event_files_one_run(r)
+		if not hasattr(self, 'dual_pilot'):
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				self.create_feat_event_files_one_run(r)
 			
-			if run_feat:
-				try:
-					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
-				except OSError:
-					pass
+				if run_feat:
+					try:
+						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+					except OSError:
+						pass
 			
-				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-				if os.uname()[1].split('.')[-2] == 'sara':
-					thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
-				else:
-					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
+					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+					if os.uname()[1].split('.')[-2] == 'sara':
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
+					else:
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
 				
-				REDict = {
-				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
-				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
-				'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
-				'---BLANK_SILENCE_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_silence']), 	
-				'---BLANK_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_sound']), 
-				'---VISUAL_SILENCE_FILE---':self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['visual_silence']), 	
-				'---VISUAL_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['visual_sound']), 
-				}
-				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
-				featOp = FEATOperator(inputObject = thisFeatFile)
-				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
-				if r == [self.runList[i] for i in self.conditionDict['reward']][-1]:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-				else:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
-				# run feat
-				featOp.execute()
-		for r in [self.runList[i] for i in self.conditionDict['mapper']]:
-			if run_feat:
-				try:
-					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
-				except OSError:
-					pass
+					REDict = {
+					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+					'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
+					'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
+					'---BLANK_SILENCE_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_silence']), 	
+					'---BLANK_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_sound']), 
+					'---VISUAL_SILENCE_FILE---':self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['visual_silence']), 	
+					'---VISUAL_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['visual_sound']), 
+					}
+					featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+					featOp = FEATOperator(inputObject = thisFeatFile)
+					# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
+					if r == [self.runList[i] for i in self.conditionDict['reward']][-1]:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+					else:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+					# run feat
+					featOp.execute()
+			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+				if run_feat:
+					try:
+						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+					except OSError:
+						pass
 			
-				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-				if os.uname()[1].split('.')[-2] == 'sara':
-					thisFeatFile = '/home/knapen/projects/reward/man/analysis/mapper.fsf'
-				else:
-					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/mapper.fsf'
-				REDict = {
-				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
-				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
-				}
-				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
-				featOp = FEATOperator(inputObject = thisFeatFile)
-				if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-				else:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
-				# run feat
-				featOp.execute()
+					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+					if os.uname()[1].split('.')[-2] == 'sara':
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/mapper.fsf'
+					else:
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/mapper.fsf'
+					REDict = {
+					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+					'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
+					}
+					featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+					featOp = FEATOperator(inputObject = thisFeatFile)
+					if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+					else:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+					# run feat
+					featOp.execute()
+		elif self.dual_pilot == 1:
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				# create_feat_event_files_one_run will create condition_labels and all_stimulus_trials variables for this run in the run object, to be used later on.
+				self.create_feat_event_files_one_run(r)
+			
+				if run_feat:
+					try:
+						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+					except OSError:
+						pass
+				
+					# now segment according to reward condition.
+			
+			
+			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+				self.create_feat_event_files_one_run(r)
+				if run_feat:
+					if 'orientation' == version:
+						version_postFix = postFix + [version]
+						try:
+							self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.fsf'))
+						
+						except OSError:
+							pass
+			
+						# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+						# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+						if os.uname()[1].split('.')[-2] == 'sara':
+							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
+						else:
+							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
+						REDict = {
+						'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+						'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix), 
+						'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
+						'---LEFT_CW_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['left_CW']), 
+						'---LEFT_CCW_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['left_CCW']), 
+						'---RIGHT_CW_FILE---':self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['right_CW']), 
+						'---RIGHT_CCW_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['right_CCW']), 
+						}
+						featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.fsf')
+						featOp = FEATOperator(inputObject = thisFeatFile)
+						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+						else:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+						# run feat
+						featOp.execute()
+					
+					elif 'location' == version:
+						version_postFix = postFix + [version]
+						try:
+							self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.fsf'))
+						
+						except OSError:
+							pass
+			
+						# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+						# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+						if os.uname()[1].split('.')[-2] == 'sara':
+							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
+						else:
+							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
+						REDict = {
+						'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+						'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix), 
+						'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
+						'---LEFT_FILE---': 			self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['left']), 
+						'---RIGHT_FILE---':			self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['right']), 
+						}
+						featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix, extension = '.fsf')
+						featOp = FEATOperator(inputObject = thisFeatFile)
+						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+						else:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+						# run feat
+						featOp.execute()
+
 			
 	
 	def project_stats(self, which_file = 'zstat', postFix = ['mcf']):
-		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
-			visual_results_file = os.path.join(this_feat, 'stats', which_file + '1.nii.gz')
-			reward_results_file = os.path.join(this_feat, 'stats', which_file + '2.nii.gz')
-			silent_fix_results_file = os.path.join(this_feat, 'stats', which_file + '3.nii.gz')
-			reward_fix_results_file = os.path.join(this_feat, 'stats', which_file + '4.nii.gz')
-			silent_visual_results_file = os.path.join(this_feat, 'stats', which_file + '5.nii.gz')
-			reward_visual_results_file = os.path.join(this_feat, 'stats', which_file + '6.nii.gz')
-			fix_reward_silence_results_file = os.path.join(this_feat, 'stats', which_file + '7.nii.gz')
-			visual_reward_silence_results_file = os.path.join(this_feat, 'stats', which_file + '8.nii.gz')
-			visual_silence_fix_silence_results_file = os.path.join(this_feat, 'stats', which_file + '9.nii.gz')
-			visual_reward_fix_reward_results_file = os.path.join(this_feat, 'stats', which_file + '10.nii.gz')
+		if not hasattr(self, 'dual_pilot'):
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+				visual_results_file = os.path.join(this_feat, 'stats', which_file + '1.nii.gz')
+				reward_results_file = os.path.join(this_feat, 'stats', which_file + '2.nii.gz')
+				silent_fix_results_file = os.path.join(this_feat, 'stats', which_file + '3.nii.gz')
+				reward_fix_results_file = os.path.join(this_feat, 'stats', which_file + '4.nii.gz')
+				silent_visual_results_file = os.path.join(this_feat, 'stats', which_file + '5.nii.gz')
+				reward_visual_results_file = os.path.join(this_feat, 'stats', which_file + '6.nii.gz')
+				fix_reward_silence_results_file = os.path.join(this_feat, 'stats', which_file + '7.nii.gz')
+				visual_reward_silence_results_file = os.path.join(this_feat, 'stats', which_file + '8.nii.gz')
+				visual_silence_fix_silence_results_file = os.path.join(this_feat, 'stats', which_file + '9.nii.gz')
+				visual_reward_fix_reward_results_file = os.path.join(this_feat, 'stats', which_file + '10.nii.gz')
 			
-			for (label, f) in zip(
-									['visual', 'reward', 'fix_silence', 'fix_reward', 'visual_silent', 'visual_reward', 'fix_reward-silence', 'visual_reward-silence', 'visual_silence-fix_silence', 'visual_reward-fix_reward'], 
-									[visual_results_file, reward_results_file, silent_fix_results_file, reward_fix_results_file, silent_visual_results_file, reward_visual_results_file, fix_reward_silence_results_file, visual_reward_silence_results_file, visual_silence_fix_silence_results_file, visual_reward_fix_reward_results_file]
-									):
-				vsO = VolToSurfOperator(inputObject = f)
-				ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
-				ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
-				vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
-				vsO.execute()
-		# mappers also have 1 and 2 for stats files
-		for r in [self.runList[i] for i in self.conditionDict['mapper']]:
-			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
-			center_results_file = os.path.join(this_feat, 'stats', which_file + '1.nii.gz')
-			surround_results_file = os.path.join(this_feat, 'stats', which_file + '2.nii.gz')
-			center_surround_results_file = os.path.join(this_feat, 'stats', which_file + '3.nii.gz')
-			surround_center_results_file = os.path.join(this_feat, 'stats', which_file + '4.nii.gz')
+				for (label, f) in zip(
+										['visual', 'reward', 'fix_silence', 'fix_reward', 'visual_silent', 'visual_reward', 'fix_reward-silence', 'visual_reward-silence', 'visual_silence-fix_silence', 'visual_reward-fix_reward'], 
+										[visual_results_file, reward_results_file, silent_fix_results_file, reward_fix_results_file, silent_visual_results_file, reward_visual_results_file, fix_reward_silence_results_file, visual_reward_silence_results_file, visual_silence_fix_silence_results_file, visual_reward_fix_reward_results_file]
+										):
+					vsO = VolToSurfOperator(inputObject = f)
+					ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
+					ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
+					vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
+			# mappers also have 1 and 2 for stats files
+			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+				this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+				center_results_file = os.path.join(this_feat, 'stats', which_file + '1.nii.gz')
+				surround_results_file = os.path.join(this_feat, 'stats', which_file + '2.nii.gz')
+				center_surround_results_file = os.path.join(this_feat, 'stats', which_file + '3.nii.gz')
+				surround_center_results_file = os.path.join(this_feat, 'stats', which_file + '4.nii.gz')
 			
 			
-			for (label, f) in zip(['center', 'surround', 'center_surround', 'surround_center'], [center_results_file, surround_results_file, center_surround_results_file, surround_center_results_file]):
-				vsO = VolToSurfOperator(inputObject = f)
-				ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
-				ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
-				vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
-				vsO.execute()
+				for (label, f) in zip(['center', 'surround', 'center_surround', 'surround_center'], [center_results_file, surround_results_file, center_surround_results_file, surround_center_results_file]):
+					vsO = VolToSurfOperator(inputObject = f)
+					ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
+					ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
+					vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
+		elif self.dual_pilot == 1:
+			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+				this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat') # to look at the locations, which is what we're doing here, add  + 'tf' + 'location' to postfix when calling this method.
+				left_file = os.path.join(this_feat, 'stats', which_file + '1.nii.gz')
+				right_file = os.path.join(this_feat, 'stats', which_file + '2.nii.gz')
+				for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+					vsO = VolToSurfOperator(inputObject = f)
+					ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
+					ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
+					vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
+				
+				
 	
 	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
 		"""
@@ -196,12 +395,13 @@ class VisualRewardSession(Session):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		if not os.path.isfile(self.hdf5_filename):
-			self.logger.info('starting table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
-		else:
-			self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		if os.path.isfile(self.hdf5_filename):
+			os.system('rm ' + self.hdf5_filename)
+		self.logger.info('starting table file ' + self.hdf5_filename)
+		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		# else:
+		# 	self.logger.info('opening table file ' + self.hdf5_filename)
+		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 			"""loop over runs, and try to open a group for this run's data"""
@@ -299,6 +499,146 @@ class VisualRewardSession(Session):
 			# self.logger.info('opening table file ' + self.hdf5_filename)
 			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
 		return h5file
+	
+	
+	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000):
+		if run.condition == 'reward':
+			# get EL Data
+			
+			h5f = openFile(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
+			r = None
+			for item in h5f.iterNodes(where = '/', classname = 'Group'):
+				if item._v_name == 'bla':
+					r = item
+					break
+			if r == None:
+				self.logger.error('No run named bla in this run\'s hdf5 file ' + self.hdf5_filename )
+			
+			trial_times = r.trial_times.read()
+			gaze_timestamps = r.gaze_data.read()[:,0]
+			raw_pupil_sizes = r.gaze_data.read()[:,3]
+			trial_parameters = r.trial_parameters.read()
+			blink_data = r.blinks_from_EL.read()
+			
+			from scipy import interpolate
+			from scipy.signal import butter, filtfilt
+			
+			# lost data will appear as a 0.0 instead of anything sensible, and is not detected as blinks. 
+			# we will detect them, string them together so that they coalesce into reasonable events, and
+			# add them to the blink array.
+			zero_edges = np.arange(raw_pupil_sizes.shape[0])[np.diff((raw_pupil_sizes < 0.1))]
+			
+			zero_edges = zero_edges[:int(2 * floor(zero_edges.shape[0]/2.0))].reshape(-1,2)
+			new_ze = [zero_edges[0]]
+			for ze in zero_edges[1:]:
+				if (ze[0] - new_ze[-1][-1])/sample_rate < 0.1:
+					new_ze[-1][1] = ze[1]
+				else:
+					new_ze.append(ze)
+			zero_edges = np.array(new_ze)
+			
+			ze_to_blinks = np.zeros((zero_edges.shape[0]), dtype = blink_data.dtype)
+			for (i, ze_d) in enumerate(ze_to_blinks):
+				# make sure to convert times-indices back to times, as for blinks
+				ze_d['duration'] = gaze_timestamps[zero_edges[i, 1]] - gaze_timestamps[zero_edges[i, 0]]
+				ze_d['start_timestamp'] = gaze_timestamps[zero_edges[i, 0]]
+				ze_d['end_timestamp'] = gaze_timestamps[zero_edges[i, 1]]
+				ze_d['eye'] = 'R'
+			blink_data = np.concatenate((blink_data, ze_to_blinks))
+			# # re-sort
+			blink_data = blink_data[np.argsort(blink_data['start_timestamp'])]
+			
+			# shell()
+			
+			# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
+			sound_trials, visual_trials = np.array((self.which_reward + trial_parameters['sound']) % 2, dtype = 'bool'), np.array(trial_parameters['contrast'], dtype = 'bool')
+			
+			condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
+			# conditions are made of boolean combinations
+			visual_sound_trials = sound_trials * visual_trials
+			visual_silence_trials = visual_trials * (-sound_trials)
+			blank_silence_trials = -(visual_trials + sound_trials)
+			blank_sound_trials = (-visual_trials) * sound_trials
+			
+			# these are the time points (defined in samples for now...) from which we take the levels on which to base the interpolation
+			points_for_interpolation = np.array([[-150, -75],[75, 150]])
+			interpolation_time_points = np.zeros((blink_data.shape[0], points_for_interpolation.ravel().shape[0]))
+			interpolation_time_points[:,[0,1]] = np.tile(blink_data['start_timestamp'], 2).reshape((2,-1)).T + points_for_interpolation[0]
+			interpolation_time_points[:,[2,3]] = np.tile(blink_data['end_timestamp'], 2).reshape((2,-1)).T + points_for_interpolation[1]
+			
+			# shell()
+			
+			# blinks may start or end before or after sampling has begun or stopped
+			interpolation_time_points = np.where(interpolation_time_points < gaze_timestamps[-1], interpolation_time_points, gaze_timestamps[-1])
+			interpolation_time_points = np.where(interpolation_time_points > gaze_timestamps[0], interpolation_time_points, gaze_timestamps[0])
+			# apparently the above doesn't actually work, and resulting in nan interpolation results. We'll just throw these out.
+			# this last-ditch attempt rule might work out the nan errors after interpolation
+			interpolation_time_points = np.array([itp for itp in interpolation_time_points if ((itp == gaze_timestamps[0]).sum() == 0) and ((itp == gaze_timestamps[-1]).sum() == 0)])
+			# itp = itp[(itp != gaze_timestamps[0]) + (itp != gaze_timestamps[-1])]
+			
+			
+			# correct for the fucking eyelink not keeping track of fucking time
+			# shell()
+			# interpolation_time_points = np.array([[np.arange(gaze_timestamps.shape[0])[gaze_timestamps >= interpolation_time_points[i,j]][0] for j in range(points_for_interpolation.ravel().shape[0])] for i in range(interpolation_time_points.shape[0])])
+			# convert everything to indices
+			interpolation_time_points = np.array([[np.arange(gaze_timestamps.shape[0])[gaze_timestamps >= interpolation_time_points[i,j]][0] for j in range(points_for_interpolation.ravel().shape[0])] for i in range(interpolation_time_points.shape[0])])
+			
+			# print raw_pupil_sizes.mean()
+			# print interpolation_time_points
+			
+			for itp in interpolation_time_points:
+				# interpolate
+				spline = interpolate.InterpolatedUnivariateSpline(itp,raw_pupil_sizes[itp])
+				# replace with interpolated data
+				raw_pupil_sizes[itp[0]:itp[-1]] = spline(np.arange(itp[0],itp[-1]))
+			
+			# print raw_pupil_sizes.mean()
+			
+			# band-pass filtering of signal, high pass first and then low-pass
+			hp_frequency = 0.02
+			hp_cof_sample = hp_frequency / (raw_pupil_sizes.shape[0] / (sample_rate / 2))
+			bhp, ahp = butter(3, hp_cof_sample)
+			
+			hp_c_pupil_zscore = raw_pupil_sizes - filtfilt(bhp, ahp, raw_pupil_sizes)
+			
+			lp_frequency = 10.0
+			lp_cof_sample = lp_frequency / (raw_pupil_sizes.shape[0] / (sample_rate / 2))
+			blp, alp = butter(3, lp_cof_sample)
+			
+			lp_hp_c_filt_pupil_zscore = filtfilt(blp, alp, hp_c_pupil_zscore)
+			
+			pupil_zscore = (lp_hp_c_filt_pupil_zscore - np.array(lp_hp_c_filt_pupil_zscore).mean()) / lp_hp_c_filt_pupil_zscore.std() # Possible because vectorized.
+			trial_phase_timestamps = [trial_times['trial_phase_timestamps'][:,1][cond,0] for cond in [blank_silence_trials, blank_sound_trials, visual_silence_trials, visual_sound_trials]]			
+			tr_data = np.array([[pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<tpt+12500)][:10000] for tpt in trphts] for trphts in trial_phase_timestamps])
+			
+			h5f.close()
+			
+			pl.figure(figsize = (10,4))
+			for i in range(tr_data.shape[0]):
+				pl.plot(np.array(tr_data[0]).T, ['b','b','g','g'][i], linewidth = 1.75)
+			pl.savefig(self.runFile(stage = 'processed/eye', run = run, extension = '.pdf', postFix = ['pupil']))
+			return tr_data
+			
+	def pupil_responses(self):
+		"""docstring for pupil_responses"""
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		all_pupil_responses = []
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			all_pupil_responses.append(self.pupil_responses_one_run(run = r, frequency = 4))
+		# self.all_pupil_responses_hs = np.array(all_pupil_responses)
+		pl.figure(figsize = (9,4))
+		for i in range(4):
+			all_data_this_condition = np.vstack([all_pupil_responses[j][i] for j in range(len(all_pupil_responses))])
+			zero_points = all_data_this_condition[:,[0,1]].mean(axis = 1)
+			all_data_this_condition = np.array([a - z for (a, z) in zip (all_data_this_condition, zero_points)])
+			pl.plot(all_data_this_condition.mean(axis = 0), ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = cond_labels[i])
+			# zero at reward onset
+			# zero_points = all_data_this_condition[:,[700,701]].mean(axis = 1)
+			# all_data_this_condition = np.array([a - z for (a, z) in zip (all_data_this_condition, zero_points)])
+			# pl.plot(all_data_this_condition.mean(axis = 0), ['b','b','g','g'][i]+'--', alpha = [1.0, 0.5, 1.0, 0.5][i], label = cond_labels[i])
+		pl.savefig(self.stageFolder(stage = 'processed/eye/figs/') + 'pupil.pdf')
+		# shell()
 	
 	
 	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
@@ -568,7 +908,8 @@ class VisualRewardSession(Session):
 	
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
 		for roi in rois:
-			self.deconvolve_roi(roi, threshold, mask_type = 'center_surround_Z', analysis_type = analysis_type, mask_direction = 'pos')
+			self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos')
+			self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos')
 #			self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
