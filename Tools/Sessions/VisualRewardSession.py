@@ -597,15 +597,15 @@ class VisualRewardSession(Session):
 			# band-pass filtering of signal, high pass first and then low-pass
 			hp_frequency = 0.02
 			hp_cof_sample = hp_frequency / (raw_pupil_sizes.shape[0] / (sample_rate / 2))
-			bhp, ahp = butter(3, hp_cof_sample)
+			bhp, ahp = butter(3, hp_cof_sample, btype = 'high')
 			
-			hp_c_pupil_zscore = raw_pupil_sizes - filtfilt(bhp, ahp, raw_pupil_sizes)
+			hp_c_pupil_size = filtfilt(bhp, ahp, raw_pupil_sizes)
 			
 			lp_frequency = 10.0
 			lp_cof_sample = lp_frequency / (raw_pupil_sizes.shape[0] / (sample_rate / 2))
 			blp, alp = butter(3, lp_cof_sample)
 			
-			lp_hp_c_filt_pupil_zscore = filtfilt(blp, alp, hp_c_pupil_zscore)
+			lp_hp_c_filt_pupil_size = filtfilt(blp, alp, hp_c_pupil_size)
 			
 			pupil_zscore = (lp_hp_c_filt_pupil_zscore - np.array(lp_hp_c_filt_pupil_zscore).mean()) / lp_hp_c_filt_pupil_zscore.std() # Possible because vectorized.
 			trial_phase_timestamps = [trial_times['trial_phase_timestamps'][:,1][cond,0] for cond in [blank_silence_trials, blank_sound_trials, visual_silence_trials, visual_sound_trials]]			
