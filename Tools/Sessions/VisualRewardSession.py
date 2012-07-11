@@ -6,7 +6,7 @@ Session.py
 Created by Tomas HJ Knapen on 2009-11-26.
 Copyright (c) 2009 TK. All rights reserved.
 """
-
+import datetime
 from Session import * 
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
@@ -15,6 +15,7 @@ from pylab import *
 from nifti import *
 from IPython import embed as shell
 from tables import *
+import pickle
 
 class VisualRewardSession(Session):
 	"""
@@ -35,45 +36,49 @@ class VisualRewardSession(Session):
 			
 				# stimulus onsets are the trial phase indexed by 1
 				# 'trial' onsets are indexed by 0
-				experiment_start_time = (elO.timings['trial_phase_timestamps'][0,0,0] / 1000)
+				experiment_start_time = (elO.timings['trial_phase_timestamps'][0,0,0] / 1000.0)
 			
 				# blinks
-				blink_times = (el_blinks['start_timestamp'] / 1000) - experiment_start_time 
+				blink_times = (el_blinks['start_timestamp'] / 1000.0) - experiment_start_time 
 				blinks_during_experiment = blink_times > 0.0
-				minimum_blink_duration_indices = (el_blinks['duration'] / 1000) > minimum_blink_duration
-				blink_durations, blink_times = (el_blinks['duration'][blinks_during_experiment * minimum_blink_duration_indices] / 1000), blink_times[blinks_during_experiment * minimum_blink_duration_indices]
+				minimum_blink_duration_indices = (el_blinks['duration'] / 1000.0) > minimum_blink_duration
+				run.blink_durations, run.blink_times = (el_blinks['duration'][blinks_during_experiment * minimum_blink_duration_indices] / 1000.0), blink_times[blinks_during_experiment * minimum_blink_duration_indices]
 			
 				try:
 					os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']))
 				except OSError:
 					pass
-				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']), np.array([blink_times, blink_durations, np.ones((blink_times.shape[0]))]).T, fmt = '%3.2f', delimiter = '\t')
+				# shell()
+				a = np.ones((run.blink_times.shape[0], 3))
+				a[:,0] = run.blink_times; a[:,1] = run.blink_durations;
+				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']), a.T, fmt = '%3.2f', delimiter = '\t')
 			
 				# stimulus onset thingies
-				stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
+				run.stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
+				# save stimulus_onset_times to separate text file to be used for per-trial glm analyses
+				try:
+					os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']))
+				except OSError:
+					pass
+				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']), np.array([run.stimulus_onset_times, np.ones((run.stimulus_onset_times.shape[0])), np.ones((run.stimulus_onset_times.shape[0]))]).T, fmt = '%3.2f', delimiter = '\t')
 			
 				# trials are separated on 'sound' and 'contrast' parameters, and we parcel in the reward scheme here, since not every subject receives the same reward and zero sounds
-				sound_trials, visual_trials = np.array((self.which_reward + elO.parameter_data['sound']) % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
+				run.sound_trials, run.visual_trials = np.array((self.which_reward + elO.parameter_data['sound']) % 2, dtype = 'bool'), np.array(elO.parameter_data['contrast'], dtype = 'bool')
 			
-				condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
+				run.condition_labels = ['visual_sound', 'visual_silence', 'blank_silence', 'blank_sound']
+				
 				# conditions are made of boolean combinations
-				visual_sound_trials = sound_trials * visual_trials
-				visual_silence_trials = visual_trials * (-sound_trials)
-				blank_silence_trials = -(visual_trials + sound_trials)
-				blank_sound_trials = (-visual_trials) * sound_trials
-			
-				# print condition_labels
-				# print 'sound'
-				# print elO.parameter_data[visual_sound_trials]['sound'], elO.parameter_data[visual_silence_trials]['sound'],elO.parameter_data[blank_silence_trials]['sound'], elO.parameter_data[blank_sound_trials]['sound']
-				# print 'contrast'
-				# print elO.parameter_data[visual_sound_trials]['contrast'], elO.parameter_data[visual_silence_trials]['contrast'],elO.parameter_data[blank_silence_trials]['contrast'], elO.parameter_data[blank_sound_trials]['contrast']
-			
-				for (cond, label) in zip([visual_sound_trials, visual_silence_trials, blank_silence_trials, blank_sound_trials], condition_labels):
+				run.visual_sound_trials = run.sound_trials * run.visual_trials
+				run.visual_silence_trials = run.visual_trials * (-run.sound_trials)
+				run.blank_silence_trials = -(run.visual_trials + run.sound_trials)
+				run.blank_sound_trials = (-run.visual_trials) * run.sound_trials
+				for (cond, label) in zip([run.visual_sound_trials, run.visual_silence_trials, run.blank_silence_trials, run.blank_sound_trials], run.condition_labels):
 					try:
 						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
 					except OSError:
 						pass
-					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([run.stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+				pickle.dump(run, file(self.runFile(stage = 'processed/mri', run = run, extension = '.pickle', postFix = ['run']), 'w'))
 		
 		elif self.dual_pilot == 1:
 			# get EL Data, do blink and timings irrespective of mapper or reward runs
@@ -490,14 +495,14 @@ class VisualRewardSession(Session):
 					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 		h5file.close()
 	
-	def hdf5_file(self, run_type):
+	def hdf5_file(self, run_type, mode = 'r'):
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		if not os.path.isfile(self.hdf5_filename):
 			self.logger.info('no table file ' + self.hdf5_filename + 'found for stat mask')
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
+			h5file = openFile(self.hdf5_filename, mode = mode, title = run_type + " file")
 		return h5file
 	
 	
@@ -607,37 +612,62 @@ class VisualRewardSession(Session):
 			
 			lp_hp_c_filt_pupil_size = filtfilt(blp, alp, hp_c_pupil_size)
 			
-			pupil_zscore = (lp_hp_c_filt_pupil_zscore - np.array(lp_hp_c_filt_pupil_zscore).mean()) / lp_hp_c_filt_pupil_zscore.std() # Possible because vectorized.
+			pupil_zscore = (lp_hp_c_filt_pupil_size - np.array(lp_hp_c_filt_pupil_size).mean()) / lp_hp_c_filt_pupil_size.std() # Possible because vectorized.
 			trial_phase_timestamps = [trial_times['trial_phase_timestamps'][:,1][cond,0] for cond in [blank_silence_trials, blank_sound_trials, visual_silence_trials, visual_sound_trials]]			
-			tr_data = np.array([[pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<tpt+12500)][:10000] for tpt in trphts] for trphts in trial_phase_timestamps])
+			tr_data = np.array([[pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (10 * sample_rate)))][:(10 * sample_rate)] for tpt in trphts] for trphts in trial_phase_timestamps])
 			
 			h5f.close()
-			
+			# shell()
 			pl.figure(figsize = (10,4))
 			for i in range(tr_data.shape[0]):
 				pl.plot(np.array(tr_data[0]).T, ['b','b','g','g'][i], linewidth = 1.75)
 			pl.savefig(self.runFile(stage = 'processed/eye', run = run, extension = '.pdf', postFix = ['pupil']))
 			return tr_data
 			
-	def pupil_responses(self):
+	def pupil_responses(self, sample_rate = 2000):
 		"""docstring for pupil_responses"""
 		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
 		
 		all_pupil_responses = []
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			all_pupil_responses.append(self.pupil_responses_one_run(run = r, frequency = 4))
+			all_pupil_responses.append(self.pupil_responses_one_run(run = r, frequency = 4, sample_rate = sample_rate))
 		# self.all_pupil_responses_hs = np.array(all_pupil_responses)
-		pl.figure(figsize = (9,4))
+		fig = pl.figure(figsize = (9,5))
+		s = fig.add_subplot(2,1,1)
+		s.set_ylabel('Z-scored Pupil Size')
+		s.set_title('Pupil Size after stimulus onset')
+		all_data_conditions = []
 		for i in range(4):
 			all_data_this_condition = np.vstack([all_pupil_responses[j][i] for j in range(len(all_pupil_responses))])
-			zero_points = all_data_this_condition[:,[0,1]].mean(axis = 1)
+			zero_points = all_data_this_condition[:,[0,1]].mean(axis = 1)			
 			all_data_this_condition = np.array([a - z for (a, z) in zip (all_data_this_condition, zero_points)])
-			pl.plot(all_data_this_condition.mean(axis = 0), ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = cond_labels[i])
-			# zero at reward onset
-			# zero_points = all_data_this_condition[:,[700,701]].mean(axis = 1)
-			# all_data_this_condition = np.array([a - z for (a, z) in zip (all_data_this_condition, zero_points)])
-			# pl.plot(all_data_this_condition.mean(axis = 0), ['b','b','g','g'][i]+'--', alpha = [1.0, 0.5, 1.0, 0.5][i], label = cond_labels[i])
-		pl.savefig(self.stageFolder(stage = 'processed/eye/figs/') + 'pupil.pdf')
+			all_data_conditions.append(all_data_this_condition.mean(axis = 0))
+			rnge = np.linspace(0,all_data_conditions[-1].shape[0]/sample_rate, all_data_conditions[-1].shape[0])
+			sems = (all_data_this_condition.std(axis = 0)/np.sqrt(all_data_this_condition.shape[0]))
+			pl.plot(rnge, all_data_conditions[-1], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = cond_labels[i])
+			pl.fill_between(rnge, all_data_conditions[-1]+sems, all_data_conditions[-1]-sems, color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.75)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		s = fig.add_subplot(2,1,2)
+		for i in range(0, 4, 2):
+			diffs = -(all_data_conditions[i] - all_data_conditions[i+1])
+			pl.plot(np.linspace(0,diffs.shape[0]/sample_rate, diffs.shape[0]), diffs, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2])
+			s.set_title('reward signal')
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.75)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		s.set_xlabel('time [s]')
+		s.set_ylabel('$\Delta$ Z-scored Pupil Size')
+		pl.savefig(self.stageFolder(stage = 'processed/eye/figs/') + 'pupil_evolution_per_condition.pdf')
 		# shell()
 	
 	
@@ -904,15 +934,112 @@ class VisualRewardSession(Session):
 		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
 		
-		return [event_data, timeseries]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals)]
 	
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
+		results = []
 		for roi in rois:
-			self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos')
-			self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg')
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos'))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg'))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos'))
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
-			self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos')
-#			self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+		
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'deconvolution_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for r in results:
+			reward_h5file.createArray(thisRunGroup, r[0], r[-1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+
+	def glm_per_roi_per_trial(self, roi, analysis_type = 'per_trial' ):
+		"""glm_per_roi runs a glm analysis on the data from a single roi."""
+		# check out the duration of these runs, assuming they're all the same length.
+		import nipy.labs.glm
+		
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'glm_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'glm analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/'+this_run_group_name, name = roi, classname='Group')
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + roi + ' to ' + this_run_group_name)
+			thisRunGroup = reward_h5file.createGroup('/'+this_run_group_name, roi, 'glm analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		
+		event_data = []
+		roi_data = []
+		beta_weights = []
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
+			event_data.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['all_trials']))[:,0] )
+			design = Design(nrTimePoints = nr_trs, rtime = tr)
+			for i in range(event_data[-1].shape[0]):
+				design.addRegressor([[event_data[-1][i], 1.0, 1.0]])
+			design.convolveWithHRF()
+			
+			my_glm = nipy.labs.glm.glm.glm()
+			glm = my_glm.fit(roi_data[-1].T, design.designMatrix, method="kalman", model="ar1")
+			# shell()
+			reward_h5file.createArray(thisRunGroup, roi + '_' + 'betas_' + str(r.ID), my_glm.beta, 'beta weights for per-trial glm analysis on region ' + roi + ', run ' + str(r.ID) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			self.logger.info('beta weights for per-trial glm analysis on region ' + roi + ', run ' + str(r.ID) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+	
+	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials']):
+		# for roi in rois:
+		# 	self.glm_per_roi_per_trial(roi, analysis_type = analysis_type )
+		# 	
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		for run in [self.runList[i] for i in self.conditionDict['reward']]:
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))
+			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))[1]
+			# everyone shares the same design matrix.
+			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:,0] 
+			design = Design(nrTimePoints = nr_trs, rtime = tr)
+			for i in range(event_data.shape[0]):
+				design.addRegressor([[event_data[i], 1.0, 1.0]])
+			design.convolveWithHRF()
+			my_glm = nipy.labs.glm.glm.glm()
+			
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				for roi_name in reward_h5file.listNodes(where = '/' + this_run_group_name, classname = 'Group'):
+					roi_data = eval('roi_name.' + data_type + '.read()')
+					roi_data = roi_data.T - roi_data.mean(axis = 1)
+					glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
+					try: 
+						reward_h5file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
+					except NoSuchNodeError:
+						pass
+					reward_h5file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+					self.logger.info('beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('No group ' + this_run_group_name + ' in this file')
+				return None
+		reward_h5file.close()
+		
 
 	def mean_stats_for_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', stats_types = ['blank_silence', 'blank_sound', 'visual_silence', 'visual_sound'], mask_direction = 'pos'):
 		"""docstring for mean_stats_for_roi"""
