@@ -949,6 +949,8 @@ class LatencyRemappingSession(Session):
 		run.saccade_instruction_times =  run.timings['trial_phase_timestamps'][:,2,0]-run.first_TR_timestamp
 		run.stimulus_off_times =  run.timings['trial_phase_timestamps'][:,3,0]-run.first_TR_timestamp
 		
+		run.saccade_latencies = np.array(run.saccade_latencies)
+		
 		if latency_type == 'saccade':
 		# trials_for_this_slr = np.arange(run.stimulus_off_times.shape[0])[((run.saccadeonset_stimoffset_latencies > saccade_latency_range[0]) * (run.saccadeonset_stimoffset_latencies < saccade_latency_range[1]))]
 			trials_for_this_slr = np.arange(run.stimulus_off_times.shape[0])[((run.saccade_latencies > saccade_latency_range[0]) * (run.saccade_latencies < saccade_latency_range[1]))]

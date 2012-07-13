@@ -9,6 +9,7 @@ Copyright (c) 2009 TK. All rights reserved.
 
 import os, sys, pickle, math
 from subprocess import *
+import datetime
 
 import scipy as sp
 import numpy as np
@@ -670,4 +671,43 @@ class Session(PathConstructor):
 		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
 		newImage.save()
 
+	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials']):
+		"""
+		run_glm_on_hdf5 takes an open (r+) hdf5 file, a list of run objects and runs glms on all roi subregions from a run.
+		it assumes:
+			1. an hdf5 file that has groups for each of the _mcf.nii.gz files in the runlist
+			2. that each of these groups has a sequence of roi data arrays
+			3. a nii.gz file that can be found with the session's runFile function
+			4. a fsl-event text file in the run folders from which to take the separate-trial regressors.
+		"""
+		# reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		for run in run_list:
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))
+			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))[1]
+			# everyone shares the same design matrix.
+			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
+			design = Design(nrTimePoints = nr_trs, rtime = tr)
+			for i in range(event_data.shape[0]):
+				design.addRegressor([event_data[i]])
+			design.convolveWithHRF()
+			my_glm = nipy.labs.glm.glm.glm()
+			
+			try:
+				thisRunGroup = hdf5_file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				for roi_name in hdf5_file.listNodes(where = '/' + this_run_group_name, classname = 'Group'):
+					roi_data = eval('roi_name.' + data_type + '.read()')
+					roi_data = roi_data.T - roi_data.mean(axis = 1)
+					glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
+					try: 
+						hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
+					except NoSuchNodeError:
+						pass
+					hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+					self.logger.info('beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('No group ' + this_run_group_name + ' in this file')
+				# return None
 	

@@ -959,85 +959,10 @@ class VisualRewardSession(Session):
 		for r in results:
 			reward_h5file.createArray(thisRunGroup, r[0], r[-1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
-
-	def glm_per_roi_per_trial(self, roi, analysis_type = 'per_trial' ):
-		"""glm_per_roi runs a glm analysis on the data from a single roi."""
-		# check out the duration of these runs, assuming they're all the same length.
-		import nipy.labs.glm
-		
-		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-		tr, nr_trs = niiFile.rtime, niiFile.timepoints
-		run_duration = tr * nr_trs
-		
-		reward_h5file = self.hdf5_file('reward', mode = 'r+')
-		this_run_group_name = 'glm_results'
-		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-		except NoSuchNodeError:
-			# import actual data
-			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'glm analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
-		
-		try:
-			thisRunGroup = reward_h5file.getNode(where = '/'+this_run_group_name, name = roi, classname='Group')
-		except NoSuchNodeError:
-			# import actual data
-			self.logger.info('Adding group ' + roi + ' to ' + this_run_group_name)
-			thisRunGroup = reward_h5file.createGroup('/'+this_run_group_name, roi, 'glm analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
-		
-		
-		event_data = []
-		roi_data = []
-		beta_weights = []
-		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
-			event_data.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['all_trials']))[:,0] )
-			design = Design(nrTimePoints = nr_trs, rtime = tr)
-			for i in range(event_data[-1].shape[0]):
-				design.addRegressor([[event_data[-1][i], 1.0, 1.0]])
-			design.convolveWithHRF()
-			
-			my_glm = nipy.labs.glm.glm.glm()
-			glm = my_glm.fit(roi_data[-1].T, design.designMatrix, method="kalman", model="ar1")
-			# shell()
-			reward_h5file.createArray(thisRunGroup, roi + '_' + 'betas_' + str(r.ID), my_glm.beta, 'beta weights for per-trial glm analysis on region ' + roi + ', run ' + str(r.ID) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			self.logger.info('beta weights for per-trial glm analysis on region ' + roi + ', run ' + str(r.ID) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-		reward_h5file.close()
 	
 	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials']):
-		# for roi in rois:
-		# 	self.glm_per_roi_per_trial(roi, analysis_type = analysis_type )
-		# 	
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
-		for run in [self.runList[i] for i in self.conditionDict['reward']]:
-			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))
-			tr, nr_trs = niiFile.rtime, niiFile.timepoints
-			
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))[1]
-			# everyone shares the same design matrix.
-			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:,0] 
-			design = Design(nrTimePoints = nr_trs, rtime = tr)
-			for i in range(event_data.shape[0]):
-				design.addRegressor([[event_data[i], 1.0, 1.0]])
-			design.convolveWithHRF()
-			my_glm = nipy.labs.glm.glm.glm()
-			
-			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-				for roi_name in reward_h5file.listNodes(where = '/' + this_run_group_name, classname = 'Group'):
-					roi_data = eval('roi_name.' + data_type + '.read()')
-					roi_data = roi_data.T - roi_data.mean(axis = 1)
-					glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
-					try: 
-						reward_h5file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
-					except NoSuchNodeError:
-						pass
-					reward_h5file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-					self.logger.info('beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
-			except NoSuchNodeError:
-				# import actual data
-				self.logger.info('No group ' + this_run_group_name + ' in this file')
-				return None
+		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'])
 		reward_h5file.close()
 		
 
