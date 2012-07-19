@@ -29,6 +29,7 @@ from ..Operators.ImageOperator import *
 from ..Operators.BehaviorOperator import *
 # from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
+from IPython import embed as shell
 
 class PathConstructor(object):
 	"""
@@ -705,7 +706,17 @@ class Session(PathConstructor):
 					except NoSuchNodeError:
 						pass
 					hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-					self.logger.info('beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
+					stat_matrix = []
+					for i in range(design.designMatrix.shape[-1]):
+						this_contrast = np.zeros(design.designMatrix.shape[-1])
+						this_contrast[i] = 1.0
+						stat_matrix.append(my_glm.contrast(this_contrast).stat())
+					try: 
+						hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
+					except NoSuchNodeError:
+						pass
+					hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+					self.logger.info('beta weights and stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('No group ' + this_run_group_name + ' in this file')
