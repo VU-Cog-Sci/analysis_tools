@@ -7,7 +7,7 @@ from subprocess import *
 
 areas = [['V2',['V2d','V2v']],['V3',['V3d','V3v']],['V3AB',['V3A','V3B']]]
 directory = 'retmap'
-FSsubjects = ['RB_130112']
+FSsubjects = ['TD_230712_GPU']
 
 for sj in FSsubjects:
 	os.chdir(os.path.join(os.environ['SUBJECTS_DIR'], sj, 'label', directory ))

@@ -1537,7 +1537,7 @@ class SASession(EyeLinkSession):
 			return
 	
 	def analyze_saccades_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], plot_saccades = False, which_saccade_detection_procedure = 'el', gain_threshold = 0.6 ):
-		from scipy import polyfit, polyval
+		from scipy.optimize import curve_fit
 		sacs, xy_data, vel_data = self.find_saccades_per_trial_for_run( run_index = run_index, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, plot = plot_saccades )
 		if plot_saccades:
 			pl.show()
@@ -1545,6 +1545,7 @@ class SASession(EyeLinkSession):
 		pars = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
 		
 		saccade_data = []
+		runned_fit_parameters = []
 		runned_saccade_data = []
 		fig = pl.figure(figsize = (16,3))
 		fig.subplots_adjust(wspace = 0.2, hspace = 0.3, left = 0.05, right = 0.95, bottom = 0.1, top = 0.95)
@@ -1567,7 +1568,18 @@ class SASession(EyeLinkSession):
 				gains = np.asarray(saccade_data[-1])[sufficient_gain,1]
 			pl.plot(np.asarray(saccade_data[-1])[sufficient_gain,0], gains, colors[i] + 'o', mew = 2.5, alpha = 0.75, mec = 'w', ms = 8 )
 			this_sacc_ampl_array = np.array([np.arange(len(saccade_data[-1]))[sufficient_gain], np.asarray(saccade_data[-1])[sufficient_gain,2]])
-			runned_saccade_data.append(this_sacc_ampl_array )
+			runned_saccade_data.append(this_sacc_ampl_array)
+			
+			# fit data
+			guess_offset, guess_gain, guess_timescale = 1.0, 0.0, 50
+			guess = [guess_gain, guess_timescale, guess_offset]
+			
+			func = lambda x, gain, timescale, offset: gain * np.exp(x * timescale) + offset
+			
+			# shell()
+			# params, cov = curve_fit(func, this_sacc_ampl_array[0], this_sacc_ampl_array[1], p0=guess)
+			# gain, timescale, offset = params
+			# runned_fit_parameters.append([gain, timescale, offset])
 			
 		ids_gains = np.array(ids_gains)
 #		import pdb; pdb.set_trace()
@@ -1584,6 +1596,29 @@ class SASession(EyeLinkSession):
 		pickle.dump(runned_saccade_data, file(os.path.join(self.base_directory, 'processed', 'saccades.pickle'), 'w'))
 		
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains_2_' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		
+		bd = []
+		fig = pl.figure(figsize = (10,4))
+		s1 = fig.add_subplot(3,1,1)
+		s2 = fig.add_subplot(3,1,2)
+		s3 = fig.add_subplot(3,1,3)
+		for i in range(len(trial_ranges)):
+			s1.plot(runned_saccade_data[i][0], runned_saccade_data[i][1], ['r','g'][i%2] + 'o', mew = 1.0, alpha = 0.15, mec = 'w', ms = 6 )
+			# best_fit = lambda x: runned_fit_parameters[0] * np.exp(runned_fit_parameters[1] * -x) + runned_fit_parameters[2]
+			# pl.plot(np.arange(0,100), best_fit(np.arange(0,100)), ['r','g'][i%2] + '--', alpha = '0.5')
+			sm_signal = np.convolve( runned_saccade_data[i][1], kern, 'valid' )
+			sm_time = np.convolve( runned_saccade_data[i][0] , kern, 'valid' )
+			s2.plot( sm_time, sm_signal, ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
+			bin_indices = [(runned_saccade_data[i][0] > (j * 10)) * (runned_saccade_data[i][0] <= ((j+1) * 10)) for j in range(10)]
+			binned_data = np.array([[np.mean(runned_saccade_data[i][0][b]), np.mean(runned_saccade_data[i][1][b])] for b in bin_indices])
+			s3.plot( binned_data[:,0], binned_data[:,1], ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
+			bd.append(binned_data)
+			
+		s1.axis([0,100,0.6,1.4])
+		s2.axis([0,100,0.6,1.4])
+		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains_per_block_with_fits_' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		
+		pickle.dump(np.array(bd), file(os.path.join(self.base_directory, 'processed', 'bd.pickle'), 'w'))
 	
 	def analyze_microsaccades_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'] ):
 		
