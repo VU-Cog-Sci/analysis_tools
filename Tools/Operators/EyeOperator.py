@@ -318,8 +318,7 @@ class EyelinkOperator( EyeOperator ):
 		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts])
 		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts.max(), 3)))
 		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
-		
-#		print self.phaseStarts
+	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
 		for i in self.which_trials_actually_exist:
@@ -333,7 +332,7 @@ class EyelinkOperator( EyeOperator ):
 		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
 		
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
-		
+	
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter\t(\S*?) : ([-\d\.]*|[\w]*)', add_parameters = None):
 		parameters = []
 		# if there are no duplicates in the edf file
@@ -795,6 +794,12 @@ class EyelinkOperator( EyeOperator ):
 			pl.ylim([-20,20])
 			
 		return saccades
-		
 	
+
+class SMIEyeOperator( EyeOperator ):
+	"""
+	Class for the analysis of SMI output.
+	Input is assumed to be already-converted text files, containing a mixture of samples and messages.
+	"""
 	
+

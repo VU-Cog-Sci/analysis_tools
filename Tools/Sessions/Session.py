@@ -669,10 +669,40 @@ class Session(PathConstructor):
 		# join eccen files
 		phaseData = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).data + NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-rh.nii.gz')).data
 		newImage = NiftiImage(phaseData)
+		newImage.header = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '-lh.nii.gz')).header
 		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
 		newImage.save()
-
-	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials']):
+	
+	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
+		"""
+		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
+		"""
+		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
+		try:
+			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			roi_names = []
+			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
+				if len(roi_name._v_name.split('.')) > 1:
+					hemi, area = roi_name._v_name.split('.')
+					if roi_wildcard == area:
+						roi_names.append(roi_name._v_name)
+			if len(roi_names) == 0:
+				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
+				return None
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('No group ' + this_run_group_name + ' in this file')
+			return None
+		
+		all_roi_data = []
+		for roi_name in roi_names:
+			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
+		all_roi_data_np = np.hstack(all_roi_data).T
+		return all_roi_data_np
+	
+	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf']):
 		"""
 		run_glm_on_hdf5 takes an open (r+) hdf5 file, a list of run objects and runs glms on all roi subregions from a run.
 		it assumes:
@@ -683,10 +713,10 @@ class Session(PathConstructor):
 		"""
 		# reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		for run in run_list:
-			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))
 			tr, nr_trs = niiFile.rtime, niiFile.timepoints
 			
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf']))[1]
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))[1]
 			# everyone shares the same design matrix.
 			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
 			design = Design(nrTimePoints = nr_trs, rtime = tr)

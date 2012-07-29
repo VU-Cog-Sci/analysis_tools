@@ -744,35 +744,6 @@ class VisualRewardSession(Session):
 		# shell()
 	
 	
-	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
-		"""
-		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
-		"""
-		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
-		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
-			roi_names = []
-			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
-				if len(roi_name._v_name.split('.')) > 1:
-					hemi, area = roi_name._v_name.split('.')
-					if roi_wildcard == area:
-						roi_names.append(roi_name._v_name)
-			if len(roi_names) == 0:
-				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
-				return None
-		except NoSuchNodeError:
-			# import actual data
-			self.logger.info('No group ' + this_run_group_name + ' in this file')
-			return None
-		
-		all_roi_data = []
-		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
-			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
-		all_roi_data_np = np.hstack(all_roi_data).T
-		return all_roi_data_np
-
 	def correlate_copes_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3AB'], copes = ['visual_cope','reward_cope'], plot = True):
 		"""
 		correlates two types of data from regions of interest with one another
