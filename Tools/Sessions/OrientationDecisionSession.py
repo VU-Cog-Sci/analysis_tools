@@ -314,7 +314,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		
 		parameters = thisParameterRunGroup.trial_parameters.read()
 		distilled_answers = thisParameterRunGroup.distilled_answers.read()
-		roi_data = self.roi_data_from_hdf(h5file, run, roi, data_type, postFix = postFix)[parameters.shape[0]]
+		roi_data = self.roi_data_from_hdf(h5file, run, roi, data_type, postFix = postFix)[parameters.shape[0]]	# just the ones coding for the trials, not the nuisance regressor values
 		
 		return [parameters, distilled_answers, roi_data]
 	
@@ -336,7 +336,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		definite_decisions = (decisions != 0.0)	# decision that were actually signed - no lapses or out of bounds answers.
 		
 		# implement masking of ROI data here. preferably based on the mapper or other glm results.
-		mask_data = roi_data_from_hdf(h5file, self.runList[self.conditionDict['decision'][0]], roi, mask_data_type, postFix = ['mcf','tf'])
+		mask_data = roi_data_from_hdf(h5file, self.runList[self.conditionDict['decision'][0]], roi, mask_data_type, postFix = postFix)
 		thresholded_mask_data = eval('mask_data.' + maskFunction + '(' + str(mask_threshold) + ')')
 		
 		from sklearn.svm import SVR
