@@ -329,11 +329,20 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		
 		return (parameter_list, distilled_answers_list, roi_data_list)
 	
-	def svr_roi(self, h5file, roi, data_type = 'betas', mask_data_type = 'mapper_logp', mask_threshold = 3.0, mask_function = '__gt__', postFix = ['mcf','tf']):
+	def svr_roi(self, h5file, roi, data_type = 'betas', mask_data_type = 'mapper_logp', mask_threshold = 3.0, mask_function = '__gt__', stim_position = 1, postFix = ['mcf','tf']):
+		"""
+		svr_roi conducts an svr analysis on 'data_type' data from a certain 'roi'. 
+		this roi is masked using a 'mask_data_type', which is masked at a 'mask_threshold' with a 'mask_function'.
+		only data from trials with a certain stimulus position (L vs R) are used for this analysis. so, this function has to be run twice, 
+		once for when an roi is empty and once for when it contained the stimulus.
+		
+		"""
 		parameters, distilled_answers, roi_data = self.per_trial_data(h5file, roi, data_type = data_type, postFix = postFix)
 		orientations = distilled_answers[:,0,1]
 		decisions = distilled_answers[:,0,0]
 		definite_decisions = (decisions != 0.0)	# decision that were actually signed - no lapses or out of bounds answers.
+		# have to use the stimulus position information at some point was an roi stimulated or not?
+		stim_position_indices = (parameters['stim_position'] == stim_position)
 		
 		# implement masking of ROI data here. preferably based on the mapper or other glm results.
 		mask_data = roi_data_from_hdf(h5file, self.runList[self.conditionDict['decision'][0]], roi, mask_data_type, postFix = postFix)

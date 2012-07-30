@@ -716,7 +716,6 @@ class Session(PathConstructor):
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))
 			tr, nr_trs = niiFile.rtime, niiFile.timepoints
 			
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))[1]
 			# everyone shares the same design matrix.
 			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
 			design = Design(nrTimePoints = nr_trs, rtime = tr)
@@ -725,28 +724,30 @@ class Session(PathConstructor):
 			design.convolveWithHRF()
 			my_glm = nipy.labs.glm.glm.glm()
 			
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))[1]
 			try:
 				thisRunGroup = hdf5_file.getNode(where = '/', name = this_run_group_name, classname='Group')
 				for roi_name in hdf5_file.listNodes(where = '/' + this_run_group_name, classname = 'Group'):
-					roi_data = eval('roi_name.' + data_type + '.read()')
-					roi_data = roi_data.T - roi_data.mean(axis = 1)
-					glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
-					try: 
-						hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
-					except NoSuchNodeError:
-						pass
-					hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-					stat_matrix = []
-					for i in range(design.designMatrix.shape[-1]):
-						this_contrast = np.zeros(design.designMatrix.shape[-1])
-						this_contrast[i] = 1.0
-						stat_matrix.append(my_glm.contrast(this_contrast).stat())
-					try: 
-						hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
-					except NoSuchNodeError:
-						pass
-					hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-					self.logger.info('beta weights and stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
+					if roi_name._v_name.split('.')[0] in ('rh', 'lh'):
+						roi_data = eval('roi_name.' + data_type + '.read()')
+						roi_data = roi_data.T - roi_data.mean(axis = 1)
+						glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
+						try: 
+							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
+						except NoSuchNodeError:
+							pass
+						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						stat_matrix = []
+						for i in range(design.designMatrix.shape[-1]):
+							this_contrast = np.zeros(design.designMatrix.shape[-1])
+							this_contrast[i] = 1.0
+							stat_matrix.append(my_glm.contrast(this_contrast).stat())
+						try: 
+							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
+						except NoSuchNodeError:
+							pass
+						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						self.logger.info('beta weights and stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('No group ' + this_run_group_name + ' in this file')
