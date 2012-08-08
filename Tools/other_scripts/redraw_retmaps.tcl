@@ -79,14 +79,14 @@ do_lighting_model -1 -1 -1 -1 $offset ;# -1 => nochange; diffuse curv (def=0.15)
 # done with the standard script - here's my coding...
 # smooth the curvature and surface before doing anything else
 set rgbname polar
-set fthresh 1.2
+set fthresh 0.2
 set fslope 0.5
 set fmid 5
 set angle_offset 0.5
 set angle_cycles 2.0
 set invphaseflag 0
 set revphaseflag 0
-set smoothsteps 2
+set smoothsteps 1
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh

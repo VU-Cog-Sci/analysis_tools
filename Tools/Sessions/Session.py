@@ -226,7 +226,7 @@ class Session(PathConstructor):
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
+	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -242,18 +242,9 @@ class Session(PathConstructor):
 		else:
 			self.FSsubject = FSsubject
 		
+		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
+		
 		if prepare_register:
-			# we have to make do with epi volumes. so, we motion correct the first epi_bold run
-			# prepare the motion corrected first functional	
-			mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]] ) )
-			mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
-			mcFirst.execute()
-			#  and average it over time. 
-			fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ) )
-			# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
-			fslM.configureTMean()
-			fslM.execute()		
-			
 			if 'inplane_anat' in self.scanTypeList:
 				# we have one or more inplane anatomicals - we take the last of these as a reference.
 				# first, we need to strip the skull though
@@ -268,20 +259,29 @@ class Session(PathConstructor):
 				self.logger.info('registration target is inplane_anat, ' + self.originalReferenceFunctionalVolume)
 			
 			else:
-			
+				# we have to make do with epi volumes. so, we motion correct the first epi_bold run
+				# prepare the motion corrected first, or selected functional	
+				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][which_epi_target]] ) )
+				mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
+				mcFirst.execute()
+				#  and average it over time. 
+				fslM = FSLMathsOperator( self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ) )
+				# in principle taking the temporal mean is superfluous (done by mcflirt too) but oh well
+				fslM.configureTMean()
+				fslM.execute()		
+				
 				self.logger.info('using firstFunc as a registration target')
 				self.originalReferenceFunctionalVolume = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' )
 				self.logger.info('registration target is firstFunc, ' + self.originalReferenceFunctionalVolume)
-			self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
 			ExecCommandLine('cp ' + self.originalReferenceFunctionalVolume + ' ' + self.referenceFunctionalFileName )
 		
-			if bb and prepare_register:
-				# register to both freesurfer anatomical and fsl MNI template
-				# actual registration - BBRegister to freesurfer subject
-				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
-				bbR.execute()
-				# after registration, see bbregister log file for reg check
+		if bb:
+			# register to both freesurfer anatomical and fsl MNI template
+			# actual registration - BBRegister to freesurfer subject
+			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+			bbR.execute()
+			# after registration, see bbregister log file for reg check
 			
 		if MNI:
 			self.logger.info('running registration to standard brain for this session to be applied to feat directories.')
@@ -328,7 +328,7 @@ class Session(PathConstructor):
 			subprocess.Popen('cp ' + flRT1.referenceFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 			
 			# now take the firstFunc and create an example_func for it. 
-			subprocess.Popen('cp ' + fslM.outputFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf','meanvol'], base = 'firstFunc' ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:

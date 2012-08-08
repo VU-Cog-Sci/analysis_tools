@@ -252,7 +252,7 @@ class Design(object):
 		"""
 		regressors are vectors identical to custom EV files in FSL
 		"""
-		regressorValues = np.zeros(self.nrTimePoints*self.rtime*self.subSamplingRatio)
+		regressorValues = np.zeros(self.timeValuesForConvolution.shape[0])
 		for event in regressor:
 			startTime = event[0]
 			endTime = event[0]+event[1]

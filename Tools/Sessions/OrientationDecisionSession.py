@@ -17,7 +17,9 @@ from IPython import embed as shell
 from tables import *
 import pickle
 
-
+# taking the dicoms to nifti with MRIConvert, causes a whole directory tree to be made, containing .nii files. 
+# to gzip and move out of their separate folders:
+# for f in *; do echo $f; cd $f; gzip *; mv *.nii.gz ../ ; cd ..; done;
 
 class OrientationDecisionSession(RetinotopicMappingSession):
 	"""
@@ -25,7 +27,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 	Forks from retinotopic mapping session primarily because of phase-encoded mapping runs. 
 	Involves trial- and run-based support vector regression/decoding of orientation around =/- 45.
 	"""
-	def analyze_one_run_behavior(self, run, decision_type = 'binary'):
+	def analyze_one_run_behavior(self, run, decision_type = 'binary', output_fsl_files = True):
 		"""
 		Takes a pickle file - the run's behavioral file (ending in .dat) - opens and analyzes it. 
 		It saves an fsl-style text file with regressors, and adds parameters, events and response times to the session's hdf5 file.
@@ -44,31 +46,48 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 				run.parameter_dtype_dictionary.append((key, np.float64, run.per_trial_parameters[0][key].shape))
 			else:
 				run.parameter_dtype_dictionary.append((key, np.float64))
+		if 'confidence' not in [tp[0] for tp in run.parameter_dtype_dictionary]:
+			run.parameter_dtype_dictionary.append(('confidence', np.float64))
 		run.parameter_dtype_dictionary = np.dtype(run.parameter_dtype_dictionary)
 		
 		run.per_trial_events = [np.array(run_data['trial_event_array'][i], dtype = float) for i in run_data['run_order']]
 		run.per_trial_events_full_array = np.concatenate([np.vstack([run.per_trial_events[i].T, i * np.ones(run.per_trial_events[i].shape[0])]).T for i in range(len(run.per_trial_events))])
 		run.per_trial_noTR_events = [pte[pte[:,0] != 5.] for pte in run.per_trial_events]
+		
+		# separate in effector, and introduce regressor for only-left and only-right handed response trials
+		left_hand_trials = [pte for pte in run.per_trial_noTR_events if ((pte[:,0]>5.0).sum() == 0) and (pte.shape[0] > 0)]
+		right_hand_trials = [pte for pte in run.per_trial_noTR_events if ((pte[:,0]<5.0).sum() == 0) and (pte.shape[0] > 0)]
+		# for all responses, instead of trials
+		all_nonTR_events = np.concatenate(run.per_trial_noTR_events)
+		run.left_hand_responses = all_nonTR_events[all_nonTR_events[:,0]<5]
+		run.right_hand_responses = all_nonTR_events[all_nonTR_events[:,0]>5]
+				
 		separate_answers = []
 		for (i, pte) in enumerate(run.per_trial_noTR_events):
-			if pte.shape[0] > 2:
-				# self.logger.debug('in trial %d, run %s, there were not 2 button presses.')
-				if pte[0,0] not in (1,6) and pte[1,0] in (1,6): # drop first, and this is actually the only thing to do ALERT - only for binary decisions
+			if pte.shape[0] == 0:
+				self.logger.info('trial %i in run %i does not contain button presses, as per run.per_trial_events: %s'%(i, run.ID, str(run.per_trial_events[i])))
+				continue
+			elif pte.shape[0] > 2:
+				self.logger.info('trial %i in run %i contains more button presses than required, as per run.per_trial_events: %s'%(i, run.ID, str(pte)))
+				if pte[0,0] not in (4,9) and pte[1,0] in (4,9): # drop first, and this is actually the only thing to do ALERT - only for binary decisions
 					pte = pte[1:]
 				else:
 					pte = np.array([pte[0], pte[2]])
-			if pte.shape[0] == 1:
+			elif pte.shape[0] == 1:
 				if pte[0,0] in (3,2,7,8): # only a confidence rating was given ALERT - only for binary decisions
-					pte = np.array([[0,pte[0,1] - 2.0], pte[0]])
+					pte = np.array([[0,pte[0,1] - 2.0, pte[0,2] - 2.0], pte[0]])
 				else:	# we assume, foolishly, that the answer given was a task-answer and not a confidence -answer.
-					pte = np.array([pte[0], [0,pte[0,1] + 2.0]])
-			if pte[0,0] not in (1,6): # wrong answer for decision.
-				pte[0,0] = 0
+					pte = np.array([pte[0], [0,pte[0,1] + 2.0, pte[0,2] + 2.0]])
+			elif pte.shape[0] == 2:
+				if pte[0,0] not in (4,9): # wrong answer for decision.
+					self.logger.info('trial %i in run %i does not contain approptiate answer button presses, as per run.per_trial_events: %s'%(i, run.ID, str(pte)))
+					pte[0,0] = 0
+			# if all is good,
 			# normalise the response against the instructed response direction
-			pte[0,0] = ([1,0,6].index(pte[0,0])-1) * run.per_trial_parameters[i]['cw_ccw_response_direction']
+			pte[0,0] = ([4,0,9].index(pte[0,0])-1) * run.per_trial_parameters[i]['cw_ccw_response_direction']
 			pte[0,1] = run.per_trial_parameters[i]['orientation'] - run.per_trial_parameters[i]['reference_orientation']
 			# find the actual confidence level similarly
-			pte[1,0] = run.per_trial_parameters[i]['confidence_range'][[3,2,1,6,7,8].index(pte[1,0])]
+			pte[1,0] = run.per_trial_parameters[i]['confidence_range'][[2,3,4,9,8,7].index(pte[1,0])]
 			
 			separate_answers.append(pte) # [:,[0,2]]
 		
@@ -77,35 +96,52 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		run.stimulus_regressor_times = run.trial_phase_transitions[run.trial_phase_transitions[:,0] == 1, 2]
 		stim_regs = np.ones((run.stimulus_regressor_times.shape[0], 3))
 		stim_regs[:,0] = run.stimulus_regressor_times; stim_regs[:,1] = 0.5;
-		np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus']), stim_regs, fmt = '%3.2f', delimiter = '\t')
-		
-		stimpos = np.array([ptp['stim_position'] for ptp in run.per_trial_parameters])
-		
-		run.right_stim_times = run.stimulus_regressor_times[stimpos > 0]
-		right_stims_regs = np.ones((run.right_stim_times.shape[0], 3))
-		right_stims_regs[:,0] = run.right_stim_times; right_stims_regs[:,1] = 0.5;
-		np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus_right']), right_stims_regs, fmt = '%3.2f', delimiter = '\t')
-		
-		run.left_stim_times = run.stimulus_regressor_times[stimpos < 0]
-		left_stims_regs = np.ones((run.left_stim_times.shape[0], 3))
-		left_stims_regs[:,0] = run.left_stim_times; left_stims_regs[:,1] = 0.5;
-		np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus_left']), left_stims_regs, fmt = '%3.2f', delimiter = '\t')
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus']), stim_regs, fmt = '%3.2f', delimiter = '\t')
 		
 		separate_answers = np.array(separate_answers)
 		run.answer_regressor_times = separate_answers[:,0,2]
 		ans_regs =  np.ones((run.answer_regressor_times.shape[0], 3))
 		ans_regs[:,0] = run.answer_regressor_times; ans_regs[:,1] = 0.5;
-		np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['answer']), ans_regs, fmt = '%3.2f', delimiter = '\t')
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['answer']), ans_regs, fmt = '%3.2f', delimiter = '\t')
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all']), np.vstack([stim_regs, ans_regs]), fmt = '%3.2f', delimiter = '\t')
 		
-		np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all']), np.vstack([stim_regs, ans_regs]), fmt = '%3.2f', delimiter = '\t')
+		stimpos = np.array([ptp['stim_position'] for ptp in run.per_trial_parameters])
+		
+		# separate regressors for the different stimulus positions
+		run.left_stim_times = run.stimulus_regressor_times[stimpos < 0]
+		left_stims_regs = np.ones((run.left_stim_times.shape[0], 3))
+		left_stims_regs[:,0] = run.left_stim_times; left_stims_regs[:,1] = 0.5;
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus_left']), left_stims_regs, fmt = '%3.2f', delimiter = '\t')
+		
+		run.right_stim_times = run.stimulus_regressor_times[stimpos > 0]
+		right_stims_regs = np.ones((run.right_stim_times.shape[0], 3))
+		right_stims_regs[:,0] = run.right_stim_times; right_stims_regs[:,1] = 0.5;
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['stimulus_right']), right_stims_regs, fmt = '%3.2f', delimiter = '\t')
+		
+		# create separate regressors for the two handed response extremities
+		lh_regs =  np.ones((run.left_hand_responses.shape[0], 3))
+		lh_regs[:,0] = run.left_hand_responses[:,2]; lh_regs[:,1] = 0.5; # np.array([lha[1,2] - lha[0,2] for lha in left_hand_trials]);
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['LH_answer']), lh_regs, fmt = '%3.2f', delimiter = '\t')
+		
+		rh_regs =  np.ones((run.right_hand_responses.shape[0], 3))
+		rh_regs[:,0] = run.right_hand_responses[:,2]; rh_regs[:,1] = 0.5; # np.array([rha[1,2] - rha[0,2] for rha in right_hand_trials]);
+		if output_fsl_files:
+			np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['RH_answer']), rh_regs, fmt = '%3.2f', delimiter = '\t')
+		
 		
 		# keys for confidence are [3,2,1,6,7,8] (left-right order of fingers), keys for answers are [1,6] (the index fingers of both hands)
 		
 		
-	def analyze_runs_for_regressors(self, postFix = ['mcf','tf'], per_run_feat = True, apply_reg = True, all_feat = True):
+	def analyze_runs_for_regressors(self, postFix = ['mcf','tf'], per_run_feat = True, apply_reg = True, all_feat = True, run_behavior = True):
 		"""docstring for analyze_runs_for_regressors"""
 		for r in [self.runList[i] for i in self.conditionDict['decision']]:
-			self.analyze_one_run_behavior(r)
+			if run_behavior:
+				self.analyze_one_run_behavior(r)
 			
 			if per_run_feat:
 				try:
@@ -117,17 +153,18 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 			
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-				if os.uname()[1].split('.')[-2] == 'sara':
+				if 'sara' in os.uname()[1]:
 					thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
 				else:
-					thisFeatFile = '/Volumes/HDD/research/projects/decision_fMRI/analysis/first_decision_glm_general.fsf'
+					thisFeatFile = '/Volumes/HDD/research/projects/decision_fMRI/analysis/fsl/first_decision_glm_2.fsf'
 				
 				REDict = {
 				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 				'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
-				'---L_STIM_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['stimulus_left']), 	
-				'---R_STIM_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['stimulus_right']), 	
-				'---ANSWER_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['answer']), 	
+				'---STIM_LEFT_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['stimulus_left']), 	
+				'---STIM_RIGHT_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['stimulus_right']), 	
+				'---ANSWER_LEFT_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['LH_answer']), 	
+				'---ANSWER_RIGHT_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['RH_answer']), 	
 				}
 				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
 				featOp = FEATOperator(inputObject = thisFeatFile)
@@ -155,18 +192,19 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 			
 			# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 			# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-			if os.uname()[1].split('.')[-2] == 'sara':
+			if 'sara' in os.uname()[1]:
 				thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
 			else:
-				thisFeatFile = '/Volumes/HDD/research/projects/decision_fMRI/analysis/dec_runs_combined_general.fsf'
+				thisFeatFile = '/Volumes/HDD/research/projects/decision_fMRI/analysis/fsl/dec_runs_combined_general_2.fsf'
 				
 			REDict = {
-			'---OUTPUT_DIR---': 		self.stageFolder(stage = 'processed/mri/decision/all')
+			'---OUTPUT_DIR---': 		self.stageFolder(stage = 'processed/mri/decision/all'),
+			'---NR_FEATS---': 			str(len(self.conditionDict['decision'])),
+			'---FEAT_DIRS---':			'\n'.join(['set feat_files(%d) "%s"'%(i+1, self.runFile(stage = 'processed/mri', run = self.runList[rfeat], postFix = postFix, extension = '.feat')) for (i, rfeat) in enumerate(self.conditionDict['decision'])] ),
+			'---EVG---':				'\n'.join(['set fmri(evg%d.1) 1' % (i+1) for i in range(len(self.conditionDict['decision']))]),
+			'---GRP_MEM---':			'\n'.join(['set fmri(groupmem.%d) 1' % (i+1) for i in range(len(self.conditionDict['decision']))]),
 			}
-			for (i, r) in enumerate([self.runList[i] for i in self.conditionDict['decision']]):
-				key = '---INPUT_DIR_' + str(i+1) + '---'
-				folder = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
-				REDict.update({key: folder})
+			print REDict
 			
 			featOp = FEATOperator(inputObject = thisFeatFile)
 			featFileName = os.path.join(self.stageFolder(stage = 'processed/mri/decision/'), 'all_combined.fsf')
@@ -180,17 +218,16 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		# for r in [self.runList[i] for i in self.conditionDict['decision']]:
 		this_feat = os.path.join(self.stageFolder(stage = 'processed/mri/decision'), 'all.gfeat')
 		
-		left_cope_file = os.path.join(this_feat, 'cope1.feat','stats', which_file + '1.nii.gz')
-		right_cope_file = os.path.join(this_feat, 'cope3.feat','stats', which_file + '1.nii.gz')
-		answer_cope_file = os.path.join(this_feat, 'cope2.feat','stats', which_file + '1.nii.gz')
-		RL_file = os.path.join(this_feat, 'cope4.feat','stats', which_file + '1.nii.gz')
-		LR_file = os.path.join(this_feat, 'cope5.feat','stats', which_file + '1.nii.gz')
+		left_stim_cope_file = os.path.join(this_feat, 'cope1.feat','stats', which_file + '1.nii.gz')
+		right_stim_cope_file = os.path.join(this_feat, 'cope2.feat','stats', which_file + '1.nii.gz')
+		answer_cope_file = os.path.join(this_feat, 'cope3.feat','stats', which_file + '1.nii.gz')
+		RL_stim_file = os.path.join(this_feat, 'cope4.feat','stats', which_file + '1.nii.gz')
+		RL_answer_file = os.path.join(this_feat, 'cope5.feat','stats', which_file + '1.nii.gz')
 		stim_answer_file = os.path.join(this_feat, 'cope6.feat','stats', which_file + '1.nii.gz')
-		answer_stim_file = os.path.join(this_feat, 'cope7.feat','stats', which_file + '1.nii.gz')
 			
 		for (label, f) in zip(
-								['left_cope', 'right_cope', 'answer_cope', 'RL', 'LR', 'stim_answer', 'answer_stim'], 
-								[left_cope_file, right_cope_file, answer_cope_file, RL_file, LR_file, stim_answer_file, answer_stim_file]
+								['left_stim_cope', 'right_stim_cope', 'answer_cope', 'R>L_stimulus', 'R>L_response', 'stim_answer'], 
+								[left_stim_cope_file, right_stim_cope_file, answer_cope_file, RL_stim_file, RL_answer_file, stim_answer_file]
 								):
 			vsO = VolToSurfOperator(inputObject = f)
 			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/decision'), 'surf', 'all_' + label + '.w')
@@ -233,7 +270,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 			Now, take different stat masks based on the run_type
 			"""
 			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
-			cope_dict = {'left_stim': 1, 'right_stim': 3, 'answer': 2, 'RL': 4, 'LR': 5, 'stim_answer': 6, 'answer_stim': 7}
+			cope_dict = {'left_stim_cope':1, 'right_stim_cope':2, 'answer_cope':3, 'R>L_stimulus':4, 'R>L_response':5, 'stim_answer':6}
 			stat_files = {}
 			if run_type == 'decision':
 				for (i, name) in enumerate(cope_dict):
@@ -251,7 +288,8 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final two, we need to pre-setup the retinotopic mapping data
 								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
-								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
+								'periodic_stimulus_area_mapper': os.path.join(self.stageFolder(stage = 'processed/mri/polar/'), 'polar.nii.gz'),
 			})
 				
 			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
@@ -273,7 +311,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 					
 			
 			# add parameters and behavioral things
-			self.analyze_one_run_behavior(run = r)
+			self.analyze_one_run_behavior(run = r, output_fsl_files = False)
 			try:
 				thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = 'parameters', classname='Group')
 			except NoSuchNodeError:
@@ -350,7 +388,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		
 		from sklearn.svm import SVR
 		from scipy.stats import spearmanr
-		svr_lin = SVR(kernel='linear', C=1e3)
+		svr_lin = SVR(kernel='linear', C=1e2)
 		
 		# trial based leave-one-out svm regression.
 		res = np.zeros((roi_data.shape[0], 2))
