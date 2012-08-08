@@ -75,7 +75,7 @@ check_params_return:
 
 #set MATLAB = `which octave`; #`getmatlab`;
 set MATLAB = "octave --path $FSFAST_HOME/toolbox/:$FREESURFER_HOME/matlab/ "
-#set MATLAB = "matlab"
+# set MTLAB = "matlab"
 
 if($status) exit 1;
 
