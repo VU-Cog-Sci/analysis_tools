@@ -48,6 +48,11 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 				run.parameter_dtype_dictionary.append((key, np.float64))
 		if 'confidence' not in [tp[0] for tp in run.parameter_dtype_dictionary]:
 			run.parameter_dtype_dictionary.append(('confidence', np.float64))
+		# add the distilled answer types
+		run.parameter_dtype_dictionary.append(('distilled_answer_direction', np.float64))
+		run.parameter_dtype_dictionary.append(('distilled_confidence', np.float64))
+		run.parameter_dtype_dictionary.append(('distilled_orientation', np.float64))
+		# create the dtype for parameters
 		run.parameter_dtype_dictionary = np.dtype(run.parameter_dtype_dictionary)
 		
 		run.per_trial_events = [np.array(run_data['trial_event_array'][i], dtype = float) for i in run_data['run_order']]
@@ -61,13 +66,11 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		all_nonTR_events = np.concatenate(run.per_trial_noTR_events)
 		run.left_hand_responses = all_nonTR_events[all_nonTR_events[:,0]<5]
 		run.right_hand_responses = all_nonTR_events[all_nonTR_events[:,0]>5]
-				
+		
+		# here we look at the different answering modes.
 		separate_answers = []
 		for (i, pte) in enumerate(run.per_trial_noTR_events):
-			if pte.shape[0] == 0:
-				self.logger.info('trial %i in run %i does not contain button presses, as per run.per_trial_events: %s'%(i, run.ID, str(run.per_trial_events[i])))
-				continue
-			elif pte.shape[0] > 2:
+			if pte.shape[0] > 2:
 				self.logger.info('trial %i in run %i contains more button presses than required, as per run.per_trial_events: %s'%(i, run.ID, str(pte)))
 				if pte[0,0] not in (4,9) and pte[1,0] in (4,9): # drop first, and this is actually the only thing to do ALERT - only for binary decisions
 					pte = pte[1:]
@@ -82,12 +85,23 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 				if pte[0,0] not in (4,9): # wrong answer for decision.
 					self.logger.info('trial %i in run %i does not contain approptiate answer button presses, as per run.per_trial_events: %s'%(i, run.ID, str(pte)))
 					pte[0,0] = 0
+			elif pte.shape[0] == 0:
+				self.logger.info('trial %i in run %i does not contain button presses, as per run.per_trial_events: %s'%(i, run.ID, str(run.per_trial_events[i])))
+				run.per_trial_parameters[i]['distilled_answer_direction'] = 0
+				run.per_trial_parameters[i]['distilled_confidence'] = -1
+				run.per_trial_parameters[i]['distilled_orientation'] = run.per_trial_parameters[i]['orientation'] - run.per_trial_parameters[i]['reference_orientation']
+				continue
 			# if all is good,
 			# normalise the response against the instructed response direction
 			pte[0,0] = ([4,0,9].index(pte[0,0])-1) * run.per_trial_parameters[i]['cw_ccw_response_direction']
 			pte[0,1] = run.per_trial_parameters[i]['orientation'] - run.per_trial_parameters[i]['reference_orientation']
 			# find the actual confidence level similarly
 			pte[1,0] = run.per_trial_parameters[i]['confidence_range'][[2,3,4,9,8,7].index(pte[1,0])]
+			
+			# add to parameter_array
+			run.per_trial_parameters[i]['distilled_answer_direction'] = pte[0,0]
+			run.per_trial_parameters[i]['distilled_confidence'] = pte[0,1]
+			run.per_trial_parameters[i]['distilled_orientation'] = run.per_trial_parameters[i]['orientation'] - run.per_trial_parameters[i]['reference_orientation']
 			
 			separate_answers.append(pte) # [:,[0,2]]
 		
@@ -179,8 +193,11 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		
 		if apply_reg:
 			# register all runs to the standard
-			for r in [self.runList[i] for i in self.conditionDict['decision']]:
-				self.setupRegistrationForFeat(self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+			for r in enumerate([self.runList[i] for i in self.conditionDict['decision']]):
+				if r == len(self.conditionDict['decision']):
+					self.setupRegistrationForFeat(self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'), wait_for_execute = True)
+				else:
+					self.setupRegistrationForFeat(self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'), wait_for_execute = False)
 		
 		# combine the runs in a gfeat
 		if all_feat:

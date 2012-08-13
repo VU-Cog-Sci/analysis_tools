@@ -148,18 +148,18 @@ class VisualRewardSession(Session):
 				blank_trials_silence = -np.array(np.abs(left_none_right) + blank_trials_rewarded, dtype = bool)
 				
 				# identify rewarded condition by label
-				condition_labels[which_stimulus_rewarded] += '_rewarded'
+				# condition_labels[which_stimulus_rewarded] += '_rewarded'
+				run.which_stimulus_rewarded = which_stimulus_rewarded
 				
 				# reorder the conditions
-				all_stimulus_trials.pop(which_stimulus_rewarded)
-				all_stimulus_trials.append(stim_trials_rewarded)
+				# all_stimulus_trials.pop(which_stimulus_rewarded)
+				# all_stimulus_trials.append(stim_trials_rewarded)
 				# reorder the condition labels
-				reward_label = condition_labels.pop(which_stimulus_rewarded)
-				condition_labels.append(reward_label)
+				# reward_label = condition_labels.pop(which_stimulus_rewarded)
+				# condition_labels.append(reward_label)
 				
 				condition_labels.extend( ['blank_silence','blank_rewarded'] )
 				all_stimulus_trials.extend( [blank_trials_silence, blank_trials_rewarded] )
-				
 				
 				run.condition_labels = condition_labels
 				run.all_stimulus_trials = all_stimulus_trials
@@ -170,6 +170,13 @@ class VisualRewardSession(Session):
 						pass
 					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
 				
+				# make an all_trials txt file
+				all_stimulus_trials_sum = np.array([all_stimulus_trials[i] for i in range(6)], dtype = bool).sum(axis = 0, dtype = bool)
+				try:
+					os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']))
+				except OSError:
+					pass
+				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']), np.array([stimulus_onset_times[all_stimulus_trials_sum], np.ones((all_stimulus_trials_sum.sum())), np.ones((all_stimulus_trials_sum.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
 			
 		
 	
@@ -193,7 +200,7 @@ class VisualRewardSession(Session):
 			
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-					if os.uname()[1].split('.')[-2] == 'sara':
+					if 'sara' in os.uname():
 						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
 					else:
 						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
@@ -228,7 +235,7 @@ class VisualRewardSession(Session):
 			
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-					if os.uname()[1].split('.')[-2] == 'sara':
+					if 'sara' in os.uname():
 						thisFeatFile = '/home/knapen/projects/reward/man/analysis/mapper.fsf'
 					else:
 						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/mapper.fsf'
@@ -251,15 +258,49 @@ class VisualRewardSession(Session):
 				self.create_feat_event_files_one_run(r)
 			
 				if run_feat:
+					feat_post_fix = postFix + [version]
 					try:
-						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix, extension = '.feat'))
+						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix, extension = '.fsf'))
 					except OSError:
 						pass
-				
+					
 					# now segment according to reward condition.
-			
+					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+					if 'sara' in os.uname():
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_reward.fsf'
+					else:
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_orientation_reward.fsf'
+					REDict = {
+					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+					'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix), 
+					'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
+					'---LEFT_CW_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['left_CW']), 
+					'---LEFT_CCW_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['left_CCW']), 
+					'---RIGHT_CW_FILE---':self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['right_CW']), 
+					'---RIGHT_CCW_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['right_CCW']), 
+					'---BLANK_REWARD_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_rewarded']), 
+					'---BLANK_SILENCE_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_silence']), 
+					}
+					# adapt reward contrast to the stimulus which was rewarded
+					contrast_values_this_run = -np.ones(4)
+					contrast_values_this_run[r.which_stimulus_rewarded] = 2.0
+					contrast_keys = ['---L_CW_REWARD_CONTRAST_VALUE---','---L_CCW_REWARD_CONTRAST_VALUE---','---R_CW_REWARD_CONTRAST_VALUE---','---R_CCW_REWARD_CONTRAST_VALUE---']
+					for i in range(4):
+						REDict.update({contrast_keys[i]: str(contrast_values_this_run[i])})
+					# over to the actual feat analysis
+					featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix, extension = '.fsf')
+					featOp = FEATOperator(inputObject = thisFeatFile)
+					if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+					else:
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+					# run feat
+					featOp.execute()
+					
 			
 			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
 				self.create_feat_event_files_one_run(r)
@@ -276,7 +317,7 @@ class VisualRewardSession(Session):
 			
 						# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 						# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-						if os.uname()[1].split('.')[-2] == 'sara':
+						if 'sara' in os.uname():
 							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
 						else:
 							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
@@ -311,7 +352,7 @@ class VisualRewardSession(Session):
 			
 						# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 						# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-						if os.uname()[1].split('.')[-2] == 'sara':
+						if 'sara' in os.uname():
 							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
 						else:
 							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
@@ -387,7 +428,7 @@ class VisualRewardSession(Session):
 				
 				
 	
-	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
+	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf'], version = 'orientation'):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
@@ -408,91 +449,195 @@ class VisualRewardSession(Session):
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
 		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
-		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
-			"""loop over runs, and try to open a group for this run's data"""
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
-			except NoSuchNodeError:
-				# import actual data
-				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
-			
-			"""
-			Now, take different stat masks based on the run_type
-			"""
-			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
-			if run_type == 'reward':
-				stat_files = {
-								'visual_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
-								'visual_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
-								'visual_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
-								
-								'reward_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
-								'reward_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
-								'reward_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
-								
-								'blinks': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
-								'blank_silence': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
-								'blank_sound': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
-								'visual_silence': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
-								'visual_sound': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
-								
-								'fix_reward_silence': os.path.join(this_feat, 'stats', 'cope7.nii.gz'),
-								'visual_reward_silence': os.path.join(this_feat, 'stats', 'cope8.nii.gz'),
-								
-								'visual_silence_fix_silence': os.path.join(this_feat, 'stats', 'cope9.nii.gz'),
-								'visual_reward_fix_reward': os.path.join(this_feat, 'stats', 'cope10.nii.gz'),
-								
-								}
-				
-			elif run_type == 'mapper':
-				stat_files = {
-								'center_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
-								'center_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
-								'center_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
-								'center_pe': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
-								
-								'surround_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
-								'surround_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
-								'surround_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
-								'surround_pe': os.path.join(this_feat, 'stats', 'pe3.nii.gz'),
-								
-								'center>surround_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
-								'center>surround_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
-								'center>surround_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
-								
-								'surround>center_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
-								'surround>center_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
-								'surround>center_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
-								}
-			# general info we want in all hdf files
-			stat_files.update({
-								'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
-								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'tf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
-								'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
-								# for these final two, we need to pre-setup the retinotopic mapping data
-								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
-								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
-			})
-				
-			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
-			
-			for (roi, roi_name) in zip(rois, roinames):
+		if not hasattr(self, 'dual_pilot'):
+			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+				"""loop over runs, and try to open a group for this run's data"""
+				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 				except NoSuchNodeError:
 					# import actual data
-					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
-					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+					self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+				"""
+				Now, take different stat masks based on the run_type
+				"""
+				this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+				if run_type == 'reward':
+					stat_files = {
+									'visual_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+									'visual_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+									'visual_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+								
+									'reward_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+									'reward_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+									'reward_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+								
+									'blinks': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
+									'blank_silence': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+									'blank_sound': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+									'visual_silence': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+									'visual_sound': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
+								
+									'fix_reward_silence': os.path.join(this_feat, 'stats', 'cope7.nii.gz'),
+									'visual_reward_silence': os.path.join(this_feat, 'stats', 'cope8.nii.gz'),
+								
+									'visual_silence_fix_silence': os.path.join(this_feat, 'stats', 'cope9.nii.gz'),
+									'visual_reward_fix_reward': os.path.join(this_feat, 'stats', 'cope10.nii.gz'),
+								
+									}
 				
-				for (i, sf) in enumerate(stat_files.keys()):
-					# loop over stat_files and rois
-					# to mask the stat_files with the rois:
-					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
-					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+				elif run_type == 'mapper':
+					stat_files = {
+									'center_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+									'center_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+									'center_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+									'center_pe': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
+								
+									'surround_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+									'surround_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+									'surround_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+									'surround_pe': os.path.join(this_feat, 'stats', 'pe3.nii.gz'),
+								
+									'center>surround_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
+									'center>surround_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
+									'center>surround_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+								
+									'surround>center_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
+									'surround>center_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+									'surround>center_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+									}
+				# general info we want in all hdf files
+				stat_files.update({
+									'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
+									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'tf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									# for these final two, we need to pre-setup the retinotopic mapping data
+									'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
+									'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+				})
+				
+				stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+				for (roi, roi_name) in zip(rois, roinames):
+					try:
+						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					except NoSuchNodeError:
+						# import actual data
+						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+						thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				
+					for (i, sf) in enumerate(stat_files.keys()):
+						# loop over stat_files and rois
+						# to mask the stat_files with the rois:
+						imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+						these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+		else:
+			version_postFix = postFix + ['orientation']
+			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+				"""loop over runs, and try to open a group for this run's data"""
+				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+				try:
+					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+				"""
+				Now, take different stat masks based on the run_type
+				"""
+				this_orientation_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['orientation'], extension = '.feat')
+				this_location_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['location'], extension = '.feat')
+				this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['orientation'], extension = '.feat')
+				
+				if run_type == 'reward':
+					stat_files = {
+									'left_CW_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+									'left_CW_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+									'left_CW_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+								
+									'left_CCW_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+									'left_CCW_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+									'left_CCW_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+									
+									'right_CW_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
+									'right_CW_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
+									'right_CW_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+									
+									'right_CCW_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
+									'right_CCW_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+									'right_CCW_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+									
+									'reward_blank_T': os.path.join(this_feat, 'stats', 'tstat5.nii.gz'),
+									'reward_blank_Z': os.path.join(this_feat, 'stats', 'zstat5.nii.gz'),
+									'reward_blank_cope': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+								
+									'reward_all_T': os.path.join(this_feat, 'stats', 'tstat6.nii.gz'),
+									'reward_all_Z': os.path.join(this_feat, 'stats', 'zstat6.nii.gz'),
+									'reward_all_cope': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
+									
+									}
+				
+				elif run_type == 'mapper':
+					stat_files = {
+									'left_CW_T': os.path.join(this_orientation_feat, 'stats', 'tstat1.nii.gz'),
+									'left_CW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat1.nii.gz'),
+									'left_CW_cope': os.path.join(this_orientation_feat, 'stats', 'cope1.nii.gz'),
+								
+									'left_CCW_T': os.path.join(this_orientation_feat, 'stats', 'tstat2.nii.gz'),
+									'left_CCW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat2.nii.gz'),
+									'left_CCW_cope': os.path.join(this_orientation_feat, 'stats', 'cope2.nii.gz'),
+									
+									'right_CW_T': os.path.join(this_orientation_feat, 'stats', 'tstat3.nii.gz'),
+									'right_CW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat3.nii.gz'),
+									'right_CW_cope': os.path.join(this_orientation_feat, 'stats', 'cope3.nii.gz'),
+									
+									'right_CCW_T': os.path.join(this_orientation_feat, 'stats', 'tstat4.nii.gz'),
+									'right_CCW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat4.nii.gz'),
+									'right_CCW_cope': os.path.join(this_orientation_feat, 'stats', 'cope4.nii.gz'),
+									
+									'left_T': os.path.join(this_location_feat, 'stats', 'tstat1.nii.gz'),
+									'left_Z': os.path.join(this_location_feat, 'stats', 'zstat1.nii.gz'),
+									'left_cope': os.path.join(this_location_feat, 'stats', 'cope1.nii.gz'),
+								
+									'right_T': os.path.join(this_location_feat, 'stats', 'tstat2.nii.gz'),
+									'right_Z': os.path.join(this_location_feat, 'stats', 'zstat2.nii.gz'),
+									'right_cope': os.path.join(this_location_feat, 'stats', 'cope2.nii.gz'),
+									
+									}
+									
+				# general info we want in all hdf files
+				stat_files.update({
+									'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
+									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									'hpf_data': os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									# for these final two, we need to pre-setup the retinotopic mapping data
+									'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
+									'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+				})
+				
+				stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+				for (roi, roi_name) in zip(rois, roinames):
+					try:
+						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					except NoSuchNodeError:
+						# import actual data
+						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+						thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				
+					for (i, sf) in enumerate(stat_files.keys()):
+						# loop over stat_files and rois
+						# to mask the stat_files with the rois:
+						imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+						these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+			
 		h5file.close()
 	
 	def hdf5_file(self, run_type, mode = 'r'):
@@ -506,7 +651,7 @@ class VisualRewardSession(Session):
 		return h5file
 	
 	
-	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000, postFix = ['mcf']):
+	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000, postFix = ['mcf'], analysis_duration = 10):
 		if run.condition == 'reward':
 			# get EL Data
 			
@@ -536,7 +681,7 @@ class VisualRewardSession(Session):
 			zero_edges = zero_edges[:int(2 * floor(zero_edges.shape[0]/2.0))].reshape(-1,2)
 			new_ze = [zero_edges[0]]
 			for ze in zero_edges[1:]:
-				if (ze[0] - new_ze[-1][-1])/sample_rate < 0.1:
+				if (ze[0] - new_ze[-1][-1])/sample_rate < 0.2:
 					new_ze[-1][1] = ze[1]
 				else:
 					new_ze.append(ze)
@@ -614,11 +759,11 @@ class VisualRewardSession(Session):
 			pupil_zscore = (lp_hp_c_filt_pupil_size - np.array(lp_hp_c_filt_pupil_size).mean()) / lp_hp_c_filt_pupil_size.std() # Possible because vectorized.
 			# trials ordered by trial type
 			trial_phase_timestamps = [trial_times['trial_phase_timestamps'][:,1][cond,0] for cond in [blank_silence_trials, blank_sound_trials, visual_silence_trials, visual_sound_trials]]			
-			tr_data = np.array([[pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (10 * sample_rate)))][:(10 * sample_rate)] for tpt in trphts] for trphts in trial_phase_timestamps])
-			tr_r_data = np.array([[raw_pupil_sizes[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (10 * sample_rate)))][:(10 * sample_rate)] for tpt in trphts] for trphts in trial_phase_timestamps])
+			tr_data = np.array([[pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (analysis_duration * sample_rate)))][:(analysis_duration * sample_rate)] for tpt in trphts] for trphts in trial_phase_timestamps])
+			tr_r_data = np.array([[raw_pupil_sizes[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (analysis_duration * sample_rate)))][:(analysis_duration * sample_rate)] for tpt in trphts] for trphts in trial_phase_timestamps])
 			# trials ordered by occurrence time
-			trial_phase_timestamps_timed = trial_times['trial_phase_timestamps'][:,1][:,0]		
-			tr_data_timed = np.array([pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (10 * sample_rate)))][:(10 * sample_rate)] for tpt in trial_phase_timestamps_timed])
+			trial_phase_timestamps_timed = trial_times['trial_phase_timestamps'][:,1][:,0]
+			tr_data_timed = np.array([pupil_zscore[(gaze_timestamps>tpt) * (gaze_timestamps<(tpt+500 + (analysis_duration * sample_rate)))][:(analysis_duration * sample_rate)] for tpt in trial_phase_timestamps_timed])
 			# close edf hdf5 file
 			h5f.close()
 			
@@ -666,10 +811,12 @@ class VisualRewardSession(Session):
 			try: 
 				h5file.removeNode(where = thisRunGroup, name = 'filtered_pupil_zscore')
 				h5file.removeNode(where = thisRunGroup, name = 'per_trial_filtered_pupil_zscore')
+				h5file.removeNode(where = thisRunGroup, name = 'per_condition_filtered_pupil_zscore')
 			except NoSuchNodeError:
 				pass
 			h5file.createArray(thisRunGroup, 'filtered_pupil_zscore', np.vstack((gaze_timestamps, pupil_zscore)).T, 'filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			h5file.createArray(thisRunGroup, 'per_trial_filtered_pupil_zscore', np.array(tr_data_timed), 'per_trial_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.createArray(thisRunGroup, 'per_condition_filtered_pupil_zscore', np.array([np.array(tr).mean(axis = 0) for tr in tr_data]), 'per_condition_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			h5file.close()
 			
 			# shell()
@@ -685,7 +832,7 @@ class VisualRewardSession(Session):
 			pl.savefig(self.runFile(stage = 'processed/eye', run = run, extension = '.pdf', postFix = ['pupil']))
 			return tr_data
 			
-	def pupil_responses(self, sample_rate = 2000):
+	def pupil_responses(self, sample_rate = 2000, save_all = False):
 		"""docstring for pupil_responses"""
 		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
 		
@@ -733,15 +880,16 @@ class VisualRewardSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_evolution_per_condition.pdf'))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/eye/figs/'), 'pupil_evolution_per_condition.pdf'))
 		
-		# save all these data to the hdf5 file
-		h5file = self.hdf5_file(run_type = 'reward', mode = 'a')
-		try: 
-			h5file.removeNode(where = '/', name = 'all_pupil_scores')
-		except NoSuchNodeError:
-			pass
-		h5file.createArray('/', 'all_pupil_scores', np.array(all_data), '_'.join(cond_labels) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-		h5file.close()
-		# shell()
+		if save_all:
+			# save all these data to the hdf5 file
+			h5file = self.hdf5_file(run_type = 'reward', mode = 'a')
+			try: 
+				h5file.removeNode(where = '/', name = 'all_pupil_scores')
+			except NoSuchNodeError:
+				pass
+			h5file.createArray('/', 'all_pupil_scores', np.array(all_data), '_'.join(cond_labels) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.close()
+			# shell()
 	
 	
 	def correlate_copes_from_run(self, run, rois = ['V1', 'V2', 'V3', 'V4', 'V3AB'], copes = ['visual_cope','reward_cope'], plot = True):
@@ -1223,9 +1371,9 @@ class VisualRewardSession(Session):
 			
 	
 	
-	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials']):
+	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf']):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
-		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file)
+		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix)
 		reward_h5file.close()
 		
 
@@ -1483,4 +1631,371 @@ class VisualRewardSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'beta_histograms_' + '-'.join(stats_types) + '.pdf'))
 		pl.draw()
 		return diff_res
+	
+	def correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [5.0, 9.0], time_range_pupil = [3.0, 10.0]):
+		"""docstring for correlate_pupil_and_BOLD"""
+		
+		# take data 
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		event_data = []
+		roi_data = []
+		pupil_data = []
+		tr_timings = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			# take pupil data
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			except NoSuchNodeError:
+				self.logger.error('no such node.')
+				pass
+			this_run_pupil_data = thisRunGroup.filtered_pupil_zscore.read()
+			this_run_pupil_data = this_run_pupil_data[(this_run_pupil_data[:,0] > thisRunGroup.trial_times.read()['trial_phase_timestamps'][0,0,0])][:run_duration * sample_rate]
+			this_run_pupil_data[:,0] = ((this_run_pupil_data[:,0] - this_run_pupil_data[0,0]) / 1000.0) + nr_runs * run_duration
+			pupil_data.append(this_run_pupil_data)
+			
+			nr_runs += 1
+		reward_h5file.close()
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
+		roi_data = np.hstack(demeaned_roi_data)
+		pdc = np.concatenate(pupil_data)
+		trts = np.concatenate(tr_timings)
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		mapper_h5file.close()
+		bold_timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		
+		from scipy.stats import *
+		
+		fig = pl.figure(figsize = (18, 7))
+		for (i, e) in enumerate(event_data):
+			s = fig.add_subplot(1,len(event_data),i+1, aspect = 'equal')
+			bold_trials = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])].mean() for se in e])
+			# pupil trials, data from ca. 5 to 10 s after stim onset, corrected for baseline, of 2 s before stim onset
+			pupil_trials = np.array([pdc[(pdc[:,0] > se + time_range_pupil[0]) * (pdc[:,0] <= se + time_range_pupil[1]),1].mean() - pdc[(pdc[:,0] > se - 2.0) * (pdc[:,0] <= se),1].mean() for se in e])
+			
+			print roi, cond_labels[i], spearmanr(bold_trials, pupil_trials)
+			
+			s.scatter(bold_trials,  pupil_trials, color = ['b','b','g','g'][i], marker = 'o', s = 27, edgecolor = 'w', alpha = 0.7 * [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+			# pl.plot(bold_trials,  pupil_trials, marker = 'o', ms = 7, mec = 'w', c = ['b','b','g','g'][i], mew = 1.0, alpha = 0.7 * [0.5, 1.0, 0.5, 1.0][i], linewidth = 0, label = cond_labels[i]) # , alpha = 0.25
+			
+			# split into quartiles and t-test the most peripheral bins against one another.
+			# plot the quartile means into the correlation plot. 
+			bold_order = np.argsort(bold_trials)
+			pupil_order = np.argsort(pupil_trials)
+			bin_edge = bold_trials.shape[0] / 4.0
+			print ttest_rel(bold_trials[pupil_order[:floor(bin_edge)]], bold_trials[pupil_order[ceil(3*bin_edge):]]), ttest_rel(pupil_trials[bold_order[:floor(bin_edge)]], pupil_trials[bold_order[ceil(3*bin_edge):]])
+			
+			
+			s.set_xlabel('BOLD % signal change')
+			s.set_ylabel('Z-scored pupil size')
+			if i == 0:
+				leg = s.legend(fancybox = True)
+				leg.get_frame().set_alpha(0.5)
+				if leg:
+					for t in leg.get_texts():
+					    t.set_fontsize('small')    # the legend text fontsize
+					for l in leg.get_lines():
+					    l.set_linewidth(3.5)  # the legend line width
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_pupil_corr.pdf'))
+		
+	def correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000):
+		for roi in ['V1', 'V2', 'V3', 'V3AB', 'V4']:
+			self.correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate)
+		pl.show()
+	
+
+class VisualRewardDualSession(VisualRewardSession):
+	
+	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf'], version = 'orientation'):
+		"""
+		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
+		"""
+		
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('Taking masks ' + str(anatRoiFileNames))
+		rois, roinames = [], []
+		for roi in anatRoiFileNames:
+			rois.append(NiftiImage(roi))
+			roinames.append(os.path.split(roi)[1][:-7])
+		
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		if os.path.isfile(self.hdf5_filename):
+			os.system('rm ' + self.hdf5_filename)
+		self.logger.info('starting table file ' + self.hdf5_filename)
+		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		version_postFix = postFix + ['orientation']
+		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+			"""loop over runs, and try to open a group for this run's data"""
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+			try:
+				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+			# add parameters and the like 
+			eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
+			eyeGroup = eye_h5file.getNode(where = '/', name = 'bla', classname='Group')
+			eyeGroup._f_copyChildren(thisRunGroup) 
+			eye_h5file.close()
+			"""
+			Now, take different stat masks based on the run_type
+			"""
+			this_orientation_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['orientation'], extension = '.feat')
+			this_location_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['location'], extension = '.feat')
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['orientation'], extension = '.feat')
+				
+			if run_type == 'reward':
+				stat_files = {
+								'left_CW_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+								'left_CW_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+								'left_CW_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+								
+								'left_CCW_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+								'left_CCW_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+								'left_CCW_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+									
+								'right_CW_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
+								'right_CW_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
+								'right_CW_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+									
+								'right_CCW_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
+								'right_CCW_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+								'right_CCW_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+									
+								'reward_blank_T': os.path.join(this_feat, 'stats', 'tstat5.nii.gz'),
+								'reward_blank_Z': os.path.join(this_feat, 'stats', 'zstat5.nii.gz'),
+								'reward_blank_cope': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+								
+								'reward_all_T': os.path.join(this_feat, 'stats', 'tstat6.nii.gz'),
+								'reward_all_Z': os.path.join(this_feat, 'stats', 'zstat6.nii.gz'),
+								'reward_all_cope': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
+									
+								}
+				
+			elif run_type == 'mapper':
+				stat_files = {
+								'left_CW_T': os.path.join(this_orientation_feat, 'stats', 'tstat1.nii.gz'),
+								'left_CW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat1.nii.gz'),
+								'left_CW_cope': os.path.join(this_orientation_feat, 'stats', 'cope1.nii.gz'),
+								
+								'left_CCW_T': os.path.join(this_orientation_feat, 'stats', 'tstat2.nii.gz'),
+								'left_CCW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat2.nii.gz'),
+								'left_CCW_cope': os.path.join(this_orientation_feat, 'stats', 'cope2.nii.gz'),
+									
+								'right_CW_T': os.path.join(this_orientation_feat, 'stats', 'tstat3.nii.gz'),
+								'right_CW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat3.nii.gz'),
+								'right_CW_cope': os.path.join(this_orientation_feat, 'stats', 'cope3.nii.gz'),
+									
+								'right_CCW_T': os.path.join(this_orientation_feat, 'stats', 'tstat4.nii.gz'),
+								'right_CCW_Z': os.path.join(this_orientation_feat, 'stats', 'zstat4.nii.gz'),
+								'right_CCW_cope': os.path.join(this_orientation_feat, 'stats', 'cope4.nii.gz'),
+									
+								'left_T': os.path.join(this_location_feat, 'stats', 'tstat1.nii.gz'),
+								'left_Z': os.path.join(this_location_feat, 'stats', 'zstat1.nii.gz'),
+								'left_cope': os.path.join(this_location_feat, 'stats', 'cope1.nii.gz'),
+								
+								'right_T': os.path.join(this_location_feat, 'stats', 'tstat2.nii.gz'),
+								'right_Z': os.path.join(this_location_feat, 'stats', 'zstat2.nii.gz'),
+								'right_cope': os.path.join(this_location_feat, 'stats', 'cope2.nii.gz'),
+									
+								}
+									
+			# general info we want in all hdf files
+			stat_files.update({
+								'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
+								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'hpf_data': os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								# for these final two, we need to pre-setup the retinotopic mapping data
+								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
+								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz')
+			})
+				
+			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+			for (roi, roi_name) in zip(rois, roinames):
+				try:
+					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				
+				for (i, sf) in enumerate(stat_files.keys()):
+					# loop over stat_files and rois
+					# to mask the stat_files with the rois:
+					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+			
+		h5file.close()
+		
+	
+	
+	def deconvolve_roi(self, roi, threshold = 2.5, mask_type = 'left_Z', analysis_type = 'deconvolution', mask_direction = 'pos'):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		conds = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
+		colors = ['r','r','g','g','k','k']
+		alphas = [0.5, 1.0, 0.5, 1.0, 0.5, 1.0]
+		
+		event_data = []
+		roi_data = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf','tf']))
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			nr_runs += 1
+		
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
+		roi_data = np.hstack(demeaned_roi_data)
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf','tf'])
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		
+		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		
+		fig = pl.figure(figsize = (7, 3))
+		s = fig.add_subplot(111)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		
+		time_signals = []
+		interval = [0.0,16.0]
+			
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
+			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], colors[i], alpha = alphas[i], label = conds[i])
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
+		s.set_title('deconvolution' + roi + ' ' + mask_type)
+		deco_per_run = []
+		for i, rd in enumerate(roi_data_per_run):
+			event_data_this_run = event_data_per_run[i] - i * run_duration
+			deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+			deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
+		deco_per_run = np.array(deco_per_run)
+		mean_deco = deco_per_run.mean(axis = 0)
+		std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
+		for i in range(0, mean_deco.shape[0]):
+			s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = colors[i], alpha = 0.3 * alphas[i])
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		reward_h5file.close()
+		mapper_h5file.close()
+		
+		pl.draw()
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
+		
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco_per_run]
+	
+	def deconvolve(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
+		results = []
+		for roi in rois:
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'left_Z', analysis_type = analysis_type, mask_direction = 'pos'))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'right_Z', analysis_type = analysis_type, mask_direction = 'pos'))
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'deconvolution_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for r in results:
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0])
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0]+'_per_run')
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, r[0], r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+	
+	def project_stats(self, which_file = 'zstat', postFix = ['mcf','tf']):
+		
+		for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+			this_location_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['location'], extension = '.feat')
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat') # to look at the locations, which is what we're doing here, add  + 'tf' + 'location' to postfix when calling this method.
+			left_file = os.path.join(this_location_feat, 'stats', which_file + '1.nii.gz')
+			right_file = os.path.join(this_location_feat, 'stats', which_file + '2.nii.gz')
+			for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+				vsO = VolToSurfOperator(inputObject = f)
+				ofn = self.runFile(stage = 'processed/mri/', run = r, base = which_file, postFix = [label] )
+				ofn = os.path.join(os.path.split(ofn)[0], 'surf/', label)
+				vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.execute()
 	

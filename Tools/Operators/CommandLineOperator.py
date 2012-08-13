@@ -265,7 +265,7 @@ class BBRegisterOperator( CommandLineOperator ):
 		self.FSsubject = FSsubject
 		self.contrast = contrast
 	
-	def configure(self, transformMatrixFileName, flirtOutputFile = True):
+	def configure(self, transformMatrixFileName, flirtOutputFile = True, init_fsl = True):
 		"""
 		run will run mcflirt motion correction on file in inputObject
 		as specified by parameters in __init__ arguments and here to run
@@ -278,8 +278,10 @@ class BBRegisterOperator( CommandLineOperator ):
 		runcmd += ' --reg ' + self.transformMatrixFileName
 		runcmd += ' --mov ' + self.inputFileName
 		runcmd += ' --' + self.contrast
-		# specify these options regardless
-		runcmd += ' --init-fsl'
+		if init_fsl:
+			runcmd += ' --init-fsl'
+		else:
+			runcmd += ' --init-reg ' + self.transformMatrixFileName
 		# specify these options dependent on run arguments
 		if flirtOutputFile:
 			self.flirtOutputFileName = os.path.splitext(transformMatrixFileName)[0] + '_flirt_BB.mtx'

@@ -20,7 +20,7 @@ class RetinotopicMappingSession(Session):
 				if mt != '':
 					self.mappingTypeDict.update({mt: [hit.indexInSession for hit in filter(lambda x: x.mappingType == mt, [self.runList[e] for e in self.scanTypeDict['epi_bold']])]})
 		
-	def retinotopicMapping(self, useMC = True, perCondition = True, perRun = False, runMapping = True, toSurf = True):
+	def retinotopicMapping(self, postFix = ['mcf'], perCondition = True, perRun = False, runMapping = True, toSurf = True):
 		"""
 		runs retinotopic mapping on all runs in self.conditionDict['polar'] and self.conditionDict['eccen']
 		"""
@@ -31,9 +31,9 @@ class RetinotopicMappingSession(Session):
 		presentCommand = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'selfreqavg_noinfs.csh')
 		rmOperatorList = []
 		opfNameList = []
-		postFix = []
-		if useMC:
-			postFix.append('mcf')
+		# postFix = []
+		# if useMC:
+		# 	postFix.append('mcf')
 		if perCondition:
 			for c in self.conditionDict:
 				if 'polar' in c or 'eccen' in c:
@@ -145,8 +145,8 @@ class RetinotopicMappingSession(Session):
 		
 		if len(self.conditionDict['polar']) > 0:
 			# polar files
-			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.scanTypeDict['epi_bold']]
-			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.scanTypeDict['epi_bold']]
+			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.scanTypeDict['epi_bold'] if self.runList[pC].condition in ('polar','eccen')]
+			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.scanTypeDict['epi_bold'] if self.runList[pC].condition in ('polar','eccen')]
 			distilledInputFileNamesFull = [os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'polar.nii.gz'),os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['polar'][0]]), 'eccen.nii.gz')]
 			
 			for (pd, rd) in zip(distilledInputFileNames, rawInputFileNames):

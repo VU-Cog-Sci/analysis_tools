@@ -275,13 +275,20 @@ class Session(PathConstructor):
 				self.logger.info('registration target is firstFunc, ' + self.originalReferenceFunctionalVolume)
 			ExecCommandLine('cp ' + self.originalReferenceFunctionalVolume + ' ' + self.referenceFunctionalFileName )
 		
+		
 		if bb:
 			# register to both freesurfer anatomical and fsl MNI template
 			# actual registration - BBRegister to freesurfer subject
-			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
-			bbR.execute()
-			# after registration, see bbregister log file for reg check
+			if prepare_register:
+				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
+				bbR.execute()
+				# after registration, see bbregister log file for reg check
+			else:	# we do not prepare, but take the registration from an already created register.dat.
+				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True, init_fsl = False )
+				bbR.execute()
+				
 			
 		if MNI:
 			self.logger.info('running registration to standard brain for this session to be applied to feat directories.')
@@ -347,7 +354,7 @@ class Session(PathConstructor):
 									threshold = 0.001 )
 					stV.execute()
 	
-	def setupRegistrationForFeat(self, feat_directory):
+	def setupRegistrationForFeat(self, feat_directory, wait_for_execute = True):
 		"""apply the freesurfer/flirt registration for this session to a feat directory. This ensures that the feat results can be combined across runs and subjects without running flirt all the time."""
 		try:
 			os.mkdir(os.path.join(feat_directory,'reg'))
@@ -358,7 +365,10 @@ class Session(PathConstructor):
 			self.registerSession(prepare_register = True, bb = False, MNI = True)
 		
 		os.system('cp ' + self.stageFolder(stage = 'processed/mri/reg/feat/') + '* ' + os.path.join(feat_directory,'reg/') )
-		os.system('featregapply ' + feat_directory )
+		if wait_for_execute:
+			os.system('featregapply ' + feat_directory )
+		else:
+			os.system('featregapply ' + feat_directory + ' & ' )
 			
 	def motionCorrectFunctionals(self, registerNoMC = False, diagnostics = False):
 		"""

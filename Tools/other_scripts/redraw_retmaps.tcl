@@ -79,7 +79,7 @@ do_lighting_model -1 -1 -1 -1 $offset ;# -1 => nochange; diffuse curv (def=0.15)
 # done with the standard script - here's my coding...
 # smooth the curvature and surface before doing anything else
 set rgbname polar
-set fthresh 0.2
+set fthresh 2.0
 set fslope 0.5
 set fmid 5
 set angle_offset 0.5
