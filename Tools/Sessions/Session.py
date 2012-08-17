@@ -724,7 +724,7 @@ class Session(PathConstructor):
 		# reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		for run in run_list:
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))
-			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			tr, nr_trs = round(niiFile.rtime * 100) / 100.0, niiFile.timepoints	# needed to do this thing with the trs or else it would create new TRs in the end of the designMatrix.
 			
 			# everyone shares the same design matrix.
 			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
@@ -748,15 +748,19 @@ class Session(PathConstructor):
 							pass
 						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 						stat_matrix = []
+						zscore_matrix = []
 						for i in range(design.designMatrix.shape[-1]):
 							this_contrast = np.zeros(design.designMatrix.shape[-1])
 							this_contrast[i] = 1.0
 							stat_matrix.append(my_glm.contrast(this_contrast).stat())
+							zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
 						try: 
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
+							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'zscore')
 						except NoSuchNodeError:
 							pass
 						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'zscore', np.array(zscore_matrix), 'zscores for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 						self.logger.info('beta weights and stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
 			except NoSuchNodeError:
 				# import actual data
