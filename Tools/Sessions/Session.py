@@ -148,8 +148,10 @@ class Session(PathConstructor):
 		# sessions create their own logging file handler
 		self.logger = logging.getLogger( self.__class__.__name__ )
 		self.logger.setLevel(self.loggingLevel)
-		if os.path.isfile(os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log')):
+		if os.path.isdir(self.stageFolder(stage = 'processed/mri/log')):
 			addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.stageFolder(stage = 'processed/mri/log'), 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
+		else:
+			addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.stageFolder(stage = 'raw'), 'firstSessionSetupLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
 		loggingLevelSetup()
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)

@@ -1206,7 +1206,7 @@ class TEAESession(EyeLinkSession):
 		pf = BootstrapInference(fit_data, sigmoid = sig, nafc = nafc, core = core, priors = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' ))
 		# and let the package do a bootstrap sampling of the resulting fits
 		pf.sample()
-		
+		shell()
 		# scatter plot of the actual data points
 		sub_plot.scatter(tested_contrasts, np.array(nr_ones) / np.array(nr_samples), facecolor = (1.0,1.0,1.0), edgecolor = colors[1], alpha = 1.0, linewidth = 1.25, s = nr_samples)
 		
