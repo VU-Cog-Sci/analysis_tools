@@ -80,9 +80,17 @@ class DeconvolutionOperator(EventDataOperator):
 		"""upsampleDataTimeSeries takes a timeseries of data points
 		 and upsamples them according to 
 		the ratio between TR and deconvolutionSampleDuration."""
-		self.workingDataArray = np.tile(self.dataArray,int(self.ratio)).reshape(int(self.ratio),self.dataArray.shape[0]).T.ravel()
+		# self.workingDataArray = np.tile(self.dataArray,int(self.ratio)).reshape(int(self.ratio),self.dataArray.shape[0]).T.ravel()
+		
+		# new version for whole-array analyses
+		new_size = list(self.dataArray.shape)
+		new_size[0] *= int(self.ratio)
+		new_array = np.zeros(new_size)
+		for i in np.arange(self.dataArray.shape[0]) * int(self.ratio):
+			new_array[i:i+int(self.ratio)] = self.dataArray[i/int(self.ratio)]
+		self.workingDataArray = new_array
 		self.logger.info('upsampled from %s to %s according to ratio %s', str(self.dataArray.shape), str(self.workingDataArray.shape), str(self.ratio))
-	
+		
 	def designMatrixFromVector(self, eventTimesVector):
 		"""designMatrixFromVector creates a deconvolution design matrix from 
 		an event vector. To do this, it rounds the event times to the nearest 
