@@ -2,3 +2,5 @@ softTabs = false
 tabSize = 4
 indentUsing = tabs
 showInvisibles = true
+fontName = "Monaco"
+fontSize = 10
