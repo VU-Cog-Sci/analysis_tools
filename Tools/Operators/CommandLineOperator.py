@@ -498,7 +498,7 @@ class SurfToSurfOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_surf2surf', **kwargs):
 		super(SurfToSurfOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 
-	def configure(self, fsSourceSubject = '', fsTargetSubject = '', hemi = None, outputFileName = None, insmooth = 5, intype = 'paint', outtype = 'paint' ):
+	def configure(self, fsSourceSubject = '', fsTargetSubject = '', hemi = None, outputFileName = None, insmooth = 0, intype = 'paint', outtype = 'paint' ):
 		"""docstring for configure"""		
 		# mri_surf2surf --hemi rh --srcsubject ico --srcsurfval icodata-rh --src_type bfloat --trgsubject bert --trgsurfval ./bert-ico-rh.w --trg_type paint
 		self.runcmd = self.cmd + ' --srcsubject ' + fsSourceSubject

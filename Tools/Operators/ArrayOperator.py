@@ -74,7 +74,7 @@ class DeconvolutionOperator(EventDataOperator):
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()
 		self.rawDeconvolvedTimeCourse = self.h()
-		self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse.reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval)))
+		self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
 		
 	def upsampleDataTimeSeries(self):
 		"""upsampleDataTimeSeries takes a timeseries of data points
@@ -117,7 +117,7 @@ class DeconvolutionOperator(EventDataOperator):
 		"""
 		run the actual deconvolution least-squares approximation
 		"""
-		return ((self.designMatrix.T * self.designMatrix).I * self.designMatrix.T) * np.mat(self.workingDataArray).T
+		return ((self.designMatrix.T * self.designMatrix).I * self.designMatrix.T) * np.mat(self.workingDataArray.T).T
 	
 
 class EventRelatedAverageOperator(EventDataOperator):

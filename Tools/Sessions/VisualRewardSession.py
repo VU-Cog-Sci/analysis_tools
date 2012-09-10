@@ -1269,6 +1269,73 @@ class VisualRewardSession(Session):
 			reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
+	def whole_brain_deconvolution(self, deco = True, average_interval = [2,12], to_surf = True):
+		"""
+		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
+		"""
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		nii_file_shape = list(niiFile.data.shape)
+		
+		nr_reward_runs = len(self.conditionDict['reward'])
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		time_signals = []
+		interval = [0.0,16.0]
+		
+		if deco:
+			event_data = []
+			roi_data = []
+			nr_runs = 0
+			nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
+		
+			for (j, r) in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
+				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','psc','tf'])).data
+				this_run_events = []
+				for cond in conds:
+					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+				this_run_events = np.array(this_run_events) + nr_runs * run_duration
+				event_data.append(this_run_events)
+				nr_runs += 1
+		
+			nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
+			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		
+		for (i, c) in enumerate(cond_labels):
+			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + c + '.nii.gz')
+			if deco:
+				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
+				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
+				outputFile.header = niiFile.header
+				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz'))
+			
+				# average over the interval [5,12] and [2,10] for reward and visual respectively. so, we'll just do [2,12]
+				timepoints_for_averaging = (np.linspace(interval[0], interval[1], outputdata.shape[0]) < average_interval[1]) * (np.linspace(interval[0], interval[1], outputdata.shape[0]) > average_interval[0])
+				meaned_data = outputdata[timepoints_for_averaging].mean(axis = 0)
+				outputFile = NiftiImage(meaned_data.reshape(nii_file_shape[1:]))
+				outputFile.header = niiFile.header
+				outputFile.save(ofn)
+			
+			if to_surf:
+				# vol to surf?
+				# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+				vsO = VolToSurfOperator(inputObject = ofn)
+				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+				vsO.configure(frames = {'ss':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.execute()
+				
+				for hemi in ['lh','rh']:
+					ssO = SurfToSurfOperator(vsO.outputFileName + c + '-' + hemi + '.w')
+					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_average', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+					ssO.execute()
+	
+	
 	def anova_stats_over_time(self, data_type = 'fmri', sample_rate = 2000, comparison_rate = 100):
 		"""perform per-timepoint two-way anova on time-varying signals in four conditions. """
 		import rpy2.robjects as robjects

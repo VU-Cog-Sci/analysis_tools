@@ -148,6 +148,7 @@ class EyeLinkSession(object):
 		self.parameter_data = np.concatenate(parameter_data)
 		self.logger.info('imported parameter data from ' + str(self.parameter_data.shape[0]) + ' trials')
 		h5f.close()
+		return self.parameter_data
 	
 	def import_events(self, run_name = 'run_'):
 		event_data = []
@@ -166,6 +167,7 @@ class EyeLinkSession(object):
 		self.event_data = np.concatenate(event_data)
 		self.logger.info('imported event data from ' + str(self.event_data.shape[0]) + ' trials')
 		h5f.close()
+		return self.event_data
 	
 	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
 		h5f = openFile(self.hdf5_filename, mode = "r" )
@@ -235,12 +237,16 @@ class EyeLinkSession(object):
 			self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
 		timings = run.trial_times.read()
 		
+		timestring = 'start_timestamp'
 		if data_type == 'saccades':
 			table = run.saccades_from_EL
 		elif data_type == 'fixations':
 			table = run.fixations_from_EL
 		elif data_type == 'blinks':
 			table = run.blinks_from_EL
+		elif data_type == 'events':
+			table = run.events
+			timestring = 'EL_timestamp'
 		
 		# run for loop for actual data
 		export_data = []
@@ -248,7 +254,7 @@ class EyeLinkSession(object):
 			export_data.append([])
 			for t in timings[trial_range[0]:trial_range[1]]:
 				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
-				where_statement = '(start_timestamp >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (start_timestamp < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
+				where_statement = '(' + timestring + ' >= ' + str(phase_timestamps[trial_phase_range[0]]) + ') & (' + timestring + ' < ' + str(phase_timestamps[trial_phase_range[1]]) + ')' 
 				export_data[-1].append(np.array([s[:] for s in table.where(where_statement) ], dtype = table.dtype))
 		h5f.close()
 		return export_data
@@ -1771,3 +1777,171 @@ class MREyeLinkSession(EyeLinkSession):
 			self.logger.addHandler(handler)
 		self.logger.info('starting analysis of session ' + str(self.ID))
 	
+class MIBSession(EyeLinkSession):
+	"""docstring for MIBSession"""
+	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
+		super(MIBSession, self).__init__(ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG)
+		if os.path.isfile(self.hdf5_filename):
+			self.get_run_types()
+		
+	def get_run_types(self):
+		"""Determines the run in which the edf files were created, and which run was which type of run [3 or 4]."""
+		tf = openFile(self.hdf5_filename)
+		run_types = []
+		for r in tf.iterNodes('/'):
+			run_types.append(int(r._v_title.split(' ')[-1].split('_')[1]))
+		self.run_types = run_types
+		tf.close()
+	
+	def clean_trials_per_run(self, trial_events, run_type, trial_times):
+		actual_button_events = trial_events[trial_events['key'] == 47.0]
+		if actual_button_events.shape[0] == 0:
+			return {'visible_durations':[], 'invisible_durations':[], 'invisible_ratio':0, 'time_until_first_disappearance': trial_times['trial_phase_timestamps'][1,0] - trial_times['trial_phase_timestamps'][0,0]}
+		if run_type == 3:
+			if actual_button_events[0]['up_down'] == 'Down':
+				actual_button_events = actual_button_events[1:]
+		else:
+			if actual_button_events[0]['up_down'] == 'Up':
+				actual_button_events = actual_button_events[1:]
+		
+		# start of run is the onset of the stimulus, in this case, the first phase transition
+		start_stimulus_time = trial_times['trial_phase_timestamps'][0,0]
+		selected_event_times = actual_button_events['EL_timestamp']
+		all_event_times = np.concatenate([[trial_times['trial_phase_timestamps'][0,0]],selected_event_times,[trial_times['trial_phase_timestamps'][1,0]]]) - trial_times['trial_phase_timestamps'][0,0]
+		
+		visible_durations = np.diff(all_event_times)[::2]
+		invisible_durations = np.diff(all_event_times)[1::2]
+		
+		invisible_ratio = invisible_durations.sum() / all_event_times[-1]
+		time_until_first_disappearance = all_event_times[1]
+		
+		return {'visible_durations':visible_durations, 'invisible_durations':invisible_durations, 'invisible_ratio':invisible_ratio, 'time_until_first_disappearance':time_until_first_disappearance, }
+		
+	
+	def preprocess_trial_types(self):
+		tf = openFile(self.hdf5_filename)
+		# events 
+		self.events_per_run = [self.get_EL_events_per_trial(run_index = i, trial_ranges = [[0,16]], trial_phase_range = [1,2], data_type = 'events') for i in range(len(list(tf.iterNodes('/'))))]
+		self.times_per_run = [r.trial_times.read() for r in tf.iterNodes('/')]
+		tf.close()
+		
+		self.durations_per_run = [[self.clean_trials_per_run(trial_events = e, run_type = rt, trial_times = t) for (e, t) in zip(er[0], tr)] for (er,tr,rt) in zip(self.events_per_run, self.times_per_run, self.run_types)]
+		
+		# parameters
+		self.parameters_per_run = [self.import_parameters('run_' + str(i)) for i in range(4)]
+		parameter_names = ['target_direction', 'fixation_direction', 'target_eccentricity', 'fixation_eccentricity', 'mask_direction' ]
+		self.selected_parameters_per_run = np.array([[[tp['target_direction'], tp['fixation_direction'], tp['target_eccentricity'], tp['fixation_eccentricity'], tp['mask_direction'],  ] for tp in rp] for rp in self.parameters_per_run])
+		
+		# check conditions
+		condition_indices_array = []
+		for i in range(len(self.parameters_per_run)):	# loop over sessions
+			#	 both target and fixation direction are 0 - standstill
+			retinal_fixed_fixation = (self.selected_parameters_per_run[i][:,0] == 0) * (self.selected_parameters_per_run[i][:,1] == 0)
+			#	 both target and fixation direction are moving 
+			retinal_fixed_pursuit = (self.selected_parameters_per_run[i][:,0] != 0) * (self.selected_parameters_per_run[i][:,1] != 0)
+			#	target moves, fixation is still
+			retinal_motion_fixation = (self.selected_parameters_per_run[i][:,0] != 0) * (self.selected_parameters_per_run[i][:,1] == 0)
+			#	target still, fixation is moving
+			retinal_motion_pursuit = (self.selected_parameters_per_run[i][:,0] == 0) * (self.selected_parameters_per_run[i][:,1] != 0)
+			
+			condition_indices_array.append({
+					'retinal_fixed_fixation':retinal_fixed_fixation,
+					'retinal_fixed_pursuit':retinal_fixed_pursuit,
+					'retinal_motion_fixation':retinal_motion_fixation,
+					'retinal_motion_pursuit':retinal_motion_pursuit,
+					})
+		self.condition_names = condition_indices_array[0].keys()
+		
+		condition_durations = []
+		visible_durations, invisible_durations, invisible_ratio, time_until_first_disappearance = [], [], [], []
+		for (j, k) in enumerate(condition_indices_array[0].keys()):
+			condition_durations.append([])
+			for i in range(len(self.parameters_per_run)):	# loop over sessions
+				this_session_this_condition_indices = np.arange(self.parameters_per_run[0].shape[0])[condition_indices_array[i][k]]
+				for index in this_session_this_condition_indices:
+					condition_durations[-1].append(self.durations_per_run[i][index])
+			#	dump everything together per condition
+			visible_durations.append(np.concatenate([condition_durations[-1][tr_i]['visible_durations'] for tr_i in range(len(condition_durations[-1]))]))
+			invisible_durations.append(np.concatenate([condition_durations[-1][tr_i]['invisible_durations'] for tr_i in range(len(condition_durations[-1]))]))
+			invisible_ratio.append(np.array([condition_durations[-1][tr_i]['invisible_ratio'] for tr_i in range(len(condition_durations[-1]))]))
+			time_until_first_disappearance.append(np.array([condition_durations[-1][tr_i]['time_until_first_disappearance'] for tr_i in range(len(condition_durations[-1]))]))
+		
+				
+		# shell()
+		f = pl.figure(figsize = (9,4))
+		s = f.add_subplot(111)
+		for i in range(4):
+			pl.hist(invisible_durations[i]/1000.0, color = ['r','r','g','g'][i], alpha = [0.25, 0.45, 0.25, 0.45][i], linewidth = [1.25, 1.75, 1.25, 1.75][i], normed=True, range = [0, 7], bins = 20, histtype = 'stepfilled', label = condition_indices_array[0].keys()[i])
+		s.set_title('invisible durations')
+		pl.xlabel('durations [s]')
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		pl.savefig(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '_hist_invis.pdf'))
+		
+		f = pl.figure(figsize = (9,4))
+		s = f.add_subplot(111)
+		for i in range(4):
+			pl.hist(visible_durations[i]/1000.0, color = ['r','r','g','g'][i], alpha = [0.25, 0.45, 0.25, 0.45][i], linewidth = [1.25, 1.75, 1.25, 1.75][i], normed=True, range = [0, 7], bins = 20, histtype = 'stepfilled', label = condition_indices_array[0].keys()[i])
+		s.set_title('visible durations')
+		pl.xlabel('durations [s]')
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		pl.savefig(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '_hist_vis.pdf'))		
+		
+		
+		f = pl.figure(figsize = (12,4))
+		pl.subplots_adjust(left=0.05, bottom=0.2, right=0.95, top=0.9, wspace=None, hspace=None)
+		s = f.add_subplot(151)
+		irms = np.array([[ir.mean(), ir.std()/sqrt(ir.shape[0])] for ir in invisible_ratio])
+		pl.bar(np.arange(4) + 0.5, irms[:,0], width = 0.35, color = 'r', alpha = 0.4, ecolor = 'k', yerr = irms[:,1], capsize = 0 )
+		s.set_title('invisible ratio')
+		s.set_xlim([0,4.25])
+		pl.xticks(np.arange(4)+0.5+0.175,  tuple(condition_indices_array[0].keys()), rotation=45, fontsize = 5)
+		
+		s = f.add_subplot(152)
+		dtms = np.array([[np.median(dt), dt.std()/sqrt(dt.shape[0])] for dt in time_until_first_disappearance]) / 1000.0
+		pl.bar(np.arange(4) + 0.5, dtms[:,0], width = 0.35, color = 'b', alpha = 0.4, ecolor = 'k', yerr = dtms[:,1], capsize = 0 )
+		s.set_title('time to first disappearance')
+		s.set_ylabel('time [s]')
+		s.set_xlim([0,4.25])
+		pl.xticks(np.arange(4)+0.5+0.175,  tuple(condition_indices_array[0].keys()), rotation=45, fontsize = 5)
+		
+		s = f.add_subplot(153)
+		ids = np.array([[np.median(dt), dt.std()/sqrt(dt.shape[0])] for dt in invisible_durations]) / 1000.0
+		pl.bar(np.arange(4) + 0.5, ids[:,0], width = 0.35, color = 'g', alpha = 0.4, ecolor = 'k', yerr = ids[:,1], capsize = 0 )
+		s.set_title('median disappearance duration')
+		s.set_xlim([0,4.25])
+		s.set_ylabel('duration [s]')
+		pl.xticks(np.arange(4)+0.5+0.175,  tuple(condition_indices_array[0].keys()), rotation=45, fontsize = 5)
+		
+		s = f.add_subplot(154)
+		vds = np.array([[np.median(dt), dt.std()/sqrt(dt.shape[0])] for dt in visible_durations]) / 1000.0
+		pl.bar(np.arange(4) + 0.5, vds[:,0], width = 0.35, color = 'k', alpha = 0.4, ecolor = 'k', yerr = vds[:,1], capsize = 0 )
+		s.set_title('median visibility duration')
+		s.set_ylabel('duration [s]')
+		s.set_xlim([0,4.25])
+		pl.xticks(np.arange(4)+0.5+0.175,  tuple(condition_indices_array[0].keys()), rotation=45, fontsize = 5)
+		
+		s = f.add_subplot(155)
+		rate = np.array([dt.shape[0] / (16.0) for dt in invisible_durations])
+		pl.bar(np.arange(4) + 0.5, rate, width = 0.35, color = 'y', alpha = 0.8, ecolor = 'k', capsize = 0 )
+		s.set_title('rate')
+		s.set_ylabel('rate [1/s]')
+		s.set_xlim([0,4.25])
+		pl.xticks(np.arange(4)+0.5+0.175,  tuple(condition_indices_array[0].keys()), rotation=45, fontsize = 5)
+		
+		pl.savefig(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '_bars.pdf'))		
+		np.save(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '.npy'), np.array([irms[:,0], dtms[:,0], ids[:,0], vds[:,0], rate]))
+		return np.array([irms[:,0], dtms[:,0], ids[:,0], vds[:,0], rate])
