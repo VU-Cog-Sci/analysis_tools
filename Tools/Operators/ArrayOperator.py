@@ -8,6 +8,7 @@ Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 """
 
 from Operator import *
+from IPython import embed as shell
 
 # weird workaround for scipy stats import bug. try and except: do again!
 try:
@@ -62,7 +63,7 @@ class EventDataOperator(ArrayOperator):
 
 class DeconvolutionOperator(EventDataOperator):
 	"""docstring for DeconvolutionOperator"""
-	def __init__(self, inputObject, eventObject, TR = 2.0, deconvolutionSampleDuration = 0.5, deconvolutionInterval = 12.0, **kwargs):
+	def __init__(self, inputObject, eventObject, TR = 2.0, deconvolutionSampleDuration = 0.5, deconvolutionInterval = 12.0, run = True, **kwargs):
 		super(DeconvolutionOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
 		
 		self.deconvolutionSampleDuration = deconvolutionSampleDuration
@@ -73,8 +74,9 @@ class DeconvolutionOperator(EventDataOperator):
 		
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()
-		self.rawDeconvolvedTimeCourse = self.h()
-		self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
+		if run:
+			self.rawDeconvolvedTimeCourse = self.h()
+			self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
 		
 	def upsampleDataTimeSeries(self):
 		"""upsampleDataTimeSeries takes a timeseries of data points
@@ -118,6 +120,19 @@ class DeconvolutionOperator(EventDataOperator):
 		run the actual deconvolution least-squares approximation
 		"""
 		return ((self.designMatrix.T * self.designMatrix).I * self.designMatrix.T) * np.mat(self.workingDataArray.T).T
+	
+	def runWithConvolvedNuisanceVectors(self, nuisanceVectors):
+		designShape = self.designMatrix.shape
+		
+		if nuisanceVectors.shape[0] != self.designMatrix.shape[0]:
+			self.logger.error('nuisance dimensions does not correspond to the designmatrix, shapes %s, %s' % (nuisanceVectors.shape, designShape))
+		else:
+			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, nuisanceVectors)))
+			#run and segment
+			self.deconvolvedTimeCoursesPerEventTypeNuisance = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
+			self.deconvolvedTimeCoursesPerEventTypeNuisance = self.deconvolvedTimeCoursesPerEventTypeNuisance[:designShape[1]].reshape((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
+	
+	
 	
 
 class EventRelatedAverageOperator(EventDataOperator):

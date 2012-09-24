@@ -1042,6 +1042,7 @@ class VisualRewardSession(Session):
 		
 		event_data = []
 		roi_data = []
+		blink_events = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
@@ -1050,6 +1051,10 @@ class VisualRewardSession(Session):
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
 			this_run_events = np.array(this_run_events) + nr_runs * run_duration
 			event_data.append(this_run_events)
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
 			nr_runs += 1
 		
 		demeaned_roi_data = []
@@ -1080,23 +1085,36 @@ class VisualRewardSession(Session):
 		time_signals = []
 		if analysis_type == 'deconvolution':
 			interval = [0.0,16.0]
+			# nuisance version?
+			nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+			nuisance_design.configure(np.array([np.hstack(blink_events)]))
+			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+				# shell()
+				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])[0], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 			
-			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
-			for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
-				time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
+			# the following commented code doesn't factor in blinks as nuisances
+			# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+			# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
+			# 	pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+			# 	time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
 			s.set_title('deconvolution' + roi + ' ' + mask_type)
 			deco_per_run = []
 			for i, rd in enumerate(roi_data_per_run):
 				event_data_this_run = event_data_per_run[i] - i * run_duration
 				deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
 				deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
+				# deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+				# deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix[i*nr_trs*2:(i+1)*nr_trs*2])
+				# deco_per_run.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance)
 			deco_per_run = np.array(deco_per_run)
 			mean_deco = deco_per_run.mean(axis = 0)
 			std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
 			for i in range(0, mean_deco.shape[0]):
 				# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
-				s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
+				s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), (np.array(time_signals[i]) + std_deco[i].T)[0], (np.array(time_signals[i]) - std_deco[i].T)[0], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
 		
 		else:
 			interval = [-3.0,19.5]
@@ -1128,7 +1146,7 @@ class VisualRewardSession(Session):
 		if analysis_type == 'deconvolution':
 			for i in range(0, len(event_data), 2):
 				ts_diff = -(time_signals[i] - time_signals[i+1])
-				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), np.array(ts_diff)[0], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 				s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
@@ -1155,7 +1173,7 @@ class VisualRewardSession(Session):
 		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
 		
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco_per_run]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), np.array(deco_per_run)]
 	
 	def deconvolve_pupil(self, sample_rate = 2000, postFix = ['mcf'], subsampled_sample_frequency = 5):
 		# check out the duration of these runs, assuming they're all the same length.
@@ -1875,7 +1893,7 @@ class VisualRewardSession(Session):
 		
 		# pl.show()
 	
-	def cross_correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [-10.0, 10.0], time_range_pupil = [0.0, 10.0], stepsize = 0.25, area = '', color = 1.0):
+	def cross_correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [5.0, 10.0], time_range_pupil = [0.5, 2.0], stepsize = 0.25, area = '', color = 1.0):
 		"""docstring for correlate_pupil_and_BOLD"""
 		
 		# take data 
@@ -1940,39 +1958,60 @@ class VisualRewardSession(Session):
 		bold_timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
 		from scipy.signal import correlate
+		from scipy.stats import spearmanr, linregress
 		
 		all_results = []
+		all_spearman_results = []
 		for (i, e) in enumerate(event_data):
-			bold_trial_data = np.concatenate([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])] for se in e])
-			pupil_trial_data = np.concatenate([pdc[(pdc[:,0] > se + time_range_BOLD[0]) * (pdc[:,0] <= se + time_range_BOLD[1])] for se in e])
+			bold_trial_data = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])].mean() for se in e[:-1]])
+			pupil_trial_data = np.array([pdc[(pdc[:,0] > se + time_range_pupil[0]) * (pdc[:,0] <= se + time_range_pupil[1]),1].mean() for se in e[:-1]])
 		
-			correlation = correlate(pupil_trial_data[:,1], bold_trial_data, 'same')
+			correlation = correlate(pupil_trial_data, bold_trial_data, 'same')
+			scorr = spearmanr(pupil_trial_data, bold_trial_data)
 			
 			midpoint = correlation.shape[0] / 2
 			plot_range = 20
-			all_results.append(correlation[midpoint-plot_range/2:midpoint+plot_range/2])
 			
-			pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+			all_results.append(correlation[midpoint-plot_range/2:midpoint+plot_range/2])
+			all_spearman_results.append(scorr)
+			
+			# pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+			
+			pl.plot(pupil_trial_data, bold_trial_data, ['ob','ob','og','og'][i], alpha = [0.5, 1.0, 0.5, 1.0][i] * 0.2, mec = 'w', mew = 1, ms = 6)
+			
+			# linear regression for regression lines
+			slope, intercept, r_value, p_value, slope_std_error = stats.linregress(pupil_trial_data, bold_trial_data)
+			predict_y = intercept + slope * pupil_trial_data
+			pl.plot(pupil_trial_data, predict_y, ['--b','--b','--g','--g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], mec = 'w', mew = 1, ms = 6, label = cond_labels[i])
+			
 		#  all thingies across 
 		# correlation = correlate(pdc[:,1], bold_timeseries, 'same')
 		# midpoint = correlation.shape[0] / 2
 		# plot_range = 20
 		# 
 		# pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], 'r', alpha = 0.5, label = 'across conditions')
-			
-		return all_results
+		# shell()
+		return (all_results, all_spearman_results)
 	
-	def cross_correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000):
+	def cross_correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range = 'long'):
 		corrs = []
+		spearman_corrs = []
 		areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']
-		f = pl.figure(figsize = (9,12))
-		
+		f = pl.figure(figsize = (4,12))
 		for (i, roi) in enumerate(areas):
 			s = f.add_subplot(len(areas), 1, i+1)
-			corrs.append(self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi))
+			if time_range == 'short':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [1.5, 7.0], time_range_pupil = [0.5, 2.0])
+			elif time_range == 'long':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [5.0, 10.0], time_range_pupil = [3.0, 9.0])
+			corrs.append(crs[0])
+			spearman_corrs.append(crs[1])
+			print spearman_corrs[-1]
 			s.set_title(self.subject.initials + ' ' + roi )
-			s.set_xlabel('time [TR]')
-			s.set_ylabel('cross-correlation')
+			# s.set_xlabel('time [TR]')
+			# s.set_ylabel('cross-correlation')
+			s.set_xlabel('pupil [Z]')
+			s.set_ylabel('BOLD [% signal change]')
 			if i == 0:
 				leg = s.legend(fancybox = True)
 				leg.get_frame().set_alpha(0.5)
@@ -1981,7 +2020,7 @@ class VisualRewardSession(Session):
 					    t.set_fontsize('small')    # the legend text fontsize
 					for l in leg.get_lines():
 					    l.set_linewidth(3.5)  # the legend line width
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_pupil_corr.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), mask_type + '_' + mask_direction + '_' + time_range + '_pupil_corr.pdf'))
 		
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
@@ -2000,6 +2039,13 @@ class VisualRewardSession(Session):
 			except NoSuchNodeError:
 				pass
 			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold cross correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		
+		for (i, c) in enumerate(spearman_corrs):
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range)
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range, np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 		
 		# pl.show()
@@ -3010,7 +3056,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		"""
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		tr, nr_trs = round(niiFile.rtime*100)/100.0, niiFile.timepoints
 		run_duration = tr * nr_trs
 		
 		reward_h5file = self.hdf5_file('reward')
@@ -3024,11 +3070,15 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		event_data = []
 		roi_data = []
 		nr_runs = 0
+		blink_events = []
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf']))
 			this_run_events = []
 			for cond in self.deconvolution_labels:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
 			this_run_events = np.array(this_run_events) + nr_runs * run_duration
 			event_data.append(this_run_events)
 			nr_runs += 1
@@ -3059,13 +3109,20 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
-
 		time_signals = []
 		interval = [0.0,16.0]
-			
-		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
-		for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-			time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
+		
+		# nuisance version?
+		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		nuisance_design.configure(np.array([np.vstack(blink_events)]))
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+		
+		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
+		# 	time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
 		time_signals = np.array(time_signals).squeeze()
 		# shell()
 		fig = pl.figure(figsize = (8, 16))
@@ -3248,3 +3305,23 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 				# run feat
 				featOp.execute()
+	
+	def import_stats_from_initial_session(self, example_func_to_highres_file, original_stat_folder, nr_stat_files = 4, stat_file_names = ['cope', 'tstat', 'pe', 'zstat']):
+		"""
+		"""
+		# concatenate older session reg to newer session
+		cfO = ConcatFlirtOperator(example_func_to_highres_file)
+		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_older_stat_masks'], extension = '.mat' ))
+		cfO.execute()
+		
+		for stat_name in stat_file_names:
+			for i in np.arange(nr_stat_files)+1:
+				# apply the transform
+				flO = FlirtOperator(inputObject = os.path.join(original_stat_folder, stat_name+str(i)+'.nii.gz'), referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+				flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_older_stat_masks'], extension = '.mat' ), 
+										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
+				flO.execute()
+		
+		
+		
