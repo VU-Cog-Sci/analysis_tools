@@ -234,6 +234,10 @@ def doubleGamma(timepoints, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35):
 	d2 = a2 * b2
 	return np.array([(t/(d1))**a1 * exp(-(t-d1)/b1) - c*(t/(d2))**a2 * exp(-(t-d2)/b2) for t in timepoints])
 
+def double_gamma(x, a1, sh1, sc1, a2, sh2, sc2 ): 
+	return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
+
+
 def singleGamma(timepoints, a = 6, b = 0.9):
 	d = a * b
 	return np.array([(t/(d))**a * exp(-(t-d)/b) for t in timepoints])
@@ -262,7 +266,7 @@ class Design(object):
 		return regressorValues
 	
 	def convolveWithHRF(self, hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9}):
-		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {'a1':6, 'a2':12, 'b1': 0.9, 'b2': 0.9, 'c':0.35}
+		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/self.subSamplingRatio), **hrfParameters)')

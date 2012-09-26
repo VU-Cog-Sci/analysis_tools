@@ -3323,5 +3323,130 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
 				flO.execute()
 		
+	def glm_with_reward_convolution_and_nuisances_for_run(self, run, postFix = ['mcf','tf']):
+		"""
+		This function takes a run, opens its nifti file and runs a glm on it, that incorporates standard HRF responses for visual and trial structure events,
+		and negative BOLD HRF responses for reward and non-reward events.
+		"""
+		# prepare the save location
+		try:
+			os.mkdir(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']))
+		except OSError:
+			pass
+		self.logger.debug('running glm analysis on run %s' + self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']))
+		# open an hdf5 file to save stuff?
+		# self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5')
+		# h5file = openFile(self.hdf5_filename, mode = "r+")
+		# # the groups are named only after the mcf file.
+		# this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]))[1]
+		# try:
+		# 	thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+		# 	self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]) + ' already in ' + self.hdf5_filename)
+		# except NoSuchNodeError:
+		# 	# import actual data
+		# 	self.logger.error('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]) + ' does not contain ' + this_run_group_name + '. Exiting.')
+		# 	return
 		
+		# input file opening
+		niiFileName = self.runFile(stage = 'processed/mri', run = run, postFix = postFix)
+		niiFile = NiftiImage(niiFileName)
+		
+		# shell()
+		# visual and task timing responses:
+		trial_times = [np.vstack([np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['%i%%_yes'%perc, '%i%%_no'%perc]]) for perc in [75, 50, 25]]
+		stim_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_stim', '50%_stim', '25%_stim']]
+		blink_times = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']))
+		
+		visual_task_names = ['75_tt', '50_tt', '25_tt', '75%_stim', '50%_stim', '25%_stim', 'blinks']
+		
+		norm_design = Design(nrTimePoints = niiFile.timepoints, rtime = niiFile.rtime)
+		for condition_event_data in trial_times:
+			# for i in range(len(condition_event_data)):
+			norm_design.addRegressor(condition_event_data)
+		for condition_event_data in stim_times:
+			# for i in range(len(condition_event_data)):
+			norm_design.addRegressor(condition_event_data)
+		norm_design.addRegressor(blink_times)
+		norm_design.convolveWithHRF()	# standard HRF
+		
+		# reward times
+		reward_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_yes', '50%_yes', '25%_yes', 'blank_reward']]
+		no_reward_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_no', '50%_no', '25%_no']]
+		
+		reward_names = ['75%_yes', '50%_yes', '25%_yes', 'blank_reward', '75%_no', '50%_no', '25%_no']
+		
+		# design matrix for reward with negative bold convolution kernel
+		reward_design = Design(nrTimePoints = niiFile.timepoints, rtime = niiFile.rtime)
+		for condition_event_data in reward_times:
+			# for i in range(len(condition_event_data)):
+			reward_design.addRegressor(condition_event_data)
+		for condition_event_data in no_reward_times:
+			# for i in range(len(condition_event_data)):
+			reward_design.addRegressor(condition_event_data)
+		# convolve with double-gamma hrf fitted from the first session's reward response.
+		reward_design.convolveWithHRF(hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103})
+		
+		# motion parameters are their own design matrix
+		motion_pars = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.par', postFix = ['mcf']))
+		
+		motion_names = [str(i) + '_motion' for i in range(motion_pars.shape[1])]
+		
+		full_design = np.hstack((norm_design.designMatrix, reward_design.designMatrix, motion_pars))
+		full_design_names = np.concatenate([visual_task_names, reward_names, motion_names])
+		fd_name_string = ', '.join(full_design_names)
+		
+		# plot and save the design used.
+		f = pl.figure(figsize = (10,8))
+		s = f.add_subplot(111)
+		pl.imshow(full_design)
+		s.set_title(fd_name_string, fontsize = 5)
+		pl.savefig(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.pdf'))
+		np.savetxt(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.txt'), full_design, fmt = '%3.2f', delimiter = '\t')
+		
+		# GLM!
+		my_glm = nipy.labs.glm.glm.glm()
+		fit_data = (niiFile.data - niiFile.data.mean(axis = 0)).reshape((niiFile.timepoints,-1))	# demean first
+		glm = my_glm.fit(fit_data, full_design, method="kalman", model="ar1")
+		
+		stat_matrix = []
+		zscore_matrix = []
+		beta_matrix = []
+		# contrasts for each of the regressors separately
+		for i in range(full_design.shape[-1]):
+			this_contrast = np.zeros(full_design.shape[-1])
+			this_contrast[i] = 1.0
+			stat_matrix.append(my_glm.contrast(this_contrast).stat())
+			zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
+			beta_matrix.append(my_glm.betas)
+		
+		# interesting contrast, the difference between reward and no reward per probability.
+		diff_yes_no = np.zeros((3, full_design.shape[-1]))
+		full_design_names = list(full_design_names)
+		full_design_names.extend( ['75%_rew_diff', '50%_rew_diff', '25%_rew_diff'] )
+		print full_design_names
+		for (i, perc) in enumerate([75, 50, 25]):
+			 diff_yes_no[i, full_design_names.index(str(perc)+'%_yes')] = 1
+			 diff_yes_no[i, full_design_names.index(str(perc)+'%_no')] = -1
+			 stat_matrix.append(my_glm.contrast(diff_yes_no[i]).stat())
+			 zscore_matrix.append(my_glm.contrast(diff_yes_no[i]).zscore())
+		
+		# prepare stat images for saving.
+		stat_matrix = np.array(stat_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
+		zscore_matrix = np.array(zscore_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
+		
+		# save stat and zscore
+		stat_nii = NiftiImage(stat_matrix)
+		stat_nii.header = niiFile.header
+		stat_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'stat.nii.gz'))
+		z_nii = NiftiImage(zscore_matrix)
+		z_nii.header = niiFile.header
+		z_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'zscore.nii.gz'))
+		
+		# h5file.close()
+		
+	def glm_with_reward_convolution_and_nuisances(self, postFix = ['mcf','tf']):
+		"""docstring for fname"""
+		self.logger.debug('running glm analysis on all runs')
+		for r in self.conditionDict['reward']:
+			self.glm_with_reward_convolution_and_nuisances_for_run(run = self.runList[r], postFix = postFix)
 		
