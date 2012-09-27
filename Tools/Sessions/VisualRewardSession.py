@@ -3360,7 +3360,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		visual_task_names = ['75%_stim', '50%_stim', '25%_stim', 'blinks']
 		# visual_task_names = ['75_tt', '50_tt', '25_tt', '75%_stim', '50%_stim', '25%_stim', 'blinks']
 		
-		norm_design = Design(nrTimePoints = niiFile.timepoints, rtime = niiFile.rtime)
+		norm_design = Design(nrTimePoints = niiFile.timepoints, rtime = round(niiFile.rtime*100)/100.0)
 		# for condition_event_data in trial_times:
 		# 	# for i in range(len(condition_event_data)):
 		# 	norm_design.addRegressor(condition_event_data)
@@ -3377,7 +3377,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		reward_names = ['75%_yes', '50%_yes', '25%_yes', 'blank_reward', '75%_no', '50%_no', '25%_no']
 		
 		# design matrix for reward with negative bold convolution kernel
-		reward_design = Design(nrTimePoints = niiFile.timepoints, rtime = niiFile.rtime)
+		reward_design = Design(nrTimePoints = niiFile.timepoints, rtime = round(niiFile.rtime*100)/100.0)
 		for condition_event_data in reward_times:
 			# for i in range(len(condition_event_data)):
 			reward_design.addRegressor(condition_event_data)
@@ -3408,8 +3408,8 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		# GLM!
 		my_glm = nipy.labs.glm.glm.glm()
-		fit_data = (niiFile.data - niiFile.data.mean(axis = 0)).reshape((niiFile.timepoints,-1))	# demean first
-		glm = my_glm.fit(fit_data, full_design, method="kalman", model="ar1")
+		fit_data = (niiFile.data - niiFile.data.mean(axis = 0)).reshape((niiFile.timepoints,-1)).astype(np.float32)	# demean first
+		glm = my_glm.fit(fit_data, full_design, model="ar1") # , method="kalman"
 		
 		stat_matrix = []
 		zscore_matrix = []
@@ -3441,25 +3441,25 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		# save separate files for all contrasts
 		for (i, img) in enumerate(full_design_names):
 			# save stat and zscore
-			stat_nii = NiftiImage(stat_matrix[i])
+			stat_nii = NiftiImage(stat_matrix[i].astype(np.float32))
 			stat_nii.header = niiFile.header
 			stat_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_stat.nii.gz'))
-			z_nii = NiftiImage(zscore_matrix[i])
+			z_nii = NiftiImage(zscore_matrix[i].astype(np.float32))
 			z_nii.header = niiFile.header
 			z_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_zscore.nii.gz'))
 			if i < beta_matrix.shape[0]:
-				beta_nii = NiftiImage(beta_matrix[i])
+				beta_nii = NiftiImage(beta_matrix[i].astype(np.float32))
 				beta_nii.header = niiFile.header
 				beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_betas.nii.gz'))
 		
 		# all in one file:
-		stat_nii = NiftiImage(stat_matrix)
+		stat_nii = NiftiImage(stat_matrix.astype(np.float32))
 		stat_nii.header = niiFile.header
 		stat_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'stat.nii.gz'))
-		z_nii = NiftiImage(zscore_matrix)
+		z_nii = NiftiImage(zscore_matrix.astype(np.float32))
 		z_nii.header = niiFile.header
 		z_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'zscore.nii.gz'))
-		beta_nii = NiftiImage(beta_matrix)
+		beta_nii = NiftiImage(beta_matrix.astype(np.float32))
 		beta_nii.header = niiFile.header
 		beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'betas.nii.gz'))
 		
