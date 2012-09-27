@@ -3353,16 +3353,17 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		# shell()
 		# visual and task timing responses:
-		trial_times = [np.vstack([np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['%i%%_yes'%perc, '%i%%_no'%perc]]) for perc in [75, 50, 25]]
+		# trial_times = [np.vstack([np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['%i%%_yes'%perc, '%i%%_no'%perc]]) for perc in [75, 50, 25]]
 		stim_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_stim', '50%_stim', '25%_stim']]
 		blink_times = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']))
 		
-		visual_task_names = ['75_tt', '50_tt', '25_tt', '75%_stim', '50%_stim', '25%_stim', 'blinks']
+		visual_task_names = ['75%_stim', '50%_stim', '25%_stim', 'blinks']
+		# visual_task_names = ['75_tt', '50_tt', '25_tt', '75%_stim', '50%_stim', '25%_stim', 'blinks']
 		
 		norm_design = Design(nrTimePoints = niiFile.timepoints, rtime = niiFile.rtime)
-		for condition_event_data in trial_times:
-			# for i in range(len(condition_event_data)):
-			norm_design.addRegressor(condition_event_data)
+		# for condition_event_data in trial_times:
+		# 	# for i in range(len(condition_event_data)):
+		# 	norm_design.addRegressor(condition_event_data)
 		for condition_event_data in stim_times:
 			# for i in range(len(condition_event_data)):
 			norm_design.addRegressor(condition_event_data)
@@ -3412,14 +3413,14 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		stat_matrix = []
 		zscore_matrix = []
-		# beta_matrix = []
+		beta_matrix = []
 		# contrasts for each of the regressors separately
 		for i in range(full_design.shape[-1]):
 			this_contrast = np.zeros(full_design.shape[-1])
 			this_contrast[i] = 1.0
 			stat_matrix.append(my_glm.contrast(this_contrast).stat())
 			zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
-			# beta_matrix.append(my_glm.betas())
+			beta_matrix.append(my_glm.beta)
 		
 		# interesting contrast, the difference between reward and no reward per probability.
 		diff_yes_no = np.zeros((3, full_design.shape[-1]))
@@ -3435,18 +3436,33 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		# prepare stat images for saving.
 		stat_matrix = np.array(stat_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
 		zscore_matrix = np.array(zscore_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
-		# beta_matrix = np.array(beta_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
+		beta_matrix = np.array(beta_matrix).reshape((np.concatenate(([-1], niiFile.data.shape[1:]))))
 		
-		# save stat and zscore
+		# save separate files for all contrasts
+		for (i, img) in enumerate(full_design_names):
+			# save stat and zscore
+			stat_nii = NiftiImage(stat_matrix[i])
+			stat_nii.header = niiFile.header
+			stat_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_stat.nii.gz'))
+			z_nii = NiftiImage(zscore_matrix[i])
+			z_nii.header = niiFile.header
+			z_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_zscore.nii.gz'))
+			if i < beta_matrix.shape[0]:
+				beta_nii = NiftiImage(beta_matrix[i])
+				beta_nii.header = niiFile.header
+				beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), img + '_betas.nii.gz'))
+		
+		# all in one file:
 		stat_nii = NiftiImage(stat_matrix)
 		stat_nii.header = niiFile.header
 		stat_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'stat.nii.gz'))
 		z_nii = NiftiImage(zscore_matrix)
 		z_nii.header = niiFile.header
 		z_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'zscore.nii.gz'))
-		# beta_nii = NiftiImage(beta_matrix)
-		# beta_nii.header = niiFile.header
-		# beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'betas.nii.gz'))
+		beta_nii = NiftiImage(beta_matrix)
+		beta_nii.header = niiFile.header
+		beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'betas.nii.gz'))
+		
 		
 		# h5file.close()
 		
