@@ -3537,6 +3537,8 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		contrast_file_string += '/RequiredEffect\t\t' + '\t'.join(['2.000' for i in range(len(contrasts))]) + '\n'
 		contrast_file_string += '\n\Matrix\n'
 		
+		run.contrast_matrix = contrast_matrix
+		run.contrasts = contrasts
 		f = open( contrast_file_name, 'w')
 		f.write(contrast_file_string)
 		f.close()
@@ -3547,7 +3549,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		run.contrast_file_name = contrast_file_name
 		return 'contrast_mgr -d ' + os.path.join(os.path.split(run.design_file)[0], 'stats') + ' ' + contrast_file_name
 	
-	def calculate_contrasts(self, postFix = ['mcf','tf'], execute = True):
+	def calculate_contrasts_by_contrast_mgr(self, postFix = ['mcf','tf'], execute = True):
 		"""docstring for calculate_contrasts"""
 		self.logger.debug('running contrasts on all runs')
 		con_commands = []
@@ -3565,7 +3567,28 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				fcon()
 			
 			job_server.print_stats()
-		
+	
+	def calculate_contrasts_by_numpy(self, postFix = ['mcf','tf']):
+		self.logger.debug('running contrasts on all runs')
+		con_commands = []
+		for r in self.conditionDict['reward']:
+			con_commands.append(self.create_contrasts_per_run(run = self.runList[r], postFix = postFix))
+			self.logger.debug('running contrast with command ' + con_commands[-1])
+			ss = NiftiImage(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'sigmasquareds.nii.gz'))
+			# beta_data = np.array([NiftiImage(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'pe' + str(r) + '.nii.gz')).data for r in range(run.contrast_matrix.shape[1])])
+			ts = []
+			for c in self.runList[r].contrast_matrix:
+				which_regressors = (np.arange(c.shape[0])+1)[c!=0]
+				nii_files = []
+				for regr in which_regressors:
+					nii_files.append(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'pe' + str(regr) + '.nii.gz'))
+				ts.append(np.nan_to_num(np.array([NiftiImage(nii_files[i]).data * c for (i, c) in enumerate(c[c!=0])]).sum(axis = 0)/ss.data))
+			contrast_output_nii = NiftiImage(np.array(ts, dtype = np.float32))
+			contrast_output_nii.header = ss.header
+			contrast_output_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'contrasts.nii.gz'))
+			f = open(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'contrasts.txt'), 'w')
+			f.write(str(self.runList[r].contrasts))
+			f.close()
 	
 	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
 		"""
@@ -3634,12 +3657,12 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 								'surround>center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat4.nii.gz'),
 								'surround>center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat4.nii.gz'),
 								'surround>center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope4.nii.gz'),
-								
+									
 			})
 			# now we're going to add the results of film_gls' approximation.
 			for (i, name) in enumerate(self.full_design_names):
 				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
-			for name in ['prewhitened_data','res4d','sigmasquareds']:
+			for name in ['prewhitened_data','res4d','sigmasquareds','contrasts']:
 				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
 			
 			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
