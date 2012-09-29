@@ -3323,35 +3323,27 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
 				flO.execute()
 		
-	def glm_with_reward_convolution_and_nuisances_for_run(self, run, postFix = ['mcf','tf']):
+	def create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(self, run, postFix = ['mcf','tf'], remove = False):
 		"""
 		This function takes a run, opens its nifti file and runs a glm on it, that incorporates standard HRF responses for visual and trial structure events,
 		and negative BOLD HRF responses for reward and non-reward events.
 		"""
-		# prepare the save location
+		if remove:
+			# prepare the save location
+			try:
+				ExecCommandLine('rm -rf %s' % (self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm'])))
+			except OSError:
+				pass
 		try:
 			os.mkdir(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']))
 		except OSError:
 			pass
 		self.logger.debug('running glm analysis on run %s' + self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']))
-		# open an hdf5 file to save stuff?
-		# self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5')
-		# h5file = openFile(self.hdf5_filename, mode = "r+")
-		# # the groups are named only after the mcf file.
-		# this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]))[1]
-		# try:
-		# 	thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-		# 	self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]) + ' already in ' + self.hdf5_filename)
-		# except NoSuchNodeError:
-		# 	# import actual data
-		# 	self.logger.error('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = [postFix[0]]) + ' does not contain ' + this_run_group_name + '. Exiting.')
-		# 	return
 		
 		# input file opening
 		niiFileName = self.runFile(stage = 'processed/mri', run = run, postFix = postFix)
 		niiFile = NiftiImage(niiFileName)
 		
-		# shell()
 		# visual and task timing responses:
 		# trial_times = [np.vstack([np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['%i%%_yes'%perc, '%i%%_no'%perc]]) for perc in [75, 50, 25]]
 		stim_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_stim', '50%_stim', '25%_stim']]
@@ -3369,6 +3361,9 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			norm_design.addRegressor(condition_event_data)
 		norm_design.addRegressor(blink_times)
 		norm_design.convolveWithHRF()	# standard HRF
+		# add derivative regressors to this part of the final design matrix
+		norm_design.designMatrix = np.hstack((norm_design.designMatrix, np.vstack((np.zeros((3)), np.diff(norm_design.designMatrix[:,:3], axis = 0)))))
+		visual_task_names.extend([s+'_diff' for s in visual_task_names[:3]])
 		
 		# reward times
 		reward_times = [np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [pf])) for pf in ['75%_yes', '50%_yes', '25%_yes', 'blank_reward']]
@@ -3405,11 +3400,37 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		s.set_title(fd_name_string, fontsize = 5)
 		pl.savefig(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.pdf'))
 		np.savetxt(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.txt'), full_design, fmt = '%3.2f', delimiter = '\t')
+		run.design_file = os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.mat')
+		design_file_header = """/NumWaves\t%d\n/NumPoints\t%d\n/PPheights\t\t%s\n\n/Matrix\n""" % (full_design.shape[1], full_design.shape[0], '\t'.join(['1' for i in range(full_design.shape[0])]))
+		f = open( run.design_file, 'w')
+		f.write(design_file_header)
+		f.close()
+		f = open( run.design_file, 'a')
+		np.savetxt( f, full_design, delimiter = '\t', fmt = '%3.2f' ) #, header = design_file_header
+		f.close()
+		
+		self.full_design_names = full_design_names
+	
+	def run_glm_from_design_matrix_nipy(self, run, postFix = ['mcf','tf'], design_matrix = None, design_matrix_file = None):
+		"""
+		Takes a designmatrix file and uses it to run a glm in nipy
+		"""
+		
+		if design_matrix == None:
+			if design_matrix_file == None:
+				self.logger.error('no valid input for run_glm_from_design_matrix_nipy for run %s' %(repr(run)))
+			else:
+				design_matrix = np.loadtxt(design_matrix_file)
+		
+		niiFileName = self.runFile(stage = 'processed/mri', run = run, postFix = postFix)
+		niiFile = NiftiImage(niiFileName)
 		
 		# GLM!
 		my_glm = nipy.labs.glm.glm.glm()
 		fit_data = (niiFile.data - niiFile.data.mean(axis = 0)).reshape((niiFile.timepoints,-1)).astype(np.float32)	# demean first
-		glm = my_glm.fit(fit_data, full_design, model="ar1") # , method="kalman"
+		glm = my_glm.fit(fit_data, design_matrix, model="ar1") # , method="kalman"
+		
+		niiFile.close()
 		
 		stat_matrix = []
 		zscore_matrix = []
@@ -3462,13 +3483,181 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		beta_nii = NiftiImage(beta_matrix.astype(np.float32))
 		beta_nii.header = niiFile.header
 		beta_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'betas.nii.gz'))
-		
-		
-		# h5file.close()
-		
-	def glm_with_reward_convolution_and_nuisances(self, postFix = ['mcf','tf']):
+	
+	def create_glm_command_from_design_matrix_fsl(self, run, postFix = ['mcf','tf'], design_matrix_file = None, basic_film_command = 'film_gls -sa -epith 200 -output_pwdata -v -rn %s %s %s'):
+		"""run_glm_from_design_matrix_nipy assumes the design_matrix_file is in a folder in which to put the results"""
+		return basic_film_command % ( os.path.join(os.path.split(design_matrix_file)[0], 'stats'), self.runFile(stage = 'processed/mri', run = run, postFix = ['mcf','tf'], extension = ''), design_matrix_file )
+	
+	def glm_with_reward_convolution_and_nuisances(self, postFix = ['mcf','tf'], execute = True):
 		"""docstring for fname"""
 		self.logger.debug('running glm analysis on all runs')
+		film_commands = []
 		for r in self.conditionDict['reward']:
-			self.glm_with_reward_convolution_and_nuisances_for_run(run = self.runList[r], postFix = postFix)
+			self.create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(run = self.runList[r], postFix = postFix)
+			film_commands.append(self.create_glm_command_from_design_matrix_fsl(run = self.runList[r], postFix = postFix, design_matrix_file = os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'design.mat')))
+			self.logger.debug('running glm with command ' + film_commands[-1])
+		
+		if execute:
+			# parallel implementation
+			ppservers = ()
+			job_server = pp.Server(ncpus = 8, ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+			ppResults = [job_server.submit(ExecCommandLine,(fgls,),(),('subprocess','tempfile',)) for fgls in film_commands]
+			for fgls in ppResults:
+				fgls()
+			
+			job_server.print_stats()
+	
+	def create_contrasts_per_run(self, run, postFix = ['mcf', 'tf']):
+		"""calculate_contrasts_per_run takes the output from a film_gls run and uses contrast_mgr to calculate relevant contrasts"""
+		self.logger.debug('running contrast analysis on run %s' % (repr(run)))
+		# create regressor names:
+		self.create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(run = run, postFix = postFix)
+		
+		contrast_file_name = os.path.splitext(run.design_file)[0] + '.con'
+		
+		contrasts = [
+			['75_diff', {'75%_yes':1, '75%_no': -1}],	# difference between reward and no reward
+			['50_diff', {'50%_yes':1, '50%_no': -1}],	# difference between reward and no reward
+			['25_diff', {'25%_yes':1, '25%_no': -1}],	# difference between reward and no reward
+			['75_stim', {'75%_stim':1 }],				# stimulus contrast
+			['50_stim', {'50%_stim':1 }],				# stimulus contrast
+			['25_stim', {'25%_stim':1 }],				# stimulus contrast
+		]
+		
+		contrast_matrix = np.zeros((len(contrasts), len(self.full_design_names)))
+		contrast_names = [c[0] for c in contrasts]
+		contrast_file_string = ''
+		for i in range(len(contrasts)):
+			contrast_matrix[i,[list(self.full_design_names).index(k) for k in contrasts[i][1].keys()]] = contrasts[i][1].values()
+			contrast_file_string += '/ContrastName' + str(i+1) + '\t' + '"' + contrasts[i][0] + '"\n'
+		contrast_file_string += '/NumWaves\t' + str(int(len(self.full_design_names))) + '\n'
+		contrast_file_string += '/NumContrasts\t' + str(int(len(contrasts))) + '\n'
+		contrast_file_string += '/PPheights\t\t' + '\t'.join(['1.0000' for i in range(len(contrasts))]) + '\n'
+		contrast_file_string += '/RequiredEffect\t\t' + '\t'.join(['2.000' for i in range(len(contrasts))]) + '\n'
+		contrast_file_string += '\n\Matrix\n'
+		
+		f = open( contrast_file_name, 'w')
+		f.write(contrast_file_string)
+		f.close()
+		f = open( contrast_file_name, 'a')
+		np.savetxt( f, contrast_matrix, delimiter = ' ', fmt = '%3.2f' ) #, header = design_file_header
+		f.close()
+		
+		run.contrast_file_name = contrast_file_name
+		return 'contrast_mgr -d ' + os.path.join(os.path.split(run.design_file)[0], 'stats') + ' ' + contrast_file_name
+	
+	def calculate_contrasts(self, postFix = ['mcf','tf'], execute = True):
+		"""docstring for calculate_contrasts"""
+		self.logger.debug('running contrasts on all runs')
+		con_commands = []
+		for r in self.conditionDict['reward']:
+			con_commands.append(self.create_contrasts_per_run(run = self.runList[r], postFix = postFix))
+			self.logger.debug('running contrast with command ' + con_commands[-1])
+			
+		if execute:
+			# parallel implementation
+			ppservers = ()
+			job_server = pp.Server(ncpus = 8, ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+			ppResults = [job_server.submit(ExecCommandLine,(fcon,),(),('subprocess','tempfile',)) for fcon in con_commands]
+			for fcon in ppResults:
+				fcon()
+			
+			job_server.print_stats()
+		
+	
+	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
+		"""
+		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
+		"""
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('Taking masks ' + str(anatRoiFileNames))
+		rois, roinames = [], []
+		for roi in anatRoiFileNames:
+			rois.append(NiftiImage(roi))
+			roinames.append(os.path.split(roi)[1][:-7])
+		
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		if os.path.isfile(self.hdf5_filename):
+			os.system('rm ' + self.hdf5_filename)
+		self.logger.info('starting table file ' + self.hdf5_filename)
+		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		
+		# create design matrix names by creating a design matrix for the first reward run
+		self.create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(run = self.runList[self.conditionDict[run_type][0]])
+		
+		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+			"""loop over runs, and try to open a group for this run's data"""
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+			try:
+				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+			# add parameters, eye data and the like 
+			eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
+			eyeGroup = eye_h5file.getNode(where = '/', name = 'bla', classname='Group')
+			eyeGroup._f_copyChildren(thisRunGroup) 
+			eye_h5file.close()
+			"""
+			Now, take different stat masks based on the run_type
+			"""
+			stat_files = {}
+			
+			# general info we want in all hdf files
+			stat_files.update({
+								# 'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
+								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), # os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								# for these final two, we need to pre-setup the retinotopic mapping data
+								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
+								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
+								
+								'center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat1.nii.gz'),
+								'center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat1.nii.gz'),
+								'center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope1.nii.gz'),
+								'center_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe1.nii.gz'),
+								
+								'surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat2.nii.gz'),
+								'surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat2.nii.gz'),
+								'surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope2.nii.gz'),
+								'surround_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe3.nii.gz'),
+								
+								'center>surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat3.nii.gz'),
+								'center>surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat3.nii.gz'),
+								'center>surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope3.nii.gz'),
+								
+								'surround>center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat4.nii.gz'),
+								'surround>center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat4.nii.gz'),
+								'surround>center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope4.nii.gz'),
+								
+			})
+			# now we're going to add the results of film_gls' approximation.
+			for (i, name) in enumerate(self.full_design_names):
+				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
+			for name in ['prewhitened_data','res4d','sigmasquareds']:
+				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
+			
+			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+			for (roi, roi_name) in zip(rois, roinames):
+				try:
+					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				
+				for (i, sf) in enumerate(stat_files.keys()):
+					# loop over stat_files and rois
+					# to mask the stat_files with the rois:
+					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+			
+		h5file.close()
 		
