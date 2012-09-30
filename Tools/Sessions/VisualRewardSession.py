@@ -3681,6 +3681,11 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
 					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
-			
+					# if sf == 'contrasts':
+					# 	h5file.createArray('/', roi_name + '_' + this_run_group_name + '_' + 'contrasts', these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+				
 		h5file.close()
+	
+	def compare_glm_stats(self):
+		"""docstring for compare_glm_stats"""
 		
