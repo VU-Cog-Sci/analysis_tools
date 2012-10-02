@@ -280,7 +280,7 @@ class VisualRewardSession(Session):
 					if 'sara' in os.uname():
 						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_reward.fsf'
 					else:
-						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_orientation_reward.fsf'
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/dual/fsf/reward_dual_pilot_orientation_reward.fsf'
 					REDict = {
 					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 					'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = feat_post_fix), 
@@ -328,7 +328,7 @@ class VisualRewardSession(Session):
 						if 'sara' in os.uname():
 							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
 						else:
-							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_orientation_mapper.fsf'
+							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/dual/fsf/reward_dual_pilot_orientation_mapper.fsf'
 						REDict = {
 						'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 						'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix), 
@@ -363,7 +363,7 @@ class VisualRewardSession(Session):
 						if 'sara' in os.uname():
 							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
 						else:
-							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_dual_pilot_location_mapper.fsf'
+							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/dual/fsf/reward_dual_pilot_location_mapper.fsf'
 						REDict = {
 						'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 						'---OUTPUT_DIR---': 		self.runFile(stage = 'processed/mri', run = r, postFix = version_postFix), 
@@ -2422,9 +2422,10 @@ class VisualRewardDualSession(VisualRewardSession):
 			event_data_this_run = event_data_per_run[i] - i * run_duration
 			deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
 			deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
-		deco_per_run = np.array(deco_per_run)
-		mean_deco = deco_per_run.mean(axis = 0)
-		std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
+		time_signals = np.array(time_signals).squeeze()
+		deco_per_run = np.array(deco_per_run).squeeze()
+		mean_deco = deco_per_run.mean(axis = 0).squeeze()
+		std_deco = (1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))).squeeze()
 		for i in range(0, mean_deco.shape[0]):
 			s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = colors[i], alpha = 0.3 * alphas[i])
 		
@@ -2863,6 +2864,24 @@ class VisualRewardDualSession(VisualRewardSession):
 		# shell()
 		
 		return [((corrects_per_cond_L + 1) / 2).mean(axis = 1), ((corrects_per_cond_R + 1) / 2).mean(axis = 1)]
+	
+	def import_stats_from_initial_session(self, example_func_to_highres_file, original_stat_folder, nr_stat_files = 4, stat_file_names = ['cope', 'tstat', 'pe', 'zstat']):
+		"""
+		"""
+		# concatenate older session reg to newer session
+		cfO = ConcatFlirtOperator(example_func_to_highres_file)
+		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_older_stat_masks'], extension = '.mat' ))
+		cfO.execute()
+		
+		for stat_name in stat_file_names:
+			for i in np.arange(nr_stat_files)+1:
+				# apply the transform
+				flO = FlirtOperator(inputObject = os.path.join(original_stat_folder, stat_name+str(i)+'.nii.gz'), referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+				flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_older_stat_masks'], extension = '.mat' ), 
+										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
+				flO.execute()
+
 
 class VisualRewardVarSession(VisualRewardSession):
 	
@@ -3199,7 +3218,7 @@ class VisualRewardVarSession(VisualRewardSession):
 				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 				# run feat
 				featOp.execute()
-
+	
 
 class VisualRewardVar2Session(VisualRewardVarSession):
 	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'reward'):
