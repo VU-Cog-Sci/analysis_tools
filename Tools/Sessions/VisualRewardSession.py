@@ -1993,6 +1993,115 @@ class VisualRewardSession(Session):
 		# shell()
 		return (all_results, all_spearman_results)
 	
+	def cross_correlate_pupil_and_BOLD_for_roi_over_time(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.0, 2.0], stepsize = 0.25, area = '', color = 1.0):
+		"""docstring for correlate_pupil_and_BOLD"""
+		
+		# take data 
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		event_data = []
+		roi_data = []
+		pupil_data = []
+		tr_timings = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			# take pupil data
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			except NoSuchNodeError:
+				self.logger.error('no such node.')
+				pass
+			this_run_pupil_data = thisRunGroup.filtered_pupil_zscore.read()
+			this_run_pupil_data = this_run_pupil_data[(this_run_pupil_data[:,0] > thisRunGroup.trial_times.read()['trial_phase_timestamps'][0,0,0])][:run_duration * sample_rate]
+			this_run_pupil_data[:,0] = ((this_run_pupil_data[:,0] - this_run_pupil_data[0,0]) / 1000.0) + nr_runs * run_duration
+			pupil_data.append(this_run_pupil_data[::int(sample_rate*tr)])
+			
+			nr_runs += 1
+		reward_h5file.close()
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
+		roi_data = np.hstack(demeaned_roi_data)
+		pdc = np.concatenate(pupil_data)
+		trts = np.round(np.concatenate(tr_timings) * 4)/4
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		mapper_h5file.close()
+		bold_timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		
+		from scipy.signal import correlate
+		from scipy.stats import spearmanr, linregress
+		
+		all_results = []
+		all_spearman_results = []
+		for (i, e) in enumerate(event_data):
+			bold_trial_data = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])] for se in e[:-1]])
+			pupil_trial_data = np.array([pdc[(pdc[:,0] > se + time_range_pupil[0]) * (pdc[:,0] <= se + time_range_pupil[1]),1].mean() for se in e[:-1]])
+			time_trial_data = np.array([trts[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])] - round(se*4.0)/4.0 for se in e[:-1]])
+			all_spearman_results.append([])
+			sample_time_points = np.arange(0.75, 16, 1.5)
+			# shell()
+			for stp in sample_time_points:
+				indices = np.zeros((pupil_trial_data.shape[0]), dtype = bool)
+				which_time_point_in_trial = []
+				this_time_point_bold_data = []
+				for j in range(pupil_trial_data.shape[0]):
+					if (time_trial_data[j] == stp).sum() > 0:
+						this_time_point_bold_data.append(bold_trial_data[j][time_trial_data[j] == stp])
+						which_time_point_in_trial.append(j)
+				all_spearman_results[-1].append(np.nan_to_num(np.array(spearmanr(pupil_trial_data[which_time_point_in_trial], np.array(this_time_point_bold_data).ravel()))))
+			
+			# for (j, b) in enumerate(bold_trial_data.T):
+			# 	all_spearman_results[-1].append(spearmanr(pupil_trial_data, b))
+				
+				# linear regression for regression lines
+				# slope, intercept, r_value, p_value, slope_std_error = stats.linregress(pupil_trial_data, bold_trial_data)
+				# predict_y = intercept + slope * pupil_trial_data
+			# shell()
+			# print sample_time_points
+			which_time = 0
+			pl.plot(sample_time_points[which_time::], [asr[0] for asr in np.array(all_spearman_results[-1][which_time::])], ['--b','--b','--g','--g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], mec = 'w', mew = 1, ms = 6, label = cond_labels[i])
+			significant_time_points = (np.array([asr[0] for asr in np.array(all_spearman_results[-1][which_time::])]) < 0.01)
+			pl.plot(sample_time_points[which_time::][significant_time_points], np.array([asr[0] for asr in np.array(all_spearman_results[-1][which_time::])])[significant_time_points], ['ob','ob','og','og'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], mec = ['b','b','g','g'][i], mew = 2, ms = 6)
+		# shell()
+			
+		#  all thingies across 
+		# correlation = correlate(pdc[:,1], bold_timeseries, 'same')
+		# midpoint = correlation.shape[0] / 2
+		# plot_range = 20
+		# 
+		# pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], 'r', alpha = 0.5, label = 'across conditions')
+		# shell()
+		return np.array(all_spearman_results)
+	
 	def cross_correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range = 'long'):
 		corrs = []
 		spearman_corrs = []
@@ -2001,9 +2110,9 @@ class VisualRewardSession(Session):
 		for (i, roi) in enumerate(areas):
 			s = f.add_subplot(len(areas), 1, i+1)
 			if time_range == 'short':
-				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [1.5, 7.0], time_range_pupil = [0.5, 2.0])
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.5, 2.0])
 			elif time_range == 'long':
-				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [5.0, 10.0], time_range_pupil = [3.0, 9.0])
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [3.0, 9.0])
 			corrs.append(crs[0])
 			spearman_corrs.append(crs[1])
 			print spearman_corrs[-1]
@@ -2049,6 +2158,51 @@ class VisualRewardSession(Session):
 		reward_h5file.close()
 		
 		# pl.show()
+	
+	def cross_correlate_pupil_and_BOLD_over_time(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range = 'long'):
+		corrs = []
+		spearman_corrs = []
+		areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']
+		f = pl.figure(figsize = (4,12))
+		for (i, roi) in enumerate(areas):
+			s = f.add_subplot(len(areas), 1, i+1)
+			if time_range == 'short':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.5, 2.0])
+			elif time_range == 'long':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [3.0, 9.0])
+			spearman_corrs.append(crs)
+			# print spearman_corrs
+			s.set_title(self.subject.initials + ' ' + roi )
+			s.set_xlabel('time [s]')
+			s.set_ylabel('spearman correlation')
+			if i == 0:
+				leg = s.legend(fancybox = True)
+				leg.get_frame().set_alpha(0.5)
+				if leg:
+					for t in leg.get_texts():
+					    t.set_fontsize('small')    # the legend text fontsize
+					for l in leg.get_lines():
+					    l.set_linewidth(3.5)  # the legend line width
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), mask_type + '_' + mask_direction + '_' + time_range + '_pupil_corr_over_time.pdf'))
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'pupil-BOLD_cross_correlation_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'pupil/bold correlation analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for (i, c) in enumerate(spearman_corrs):
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman')
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman', np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+		
+	
 	
 
 class VisualRewardDualSession(VisualRewardSession):
@@ -3181,25 +3335,25 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = 'stim'))
 			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = 'stim'))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
-		# reward_h5file = self.hdf5_file('reward', mode = 'r+')
-		# this_run_group_name = 'deconvolution_results'
-		# try:
-		# 	thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-		# 	self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
-		# except NoSuchNodeError:
-		# 	# import actual data
-		# 	self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-		# 	thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
-		# 
-		# for r in results:
-		# 	try:
-		# 		reward_h5file.removeNode(where = thisRunGroup, name = r[0])
-		# 		reward_h5file.removeNode(where = thisRunGroup, name = r[0]+'_per_run')
-		# 	except NoSuchNodeError:
-		# 		pass
-		# 	reward_h5file.createArray(thisRunGroup, r[0], r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-		# 	reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-		# reward_h5file.close()
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'deconvolution_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for r in results:
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0])
+				# reward_h5file.removeNode(where = thisRunGroup, name = r[0]+'_per_run')
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, r[0], r[-1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			# reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
 	
 	def create_feat_event_files_one_run(self, run, minimum_blink_duration = 0.01):
 		"""
@@ -3508,6 +3662,20 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			
 			job_server.print_stats()
 	
+	def contrast_list(self):
+		contrasts = [
+			['75_diff', {'75%_yes':1, '75%_no': -1}],	# difference between reward and no reward
+			['50_diff', {'50%_yes':1, '50%_no': -1}],	# difference between reward and no reward
+			['25_diff', {'25%_yes':1, '25%_no': -1}],	# difference between reward and no reward
+			['75_stim', {'75%_stim':1 }],				# stimulus contrast
+			['50_stim', {'50%_stim':1 }],				# stimulus contrast
+			['25_stim', {'25%_stim':1 }],				# stimulus contrast
+			['75_yes', {'75%_yes':1 }],					# reward contrast
+			['50_yes', {'50%_yes':1 }],					# reward contrast
+			['25_yes', {'25%_yes':1 }],					# reward contrast
+		]
+		return contrasts
+	
 	def create_contrasts_per_run(self, run, postFix = ['mcf', 'tf']):
 		"""calculate_contrasts_per_run takes the output from a film_gls run and uses contrast_mgr to calculate relevant contrasts"""
 		self.logger.debug('running contrast analysis on run %s' % (repr(run)))
@@ -3516,14 +3684,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		contrast_file_name = os.path.splitext(run.design_file)[0] + '.con'
 		
-		contrasts = [
-			['75_diff', {'75%_yes':1, '75%_no': -1}],	# difference between reward and no reward
-			['50_diff', {'50%_yes':1, '50%_no': -1}],	# difference between reward and no reward
-			['25_diff', {'25%_yes':1, '25%_no': -1}],	# difference between reward and no reward
-			['75_stim', {'75%_stim':1 }],				# stimulus contrast
-			['50_stim', {'50%_stim':1 }],				# stimulus contrast
-			['25_stim', {'25%_stim':1 }],				# stimulus contrast
-		]
+		contrasts = self.contrast_list()
 		
 		contrast_matrix = np.zeros((len(contrasts), len(self.full_design_names)))
 		contrast_names = [c[0] for c in contrasts]
@@ -3539,12 +3700,16 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		
 		run.contrast_matrix = contrast_matrix
 		run.contrasts = contrasts
+		# f = open( contrast_file_name, 'w')
+		# f.write(contrast_file_string)
+		# f.close()
 		f = open( contrast_file_name, 'w')
-		f.write(contrast_file_string)
+		np.savetxt( f, contrast_matrix, delimiter = '\t', fmt = '%3.2f' ) #, header = design_file_header
 		f.close()
-		f = open( contrast_file_name, 'a')
-		np.savetxt( f, contrast_matrix, delimiter = ' ', fmt = '%3.2f' ) #, header = design_file_header
-		f.close()
+		# f.open(os.path.splitext(run.design_file)[0] + '.con', 'w')
+		# np.savetxt( f, contrast_matrix, delimiter = '\t', fmt = '%3.2f' )
+		# f.close()
+		
 		
 		run.contrast_file_name = contrast_file_name
 		return 'contrast_mgr -d ' + os.path.join(os.path.split(run.design_file)[0], 'stats') + ' ' + contrast_file_name
@@ -3582,7 +3747,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				nii_files = []
 				for regr in which_regressors:
 					nii_files.append(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'pe' + str(regr) + '.nii.gz'))
-				ts.append(np.nan_to_num(np.array([NiftiImage(nii_files[i]).data * c for (i, c) in enumerate(c[c!=0])]).sum(axis = 0)/ss.data))
+				ts.append(np.nan_to_num(np.array([(NiftiImage(nii_files[i]).data * c) for (i, c) in enumerate(c[c!=0])]).sum(axis = 0))) # /ss.data
 			contrast_output_nii = NiftiImage(np.array(ts, dtype = np.float32))
 			contrast_output_nii.header = ss.header
 			contrast_output_nii.save(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[r], extension = '', postFix = ['mcf','glm']), 'stats', 'contrasts.nii.gz'))
@@ -3635,7 +3800,8 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			stat_files.update({
 								# 'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
 								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
-								'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), # os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+								'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), 
+								# os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 								# for these final two, we need to pre-setup the retinotopic mapping data
 								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
 								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
@@ -3686,6 +3852,80 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				
 		h5file.close()
 	
-	def compare_glm_stats(self):
+	def compare_glm_stats(self, areas = ['V1', 'V2', 'V3', 'V3AB', 'V4'], threshold = 3.5, mask_direction = 'pos', mask_type = 'center_Z'):
 		"""docstring for compare_glm_stats"""
 		
+		contrasts = self.contrast_list()
+		contrast_types = ['reward-no_reward', 'stimulus', 'reward']
+		h5file = openFile(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5'))
+		
+		mapper_data = []
+		raw_mapper_data = []
+		for area in areas:
+			raw_mapper_data.append(self.roi_data_from_hdf(h5file, run = self.runList[self.conditionDict['reward'][0]], roi_wildcard = area, data_type = mask_type, postFix = ['mcf']))
+			# thresholding of mapping data stat values
+			if mask_direction == 'pos':
+				mapping_mask = raw_mapper_data[-1][:,0] > threshold
+			else:
+				mapping_mask = raw_mapper_data[-1][:,0] < threshold
+			mapper_data.append(mapping_mask)
+		
+		contrast_data = []
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			contrast_data.append([])
+			for (i, area) in enumerate(areas):
+				contrast_data[-1].append(self.roi_data_from_hdf(h5file, run = r, roi_wildcard = area, data_type = 'contrasts', postFix = ['mcf'])[mapper_data[i],:].mean(axis = 0))
+		h5file.close()
+		
+		# # stats are only the last 9 vectors
+		# contrast_data = np.array(contrast_data)
+		
+		# separate reward and stimulus values on raw data
+		self.contrast_data = np.array(contrast_data).reshape((len(self.conditionDict['reward']),len(areas),len(contrast_types),3))
+		self.mean_response = self.contrast_data.mean(axis = 0)
+		self.std_response = self.contrast_data.std(axis = 0) / sqrt(len(self.conditionDict['reward']))
+		# separate reward and stimulus values on raw data
+		self.normed_contrast_data = np.array([[self.contrast_data[:,:,j,i] - self.contrast_data[:,:,j,1] for i in range(3)] for j in range(len(contrast_types))]).transpose((2,3,0,1))
+		self.normed_mean_response = self.normed_contrast_data.mean(axis = 0)
+		self.normed_std_response = self.normed_contrast_data.std(axis = 0) / sqrt(len(self.conditionDict['reward']))
+		
+		for (j, contrast_type) in enumerate(['reward-no_reward', 'stimulus', 'reward']):
+			f = pl.figure(figsize = (9,6))
+			s = f.add_subplot(211)
+			s.set_title(contrast_type)
+			barwidth = 0.25
+			for i in range(3):
+	 			pl.bar(np.arange(len(areas)) - 3.0*barwidth/2.0 + i * barwidth, self.mean_response[:,j,i], width = barwidth, edgecolor = 'k', color = ['r', 'g', 'b'][i], yerr = self.std_response[:,j,i], capsize = 0, alpha = 0.5, ecolor = 'k', label = contrasts[i+3*j][0])
+			s.set_xlim(-0.5, len(areas)-0.5)
+			s.set_xlabel('visual area')
+			s.set_ylabel('beta weight [A.U.]')
+			pl.xticks(np.arange(len(areas)), areas )
+			leg = s.legend(fancybox = True)
+			leg.get_frame().set_alpha(0.75)
+			if leg:
+				for t in leg.get_texts():
+				    t.set_fontsize('small')    # the legend text fontsize
+				for l in leg.get_lines():
+				    l.set_linewidth(3.5)  # the legend line width
+		
+			s = f.add_subplot(212)
+			s.set_title(contrast_type + ' normalized')
+			barwidth = 0.25
+			for i in range(3):
+	 			pl.bar(np.arange(len(areas)) - 3.0*barwidth/2.0 + i * barwidth, self.normed_mean_response[:,j,i], width = barwidth, edgecolor = 'k', color = ['r', 'g', 'b'][i], yerr = self.normed_std_response[:,j,i], capsize = 0, alpha = 0.5, ecolor = 'k', label = contrasts[i+3*j][0])
+			s.set_xlim(-0.5, len(areas)-0.5)
+			s.set_xlabel('visual area')
+			s.set_ylabel('beta weight [A.U.], normalized to 50% reward probability')
+			pl.xticks(np.arange(len(areas)), areas )
+		
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'beta_barchart' + mask_type + '_' + mask_direction + '_' + contrast_type + '.pdf'))
+	
+	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'from_design', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf'], which_conditions = ['reward','mapper'], contrast_matrix = []):
+		# create design
+		design = [np.loadtxt(os.path.join(self.runFile(stage = 'processed/mri', run = run, extension = '', postFix = ['mcf','glm']), 'design.txt')) for run in [self.runList[i] for i in self.conditionDict['reward']]]
+		contrasts = np.loadtxt(os.path.join(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]], extension = '', postFix = ['mcf','glm']), 'design.con'))
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix, design = design, contrast_matrix = contrasts)
+		reward_h5file.close()
+	
+				

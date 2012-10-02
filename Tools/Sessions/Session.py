@@ -706,7 +706,7 @@ class Session(PathConstructor):
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
 	
-	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf']):
+	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf'], design = None, contrast_matrix = []):
 		"""
 		run_glm_on_hdf5 takes an open (r+) hdf5 file, a list of run objects and runs glms on all roi subregions from a run.
 		it assumes:
@@ -721,11 +721,19 @@ class Session(PathConstructor):
 			tr, nr_trs = round(niiFile.rtime * 100) / 100.0, niiFile.timepoints	# needed to do this thing with the trs or else it would create new TRs in the end of the designMatrix.
 			
 			# everyone shares the same design matrix.
-			event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
-			design = Design(nrTimePoints = nr_trs, rtime = tr)
-			for i in range(event_data.shape[0]):
-				design.addRegressor([event_data[i]])
-			design.convolveWithHRF()
+			if analysis_type == 'per_trial':
+				event_data = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = post_fix_for_text_file))[:] 
+				design = Design(nrTimePoints = nr_trs, rtime = tr)
+				for i in range(event_data.shape[0]):
+					design.addRegressor([event_data[i]])
+				design.convolveWithHRF()
+				designMatrix = design.designMatrix
+			elif analysis_type == 'from_design':
+				if design != None:
+					designMatrix = design[run_list.index(run)]
+				else:
+					print 'no designMatrix specified'
+					return
 			my_glm = nipy.labs.glm.glm.glm()
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))[1]
@@ -735,7 +743,7 @@ class Session(PathConstructor):
 					if roi_name._v_name.split('.')[0] in ('rh', 'lh'):
 						roi_data = eval('roi_name.' + data_type + '.read()')
 						roi_data = roi_data.T - roi_data.mean(axis = 1)
-						glm = my_glm.fit(roi_data.T, design.designMatrix, method="kalman", model="ar1")
+						glm = my_glm.fit(roi_data.T, designMatrix, method="kalman", model="ar1")
 						try: 
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
 						except NoSuchNodeError:
@@ -743,11 +751,19 @@ class Session(PathConstructor):
 						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 						stat_matrix = []
 						zscore_matrix = []
-						for i in range(design.designMatrix.shape[-1]):
-							this_contrast = np.zeros(design.designMatrix.shape[-1])
+						for i in range(designMatrix.shape[-1]):
+							this_contrast = np.zeros(designMatrix.shape[-1])
 							this_contrast[i] = 1.0
 							stat_matrix.append(my_glm.contrast(this_contrast).stat())
 							zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
+						if np.array(contrast_matrix).shape[0] > 0:
+							self.logger.info('calculating extra contrasts for ' + this_run_group_name)
+							for i in range(np.array(contrast_matrix).shape[0]):
+								this_contrast = np.zeros(designMatrix.shape[-1])
+								contrast_factors = contrast_matrix[i] != 0
+								this_contrast[contrast_factors] = contrast_matrix[i][contrast_factors]
+								stat_matrix.append(my_glm.contrast(this_contrast).stat())
+								zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
 						try: 
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'zscore')
