@@ -1023,7 +1023,7 @@ class VisualRewardSession(Session):
 		
 		return all_corrs
 	
-	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', analysis_type = 'deconvolution', mask_direction = 'pos'):
+	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'mean'):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
@@ -1051,7 +1051,7 @@ class VisualRewardSession(Session):
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
 			this_run_events = np.array(this_run_events) + nr_runs * run_duration
 			event_data.append(this_run_events)
-			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks'])).T
 			this_blink_events[:,0] += nr_runs * run_duration
 			blink_events.append(this_blink_events)
 			
@@ -1076,7 +1076,7 @@ class VisualRewardSession(Session):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
-		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
 		
 		fig = pl.figure(figsize = (9, 5))
 		s = fig.add_subplot(211)
@@ -1257,18 +1257,18 @@ class VisualRewardSession(Session):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution.pdf'))
 		reward_h5file.close()
 	
-	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean'):
 		results = []
 		for roi in rois:
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos'))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg'))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos'))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 		
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
-		this_run_group_name = 'deconvolution_results'
+		this_run_group_name = 'deconvolution_results' + '_' + signal_type
 		try:
 			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
@@ -1279,15 +1279,15 @@ class VisualRewardSession(Session):
 		
 		for r in results:
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0])
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0]+'_per_run')
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type)
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, r[0], r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
-	def whole_brain_deconvolution(self, deco = True, average_interval = [2,12], to_surf = True):
+	def whole_brain_deconvolution(self, deco = True, average_interval = [3.5,12], to_surf = True):
 		"""
 		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
 		"""
@@ -1352,7 +1352,29 @@ class VisualRewardSession(Session):
 					ssO = SurfToSurfOperator(vsO.outputFileName + c + '-' + hemi + '.w')
 					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_average', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
 					ssO.execute()
-	
+		
+		# now create the necessary difference images:
+		# only possible if deco has already been run...
+		for i in [0,2]:
+			ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i] + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i+1] + '.nii.gz'))]
+			diff_d = ipfs[0].data - ipfs[1].data
+			
+			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), ['fix','','stimulus'][i] + '_reward_diff' + '.nii.gz')
+			outputFile = NiftiImage(diff_d)
+			outputFile.header = ipfs[0].header
+			outputFile.save(ofn)
+			
+			
+			if to_surf:
+				vsO = VolToSurfOperator(inputObject = ofn)
+				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+				vsO.configure(frames = {'ss':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.execute()
+				
+				for hemi in ['lh','rh']:
+					ssO = SurfToSurfOperator(vsO.outputFileName + ['fix','','stimulus'][i] + '-' + hemi + '.w')
+					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_average', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+					ssO.execute()
 	
 	def anova_stats_over_time(self, data_type = 'fmri', sample_rate = 2000, comparison_rate = 100):
 		"""perform per-timepoint two-way anova on time-varying signals in four conditions. """
@@ -1993,7 +2015,7 @@ class VisualRewardSession(Session):
 		# shell()
 		return (all_results, all_spearman_results)
 	
-	def cross_correlate_pupil_and_BOLD_for_roi_over_time(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.0, 2.0], stepsize = 0.25, area = '', color = 1.0):
+	def cross_correlate_pupil_and_BOLD_for_roi_over_time(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [-3.0, 16.0], time_range_pupil = [0.0, 2.0], stepsize = 0.25, area = '', color = 1.0):
 		"""docstring for correlate_pupil_and_BOLD"""
 		
 		# take data 
@@ -2069,6 +2091,7 @@ class VisualRewardSession(Session):
 			all_spearman_results.append([])
 			sample_time_points = np.arange(0.75, 16, 1.5)
 			# shell()
+			bold_trial_data = [b - b[0] for b in bold_trial_data]
 			for stp in sample_time_points:
 				indices = np.zeros((pupil_trial_data.shape[0]), dtype = bool)
 				which_time_point_in_trial = []
@@ -2167,9 +2190,9 @@ class VisualRewardSession(Session):
 		for (i, roi) in enumerate(areas):
 			s = f.add_subplot(len(areas), 1, i+1)
 			if time_range == 'short':
-				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.5, 2.0])
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [-3.0, 16.0], time_range_pupil = [0.5, 2.0])
 			elif time_range == 'long':
-				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [3.0, 9.0])
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi_over_time(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [-3.0, 16.0], time_range_pupil = [3.0, 9.0])
 			spearman_corrs.append(crs)
 			# print spearman_corrs
 			s.set_title(self.subject.initials + ' ' + roi )
@@ -2202,8 +2225,109 @@ class VisualRewardSession(Session):
 			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman', np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 		
-	
-	
+	def blinks_per_trial(self, blink_detection_range = [0,16], granularity = 0.01, smoothing_kernel_width = 0.5):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+		from scipy import stats, signal
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		
+		event_data = []
+		blink_events = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks'])).T
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			nr_runs += 1
+		
+		event_data_per_run = event_data
+		
+		# shell()
+		
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		blink_data = np.vstack(blink_events)
+		
+		within_trial_timerange = np.arange(blink_detection_range[0], blink_detection_range[1], granularity)
+		
+		gauss_pdf = stats.norm.pdf( np.linspace(-4, 4, smoothing_kernel_width / granularity) )
+		gauss_pdf = gauss_pdf / gauss_pdf.sum()
+		
+		event_blink_list = []
+		blink_density_array = np.zeros((len(conds), within_trial_timerange.shape[0]))
+		smoothed_blink_density_array = np.zeros((len(conds), within_trial_timerange.shape[0]))
+		for (eti, event_type) in enumerate(event_data):
+			event_blink_list.append([])
+			for e in event_type:
+				this_event_blinks = blink_data[(blink_data[:,0] > (e + blink_detection_range[0])) * (blink_data[:,0] < (e + blink_detection_range[1]))]
+				if this_event_blinks.shape[0] > 0:
+					this_event_blinks[:,0] = this_event_blinks[:,0] - e
+					event_blink_list[-1].append(this_event_blinks[:,[0,1]])
+			event_blink_list[-1] = np.vstack(event_blink_list[-1])
+			blink_occurrence_array = np.zeros((event_blink_list[-1].shape[0], (blink_detection_range[1] - blink_detection_range[0]) / granularity))
+			for (i, trial) in enumerate(event_blink_list[-1]):
+				blink_occurrence_array[i, (within_trial_timerange > trial[0]) * (within_trial_timerange < (trial[0] + trial[1]))] = 1
+			blink_density_array[eti] = blink_occurrence_array.sum(axis = 0) / blink_occurrence_array.shape[0]
+			
+			smoothed_dtc = np.zeros((within_trial_timerange.shape[0] + gauss_pdf.shape[0]))
+			smoothed_dtc[gauss_pdf.shape[0]/2:-gauss_pdf.shape[0]/2] = signal.fftconvolve(blink_density_array[eti], gauss_pdf, 'same')
+			smoothed_blink_density_array[eti] = smoothed_dtc[gauss_pdf.shape[0]/2:-gauss_pdf.shape[0]/2]
+		
+		fig = pl.figure(figsize = (9, 5))
+		s = fig.add_subplot(211)
+		s.axhline(0, blink_detection_range[0], blink_detection_range[1], linewidth = 0.25)
+		
+		for i in range(0, smoothed_blink_density_array.shape[0]):
+			pl.plot(np.linspace(blink_detection_range[0],blink_detection_range[1],smoothed_blink_density_array.shape[1]), smoothed_blink_density_array[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([blink_detection_range[0]-1.5, blink_detection_range[1]+1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		s = fig.add_subplot(212)
+		s.axhline(0, blink_detection_range[0], blink_detection_range[1], linewidth = 0.25)
+		
+		for i in range(0, len(event_data), 2):
+			ts_diff = -(smoothed_blink_density_array[i] - smoothed_blink_density_array[i+1])
+			pl.plot(np.linspace(blink_detection_range[0],blink_detection_range[1],smoothed_blink_density_array.shape[1]), ts_diff, ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+			# s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
+		
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('$\Delta$ % signal change')
+		s.set_xlim([blink_detection_range[0]-1.5, blink_detection_range[1] + 1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		pl.show()
 
 class VisualRewardDualSession(VisualRewardSession):
 	

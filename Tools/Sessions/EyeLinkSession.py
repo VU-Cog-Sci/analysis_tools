@@ -1180,6 +1180,70 @@ class SB_AMSession(EyeLinkSession):
 		shell()
 	
 
+class SB_AM_Control_Session(SB_AMSession):
+	def process_behavioral_data(self, run = None):
+		"""docstring for preprocess_behavioral_data"""
+		if not hasattr(self, 'parameter_data') or run != None:
+			if run == None:
+				self.import_parameters()
+			else:
+				self.import_parameters(run_name = 'run_' + str(run))
+		
+		trial_events = self.get_EL_events_per_trial(run_index = run, trial_ranges = [[0,-1]], trial_phase_range = [0,1], data_type = 'events')
+		shell()
+# 		if masking_array == None:
+# 			masking_array = np.ones((self.parameter_data.shape[0]), dtype = bool)
+# 		
+# #		print masking_array.shape, self.parameter_data.shape
+# 		x_offset = np.unique(self.parameter_data['x_offset'])
+# 		# mask parameter_array
+# 		pd = self.parameter_data[masking_array]
+# 		
+# 		cd = []
+# 		raw_cd = []
+# 		
+# 		for xo in x_offset:
+# 		
+# 			# cond = 0 # This is the ambiguous apparent motion condition
+# 			# cond_data = pd[pd['fake'] == cond]
+# 			# cond_data_per_x_offset = cond_data[cond_data['x_offset'] == xo]
+# 			# cd.append(((cond_data_per_x_offset['answer'])+1.0)/2.0)
+# 			# raw_cd.append(cond_data_per_x_offset[np.abs(cond_data_per_x_offset['answer']) == 1.0])
+# 			# # print np.mean(raw_cd[-1]['answer'] == raw_cd[-1]['direction'])
+# 		
+# 			cond = 1 # the real motion condition
+# 			cond_data = pd[pd['fake'] == cond]
+# 			direction = -1
+# 			cds = cond_data[(cond_data['direction'] == direction) * (cond_data['x_offset'] == xo)]
+# 			cd.append(((-cds['answer'])+1.0)/2.0)
+# 			raw_cd.append(cds[np.abs(cds['answer']) == 1.0])
+# 			print cond, np.mean(raw_cd[-1]['answer'] == raw_cd[-1]['direction'])
+# 			
+# 			direction = 1
+# 			cds = cond_data[(cond_data['direction'] == direction) * (cond_data['x_offset'] == xo)]
+# 			cd.append(((-cds['answer'])+1.0)/2.0)
+# 			raw_cd.append(cds[np.abs(cds['answer']) == 1.0])
+# 			print cond, np.mean(raw_cd[-1]['answer'] == raw_cd[-1]['direction'])
+# 			
+# 			cond = 2 # the unambiguous apparent motion condition
+# 			cond_data = pd[pd['fake'] == cond]
+# 			cds = cond_data[(cond_data['direction'] == direction) * (cond_data['x_offset'] == xo)]
+# 			cd.append(((-cds['answer'])+1.0)/2.0)
+# 			raw_cd.append(cds[np.abs(cds['answer']) == 1.0])
+# 			print cond, np.mean(raw_cd[-1]['answer'] == raw_cd[-1]['direction'])
+# 			
+# 			cond = 3 # the unambiguous apparent motion condition - 2 
+# 			cond_data = pd[pd['fake'] == cond]
+# 			cds = cond_data[(cond_data['direction'] == direction) * (cond_data['x_offset'] == xo)]
+# 			cd.append(((-cds['answer'])+1.0)/2.0)
+# 			raw_cd.append(cds[np.abs(cds['answer']) == 1.0])
+# 			print cond, np.mean(raw_cd[-1]['answer'] == raw_cd[-1]['direction'])
+# 		
+# 		self.x_offset = x_offset
+# 		self.cd = cd
+# 		self.raw_cd = raw_cd
+	
+
 class TEAESession(EyeLinkSession):
 	"""TEAESession analyzes the results of TEAE experiments"""
 	def preprocess_behavioral_data(self):

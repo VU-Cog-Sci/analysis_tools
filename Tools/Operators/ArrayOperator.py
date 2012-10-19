@@ -77,6 +77,7 @@ class DeconvolutionOperator(EventDataOperator):
 		if run:
 			self.rawDeconvolvedTimeCourse = self.h()
 			self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
+			# shell()
 		
 	def upsampleDataTimeSeries(self):
 		"""upsampleDataTimeSeries takes a timeseries of data points
