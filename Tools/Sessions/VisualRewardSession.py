@@ -72,6 +72,7 @@ class VisualRewardSession(Session):
 				run.visual_silence_trials = run.visual_trials * (-run.sound_trials)
 				run.blank_silence_trials = -(run.visual_trials + run.sound_trials)
 				run.blank_sound_trials = (-run.visual_trials) * run.sound_trials
+				
 				for (cond, label) in zip([run.visual_sound_trials, run.visual_silence_trials, run.blank_silence_trials, run.blank_sound_trials], run.condition_labels):
 					try:
 						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
@@ -79,7 +80,14 @@ class VisualRewardSession(Session):
 						pass
 					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([run.stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
 				pickle.dump(run, file(self.runFile(stage = 'processed/mri', run = run, extension = '.pickle', postFix = ['run']), 'w'))
-		
+				
+				for (cond, label) in zip([run.sound_trials, run.visual_trials, -run.sound_trials, -run.visual_trials], ['reward', 'stimulus', 'no_reward', 'no_stimulus']):
+					try:
+						os.system('rm ' + self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]))
+					except OSError:
+						pass
+					np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = [label]), np.array([run.stimulus_onset_times[cond], np.ones((cond.sum())), np.ones((cond.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
+				
 		elif self.dual_pilot == 1:
 			# get EL Data, do blink and timings irrespective of mapper or reward runs
 			elO = EyelinkOperator(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'))
@@ -1287,7 +1295,7 @@ class VisualRewardSession(Session):
 			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
-	def whole_brain_deconvolution(self, deco = True, average_interval = [3.5,12], to_surf = True):
+	def whole_brain_deconvolution(self, deco = True, average_intervals = [[3.5,12],[2,7]], to_surf = True):
 		"""
 		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
 		"""
@@ -1325,56 +1333,65 @@ class VisualRewardSession(Session):
 		
 			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
 		
+		if to_surf:
+			try:
+				os.system('rm -rf %s' % (os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'surf')))
+				os.mkdir(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'surf'))
+			except OSError:
+				pass
 		for (i, c) in enumerate(cond_labels):
-			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + c + '.nii.gz')
 			if deco:
 				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
 				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz'))
-			
+			else:
+				outputdata = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz')).data
 				# average over the interval [5,12] and [2,10] for reward and visual respectively. so, we'll just do [2,12]
-				timepoints_for_averaging = (np.linspace(interval[0], interval[1], outputdata.shape[0]) < average_interval[1]) * (np.linspace(interval[0], interval[1], outputdata.shape[0]) > average_interval[0])
+			for (j, which_times) in enumerate(['reward', 'visual']):
+				timepoints_for_averaging = (np.linspace(interval[0], interval[1], outputdata.shape[0]) < average_intervals[j][1]) * (np.linspace(interval[0], interval[1], outputdata.shape[0]) > average_intervals[j][0])
 				meaned_data = outputdata[timepoints_for_averaging].mean(axis = 0)
 				outputFile = NiftiImage(meaned_data.reshape(nii_file_shape[1:]))
 				outputFile.header = niiFile.header
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + c + '_' + which_times + '.nii.gz')
 				outputFile.save(ofn)
 			
-			if to_surf:
-				# vol to surf?
-				# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
-				vsO = VolToSurfOperator(inputObject = ofn)
-				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
-				vsO.configure(frames = {'ss':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
-				vsO.execute()
+				if to_surf:
+					# vol to surf?
+					# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+					vsO = VolToSurfOperator(inputObject = ofn)
+					sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+					vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
 				
-				for hemi in ['lh','rh']:
-					ssO = SurfToSurfOperator(vsO.outputFileName + c + '-' + hemi + '.w')
-					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_average', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
-					ssO.execute()
+					for hemi in ['lh','rh']:
+						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+						ssO.execute()
 		
 		# now create the necessary difference images:
 		# only possible if deco has already been run...
 		for i in [0,2]:
-			ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i] + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i+1] + '.nii.gz'))]
-			diff_d = ipfs[0].data - ipfs[1].data
+			for (j, which_times) in enumerate(['reward', 'visual']):
+				ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i] + '_' + which_times + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + cond_labels[i+1] + '_' + which_times + '.nii.gz'))]
+				diff_d = ipfs[0].data - ipfs[1].data
 			
-			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), ['fix','','stimulus'][i] + '_reward_diff' + '.nii.gz')
-			outputFile = NiftiImage(diff_d)
-			outputFile.header = ipfs[0].header
-			outputFile.save(ofn)
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), ['fix','','stimulus'][i] + '_reward_diff' + '_' + which_times + '.nii.gz')
+				outputFile = NiftiImage(diff_d)
+				outputFile.header = ipfs[0].header
+				outputFile.save(ofn)
 			
 			
-			if to_surf:
-				vsO = VolToSurfOperator(inputObject = ofn)
-				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
-				vsO.configure(frames = {'ss':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
-				vsO.execute()
+				if to_surf:
+					vsO = VolToSurfOperator(inputObject = ofn)
+					sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+					vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
 				
-				for hemi in ['lh','rh']:
-					ssO = SurfToSurfOperator(vsO.outputFileName + ['fix','','stimulus'][i] + '-' + hemi + '.w')
-					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_average', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
-					ssO.execute()
+					for hemi in ['lh','rh']:
+						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+						ssO.execute()
 	
 	def anova_stats_over_time(self, data_type = 'fmri', sample_rate = 2000, comparison_rate = 100):
 		"""perform per-timepoint two-way anova on time-varying signals in four conditions. """

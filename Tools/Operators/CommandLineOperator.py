@@ -450,7 +450,7 @@ class VolToSurfOperator( CommandLineOperator ):
 				self.runcmd += " --projfrac " + str(threshold)
 				self.runcmd += ' --frame ' + str(frames[frame])
 				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
-				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.w'
+				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.mgh'
 				self.runcmd += ' --surf-fwhm ' + str(surfSmoothingFWHM)
 				self.runcmd += ' ;\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
