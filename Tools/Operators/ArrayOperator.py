@@ -128,10 +128,11 @@ class DeconvolutionOperator(EventDataOperator):
 		if nuisanceVectors.shape[0] != self.designMatrix.shape[0]:
 			self.logger.error('nuisance dimensions does not correspond to the designmatrix, shapes %s, %s' % (nuisanceVectors.shape, designShape))
 		else:
-			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, nuisanceVectors)))
+			newNuisanceVectors = nuisanceVectors / nuisanceVectors.max(axis=0)
+			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment
-			self.deconvolvedTimeCoursesPerEventTypeNuisance = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
-			self.deconvolvedTimeCoursesPerEventTypeNuisance = self.deconvolvedTimeCoursesPerEventTypeNuisance[:designShape[1]].reshape((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
+			self.deconvolvedTimeCoursesPerEventTypeNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
+			self.deconvolvedTimeCoursesPerEventTypeNuisance = self.deconvolvedTimeCoursesPerEventTypeNuisanceAll[:designShape[1]].reshape((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
 	
 	
 	
