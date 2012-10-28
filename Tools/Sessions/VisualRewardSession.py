@@ -4543,7 +4543,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			f.write(str(self.runList[r].contrasts))
 			f.close()
 	
-	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
+	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf'], secondary_addition = False):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
@@ -4555,89 +4555,112 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		if os.path.isfile(self.hdf5_filename):
+		if os.path.isfile(self.hdf5_filename) and secondary_addition:
+			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
 			os.system('rm ' + self.hdf5_filename)
-		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+			self.logger.info('deleting and starting table file ' + self.hdf5_filename)
+		elif os.path.isfile(self.hdf5_filename) and not secondary_addition:
+			h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+			self.logger.info('adding to table file ' + self.hdf5_filename)
+		elif not os.path.isfile(self.hdf5_filename):
+			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
 		
-		# create design matrix names by creating a design matrix for the first reward run
-		self.create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(run = self.runList[self.conditionDict[run_type][0]])
+		if not secondary_addition:
+			# create design matrix names by creating a design matrix for the first reward run
+			self.create_glm_design_matrix_with_reward_convolution_and_nuisances_for_run(run = self.runList[self.conditionDict[run_type][0]])
 		
-		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
-			"""loop over runs, and try to open a group for this run's data"""
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
+				"""loop over runs, and try to open a group for this run's data"""
+				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+				try:
+					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+				# add parameters, eye data and the like 
+				eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
+				eyeGroup = eye_h5file.getNode(where = '/', name = 'bla', classname='Group')
+				eyeGroup._f_copyChildren(thisRunGroup) 
+				eye_h5file.close()
+				"""
+				Now, take different stat masks based on the run_type
+				"""
+				stat_files = {}
+			
+				# general info we want in all hdf files
+				stat_files.update({
+									# 'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
+									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), 
+									# os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									# for these final two, we need to pre-setup the retinotopic mapping data
+									'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
+									'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
+								
+									'center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat1.nii.gz'),
+									'center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat1.nii.gz'),
+									'center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope1.nii.gz'),
+									'center_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe1.nii.gz'),
+								
+									'surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat2.nii.gz'),
+									'surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat2.nii.gz'),
+									'surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope2.nii.gz'),
+									'surround_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe3.nii.gz'),
+								
+									'center>surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat3.nii.gz'),
+									'center>surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat3.nii.gz'),
+									'center>surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope3.nii.gz'),
+								
+									'surround>center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat4.nii.gz'),
+									'surround>center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat4.nii.gz'),
+									'surround>center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope4.nii.gz'),
+									
+				})
+				# now we're going to add the results of film_gls' approximation.
+				for (i, name) in enumerate(self.full_design_names):
+					stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
+				for name in ['prewhitened_data','res4d','sigmasquareds','contrasts']:
+					stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
+			
+				stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+				for (roi, roi_name) in zip(rois, roinames):
+					try:
+						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					except NoSuchNodeError:
+						# import actual data
+						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+						thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				
+					for (i, sf) in enumerate(stat_files.keys()):
+						# loop over stat_files and rois
+						# to mask the stat_files with the rois:
+						imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+						these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+						# if sf == 'contrasts':
+						# 	h5file.createArray('/', roi_name + '_' + this_run_group_name + '_' + 'contrasts', these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+			
+		else:	# secondary additions...
+			varFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			dualFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/dual' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			firstFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/exp1' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			
+			this_run_group_name = 'deconv_results'
 			try:
 				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+				self.logger.info('deconvolution results file already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'deconvolution results from different sessions')
 			
-			# add parameters, eye data and the like 
-			eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
-			eyeGroup = eye_h5file.getNode(where = '/', name = 'bla', classname='Group')
-			eyeGroup._f_copyChildren(thisRunGroup) 
-			eye_h5file.close()
-			"""
-			Now, take different stat masks based on the run_type
-			"""
-			stat_files = {}
 			
-			# general info we want in all hdf files
-			stat_files.update({
-								# 'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
-								'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
-								'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), 
-								# os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
-								# for these final two, we need to pre-setup the retinotopic mapping data
-								'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
-								'polar_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'polar.nii.gz'),
-								
-								'center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat1.nii.gz'),
-								'center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat1.nii.gz'),
-								'center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope1.nii.gz'),
-								'center_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe1.nii.gz'),
-								
-								'surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat2.nii.gz'),
-								'surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat2.nii.gz'),
-								'surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope2.nii.gz'),
-								'surround_pe': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'pe3.nii.gz'),
-								
-								'center>surround_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat3.nii.gz'),
-								'center>surround_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat3.nii.gz'),
-								'center>surround_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope3.nii.gz'),
-								
-								'surround>center_T': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'tstat4.nii.gz'),
-								'surround>center_Z': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'zstat4.nii.gz'),
-								'surround>center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope4.nii.gz'),
-									
-			})
-			# now we're going to add the results of film_gls' approximation.
-			for (i, name) in enumerate(self.full_design_names):
-				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
-			for name in ['prewhitened_data','res4d','sigmasquareds','contrasts']:
-				stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
 			
-			stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
 			
-			for (roi, roi_name) in zip(rois, roinames):
-				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
-				except NoSuchNodeError:
-					# import actual data
-					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
-					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
-				
-				for (i, sf) in enumerate(stat_files.keys()):
-					# loop over stat_files and rois
-					# to mask the stat_files with the rois:
-					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
-					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
-					# if sf == 'contrasts':
-					# 	h5file.createArray('/', roi_name + '_' + this_run_group_name + '_' + 'contrasts', these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
-				
 		h5file.close()
 	
 	def compare_glm_stats(self, areas = ['V1', 'V2', 'V3', 'V3AB', 'V4'], threshold = 3.5, mask_direction = 'pos', mask_type = 'center_Z'):
@@ -4716,4 +4739,41 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix, design = design, contrast_matrix = contrasts)
 		reward_h5file.close()
 	
-				
+	def import_deconvolution_responses_from_all_session(self, session_1, session_2):
+		"""
+		"""
+		# concatenate older sessions reg to newer session
+		cfO = ConcatFlirtOperator(os.path.join(session_1.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
+		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ))
+		cfO.execute()
+		cfO = ConcatFlirtOperator(os.path.join(session_2.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
+		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ))
+		cfO.execute()
+		
+		session_1_files = subprocess.Popen('ls ' + session_1.stageFolder('processed/mri/reward/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		session_2_files = subprocess.Popen('ls ' + session_2.stageFolder('processed/mri/reward/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		
+		try:
+			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions'))
+			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'))
+			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'))
+			
+		except OSError:
+			pass
+		
+		for stat_file in session_1_files:
+			# apply the transform
+			flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+			flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ), 
+									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'), os.path.split(stat_file)[1]) )
+			flO.execute()
+		for stat_file in session_2_files:
+			# apply the transform
+			flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+			flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ), 
+									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
+			flO.execute()
+		
+	
