@@ -155,7 +155,7 @@ class Session(PathConstructor):
 		loggingLevelSetup()
 		for handler in logging_handlers:
 			self.logger.addHandler(handler)
-		self.logger.info('starting analysis of session ' + str(self.ID))
+		# self.logger.info('starting analysis of session ' + str(self.ID))
 	
 	def addRun(self, run):
 		"""addRun adds a run to a session's run list"""

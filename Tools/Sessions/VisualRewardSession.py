@@ -219,9 +219,9 @@ class VisualRewardSession(Session):
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
 					if 'sara' in os.uname():
-						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
 					else:
-						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
 				
 					REDict = {
 					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
@@ -254,9 +254,9 @@ class VisualRewardSession(Session):
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
 					if 'sara' in os.uname():
-						thisFeatFile = '/home/knapen/projects/reward/man/analysis/mapper.fsf'
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
 					else:
-						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/mapper.fsf'
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
 					REDict = {
 					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 					'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
@@ -288,7 +288,7 @@ class VisualRewardSession(Session):
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
 					if 'sara' in os.uname():
-						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_dual_pilot_orientation_reward.fsf'
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/dual/fsf/reward_dual_pilot_orientation_reward.fsf'
 					else:
 						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/dual/fsf/reward_dual_pilot_orientation_reward.fsf'
 					REDict = {
@@ -1100,10 +1100,11 @@ class VisualRewardSession(Session):
 			nuisance_design.configure(np.array([np.hstack(blink_events)]))
 			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
 			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			# shell()
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
-				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
 				# shell()
-				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])[0], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+				pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
 			
 			# the following commented code doesn't factor in blinks as nuisances
 			# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
@@ -1156,7 +1157,7 @@ class VisualRewardSession(Session):
 		if analysis_type == 'deconvolution':
 			for i in range(0, len(event_data), 2):
 				ts_diff = -(time_signals[i] - time_signals[i+1])
-				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), np.array(ts_diff)[0], ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
+				pl.plot(np.linspace(0,interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), np.array(ts_diff), ['b','b','g','g'][i], alpha = [1.0, 0.5, 1.0, 0.5][i], label = ['fixation','visual stimulus'][i/2]) #  - time_signal[time_signal[:,0] == 0,1] ##  - zero_time_signal[:,1]
 				s.set_title('reward signal ' + roi + ' ' + mask_type + ' ' + analysis_type)
 		
 		else:
@@ -1956,8 +1957,10 @@ class VisualRewardSession(Session):
 			# var_bold_trials = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])].std() for se in e])
 			# non-standard version analyzes as a random walk 
 			var_bold_trials = np.array([np.abs(np.diff(bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])])).mean() for se in e])
-			
 			pupil_trials = np.array([pdc[(pdc[:,0] > (se + time_range_pupil[0])) * (pdc[:,0] <= (se + time_range_pupil[1])),1].mean() for se in e])
+			
+			pupil_trials[pupil_trials < np.median(pupil_trials)].mean(), pupil_trials[pupil_trials > np.median(pupil_trials)].mean() 
+			
 			all_corrs.append(spearmanr(var_bold_trials, pupil_trials))
 			s1 = fig.add_subplot(1,2,1)
 			pl.plot(var_bold_trials, pupil_trials, 'o', color = ['b','b','g','g'][i], ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.5 * [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
@@ -4555,14 +4558,15 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		if os.path.isfile(self.hdf5_filename) and secondary_addition:
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		if os.path.isfile(self.hdf5_filename) and not secondary_addition:
 			os.system('rm ' + self.hdf5_filename)
+			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
 			self.logger.info('deleting and starting table file ' + self.hdf5_filename)
-		elif os.path.isfile(self.hdf5_filename) and not secondary_addition:
+		elif os.path.isfile(self.hdf5_filename) and secondary_addition:
 			h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
 			self.logger.info('adding to table file ' + self.hdf5_filename)
 		elif not os.path.isfile(self.hdf5_filename):
+			self.logger.info('creating table file ' + self.hdf5_filename)
 			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
 		
 		if not secondary_addition:
@@ -4645,11 +4649,21 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 						# 	h5file.createArray('/', roi_name + '_' + this_run_group_name + '_' + 'contrasts', these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 			
 		else:	# secondary additions...
-			varFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-			dualFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/dual' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-			firstFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/exp1' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			# varFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			# dualFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/dual' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			# firstFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/exp1' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			
+			# var file names
+			allFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			# dual file names
+			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/dual/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
+			# first file names
+			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/exp_1/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
+			
+			nifti_files_dict = dict(zip(['_'.join(fn.split('/')[-2:]) for fn in allFileNames] , [NiftiImage(fn) for fn in allFileNames]))
 			
 			this_run_group_name = 'deconv_results'
+			# h5file.removeNode(where = '/', name = this_run_group_name, recursive=1)
 			try:
 				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('deconvolution results file already in ' + self.hdf5_filename)
@@ -4658,8 +4672,25 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
 				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'deconvolution results from different sessions')
 			
-			
-			
+			# add var, dual and first stat files to different folders in there...
+			for (roi, roi_name) in zip(rois, roinames):
+				try:
+					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'deconvolution results for roi ' + roi_name)
+				
+				for (i, sf) in enumerate(nifti_files_dict.keys()):
+					try:
+						h5file.removeNode(where = thisRunGroup, name = sf[:-7].replace('%',''))
+					except NoSuchNodeError:
+						pass
+					# loop over stat_files and rois
+					# to mask the stat_files with the rois:
+					imO = ImageMaskingOperator( inputObject = nifti_files_dict[sf], maskObject = roi, thresholds = [0.0] )
+					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+					h5file.createArray(thisRunGroup, sf[:-7].replace('%',''), these_roi_data.astype(np.float32), roi_name + ' data from ' + nifti_files_dict[sf].filename)
 			
 		h5file.close()
 	
@@ -4759,7 +4790,6 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions'))
 			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'))
 			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'))
-			
 		except OSError:
 			pass
 		
@@ -4775,5 +4805,101 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ), 
 									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
 			flO.execute()
+	
+	def compare_deconvolved_responses_across_sessions_per_roi(self, roi ):
+		"""docstring for compare_deconvolved_responses_per_session_per_roi"""
+		# we take all this from a roi in the reward file, from a group called deconv_results.
+		h5file = self.hdf5_file('reward')
+		this_run_group_name = 'deconv_results'
+		# try:
+		# 	thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi, classname='Group')
+		# except NoSuchNodeError:
+		# 	# import actual data
+		# 	self.logger.info('No group ' + this_run_group_name + ' ' + roi + ' in this file')
+		# 	thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'deconvolution results for roi ' + roi_name)
+		# 	return None
+		from scipy.stats import *
+		
+		# check the rois in the file
+		roi_names = []
+		for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
+			if len(roi_name._v_name.split('.')) > 1:
+				hemi, area = roi_name._v_name.split('.')
+				if roi == area:
+					roi_names.append(roi_name._v_name)
+					print roi_name._v_name
+		if len(roi_names) == 0:
+			self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
+			return None
+		
+		files_for_comparisons = ['exp_1_reward_deconv_mean_fix_reward_reward','exp_1_reward_deconv_mean_fix_no_reward_reward','dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward','reward_reward_deconv_mean_25_yes_reward','reward_reward_deconv_mean_25_no_reward','reward_reward_deconv_mean_50_yes_reward','reward_reward_deconv_mean_50_no_reward','reward_reward_deconv_mean_75_yes_reward','reward_reward_deconv_mean_75_no_reward']
+		
+		all_roi_data = []
+		for data_type in files_for_comparisons:
+			ard = []
+			for roi_name in roi_names:
+				thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+				ard.append( eval('thisRoi.' + data_type + '.read()') )
+			ard_np = np.hstack(ard).T
+			all_roi_data.append(ard_np)
+		h5file.close()
+		
+		all_roi_data = np.array(all_roi_data)
+		all_corrs = []
+		
+		fig = pl.figure(figsize = (9, 7))
+		s1 = fig.add_subplot(1,1,1)
+		s1.axhline(0, -15, 5, linewidth = 0.25)
+		s1.axvline(0, -7, 7, linewidth = 0.25)
+		s1.set_title(self.subject.initials + ' ' + roi)
+		s1.set_xlabel('reward')
+		s1.set_ylabel('no reward')
+		s1.axis([-15,5,-7,7])
+		
+		exp_1 = all_roi_data[0] - all_roi_data[1]
+		dual = all_roi_data[2] - all_roi_data[3]
+		varss = [all_roi_data[2+i] - all_roi_data[3+i] for i in range(2,7,2)]
+		
+		all_corrs.append(spearmanr(exp_1, dual))
+		pl.plot(exp_1, dual, 'o', color = 'b', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual DIFF %1.3f' % all_corrs[-1][0])
+		all_corrs.append(spearmanr(all_roi_data[0], all_roi_data[2]))
+		pl.plot(all_roi_data[0], all_roi_data[2], 'o', color = 'g', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual %1.3f' % all_corrs[-1][0])
+		
+		
+		# raw correlations for no and yes rewards:
+		pl.plot(exp_1, all_roi_data[4], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25 YES %1.3f' % spearmanr(exp_1, all_roi_data[4])[0])
+		pl.plot(exp_1, all_roi_data[6], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50 YES %1.3f' % spearmanr(exp_1, all_roi_data[6])[0])
+		pl.plot(exp_1, all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75 YES %1.3f' % spearmanr(exp_1, all_roi_data[8])[0])
+		
+		# all_corrs.append(spearmanr(exp_1, varss[0]))
+		# pl.plot(exp_1, varss[0], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25%')
+		# 
+		# all_corrs.append(spearmanr(exp_1, varss[1]))
+		# pl.plot(exp_1, varss[1], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50%')
+		# 
+		# all_corrs.append(spearmanr(exp_1, varss[2]))
+		# pl.plot(exp_1, varss[2], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75%')
+		leg = s1.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		print self.subject.initials + ' ' + roi, all_corrs
+		# s2.set_xlabel('conditions')
+		# s2.set_ylabel('Spearman\'s Rho')
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_spatial_corr.pdf'))
+		
+		if hasattr(self, 'inter_experiment_correlations'):
+			self.inter_experiment_correlations.update({roi:all_corrs})
+		else:
+			self.inter_experiment_correlations = {roi:all_corrs}
+		# shell()
+		
+	def compare_deconvolved_responses_across_sessions(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4']):
+		for roi in rois:
+			self.compare_deconvolved_responses_across_sessions_per_roi(roi = roi)
 		
 	
