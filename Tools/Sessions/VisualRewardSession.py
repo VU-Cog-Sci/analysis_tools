@@ -1983,7 +1983,85 @@ class VisualRewardSession(Session):
 			    l.set_linewidth(3.5)  # the legend line width
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_pupil_corr.pdf'))
 		return np.array(all_corrs)
+	
+	def calculate_BOLD_variance_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [2.0, 8.0], time_range_pupil = [2.0, 8.0], stepsize = 0.25, area = ''):
+		"""docstring for correlate_pupil_and_BOLD"""
 		
+		# take data 
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		event_data = []
+		roi_data = []
+		pupil_data = []
+		tr_timings = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			# take pupil data
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			except NoSuchNodeError:
+				self.logger.error('no such node.')
+				pass
+			this_run_pupil_data = thisRunGroup.filtered_pupil_zscore.read()
+			this_run_pupil_data = this_run_pupil_data[(this_run_pupil_data[:,0] > thisRunGroup.trial_times.read()['trial_phase_timestamps'][0,0,0])][:run_duration * sample_rate]
+			this_run_pupil_data[:,0] = ((this_run_pupil_data[:,0] - this_run_pupil_data[0,0]) / 1000.0) + nr_runs * run_duration
+			pupil_data.append(this_run_pupil_data)
+			
+			nr_runs += 1
+		reward_h5file.close()
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = roi_data
+		
+		roi_data = np.hstack(roi_data)
+		pdc = np.concatenate(pupil_data)[::50]
+		trts = np.concatenate(tr_timings)
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		mapper_h5file.close()
+		bold_timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		
+		from scipy.stats import *
+		
+		all_corrs = []
+		for (i, e) in enumerate(event_data):
+			# standard version works on just the variance
+			var_bold_trials = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])].var() for se in e])
+			mean_bold_trials = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])].mean() for se in e])
+			# non-standard version analyzes as a random walk 
+			rw_bold_trials = np.array([np.abs(np.diff(bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])])).mean() for se in e])
+			pupil_trials = np.array([pdc[(pdc[:,0] > (se + time_range_pupil[0])) * (pdc[:,0] <= (se + time_range_pupil[1])),1].mean() for se in e])
+				
+			all_corrs.append(np.array([mean_bold_trials, var_bold_trials, rw_bold_trials, pupil_trials]))
+		return all_corrs
+	
 	def correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000):
 		corrs = []
 		areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']
@@ -2037,6 +2115,32 @@ class VisualRewardSession(Session):
 			reward_h5file.createArray(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
+	def calculate_BOLD_variance(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000):
+		corrs = []
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']
+		for roi in areas:
+			corrs.append(self.calculate_BOLD_variance_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi))
+		
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'BOLD_variance_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'pupil/bold correlation analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for (i, c) in enumerate(corrs):
+			for j in range(len(cond_labels)):
+				try:
+					reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j])
+				except NoSuchNodeError:
+					pass
+				reward_h5file.createArray(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j], np.array(corrs[i][j]), 'bold signal level and variability conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
 	
 	def cross_correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [5.0, 10.0], time_range_pupil = [0.5, 2.0], stepsize = 0.25, area = '', color = 1.0):
 		"""docstring for correlate_pupil_and_BOLD"""
@@ -4083,7 +4187,28 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			except OSError:
 				pass
 			
-			actual_deconvolved_events = [s for s in self.deconvolution_labels if 'yes' in s or 'no' in s or 'reward' in s]
+		# stimulus, delay and blink nuisance betas
+		if deco:
+			nuisance_names = {'stim_75':0, 'stim_50':1, 'stim_25':2, 'delay_75':3, 'delay_50':4, 'delay_25':5, 'blinks': 6}
+			for i, nn in enumerate(nuisance_names.keys()):
+				outputFile = NiftiImage(np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[i+deco.designMatrix.shape[1]]).reshape(nii_file_shape[1:]))
+				outputFile.header = niiFile.header
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_glm_nuisance_beta_' + nn + '.nii.gz')
+				outputFile.save(ofn)
+				if to_surf:
+					# vol to surf?
+					# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+					vsO = VolToSurfOperator(inputObject = ofn)
+					sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+					vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+					vsO.execute()
+				
+					for hemi in ['lh','rh']:
+						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+						ssO.execute()
+		
+		actual_deconvolved_events = [s for s in self.deconvolution_labels if 'yes' in s or 'no' in s or 'reward' in s]
 		for (i, c) in enumerate(actual_deconvolved_events):
 			if deco:
 				outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
@@ -4098,7 +4223,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				meaned_data = outputdata[timepoints_for_averaging].mean(axis = 0)
 				outputFile = NiftiImage(meaned_data.reshape(nii_file_shape[1:]))
 				outputFile.header = niiFile.header
-				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_glm__mean_' + c + '_' + which_times + '.nii.gz')
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_glm_mean_' + c + '_' + which_times + '.nii.gz')
 				outputFile.save(ofn)
 			
 				if to_surf:
@@ -4113,6 +4238,8 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
 						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
 						ssO.execute()
+				
+			
 		
 		# now create the necessary difference images:
 		# only possible if deco has already been run...
@@ -4806,7 +4933,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
 			flO.execute()
 	
-	def compare_deconvolved_responses_across_sessions_per_roi(self, roi ):
+	def compare_deconvolved_responses_across_sessions_per_roi(self, s1, roi, mask_type = 'center_Z', mask_direction = 'pos', thres = 0.0 ):
 		"""docstring for compare_deconvolved_responses_per_session_per_roi"""
 		# we take all this from a roi in the reward file, from a group called deconv_results.
 		h5file = self.hdf5_file('reward')
@@ -4827,12 +4954,21 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				hemi, area = roi_name._v_name.split('.')
 				if roi == area:
 					roi_names.append(roi_name._v_name)
-					print roi_name._v_name
 		if len(roi_names) == 0:
 			self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
 			return None
 		
-		files_for_comparisons = ['exp_1_reward_deconv_mean_fix_reward_reward','exp_1_reward_deconv_mean_fix_no_reward_reward','dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward','reward_reward_deconv_mean_25_yes_reward','reward_reward_deconv_mean_25_no_reward','reward_reward_deconv_mean_50_yes_reward','reward_reward_deconv_mean_50_no_reward','reward_reward_deconv_mean_75_yes_reward','reward_reward_deconv_mean_75_no_reward']
+		files_for_comparisons = [
+		'exp_1_reward_deconv_mean_fix_reward_reward','exp_1_reward_deconv_mean_fix_no_reward_reward',
+		'dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward',
+		'reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward',
+		'reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward',
+		'reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward',
+		'exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward',
+		'reward_reward_deconv_glm_25_yes', 'reward_reward_deconv_glm_25_no', 'reward_reward_deconv_glm_50_yes', 'reward_reward_deconv_glm_50_no', 'reward_reward_deconv_glm_75_yes', 'reward_reward_deconv_glm_75_no',
+		'reward_reward_deconv_glm_nuisance_beta_stim_25', 'reward_reward_deconv_glm_nuisance_beta_stim_50', 'reward_reward_deconv_glm_nuisance_beta_stim_75',
+		'reward_reward_deconv_glm_nuisance_beta_delay_25', 'reward_reward_deconv_glm_nuisance_beta_delay_50', 'reward_reward_deconv_glm_nuisance_beta_delay_75'
+		]
 		
 		all_roi_data = []
 		for data_type in files_for_comparisons:
@@ -4842,13 +4978,26 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 				ard.append( eval('thisRoi.' + data_type + '.read()') )
 			ard_np = np.hstack(ard).T
 			all_roi_data.append(ard_np)
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(h5file, self.runList[self.conditionDict['reward'][0]], roi, mask_type, postFix = ['mcf'])
+		# and close the file
 		h5file.close()
 		
-		all_roi_data = np.array(all_roi_data)
+		# thresholding of mapping data stat values
+		# if mask_direction == 'pos':
+		# 	mapping_mask = mapping_data[:,0] > thres
+		# else:
+		# 	mapping_mask = mapping_data[:,0] < thres
+		
+		# weird mapping thing that looks only at regions either positively or negatively stimulated by the mapper of expt 1.	
+		mask = (mapping_data[:,0] > thres) + (mapping_data[:,0] < -thres)
+		
+		all_roi_data = np.array(all_roi_data)[:,mask]
 		all_corrs = []
 		
-		fig = pl.figure(figsize = (9, 7))
-		s1 = fig.add_subplot(1,1,1)
+		# corr_func = spearmanr
+		corr_func = np.dot
+		
 		s1.axhline(0, -15, 5, linewidth = 0.25)
 		s1.axvline(0, -7, 7, linewidth = 0.25)
 		s1.set_title(self.subject.initials + ' ' + roi)
@@ -4860,16 +5009,29 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		dual = all_roi_data[2] - all_roi_data[3]
 		varss = [all_roi_data[2+i] - all_roi_data[3+i] for i in range(2,7,2)]
 		
-		all_corrs.append(spearmanr(exp_1, dual))
-		pl.plot(exp_1, dual, 'o', color = 'b', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual DIFF %1.3f' % all_corrs[-1][0])
-		all_corrs.append(spearmanr(all_roi_data[0], all_roi_data[2]))
-		pl.plot(all_roi_data[0], all_roi_data[2], 'o', color = 'g', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual %1.3f' % all_corrs[-1][0])
-		
-		
 		# raw correlations for no and yes rewards:
-		pl.plot(exp_1, all_roi_data[4], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25 YES %1.3f' % spearmanr(exp_1, all_roi_data[4])[0])
-		pl.plot(exp_1, all_roi_data[6], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50 YES %1.3f' % spearmanr(exp_1, all_roi_data[6])[0])
-		pl.plot(exp_1, all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75 YES %1.3f' % spearmanr(exp_1, all_roi_data[8])[0])
+		# pl.plot(exp_1, all_roi_data[4], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25 YES %1.3f' % spearmanr(exp_1, all_roi_data[4])[0])
+		# pl.plot(exp_1, all_roi_data[6], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50 YES %1.3f' % spearmanr(exp_1, all_roi_data[6])[0])
+		# pl.plot(exp_1, all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75 YES %1.3f' % spearmanr(exp_1, all_roi_data[8])[0])
+		# pl.plot(all_roi_data[10], all_roi_data[11], 'o', color = 'k', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'vix vs stim %1.3f' % spearmanr(all_roi_data[10], all_roi_data[11])[0])
+		# pl.plot(all_roi_data[4], all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'var 25 X var 75 YES %1.3f' % spearmanr(all_roi_data[4], all_roi_data[8])[0])
+		
+		all_corrs.append(spearmanr(exp_1, dual))
+		all_corrs.append(spearmanr(all_roi_data[0], all_roi_data[2]))
+		all_corrs.append([spearmanr(exp_1, all_roi_data[4]), spearmanr(exp_1, all_roi_data[6]), spearmanr(exp_1, all_roi_data[8])])
+		all_corrs.append([spearmanr(exp_1, all_roi_data[5]), spearmanr(exp_1, all_roi_data[7]), spearmanr(exp_1, all_roi_data[9])])
+		all_corrs.append(spearmanr(all_roi_data[10], all_roi_data[11]))
+		
+		for i in range(6):
+			all_corrs.append([spearmanr(exp_1, timepoint_data) for timepoint_data in np.array([np.array(k, dtype = float) for k in all_roi_data[12+i]]).T])
+		
+		# beta values for nuisance stimulus and delay
+		all_corrs.append([spearmanr(exp_1, all_roi_data[18]), spearmanr(exp_1, all_roi_data[19]), spearmanr(exp_1, all_roi_data[20])])
+		all_corrs.append([spearmanr(exp_1, all_roi_data[21]), spearmanr(exp_1, all_roi_data[22]), spearmanr(exp_1, all_roi_data[23])])
+		
+		
+		pl.plot(exp_1, dual, 'o', color = 'b', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual DIFF %1.3f' % all_corrs[0][0])
+		pl.plot(all_roi_data[0], all_roi_data[2], 'o', color = 'g', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual %1.3f' % all_corrs[1][0])
 		
 		# all_corrs.append(spearmanr(exp_1, varss[0]))
 		# pl.plot(exp_1, varss[0], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25%')
@@ -4887,10 +5049,7 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			for l in leg.get_lines():
 			    l.set_linewidth(3.5)  # the legend line width
 		
-		print self.subject.initials + ' ' + roi, all_corrs
-		# s2.set_xlabel('conditions')
-		# s2.set_ylabel('Spearman\'s Rho')
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_spatial_corr.pdf'))
+		# print self.subject.initials + ' ' + roi, all_corrs
 		
 		if hasattr(self, 'inter_experiment_correlations'):
 			self.inter_experiment_correlations.update({roi:all_corrs})
@@ -4899,7 +5058,9 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 		# shell()
 		
 	def compare_deconvolved_responses_across_sessions(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4']):
-		for roi in rois:
-			self.compare_deconvolved_responses_across_sessions_per_roi(roi = roi)
-		
+		fig = pl.figure(figsize = (9, 16))
+		for i, roi in enumerate(rois):
+			s1 = fig.add_subplot(len(rois),1,1+i)
+			self.compare_deconvolved_responses_across_sessions_per_roi(s1 = s1, roi = roi)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spatial_corr.pdf'))
 	

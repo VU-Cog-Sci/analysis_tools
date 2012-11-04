@@ -132,11 +132,10 @@ class DeconvolutionOperator(EventDataOperator):
 			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment
 			self.deconvolvedTimeCoursesPerEventTypeNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
-			
 			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,self.deconvolvedTimeCoursesPerEventTypeNuisanceAll.shape[1]))
 			for i in range(designShape[1]/self.nrSamplesInInterval):
 				self.deconvolvedTimeCoursesPerEventTypeNuisance[i] = self.deconvolvedTimeCoursesPerEventTypeNuisanceAll[i*self.nrSamplesInInterval:(i+1)*self.nrSamplesInInterval]
-				
+			self.deconvolvedNuisanceBetas = self.deconvolvedTimeCoursesPerEventTypeNuisanceAll[(i+1)*self.nrSamplesInInterval:]
 			
 			
 	
