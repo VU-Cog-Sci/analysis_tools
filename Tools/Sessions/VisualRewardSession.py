@@ -16,6 +16,8 @@ from nifti import *
 from IPython import embed as shell
 from tables import *
 import pickle
+from scipy.stats import *
+
 
 class VisualRewardSession(Session):
 	"""
@@ -4933,20 +4935,28 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
 			flO.execute()
 	
-	def compare_deconvolved_responses_across_sessions_per_roi(self, s1, roi, mask_type = 'center_Z', mask_direction = 'pos', thres = 0.0 ):
+	def compare_deconvolved_responses_across_sessions_per_roi(self, roi ):
 		"""docstring for compare_deconvolved_responses_per_session_per_roi"""
-		# we take all this from a roi in the reward file, from a group called deconv_results.
+		self.files_for_comparisons = [
+		['dual'],
+		['reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward'],
+		['reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward'],
+		['reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward'],
+		['reward_reward_deconv_glm_25_yes'], 
+		['reward_reward_deconv_glm_25_no'], 
+		['reward_reward_deconv_glm_50_yes'], 
+		['reward_reward_deconv_glm_50_no'], 
+		['reward_reward_deconv_glm_75_yes'], 
+		['reward_reward_deconv_glm_75_no'],
+		['reward_reward_deconv_glm_nuisance_beta_stim_25', 'reward_reward_deconv_glm_nuisance_beta_stim_50', 'reward_reward_deconv_glm_nuisance_beta_stim_75'],
+		['reward_reward_deconv_glm_nuisance_beta_delay_25', 'reward_reward_deconv_glm_nuisance_beta_delay_50', 'reward_reward_deconv_glm_nuisance_beta_delay_75'],
+		]
+		[f.append('exp1') for f in self.files_for_comparisons]
+		return [self.compare_deconvolved_responses_across_sessions_per_roi_per_datatype(roi, comparisons = fn ) for fn in self.files_for_comparisons]
+		
+	def compare_deconvolved_responses_across_sessions_per_roi_per_datatype(self, roi, comparisons = ['exp1', ''] ):
 		h5file = self.hdf5_file('reward')
 		this_run_group_name = 'deconv_results'
-		# try:
-		# 	thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi, classname='Group')
-		# except NoSuchNodeError:
-		# 	# import actual data
-		# 	self.logger.info('No group ' + this_run_group_name + ' ' + roi + ' in this file')
-		# 	thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'deconvolution results for roi ' + roi_name)
-		# 	return None
-		from scipy.stats import *
-		
 		# check the rois in the file
 		roi_names = []
 		for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -4958,109 +4968,78 @@ class VisualRewardVar2Session(VisualRewardVarSession):
 			self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
 			return None
 		
-		files_for_comparisons = [
-		'exp_1_reward_deconv_mean_fix_reward_reward','exp_1_reward_deconv_mean_fix_no_reward_reward',
-		'dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward',
-		'reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward',
-		'reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward',
-		'reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward',
-		'exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward',
-		'reward_reward_deconv_glm_25_yes', 'reward_reward_deconv_glm_25_no', 'reward_reward_deconv_glm_50_yes', 'reward_reward_deconv_glm_50_no', 'reward_reward_deconv_glm_75_yes', 'reward_reward_deconv_glm_75_no',
-		'reward_reward_deconv_glm_nuisance_beta_stim_25', 'reward_reward_deconv_glm_nuisance_beta_stim_50', 'reward_reward_deconv_glm_nuisance_beta_stim_75',
-		'reward_reward_deconv_glm_nuisance_beta_delay_25', 'reward_reward_deconv_glm_nuisance_beta_delay_50', 'reward_reward_deconv_glm_nuisance_beta_delay_75'
-		]
-		
+		# check for the standard comparison things - standard is the average for the first experiment
 		all_roi_data = []
-		for data_type in files_for_comparisons:
+		
+		for c, c_file_list in zip(['exp1', 'dual'], [['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward'], ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']]):
+			if c in comparisons:
+				ard_np = []
+				for i, data_type in enumerate(c_file_list):
+					ard = []
+					for roi_name in roi_names:
+						thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+						ard.append( eval('thisRoi.' + data_type + '.read()') )
+					ard_np.append(np.hstack(ard).T.squeeze())
+			if 'comparison_array' not in locals():
+				comparison_array = (ard_np[0] + ard_np[1]) / 2.0
+			else:
+				all_roi_data = [(ard_np[0] + ard_np[1]) / 2.0]
+			comparisons.pop(comparisons.index(c))
+		# shell()
+		# get other data:
+		all_dt_dict = {}
+		for i, data_type in enumerate(comparisons):
 			ard = []
 			for roi_name in roi_names:
 				thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 				ard.append( eval('thisRoi.' + data_type + '.read()') )
-			ard_np = np.hstack(ard).T
+			ard_np = np.hstack(ard).T.squeeze()
 			all_roi_data.append(ard_np)
-		# mapping data
-		mapping_data = self.roi_data_from_hdf(h5file, self.runList[self.conditionDict['reward'][0]], roi, mask_type, postFix = ['mcf'])
+			all_dt_dict.update({data_type: i})
 		# and close the file
 		h5file.close()
 		
-		# thresholding of mapping data stat values
-		# if mask_direction == 'pos':
-		# 	mapping_mask = mapping_data[:,0] > thres
-		# else:
-		# 	mapping_mask = mapping_data[:,0] < thres
+		all_roi_data = np.array(all_roi_data)
 		
-		# weird mapping thing that looks only at regions either positively or negatively stimulated by the mapper of expt 1.	
-		mask = (mapping_data[:,0] > thres) + (mapping_data[:,0] < -thres)
-		
-		all_roi_data = np.array(all_roi_data)[:,mask]
-		all_corrs = []
-		
-		# corr_func = spearmanr
-		corr_func = np.dot
-		
-		s1.axhline(0, -15, 5, linewidth = 0.25)
-		s1.axvline(0, -7, 7, linewidth = 0.25)
-		s1.set_title(self.subject.initials + ' ' + roi)
-		s1.set_xlabel('reward')
-		s1.set_ylabel('no reward')
-		s1.axis([-15,5,-7,7])
-		
-		exp_1 = all_roi_data[0] - all_roi_data[1]
-		dual = all_roi_data[2] - all_roi_data[3]
-		varss = [all_roi_data[2+i] - all_roi_data[3+i] for i in range(2,7,2)]
-		
-		# raw correlations for no and yes rewards:
-		# pl.plot(exp_1, all_roi_data[4], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25 YES %1.3f' % spearmanr(exp_1, all_roi_data[4])[0])
-		# pl.plot(exp_1, all_roi_data[6], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50 YES %1.3f' % spearmanr(exp_1, all_roi_data[6])[0])
-		# pl.plot(exp_1, all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75 YES %1.3f' % spearmanr(exp_1, all_roi_data[8])[0])
-		# pl.plot(all_roi_data[10], all_roi_data[11], 'o', color = 'k', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'vix vs stim %1.3f' % spearmanr(all_roi_data[10], all_roi_data[11])[0])
-		# pl.plot(all_roi_data[4], all_roi_data[8], 'o', color = 'r', ms = 2.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'var 25 X var 75 YES %1.3f' % spearmanr(all_roi_data[4], all_roi_data[8])[0])
-		
-		all_corrs.append(spearmanr(exp_1, dual))
-		all_corrs.append(spearmanr(all_roi_data[0], all_roi_data[2]))
-		all_corrs.append([spearmanr(exp_1, all_roi_data[4]), spearmanr(exp_1, all_roi_data[6]), spearmanr(exp_1, all_roi_data[8])])
-		all_corrs.append([spearmanr(exp_1, all_roi_data[5]), spearmanr(exp_1, all_roi_data[7]), spearmanr(exp_1, all_roi_data[9])])
-		all_corrs.append(spearmanr(all_roi_data[10], all_roi_data[11]))
-		
-		for i in range(6):
-			all_corrs.append([spearmanr(exp_1, timepoint_data) for timepoint_data in np.array([np.array(k, dtype = float) for k in all_roi_data[12+i]]).T])
-		
-		# beta values for nuisance stimulus and delay
-		all_corrs.append([spearmanr(exp_1, all_roi_data[18]), spearmanr(exp_1, all_roi_data[19]), spearmanr(exp_1, all_roi_data[20])])
-		all_corrs.append([spearmanr(exp_1, all_roi_data[21]), spearmanr(exp_1, all_roi_data[22]), spearmanr(exp_1, all_roi_data[23])])
-		
-		
-		pl.plot(exp_1, dual, 'o', color = 'b', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual DIFF %1.3f' % all_corrs[0][0])
-		pl.plot(all_roi_data[0], all_roi_data[2], 'o', color = 'g', ms = 6.0, mew = 1.5, mec = 'None', alpha = 0.95, label = 'exp1 - dual %1.3f' % all_corrs[1][0])
-		
-		# all_corrs.append(spearmanr(exp_1, varss[0]))
-		# pl.plot(exp_1, varss[0], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.25, label = 'exp1 - var 25%')
-		# 
-		# all_corrs.append(spearmanr(exp_1, varss[1]))
-		# pl.plot(exp_1, varss[1], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.5, label = 'exp1 - var 50%')
-		# 
-		# all_corrs.append(spearmanr(exp_1, varss[2]))
-		# pl.plot(exp_1, varss[2], 'o', color = 'k', ms = 3.0, mew = 1.5, mec = 'None', alpha = 0.75, label = 'exp1 - var 75%')
-		leg = s1.legend(fancybox = True)
-		leg.get_frame().set_alpha(0.5)
-		if leg:
-			for t in leg.get_texts():
-			    t.set_fontsize('small')    # the legend text fontsize
-			for l in leg.get_lines():
-			    l.set_linewidth(3.5)  # the legend line width
-		
-		# print self.subject.initials + ' ' + roi, all_corrs
-		
-		if hasattr(self, 'inter_experiment_correlations'):
-			self.inter_experiment_correlations.update({roi:all_corrs})
-		else:
-			self.inter_experiment_correlations = {roi:all_corrs}
-		# shell()
+		# calculate spearman correlation and projection of patterns in the comparison array.
+		# spr = spearmanr(comparison_array, da)
+		# prod = np.dot(comparison_array, da)/(np.linalg.norm(comparison_array)**2)
+		shell()
+		return np.array([np.concatenate((spearmanr(comparison_array, da), np.dot(comparison_array, da)/(np.linalg.norm(comparison_array)**2))) for da in all_roi_data])
 		
 	def compare_deconvolved_responses_across_sessions(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4']):
-		fig = pl.figure(figsize = (9, 16))
-		for i, roi in enumerate(rois):
-			s1 = fig.add_subplot(len(rois),1,1+i)
-			self.compare_deconvolved_responses_across_sessions_per_roi(s1 = s1, roi = roi)
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spatial_corr.pdf'))
-	
+		# fig = pl.figure(figsize = (9, 16))
+		# for i, roi in enumerate(rois):
+		# 	s1 = fig.add_subplot(len(rois),1,1+i)
+		# 	self.compare_deconvolved_responses_across_sessions_per_roi(s1 = s1, roi = roi)
+		# pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'spatial_corr.pdf'))
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		
+		results = [self.compare_deconvolved_responses_across_sessions_per_roi(roi) for roi in rois]
+		
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'spatial_correlation_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for i,r in enumerate(results):
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = rois[i], classname='Group')
+				self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + rois[i])
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('Adding group ' + rois[i] + ' to this file')
+				thisRunGroup = reward_h5file.createGroup("/", rois[i], 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+			for fc in self.files_for_comparisons:
+				try:
+					reward_h5file.removeNode(where = thisRunGroup, name = '-'.join(fc))
+				except NoSuchNodeError:
+					pass
+				reward_h5file.createArray(thisRunGroup, r, '-'.join(fc), 'spatial correlation results for ' + '-'.join(fc) + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+		
