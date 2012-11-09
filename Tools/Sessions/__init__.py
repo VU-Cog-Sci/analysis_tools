@@ -5,3 +5,4 @@ from RivalrySession import *
 from LatencyRemappingSession import *
 from VisualRewardSession import *
 from OrientationDecisionSession import *
+from RewardSessions import *
