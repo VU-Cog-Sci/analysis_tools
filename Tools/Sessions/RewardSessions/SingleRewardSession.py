@@ -2563,4 +2563,4 @@ class SingleRewardSession(Session):
 		correlate_patterns correlates template and test patterns. 
 		returns a 3 array, with spearman's correlation rho, its p-value and the scaled norm of the linear projection of the test and template as defined in Ress and Heeger, 2001.
 		"""
-		return np.squeeze(np.array([np.concatenate((list(spearmanr(comparison_array, da)), [np.dot(comparison_array, da)/(np.linalg.norm(comparison_array)**2)])) for da in all_roi_data]))
+		return np.squeeze(np.concatenate((list(spearmanr(template, test)), [np.dot(template, test)/(np.linalg.norm(template)**2)])))
