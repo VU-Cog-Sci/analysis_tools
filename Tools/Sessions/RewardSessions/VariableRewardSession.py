@@ -1403,7 +1403,7 @@ class VariableRewardSession(SingleRewardSession):
 			reward_h5file.close()
 		self.inter_experiment_correlations = data
 
-	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', timeshift_for_deconvolution = -5.0):
+	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', timeshift_for_deconvolution = -7.0):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
