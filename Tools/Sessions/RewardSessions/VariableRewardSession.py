@@ -18,7 +18,7 @@ from tables import *
 import pickle
 from scipy.stats import *
 from SingleRewardSession import *
-
+from ...plotting_tools import *
 
 class VariableRewardSession(SingleRewardSession):
 	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'reward'):
@@ -1403,7 +1403,7 @@ class VariableRewardSession(SingleRewardSession):
 			reward_h5file.close()
 		self.inter_experiment_correlations = data
 
-	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', timeshift_for_deconvolution = -7.0):
+	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', timeshift_for_deconvolution = 0.0):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
@@ -1451,7 +1451,7 @@ class VariableRewardSession(SingleRewardSession):
 		roi_data = np.hstack(demeaned_roi_data)
 		# event_data = np.hstack(event_data)
 		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
-		reward_event_data = [event_data[i][:,0] + timeshift_for_deconvolution for (i,s) in enumerate(self.deconvolution_labels) if 'yes' in s or 'no' in s or 'reward' in s]
+		reward_event_data = [event_data[i][:,0] for (i,s) in enumerate(self.deconvolution_labels) if 'yes' in s or 'no' in s or 'reward' in s]
 		stimulus_event_data = [event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'stim' in s]
 		delay_event_data = [event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'delay' in s]
 		
@@ -1496,20 +1496,16 @@ class VariableRewardSession(SingleRewardSession):
 			mapping_mask = mapping_data[:,0] < threshold
 		
 		# construct time series from signal amplitude in stim and non-stim regions, plus correlation
-		# first, just correlation
-		if correlation_function == 'spearman':
-			all_correlation_timeseries = np.array([self.correlate_patterns(comparison_array[mapping_mask], rd[mapping_mask]) for rd in roi_data.T])[:,0]
-		elif correlation_function == 'projection':
-			all_correlation_timeseries = np.array([self.correlate_patterns(comparison_array[mapping_mask], rd[mapping_mask]) for rd in roi_data.T])[:,2]
-		
 		if analysis_type == 'correlation':
+			# first, just correlation
+			if correlation_function == 'spearman':
+				all_correlation_timeseries = np.array([self.correlate_patterns(comparison_array[mapping_mask], rd[mapping_mask]) for rd in roi_data.T])[:,0]
+			elif correlation_function == 'projection':
+				all_correlation_timeseries = np.array([self.correlate_patterns(comparison_array[mapping_mask], rd[mapping_mask]) for rd in roi_data.T])[:,2]
 			timeseries = all_correlation_timeseries # roi_data[mapping_mask,:].mean(axis = 0)
 		elif analysis_type == 'amplitude':
 			timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
-		time_signals = []
-		interval = np.array([0.0,16.0]) + timeshift_for_deconvolution
-		# shell()
 		
 		# nuisance version?
 		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
@@ -1525,34 +1521,56 @@ class VariableRewardSession(SingleRewardSession):
 		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
 		delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
 		# delay_design.configure(delay_event_data)
+		
 		if analysis_type == 'correlation':
 			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
 		elif analysis_type == 'amplitude':
-			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix)) # , delay_design.designMatrix
+			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)) # , delay_design.designMatrix
 		
-		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:] + timeshift_for_deconvolution, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1] - timeshift_for_deconvolution, run = False)
-		# deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
-		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1] - timeshift_for_deconvolution, run = False)
-		deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
+		time_signals = []
+		interval = np.array([0.0,12.0]) + timeshift_for_deconvolution
+		# shell()
+		
+		# first run stimulus deconvolution with only blinks design matrix
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
 		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
 		
-		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
-		# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-		# 	time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
+		# run reward event data but only before the reward happens, as uncertainty events. This means concatenating the yes and no reward events to percentage classes
+		# nuisance regressors are blinks and the like but also stimulus GLM
+		uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) - 9.0 for i in [0,2,4]]
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = uncertainty_event_data, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix)))
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+		
+		# now the response to reward, with the reward regressors in there. 
+		# Now regressing out as much as possible, including the delay.
+		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:] + timeshift_for_deconvolution, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1] - timeshift_for_deconvolution, run = False)
+		# deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = [r - 3.0 for r in reward_event_data], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)))
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+		
+		# shell()
+		
 		time_signals = np.array(time_signals).squeeze()
 		# shell()
 		fig = pl.figure(figsize = (8, 16))
-		s = fig.add_subplot(411)
-		s.axhline(0, interval[0]-1.5, interval[1]+1.5, linewidth = 0.25)
-		for i in range(3): # plot stimulus responses
-			pl.bar(i, deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-4:-1][i][0,0], width = 0.25, edgecolor = 'k', color = colors[i][-1], label = ['75%_delay', '50%_delay', '25%_delay'][i])
-			pl.bar(i+0.25, deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-4][i][0,0], width = 0.25, edgecolor = 'w', color = colors[i][-1], alpha = 0.5, label = ['75%_stim', '50%_stim', '25%_stim'][i])
-		# 	pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[i*2], colors[i][-1], alpha = alphas[i][-1], linewidth = lthns[i][-1], label = self.deconvolution_labels[decon_label_grouping[i][-1]])
-		s.set_title('stimulus response beta' + roi + ' ' + mask_type)		
-		# s.set_xlabel('time [s]')
+		s = fig.add_subplot(411)	# stim figure
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		s.axvline(0, -1, 2, linewidth = 0.25)
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[0], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_stim')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[1], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_stim')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[2], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_stim')
+		s.set_title('deconvolution stimulus response' + roi + ' ' + mask_type)		
+		s.set_xlabel('time [s]')
 		s.set_ylabel('% signal change')
-		# s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		simpleaxis(s)
+		spine_shift(s)
 		leg = s.legend(fancybox = True)
 		leg.get_frame().set_alpha(0.5)
 		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
@@ -1564,31 +1582,88 @@ class VariableRewardSession(SingleRewardSession):
 				l.set_linewidth(3.5)  # the legend line width
 				# else:
 					# l.set_linewidth(2.0)  # the legend line width
-		for i in range(3): # plot stimulus responses
 		
-			s = fig.add_subplot(4,1,2+i)
-			s.axhline(0, -10, 30, linewidth = 0.25)
-			pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[i*2], colors[i][0], alpha = alphas[i][0], linewidth = lthns[i][0], label = self.deconvolution_labels[decon_label_grouping[i][0]])
-			pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[i*2 + 1], colors[i][1], alpha = alphas[i][1], linewidth = lthns[i][1], label = self.deconvolution_labels[decon_label_grouping[i][1]])
-			pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[-1], colors[-1][0], alpha = alphas[-1][0], linewidth = lthns[-1][0], label = self.deconvolution_labels[decon_label_grouping[-1][0]])
-			s.set_title('deconvolution reward response' + roi + ' ' + mask_type)		
-			s.set_xlabel('time [s]')
-			s.set_ylabel('% signal change')
-			s.set_xlim([interval[0]-1.5, interval[1]+1.5])
-			leg = s.legend(fancybox = True)
-			leg.get_frame().set_alpha(0.5)
-			# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
-			if leg:
-				for t in leg.get_texts():
-				    t.set_fontsize('small')    # the legend text fontsize
-				for (i, l) in enumerate(leg.get_lines()):
-					# if i == self.which_stimulus_rewarded:
-					l.set_linewidth(3.5)  # the legend line width
-					# else:
-						# l.set_linewidth(2.0)  # the legend line width
+		s = fig.add_subplot(412)	# stim figure
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		s.axvline(9, -1, 2, linewidth = 0.25)
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[3], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_delay')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[4], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_delay')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[5], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_delay')
+		s.set_title('deconvolution delay response' + roi + ' ' + mask_type)		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		simpleaxis(s)
+		spine_shift(s)
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (i, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
 		
-		pl.draw()
+		s = fig.add_subplot(413)	# stim figure
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		s.axvline(3, -1, 2, linewidth = 0.25)
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[6], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_yes')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[8], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_yes')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[10], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_yes')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[7], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_no')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[9], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_no')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[11], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_no')
+		s.set_title('deconvolution full reward response' + roi + ' ' + mask_type)		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		simpleaxis(s)
+		spine_shift(s)
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (i, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
+		
+		s = fig.add_subplot(414)	# stim figure
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		s.axvline(3, -1, 2, linewidth = 0.25)
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[6]-time_signals[7], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_diff')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[8]-time_signals[9], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_diff')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[10]-time_signals[11], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_diff')
+		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[12], 'k', alpha = alphas[0][0], linewidth = lthns[0][0], label = 'blank_reward')
+		s.set_title('deconvolution reward difference response' + roi + ' ' + mask_type)		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		simpleaxis(s)
+		spine_shift(s)
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (i, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
+		
+		
+		
+		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + correlation_function + '.pdf'))
+		pl.show()
 		
 		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-1]] #, deco_per_run]
 	
