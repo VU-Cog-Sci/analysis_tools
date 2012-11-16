@@ -1403,7 +1403,7 @@ class VariableRewardSession(SingleRewardSession):
 			reward_h5file.close()
 		self.inter_experiment_correlations = data
 
-	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', timeshift_for_deconvolution = 0.0):
+	def deconvolve_with_correlation_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', template = 'exp1', analysis_type = 'correlation', correlation_function = 'spearman', interval = [0.0, 9.0], offsets = {'stim': 0.0, 'delay': -6.0, 'reward': -2.0}):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
@@ -1506,18 +1506,19 @@ class VariableRewardSession(SingleRewardSession):
 		elif analysis_type == 'amplitude':
 			timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
+		sample_duration = tr/2.0
 		
 		# nuisance version?
-		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		nuisance_design = Design(timeseries.shape[0] * 2, sample_duration )
 		nuisance_design.configure([list(np.vstack(blink_events))])
 		# nuisance_design.configure([list(np.vstack(blink_events))], hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})
 		
-		stimulus_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		stimulus_design = Design(timeseries.shape[0] * 2, sample_duration )
 		stimulus_design.configure(stimulus_event_data)	# standard HRF for stimulus events
 		# stimulus_design.configure(stimulus_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})	# standard HRF for stimulus events
 		
 		# non-standard reward HRF for delay events
-		delay_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		delay_design = Design(timeseries.shape[0] * 2, sample_duration )
 		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
 		delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
 		# delay_design.configure(delay_event_data)
@@ -1528,31 +1529,70 @@ class VariableRewardSession(SingleRewardSession):
 			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)) # , delay_design.designMatrix
 		
 		time_signals = []
-		interval = np.array([0.0,12.0]) + timeshift_for_deconvolution
+		
+		stimulus_event_data = [r + offsets['stim'] for r in stimulus_event_data]
+		
 		# shell()
+		stim_and_uncertainty_combined = False
+		all_combined = True
+		stim_as_full_regressors = False
+		if not all_combined:
+			if not stim_as_full_regressors:
+				if stim_and_uncertainty_combined == False:
+					# first run stimulus deconvolution with only blinks design matrix
+					deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data[:], TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+					deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+					for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+						time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
 		
-		# first run stimulus deconvolution with only blinks design matrix
-		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
-		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
-			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
-		
-		# run reward event data but only before the reward happens, as uncertainty events. This means concatenating the yes and no reward events to percentage classes
-		# nuisance regressors are blinks and the like but also stimulus GLM
-		uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) - 9.0 for i in [0,2,4]]
-		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = uncertainty_event_data, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-		deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix)))
-		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
-			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
-		
-		# now the response to reward, with the reward regressors in there. 
-		# Now regressing out as much as possible, including the delay.
-		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:] + timeshift_for_deconvolution, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1] - timeshift_for_deconvolution, run = False)
-		# deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
-		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = [r - 3.0 for r in reward_event_data], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-		deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)))
-		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
-			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+					# run reward event data but only before the reward happens, as uncertainty events. This means concatenating the yes and no reward events to percentage classes
+					# nuisance regressors are blinks and the like but also stimulus GLM
+					uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) + offsets['delay'] for i in [0,2,4]]
+					deco = DeconvolutionOperator(inputObject = timeseries, eventObject = uncertainty_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+					deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix)))
+					for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+						time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+				elif stim_and_uncertainty_combined == True:
+					# join events for both stimulus and reward events
+					uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) + offsets['delay'] for i in [0,2,4]]
+					stimulus_event_data.extend(uncertainty_event_data)
+					deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+					deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+					for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+						time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+				# now the response to reward, with the reward regressors in there. 
+				# Now regressing out as much as possible, including the delay.
+				# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:] + timeshift_for_deconvolution, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1] - timeshift_for_deconvolution, run = False)
+				# deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
+				deco = DeconvolutionOperator(inputObject = timeseries, eventObject = [r + offsets['reward'] for r in reward_event_data], TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+				deco.runWithConvolvedNuisanceVectors(np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)))
+				for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+					time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+			
+			elif stim_as_full_regressors:
+				uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) + offsets['delay'] for i in [0,2,4]]
+				# stimulus_event_data.extend(uncertainty_event_data)
+				reward_event_data_separate = [r + offsets['reward'] for r in reward_event_data]
+				uncertainty_event_data.extend(reward_event_data_separate)
+				deco = DeconvolutionOperator(inputObject = timeseries, eventObject = uncertainty_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+				deco.runWithConvolvedNuisanceVectors(np.hstack((nuisance_design.designMatrix, stimulus_design.designMatrix)))
+				for i in range(3): # add stimulus betas to deconvolution results array as if they were time series - flat lines in subsequent plots, that is.
+					time_signals.append(np.ones(deco.deconvolvedTimeCoursesPerEventTypeNuisance[0].shape) * deco.deconvolvedNuisanceBetas[i])
+				for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+					time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+				
+			
+		if all_combined:
+			# all in one big regression matrix
+			uncertainty_event_data = [np.concatenate([reward_event_data[0+i],reward_event_data[1+i]]) + offsets['delay'] for i in [0,2,4]]
+			stimulus_event_data.extend(uncertainty_event_data)
+			reward_event_data_separate = [r + offsets['reward'] for r in reward_event_data]
+			stimulus_event_data.extend(reward_event_data_separate)
+			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+			
 		
 		# shell()
 		
@@ -1561,7 +1601,7 @@ class VariableRewardSession(SingleRewardSession):
 		fig = pl.figure(figsize = (8, 16))
 		s = fig.add_subplot(411)	# stim figure
 		s.axhline(0, -10, 30, linewidth = 0.25)
-		s.axvline(0, -1, 2, linewidth = 0.25)
+		s.axvline(-offsets['stim'], -1, 2, linewidth = 0.25)
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[0], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_stim')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[1], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_stim')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[2], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_stim')
@@ -1585,7 +1625,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 		s = fig.add_subplot(412)	# stim figure
 		s.axhline(0, -10, 30, linewidth = 0.25)
-		s.axvline(9, -1, 2, linewidth = 0.25)
+		s.axvline(-offsets['delay'], -1, 2, linewidth = 0.25)
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[3], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_delay')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[4], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_delay')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[5], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_delay')
@@ -1609,7 +1649,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 		s = fig.add_subplot(413)	# stim figure
 		s.axhline(0, -10, 30, linewidth = 0.25)
-		s.axvline(3, -1, 2, linewidth = 0.25)
+		s.axvline(-offsets['reward'], -1, 2, linewidth = 0.25)
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[6], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_yes')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[8], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_yes')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[10], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_yes')
@@ -1636,7 +1676,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 		s = fig.add_subplot(414)	# stim figure
 		s.axhline(0, -10, 30, linewidth = 0.25)
-		s.axvline(3, -1, 2, linewidth = 0.25)
+		s.axvline(-offsets['reward'], -1, 2, linewidth = 0.25)
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[6]-time_signals[7], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_diff')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[8]-time_signals[9], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_diff')
 		pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[10]-time_signals[11], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_diff')
@@ -1659,25 +1699,22 @@ class VariableRewardSession(SingleRewardSession):
 				# else:
 					# l.set_linewidth(2.0)  # the legend line width
 		
-		
-		
-		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + correlation_function + '.pdf'))
-		pl.show()
+		# pl.show()
 		
 		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-1]] #, deco_per_run]
 	
-	def deconvolve_pattern_plus_glm(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'correlation', correlation_function = 'projection'):
+	def deconvolve_pattern_plus_glm(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'correlation', correlation_function = 'projection', interval = [0.0, 9.0], offsets = {'stim': 0.0, 'delay': -6.0, 'reward': -2.0}):
 		results = []
 		for roi in rois:
-			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function))
-			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function))
+			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
+			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'
 		try:
 			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
-			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+			# self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
 			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
