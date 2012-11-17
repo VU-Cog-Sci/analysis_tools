@@ -1524,7 +1524,7 @@ class VariableRewardSession(SingleRewardSession):
 		# delay_design.configure(delay_event_data)
 		
 		if analysis_type == 'correlation':
-			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
+			nuisance_design_matrix = nuisance_design.designMatrix#np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
 		elif analysis_type == 'amplitude':
 			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)) # , delay_design.designMatrix
 		
@@ -1534,8 +1534,8 @@ class VariableRewardSession(SingleRewardSession):
 		
 		# shell()
 		stim_and_uncertainty_combined = False
-		all_combined = True
-		stim_as_full_regressors = False
+		all_combined = False
+		stim_as_full_regressors = True
 		if not all_combined:
 			if not stim_as_full_regressors:
 				if stim_and_uncertainty_combined == False:

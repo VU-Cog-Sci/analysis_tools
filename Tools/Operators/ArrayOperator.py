@@ -132,13 +132,23 @@ class DeconvolutionOperator(EventDataOperator):
 			# newNuisanceVectors = newNuisanceVectors - newNuisanceVectors.mean(axis = 0)
 			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment
-			self.deconvolvedTimeCoursesPerEventTypeNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
-			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,self.deconvolvedTimeCoursesPerEventTypeNuisanceAll.shape[1]))
+			self.deconvolvedTimeCoursesNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
+			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,self.deconvolvedTimeCoursesNuisanceAll.shape[1]))
 			for i in range(round(designShape[1]/self.nrSamplesInInterval)):
-				self.deconvolvedTimeCoursesPerEventTypeNuisance[i] = self.deconvolvedTimeCoursesPerEventTypeNuisanceAll[i*self.nrSamplesInInterval:(i+1)*self.nrSamplesInInterval]
-			self.deconvolvedNuisanceBetas = self.deconvolvedTimeCoursesPerEventTypeNuisanceAll[(i+1)*self.nrSamplesInInterval:]
-			
-			
+				self.deconvolvedTimeCoursesPerEventTypeNuisance[i] = self.deconvolvedTimeCoursesNuisanceAll[i*self.nrSamplesInInterval:(i+1)*self.nrSamplesInInterval]
+			self.deconvolvedNuisanceBetas = self.deconvolvedTimeCoursesNuisanceAll[(i+1)*self.nrSamplesInInterval:]
+	
+	def residuals(self):
+		if hasattr(self, 'newDesignMatrix'):	# means we've run this with nuisances
+			betas = self.deconvolvedTimeCoursesNuisanceAll
+			design_matrix = self.newDesignMatrix
+		elif hasattr(self, 'designMatrix'):
+			betas = self.rawDeconvolvedTimeCourse
+			design_matrix = self.designMatrix
+		else:
+			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
+		self.residuals = self.workingDataArray - (np.mat(betas) * np.mat(design_matrix))
+		return residuals
 	
 	
 
