@@ -128,13 +128,13 @@ class DeconvolutionOperator(EventDataOperator):
 			self.logger.error('nuisance dimensions does not correspond to the designmatrix, shapes %s, %s' % (nuisanceVectors.shape, designShape))
 		else:
 			newNuisanceVectors = nuisanceVectors
-			# newNuisanceVectors = nuisanceVectors / nuisanceVectors.max(axis=0)
+			newNuisanceVectors = nuisanceVectors / nuisanceVectors.max(axis=0)
 			# newNuisanceVectors = newNuisanceVectors - newNuisanceVectors.mean(axis = 0)
 			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment
 			self.deconvolvedTimeCoursesNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
 			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,self.deconvolvedTimeCoursesNuisanceAll.shape[1]))
-			for i in range(round(designShape[1]/self.nrSamplesInInterval)):
+			for i in range(int(round(designShape[1]/self.nrSamplesInInterval))):
 				self.deconvolvedTimeCoursesPerEventTypeNuisance[i] = self.deconvolvedTimeCoursesNuisanceAll[i*self.nrSamplesInInterval:(i+1)*self.nrSamplesInInterval]
 			self.deconvolvedNuisanceBetas = self.deconvolvedTimeCoursesNuisanceAll[(i+1)*self.nrSamplesInInterval:]
 	
@@ -147,8 +147,9 @@ class DeconvolutionOperator(EventDataOperator):
 			design_matrix = self.designMatrix
 		else:
 			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
-		self.residuals = self.workingDataArray - (np.mat(betas) * np.mat(design_matrix))
-		return residuals
+		# shell()
+		self.residuals = self.workingDataArray - (np.mat(design_matrix) * np.mat(betas))
+		return np.array(self.residuals)
 	
 	
 

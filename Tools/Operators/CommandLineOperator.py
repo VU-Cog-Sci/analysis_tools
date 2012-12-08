@@ -58,7 +58,7 @@ class CommandLineOperator( Operator ):
 		"""
 		self.runcmd = self.cmd + ' ' + self.inputFileName
 		
-	def execute(self):
+	def execute(self, wait = False):
 		"""
 		placeholder for execute
 		to be filled in by subclasses
@@ -66,6 +66,8 @@ class CommandLineOperator( Operator ):
 		self.logger.debug(self.__repr__() + 'executing command \n' + self.runcmd)
 		# print self.runcmd
 		# subprocess.call( self.runcmd, shell=True, bufsize=0, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+		if wait:
+			self.runcmd + '&'
 		ExecCommandLine(self.runcmd)
 	
 
@@ -512,7 +514,7 @@ class SurfToSurfOperator( CommandLineOperator ):
 #		self.runcmd += ' ;\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
 #		self.runcmd = self.runcmd[:-2]
-#		self.runcmd += ' &'
+		self.runcmd += ' &'
 
 class MRISConvertOperator( CommandLineOperator ):
 	"""docstring for SurfToVolOperator"""

@@ -677,6 +677,20 @@ class Session(PathConstructor):
 		newImage.filename = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/') , fn + '.nii.gz')
 		newImage.save()
 	
+	def run_data_from_hdf(self, h5file, run, data_type, postFix = ['mcf']):
+		"""docstring for parameter_data_from_hdf"""
+		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
+		try:
+			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('No group ' + this_run_group_name + ' in this file')
+			return None
+		
+		this_data_array = eval('thisRunGroup.' + data_type + '.read()') 
+		return this_data_array
+		
+	
 	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard

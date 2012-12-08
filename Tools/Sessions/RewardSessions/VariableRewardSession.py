@@ -1520,13 +1520,13 @@ class VariableRewardSession(SingleRewardSession):
 		# non-standard reward HRF for delay events
 		delay_design = Design(timeseries.shape[0] * 2, sample_duration )
 		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
-		delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
-		# delay_design.configure(delay_event_data)
+		# delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
+		delay_design.configure(delay_event_data, hrfType = 'singleGamma')
 		
 		if analysis_type == 'correlation':
 			nuisance_design_matrix = nuisance_design.designMatrix#np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
 		elif analysis_type == 'amplitude':
-			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix, delay_design.designMatrix)) # , delay_design.designMatrix
+			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix)) # , delay_design.designMatrix
 		
 		time_signals = []
 		
@@ -1534,8 +1534,9 @@ class VariableRewardSession(SingleRewardSession):
 		
 		# shell()
 		stim_and_uncertainty_combined = False
-		all_combined = False
-		stim_as_full_regressors = True
+		all_combined = True
+		stim_as_full_regressors = False
+		stim_and_delay_as_full_regressors = False
 		if not all_combined:
 			if not stim_as_full_regressors:
 				if stim_and_uncertainty_combined == False:
@@ -1577,6 +1578,16 @@ class VariableRewardSession(SingleRewardSession):
 				deco = DeconvolutionOperator(inputObject = timeseries, eventObject = uncertainty_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
 				deco.runWithConvolvedNuisanceVectors(np.hstack((nuisance_design.designMatrix, stimulus_design.designMatrix)))
 				for i in range(3): # add stimulus betas to deconvolution results array as if they were time series - flat lines in subsequent plots, that is.
+					time_signals.append(np.ones(deco.deconvolvedTimeCoursesPerEventTypeNuisance[0].shape) * deco.deconvolvedNuisanceBetas[i])
+				for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+					time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
+			
+			if stim_and_delay_as_full_regressors:
+				time_signals = []
+				reward_event_data_separate = [r + offsets['reward'] for r in reward_event_data]
+				deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data_separate, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
+				deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
+				for i in range(6): # add stimulus betas to deconvolution results array as if they were time series - flat lines in subsequent plots, that is.
 					time_signals.append(np.ones(deco.deconvolvedTimeCoursesPerEventTypeNuisance[0].shape) * deco.deconvolvedNuisanceBetas[i])
 				for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 					time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
@@ -1702,9 +1713,9 @@ class VariableRewardSession(SingleRewardSession):
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + correlation_function + '.pdf'))
 		# pl.show()
 		
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-1]] #, deco_per_run]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesNuisanceAll[-7:-1]] #, deco_per_run]
 	
-	def deconvolve_pattern_plus_glm(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'correlation', correlation_function = 'projection', interval = [0.0, 9.0], offsets = {'stim': 0.0, 'delay': -6.0, 'reward': -2.0}):
+	def deconvolve_pattern_plus_glm(self, threshold = 4.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'correlation', correlation_function = 'projection', interval = [0.0, 9.0], offsets = {'stim': 0.0, 'delay': -6.0, 'reward': -2.0}):
 		results = []
 		for roi in rois:
 			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
