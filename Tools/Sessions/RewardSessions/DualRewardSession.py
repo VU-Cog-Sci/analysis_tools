@@ -338,10 +338,10 @@ class DualRewardSession(SingleRewardSession):
 			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 			# shell()
 			# deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
-			nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
-			nuisance_design.configure(np.array([np.vstack(blink_events)]))
-			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			# nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
+			# nuisance_design.configure(np.array([np.vstack(blink_events)]))
+			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = True)
+			# deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
 			residuals = np.array(deco.residuals(), dtype = np.float32)
 			residuals = residuals.reshape([residuals.shape[0]] + nii_file_shape[1:])[::2]
 			
@@ -364,7 +364,8 @@ class DualRewardSession(SingleRewardSession):
 				pass
 		for (i, c) in enumerate(conds):
 			if deco:
-				outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
+				# outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
+				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
 				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz'))
@@ -390,7 +391,7 @@ class DualRewardSession(SingleRewardSession):
 					for hemi in ['lh','rh']:
 						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
 						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
-						ssO.execute()
+						ssO.execute(wait = False)
 		
 		# now create the necessary difference images:
 		# only possible if deco has already been run...
@@ -965,7 +966,7 @@ class DualRewardSession(SingleRewardSession):
 		pl.savefig(self.runFile(stage = 'processed/eye', run = run, extension = '.pdf', postFix = ['pupil']))
 		return tr_data
 			
-	def pupil_responses(self, sample_rate = 2000, save_all = False):
+	def pupil_responses(self, sample_rate = 1000, save_all = True):
 		"""docstring for pupil_responses"""
 		cond_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
 		colors = ['r','r','g','g','k','k']
@@ -1026,4 +1027,243 @@ class DualRewardSession(SingleRewardSession):
 			h5file.close()
 			# shell()
 	
+	def variance_from_whole_brain_residuals(self, time_range_BOLD = [3.0, 9.0], var = True, to_surf = True):
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
+			
+		if var:
+			# take data 
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			run_duration = tr * nr_trs
+		
+			residuals = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'residuals.nii.gz')).data
+		
+			event_data = []
+			tr_timings = []
+			nr_runs = 0
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				this_run_events = []
+				for cond in cond_labels:
+					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+				this_run_events = np.array(this_run_events) + nr_runs * run_duration
+				event_data.append(this_run_events)
+				tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			trts = np.concatenate(tr_timings)
+			# event_data = np.hstack(event_data)
+			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+			# shell()
+			all_vars = []
+			for (i, e) in enumerate(event_data):
+				# standard version works on just the variance
+				all_vars.append(np.array([residuals[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])].var(axis = 0) for se in e]).mean(axis = 0))
+		
+			opf = NiftiImage(np.array(all_vars))
+			opf.header = niiFile.header
+			opf.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals.nii.gz'))
+		
+		if to_surf:
+			# vol to surf?
+			# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals.nii.gz')
+			vsO = VolToSurfOperator(inputObject = ofn)
+			sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+			vsO.configure(frames = dict(zip(['_'+c for c in cond_labels], range(4))), hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+			vsO.execute()
+			
+			for cond in ['_'+c for c in cond_labels]:
+				for hemi in ['lh','rh']:
+					ssO = SurfToSurfOperator(vsO.outputFileName + cond + '-' + hemi + '.mgh')
+					ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+					ssO.execute()
+					
+	def fsl_results_to_deco_folder(self, run_type = 'reward', postFix = ['mcf', 'tf','orientation']):
+		for j,r in enumerate([self.runList[i] for i in self.conditionDict[run_type]]):
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+			stat_files = {
+							'left_CW_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+							'left_CW_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+							'left_CW_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+								
+							'left_CCW_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+							'left_CCW_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+							'left_CCW_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+									
+							'right_CW_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
+							'right_CW_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
+							'right_CW_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+									
+							'right_CCW_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
+							'right_CCW_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+							'right_CCW_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+									
+							'reward_blank_T': os.path.join(this_feat, 'stats', 'tstat5.nii.gz'),
+							'reward_blank_Z': os.path.join(this_feat, 'stats', 'zstat5.nii.gz'),
+							'reward_blank_cope': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+								
+							'reward_all_T': os.path.join(this_feat, 'stats', 'tstat6.nii.gz'),
+							'reward_all_Z': os.path.join(this_feat, 'stats', 'zstat6.nii.gz'),
+							'reward_all_cope': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
+							}
+			for sf in stat_files.keys():
+				os.system( 'cp ' + stat_files[sf] + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'FSL_' + sf + '_' + str(j) + '.nii.gz'))
+				
+	
+	def cross_correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [5.0, 10.0], time_range_pupil = [0.5, 2.0], stepsize = 0.25, area = '', color = 1.0):
+		"""docstring for correlate_pupil_and_BOLD"""
+		
+		# take data 
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
+		cond_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
+		my_colors = ['r','r','g','g','k','k']
+		alphas = [0.5, 1.0, 0.5, 1.0, 0.5, 1.0]
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		event_data = []
+		roi_data = []
+		pupil_data = []
+		tr_timings = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf','tf']))
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			# take pupil data
+			try:
+				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','tf']))[1], classname='Group')
+				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			except NoSuchNodeError:
+				self.logger.error('no such node.')
+				pass
+			this_run_pupil_data = thisRunGroup.filtered_pupil_zscore.read()
+			this_run_pupil_data = this_run_pupil_data[(this_run_pupil_data[:,0] > thisRunGroup.trial_times.read()['trial_phase_timestamps'][0,0,0])][:run_duration * sample_rate]
+			this_run_pupil_data[:,0] = ((this_run_pupil_data[:,0] - this_run_pupil_data[0,0]) / 1000.0) + nr_runs * run_duration
+			pupil_data.append(this_run_pupil_data[::int(sample_rate*tr)])
+			
+			nr_runs += 1
+		reward_h5file.close()
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
+		roi_data = np.hstack(demeaned_roi_data)
+		pdc = np.concatenate(pupil_data)
+		trts = np.concatenate(tr_timings)
+		# event_data = np.hstack(event_data)
+		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf','tf'])
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		mapper_h5file.close()
+		bold_timeseries = roi_data[mapping_mask,:].mean(axis = 0)
+		
+		from scipy.signal import correlate
+		from scipy.stats import spearmanr, linregress
+		
+		all_results = []
+		all_spearman_results = []
+		for (i, e) in enumerate(event_data):
+			bold_trial_data = np.array([bold_timeseries[(trts > se + time_range_BOLD[0]) * (trts <= se + time_range_BOLD[1])].mean() for se in e[:-1]])
+			pupil_trial_data = np.array([pdc[(pdc[:,0] > se + time_range_pupil[0]) * (pdc[:,0] <= se + time_range_pupil[1]),1].mean() for se in e[:-1]])
+		
+			correlation = correlate(pupil_trial_data, bold_trial_data, 'same')
+			scorr = spearmanr(pupil_trial_data, bold_trial_data)
+			
+			midpoint = correlation.shape[0] / 2
+			plot_range = 20
+			
+			all_results.append(correlation[midpoint-plot_range/2:midpoint+plot_range/2])
+			all_spearman_results.append(scorr)
+			
+			# pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+			
+			pl.plot(pupil_trial_data, bold_trial_data, 'o'+my_colors[i], alpha = alphas[i] * 0.2, mec = 'w', mew = 1, ms = 6)
+			
+			# linear regression for regression lines
+			slope, intercept, r_value, p_value, slope_std_error = stats.linregress(pupil_trial_data, bold_trial_data)
+			predict_y = intercept + slope * pupil_trial_data
+			pl.plot(pupil_trial_data, predict_y, '--'+my_colors[i], alpha = alphas[i], mec = 'w', mew = 1, ms = 6, label = cond_labels[i])
+			
+		#  all thingies across 
+		# correlation = correlate(pdc[:,1], bold_timeseries, 'same')
+		# midpoint = correlation.shape[0] / 2
+		# plot_range = 20
+		# 
+		# pl.plot(np.linspace(-plot_range/2*tr, plot_range/2*tr, correlation[midpoint-plot_range/2:midpoint+plot_range/2].shape[0]), correlation[midpoint-plot_range/2:midpoint+plot_range/2], 'r', alpha = 0.5, label = 'across conditions')
+		# shell()
+		return (all_results, all_spearman_results)
+	
+	def cross_correlate_pupil_and_BOLD(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range = 'long'):
+		corrs = []
+		spearman_corrs = []
+		areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']
+		f = pl.figure(figsize = (4,12))
+		for (i, roi) in enumerate(areas):
+			s = f.add_subplot(len(areas), 1, i+1)
+			if time_range == 'short':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [0.5, 2.0])
+			elif time_range == 'long':
+				crs = self.cross_correlate_pupil_and_BOLD_for_roi(roi = roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction, sample_rate = sample_rate, area = roi, time_range_BOLD = [0.0, 16.0], time_range_pupil = [3.0, 9.0])
+			corrs.append(crs[0])
+			spearman_corrs.append(crs[1])
+			print spearman_corrs[-1]
+			s.set_title(self.subject.initials + ' ' + roi )
+			# s.set_xlabel('time [TR]')
+			# s.set_ylabel('cross-correlation')
+			s.set_xlabel('pupil [Z]')
+			s.set_ylabel('BOLD [% signal change]')
+			if i == 0:
+				leg = s.legend(fancybox = True)
+				leg.get_frame().set_alpha(0.5)
+				if leg:
+					for t in leg.get_texts():
+					    t.set_fontsize('small')    # the legend text fontsize
+					for l in leg.get_lines():
+					    l.set_linewidth(3.5)  # the legend line width
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), mask_type + '_' + mask_direction + '_' + time_range + '_pupil_corr.pdf'))
+		
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'pupil-BOLD_cross_correlation_results'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'pupil/bold correlation analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for (i, c) in enumerate(corrs):
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction)
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold cross correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		
+		for (i, c) in enumerate(spearman_corrs):
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range)
+			except NoSuchNodeError:
+				pass
+			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range, np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
 	

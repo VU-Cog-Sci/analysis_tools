@@ -1388,10 +1388,10 @@ class SingleRewardSession(Session):
 			nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
 			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 			
-			nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
-			nuisance_design.configure(np.array([np.hstack(blink_events)]))
-			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			# nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
+			# nuisance_design.configure(np.array([np.hstack(blink_events)]))
+			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = True)
+			# deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
 			residuals = np.array(deco.residuals(), dtype = np.float32)
 			residuals = residuals.reshape([residuals.shape[0]] + nii_file_shape[1:])[::2]
 			
@@ -1413,7 +1413,8 @@ class SingleRewardSession(Session):
 				pass
 		for (i, c) in enumerate(cond_labels):
 			if deco:
-				outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
+				# outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
+				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
 				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz'))
@@ -1595,14 +1596,14 @@ class SingleRewardSession(Session):
 			# 	this_run_group_name = 'all_pupil_scores'
 			
 	
-	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf'], which_conditions = ['reward','mapper']):
+	def run_glm_on_hdf5(self, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf'], which_conditions = ['reward']): # ,'mapper'
 		if 'reward' in which_conditions:
 			reward_h5file = self.hdf5_file('reward', mode = 'r+')
-			super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix)
+			super(SingleRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix)
 			reward_h5file.close()
 		if 'mapper' in which_conditions:
 			mapper_h5file = self.hdf5_file('mapper', mode = 'r+')
-			super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['mapper']], hdf5_file = mapper_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix)
+			super(SingleRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['mapper']], hdf5_file = mapper_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix)
 			mapper_h5file.close()
 		
 
@@ -2778,3 +2779,203 @@ class SingleRewardSession(Session):
 		returns a 3 array, with spearman's correlation rho, its p-value and the scaled norm of the linear projection of the test and template as defined in Ress and Heeger, 2001.
 		"""
 		return np.squeeze(np.concatenate((list(spearmanr(template, test)), [np.dot(template, test)/(np.linalg.norm(template)**2)])))
+
+	def variance_from_whole_brain_residuals(self, time_range_BOLD = [3.0, 9.0], var = True, to_surf = True):
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		if var:
+			# take data 
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			run_duration = tr * nr_trs
+		
+			residuals = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'residuals.nii.gz')).data
+		
+			event_data = []
+			tr_timings = []
+			nr_runs = 0
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				this_run_events = []
+				for cond in conds:
+					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+				this_run_events = np.array(this_run_events) + nr_runs * run_duration
+				event_data.append(this_run_events)
+				tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
+			trts = np.concatenate(tr_timings)
+			# event_data = np.hstack(event_data)
+			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+			# shell()
+			all_vars = []
+			for (i, e) in enumerate(event_data):
+				# standard version works on just the variance
+				all_vars.append(np.array([residuals[(trts > se + time_range_BOLD[0]) * (trts < se + time_range_BOLD[1])].var(axis = 0) for se in e]).mean(axis = 0))
+			all_vars = np.array(all_vars)
+			
+			opf = NiftiImage(all_vars)
+			opf.header = niiFile.header
+			opf.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals.nii.gz'))
+			
+			opf = NiftiImage(all_vars[1] - all_vars[0])
+			opf.header = niiFile.header
+			opf.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals_fix_diff.nii.gz'))
+			
+			opf = NiftiImage(all_vars[3] - all_vars[2])
+			opf.header = niiFile.header
+			opf.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals_stim_diff.nii.gz'))
+			
+			
+		
+		if to_surf:
+			for file_name in ['variance_residuals.nii.gz', 'variance_residuals_fix_diff.nii.gz', 'variance_residuals_stim_diff.nii.gz']:
+				# vol to surf?
+				# for (label, f) in zip(['left', 'right'], [left_file, right_file]):
+				if file_name == 'variance_residuals.nii.gz':
+					frames = dict(zip(['_'+c for c in cond_labels], range(4)))
+				else:
+					frames = {'':0}
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), file_name)
+				vsO = VolToSurfOperator(inputObject = ofn)
+				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+				vsO.configure(frames = frames, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.execute()
+				
+				
+				if file_name == 'variance_residuals.nii.gz':
+					for cond in ['_'+c for c in cond_labels]:
+						for hemi in ['lh','rh']:
+							ssO = SurfToSurfOperator(vsO.outputFileName + cond + '-' + hemi + '.mgh')
+							ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+							ssO.execute()
+				else:
+					cond = ''
+					for hemi in ['lh','rh']:
+						ssO = SurfToSurfOperator(vsO.outputFileName + cond + '-' + hemi + '.mgh')
+						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+						ssO.execute()
+					
+	
+	def mask_residual_variance_to_hdf(self, run_type = 'reward'):
+		"""
+		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
+		"""
+		
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('Taking masks ' + str(anatRoiFileNames))
+		rois, roinames = [], []
+		for roi in anatRoiFileNames:
+			rois.append(NiftiImage(roi))
+			roinames.append(os.path.split(roi)[1][:-7])
+		
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		# else:
+		# 	self.logger.info('opening table file ' + self.hdf5_filename)
+		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		
+		this_run_group_name = 'residuals_variance'
+		try:
+			thisRunGroup = h5file.removeNode(where = '/', name = this_run_group_name, recursive = True)
+			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+		except NoSuchNodeError:
+			# import actual data
+			# self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			pass
+		thisRunGroup = h5file.createGroup("/", this_run_group_name, 'residual variance')
+			
+		"""
+		Now, take different stat masks based on the run_type
+		"""
+		if run_type == 'reward':
+			stat_files = {
+							'residual_variance': os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'variance_residuals.nii.gz'),
+							}
+				
+		stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+		for (roi, roi_name) in zip(rois, roinames):
+			for (i, sf) in enumerate(stat_files.keys()):
+				# loop over stat_files and rois
+				# to mask the stat_files with the rois:
+				imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+				these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+				h5file.createArray(thisRunGroup, roi_name.replace('.','_') + '_' + sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+		h5file.close()
+		
+	
+	def residual_variance_per_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos'):
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+			
+		this_run_group_name = 'residuals_variance'
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name)
+			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+		except NoSuchNodeError:
+			self.logger.info('No group ' + this_run_group_name + ' in this file')
+			pass
+		
+		these_data = []
+		for hemi in ['lh', 'rh']:
+			these_data.append(eval('thisRunGroup.' + hemi + '_' + roi + '_residual_variance.read()'))
+		these_data = np.hstack(these_data)
+		
+		masked_data = these_data[:,mapping_mask]
+		mean_masked_data = masked_data.mean(axis = 1)
+		
+		# shell()
+			
+		reward_h5file.close()
+		mapper_h5file.close()
+		
+		return mean_masked_data
+	
+	def residual_variance_analysis(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB']):
+		
+		d = []
+		for roi in rois:
+			d.append(self.residual_variance_per_roi(roi, threshold = threshold))
+		
+		return d
+		
+	
+	def fsl_results_to_deco_folder(self, run_type = 'reward', postFix = ['mcf']):
+		for j,r in enumerate([self.runList[i] for i in self.conditionDict[run_type]]):
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+			stat_files = {
+							'visual_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+							'visual_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+							'visual_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+								
+							'reward_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+							'reward_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+							'reward_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+								
+							'blinks': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
+							'blank_silence': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+							'blank_sound': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+							'blank_sound_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+							'visual_silence': os.path.join(this_feat, 'stats', 'cope5.nii.gz'),
+							'visual_sound': os.path.join(this_feat, 'stats', 'cope6.nii.gz'),
+								
+							'fix_reward_silence': os.path.join(this_feat, 'stats', 'cope7.nii.gz'),
+							'visual_reward_silence': os.path.join(this_feat, 'stats', 'cope8.nii.gz'),
+								
+							'visual_silence_fix_silence': os.path.join(this_feat, 'stats', 'cope9.nii.gz'),
+							'visual_reward_fix_reward': os.path.join(this_feat, 'stats', 'cope10.nii.gz'),
+							
+							}
+			for sf in stat_files.keys():
+				os.system( 'cp ' + stat_files[sf] + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'FSL_' + sf + '_' + str(j) + '.nii.gz'))

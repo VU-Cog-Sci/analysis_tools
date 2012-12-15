@@ -1254,8 +1254,15 @@ class VariableRewardSession(SingleRewardSession):
 					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ))
 		cfO.execute()
 		
-		session_1_files = subprocess.Popen('ls ' + session_1.stageFolder('processed/mri/reward/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		session_2_files = subprocess.Popen('ls ' + session_2.stageFolder('processed/mri/reward/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		# add fsl results to deco folder so that they are also aligned across sessions.
+		session_1.fsl_results_to_deco_folder()
+		session_2.fsl_results_to_deco_folder()
+		
+		session_1_files = subprocess.Popen('ls ' + session_1.stageFolder('processed/mri/reward/deco/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		session_2_files = subprocess.Popen('ls ' + session_2.stageFolder('processed/mri/reward/deco/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		
+		session_1_files = [s for s in session_1_files if os.path.split(s)[1] != 'residuals.nii.gz']
+		session_2_files = [s for s in session_2_files if os.path.split(s)[1] != 'residuals.nii.gz']
 		
 		try:
 			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions'))
@@ -1280,28 +1287,48 @@ class VariableRewardSession(SingleRewardSession):
 	def pattern_comparisons(self):
 		return [
 		['dual'],
-		['reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward'],
-		['reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward'],
-		['reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward'],
-		['reward_reward_deconv_glm_25_yes'], 
-		['reward_reward_deconv_glm_25_no'], 
-		['reward_reward_deconv_glm_50_yes'], 
-		['reward_reward_deconv_glm_50_no'], 
-		['reward_reward_deconv_glm_75_yes'], 
-		['reward_reward_deconv_glm_75_no'],
-		['reward_reward_deconv_glm_nuisance_beta_stim_25', 'reward_reward_deconv_glm_nuisance_beta_stim_50', 'reward_reward_deconv_glm_nuisance_beta_stim_75'],
-		['reward_reward_deconv_glm_nuisance_beta_delay_25', 'reward_reward_deconv_glm_nuisance_beta_delay_50', 'reward_reward_deconv_glm_nuisance_beta_delay_75'],
-		['reward_reward_deconv_mean_25_stim_visual', 'reward_reward_deconv_mean_50_stim_visual', 'reward_reward_deconv_mean_75_stim_visual'],
+		['exp_1_reward_deconv_mean_stimulus_no_reward_visual'],
+		['dual_reward_deconv_mean_blank_rewarded_reward'],
+		['exp_1_stimulus_reward_diff_reward'],
+		['dual_FSL_reward_blank_Z_'+str(c) for c in range(5)],
+		['exp_1_FSL_visual_Z_'+str(c) for c in range(6)],
+		['exp_1_FSL_blank_sound_Z_'+str(c) for c in range(6)],
+		# ['reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward'],
+		# ['reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward'],
+		# ['reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward'],
+		# ['reward_reward_deconv_glm_25_yes'], 
+		# ['reward_reward_deconv_glm_25_no'], 
+		# ['reward_reward_deconv_glm_50_yes'], 
+		# ['reward_reward_deconv_glm_50_no'], 
+		# ['reward_reward_deconv_glm_75_yes'], 
+		# ['reward_reward_deconv_glm_75_no'],
+		# ['reward_reward_deconv_glm_nuisance_beta_stim_25', 'reward_reward_deconv_glm_nuisance_beta_stim_50', 'reward_reward_deconv_glm_nuisance_beta_stim_75'],
+		# ['reward_reward_deconv_glm_nuisance_beta_delay_25', 'reward_reward_deconv_glm_nuisance_beta_delay_50', 'reward_reward_deconv_glm_nuisance_beta_delay_75'],
+		# ['reward_reward_deconv_mean_25_stim_visual', 'reward_reward_deconv_mean_50_stim_visual', 'reward_reward_deconv_mean_75_stim_visual'],
 		
 		]
 	
-	def compare_deconvolved_responses_across_sessions_per_roi(self, roi, template = 'exp1' ):
+	def compare_deconvolved_responses_across_sessions_per_roi(self, roi, template = 'FSL', threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos' ):
 		"""docstring for compare_deconvolved_responses_per_session_per_roi"""
 		self.files_for_comparisons = self.pattern_comparisons()
-		return [self.compare_deconvolved_responses_across_sessions_per_roi_per_datatype(roi, template = template, comparison_list = fn ) for fn in self.files_for_comparisons]
+		f = pl.figure(figsize = (8,8))
+		s = f.add_subplot(111)
+		s.set_title(roi + ' ' + template)
+		return [self.compare_deconvolved_responses_across_sessions_per_roi_per_datatype(roi, template = template, comparison_list = fn, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction ) for fn in self.files_for_comparisons]
 		
-	def compare_deconvolved_responses_across_sessions_per_roi_per_datatype(self, roi, template = 'exp1', comparison_list = [] ):
+	def compare_deconvolved_responses_across_sessions_per_roi_per_datatype(self, roi, template = 'exp1', comparison_list = [], threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos' ):
 		h5file = self.hdf5_file('reward')
+		
+		# mapper
+		mapping_data = self.roi_data_from_hdf(h5file, self.runList[self.conditionDict['reward'][0]], roi, mask_type, postFix = ['mcf'])
+		
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		
+		
 		this_run_group_name = 'deconv_results'
 		# check the rois in the file
 		roi_names = []
@@ -1319,6 +1346,10 @@ class VariableRewardSession(SingleRewardSession):
 			c_file_list = ['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward']
 		elif template == 'dual':
 			c_file_list = ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']
+		elif template == 'FSL':
+			c_file_list = ['exp_1_FSL_reward_Z_'+str(c) for c in range(5)]
+		else:
+			c_file_list = [template]
 		ard_np = []
 		for i, data_type in enumerate(c_file_list):
 			ard = []
@@ -1326,10 +1357,13 @@ class VariableRewardSession(SingleRewardSession):
 				thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 				ard.append( eval('thisRoi.' + data_type + '.read()') )
 			ard_np.append(np.hstack(ard).T.squeeze())
-		if template == 'exp1':
-			comparison_array = (ard_np[0] + ard_np[1]) / 2.0
+		ard_np = np.array(ard_np)
+		if template == 'exp1' or template == 'FSL':
+			comparison_array = np.mean(ard_np, axis = 0)
 		elif template == 'dual':
 			comparison_array = ard_np[0] - ard_np[1]
+		else:
+			comparison_array = ard_np[0]
 		
 		all_roi_data = []
 		if 'dual' in comparison_list:
@@ -1358,10 +1392,19 @@ class VariableRewardSession(SingleRewardSession):
 		# shell()
 		all_roi_data = np.array(all_roi_data).reshape((-1, comparison_array.shape[0]))
 		
+		all_roi_data = all_roi_data[:,mapping_mask]
+		comparison_array = comparison_array[mapping_mask]
+		
+		# print comparison_list		
+		# print all_roi_data.shape
+		# 
+		for i, ard in enumerate(all_roi_data):
+			pl.plot(comparison_array, ard, ['r','g','b','c','m','k'][i]+'o', alpha = 0.3, label = roi + ' ' + template)
+		
 		# calculate spearman correlation and projection of patterns in the comparison array.
 		return np.array([self.correlate_patterns(comparison_array, da) for da in all_roi_data])
 		
-	def compare_deconvolved_responses_across_sessions(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], force_run = False):
+	def compare_deconvolved_responses_across_sessions(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], force_run = False, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos'):
 		# fig = pl.figure(figsize = (9, 16))
 		# for i, roi in enumerate(rois):
 		# 	s1 = fig.add_subplot(len(rois),1,1+i)
@@ -1371,7 +1414,7 @@ class VariableRewardSession(SingleRewardSession):
 		this_run_group_name = 'spatial_correlation_results'
 		
 		if force_run:
-			results = [self.compare_deconvolved_responses_across_sessions_per_roi(roi) for roi in rois]
+			results = [self.compare_deconvolved_responses_across_sessions_per_roi(roi, threshold = threshold, mask_type = mask_type, mask_direction = mask_direction) for roi in rois]
 		
 			reward_h5file = self.hdf5_file('reward', mode = 'r+')
 			try:
