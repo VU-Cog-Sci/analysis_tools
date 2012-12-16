@@ -201,7 +201,7 @@ class RetinotopicMappingSession(Session):
 					
 #				pp.close()
 		pl.draw()
-	
+	 
 	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
 		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )
 		for hemi in ['lh','rh']:
