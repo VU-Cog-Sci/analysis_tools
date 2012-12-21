@@ -244,34 +244,35 @@ class SingleRewardSession(Session):
 					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 					# run feat
 					featOp.execute()
-			for r in [self.runList[i] for i in self.conditionDict['mapper']]:
-				if run_feat:
-					try:
-						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-						os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
-					except OSError:
-						pass
+			if 'mapper' in self.conditionDict.keys():
+				for r in [self.runList[i] for i in self.conditionDict['mapper']]:
+					if run_feat:
+						try:
+							self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+							os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+						except OSError:
+							pass
 			
-					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-					if 'sara' in os.uname():
-						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
-					else:
-						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
-					REDict = {
-					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
-					'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
-					}
-					featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
-					featOp = FEATOperator(inputObject = thisFeatFile)
-					if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
-						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-					else:
-						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
-					# run feat
-					featOp.execute()
+						# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+						# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
+						if 'sara' in os.uname():
+							thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
+						else:
+							thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/mapper.fsf'
+						REDict = {
+						'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
+						'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
+						}
+						featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+						featOp = FEATOperator(inputObject = thisFeatFile)
+						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+						else:
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+						# run feat
+						featOp.execute()
 		elif self.dual_pilot == 1:
 			for r in [self.runList[i] for i in self.conditionDict['reward']]:
 				# create_feat_event_files_one_run will create condition_labels and all_stimulus_trials variables for this run in the run object, to be used later on.

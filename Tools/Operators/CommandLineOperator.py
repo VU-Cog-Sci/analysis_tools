@@ -492,7 +492,7 @@ class SurfToVolOperator( CommandLineOperator ):
 			self.runcmd += ' --o ' + self.outputFileName + '-' + hemi + standardMRIExtension
 			self.runcmd += ' ;\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
-		self.runcmd = self.runcmd[:-2]
+		# self.runcmd = self.runcmd[:-2]
 		# self.runcmd += ' &'
 	
 class SurfToSurfOperator( CommandLineOperator ):

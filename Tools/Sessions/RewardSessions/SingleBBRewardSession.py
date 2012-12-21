@@ -17,7 +17,8 @@ from IPython import embed as shell
 from tables import *
 import pickle
 from scipy.stats import *
+from SingleRewardSession import *
 
 
 class SingleBBRewardSession(SingleRewardSession):
-	
+	pass
