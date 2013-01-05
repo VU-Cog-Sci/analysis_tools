@@ -197,11 +197,8 @@ class SingleRewardSession(Session):
 				except OSError:
 					pass
 				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']), np.array([stimulus_onset_times[all_stimulus_trials_sum], np.ones((all_stimulus_trials_sum.sum())), np.ones((all_stimulus_trials_sum.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
-			
-		
 	
-	
-	def feat_reward_analysis(self, version = '', postFix = ['mcf'], run_feat = True):
+	def feat_reward_analysis(self, version = '', postFix = ['mcf'], run_feat = True, feat_file = 'reward_more_contrasts.fsf'):
 		"""
 		Runs feat analysis for all reward runs. 
 		Takes run and minimum blink duration in seconds as arguments
@@ -221,9 +218,9 @@ class SingleRewardSession(Session):
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
 					if 'sara' in os.uname():
-						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
+						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/' + feat_file
 					else:
-						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
+						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/' + feat_file
 				
 					REDict = {
 					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
@@ -2953,7 +2950,7 @@ class SingleRewardSession(Session):
 		
 	
 	def fsl_results_to_deco_folder(self, run_type = 'reward', postFix = ['mcf']):
-		for j,r in enumerate([self.runList[i] for i in self.conditionDict[run_type]]):
+		for j,r in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
 			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
 			stat_files = {
 							'visual_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
@@ -2980,3 +2977,28 @@ class SingleRewardSession(Session):
 							}
 			for sf in stat_files.keys():
 				os.system( 'cp ' + stat_files[sf] + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'FSL_' + sf + '_' + str(j) + '.nii.gz'))
+		for j,r in enumerate([self.runList[i] for i in self.conditionDict['mapper']]):
+			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
+			stat_files = {
+									'center_T': os.path.join(this_feat, 'stats', 'tstat1.nii.gz'),
+									'center_Z': os.path.join(this_feat, 'stats', 'zstat1.nii.gz'),
+									'center_cope': os.path.join(this_feat, 'stats', 'cope1.nii.gz'),
+									'center_pe': os.path.join(this_feat, 'stats', 'pe1.nii.gz'),
+								
+									'surround_T': os.path.join(this_feat, 'stats', 'tstat2.nii.gz'),
+									'surround_Z': os.path.join(this_feat, 'stats', 'zstat2.nii.gz'),
+									'surround_cope': os.path.join(this_feat, 'stats', 'cope2.nii.gz'),
+									'surround_pe': os.path.join(this_feat, 'stats', 'pe3.nii.gz'),
+								
+									'center>surround_T': os.path.join(this_feat, 'stats', 'tstat3.nii.gz'),
+									'center>surround_Z': os.path.join(this_feat, 'stats', 'zstat3.nii.gz'),
+									'center>surround_cope': os.path.join(this_feat, 'stats', 'cope3.nii.gz'),
+								
+									'surround>center_T': os.path.join(this_feat, 'stats', 'tstat4.nii.gz'),
+									'surround>center_Z': os.path.join(this_feat, 'stats', 'zstat4.nii.gz'),
+									'surround>center_cope': os.path.join(this_feat, 'stats', 'cope4.nii.gz'),
+							
+							}
+			for sf in stat_files.keys():
+				os.system( 'cp ' + stat_files[sf] + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'FSL_' + sf + '_' + str(j) + '.nii.gz'))
+			
