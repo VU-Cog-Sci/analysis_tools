@@ -11,6 +11,13 @@ Created by Jan Willem de Gee on 2012-06-19.
 Copyright (c) 2012 Jan Willem de Gee. All rights reserved.
 """
 
+def movingaverage(interval, window_size):
+	
+	import numpy as np
+	
+	window = np.ones(int(window_size))/float(window_size)
+	return np.convolve(interval, window, 'same')
+
 def permutationTest(group1, group2, nrand = 1000): 
 	
 	import numpy as np
