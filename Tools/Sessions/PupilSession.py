@@ -10,7 +10,6 @@ import os, sys, datetime
 import subprocess, logging
 
 thisFolder = '/Research/Pupil/PupilExperiment1/'
-
 analysisFolder = os.path.join(thisFolder, 'analysis')
 sys.path.append( analysisFolder )
 sys.path.append( os.environ['ANALYSIS_HOME'] )
@@ -846,6 +845,7 @@ class make_dataframe():
 			ppd_dum =  np.zeros(response_locked_arrays[i].shape[0])
 			for j in range(response_locked_arrays[i].shape[0]):
 				ppd_dum[j] = bottleneck.nanmax(response_locked_arrays[i][j,2500:5000]) - bpd[i][j]
+				# ppd_dum[j] = bottleneck.nanmax(response_locked_arrays[i][j,3500:5000]) - response_locked_arrays[i][j,3425]
 			ppd.append(ppd_dum)
 			
 			# PPD - Method 2 (mean minus baseline):
@@ -970,7 +970,7 @@ class make_dataframe():
 				'answer' : pd.Series(np.array(answer_yes_indices_joined, dtype = int)),
 				'response time': pd.Series(decision_time_joined),
 				'baseline pupil diameter' : pd.Series(bpd_joined),
-				'phasic pupil diameter' : pd.Series(ppd_lin_A_joined),
+				'phasic pupil diameter' : pd.Series(ppd_joined),
 				'phasic pupil diameter RT corrected' : pd.Series(ppd_lin_A_RT_corrected),
 				}
 				
