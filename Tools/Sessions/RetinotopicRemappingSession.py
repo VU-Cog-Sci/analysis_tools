@@ -171,7 +171,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		for rs in rois:
 			thisArea = np.array(np.array([np.array(NiftiImage(roi).data, dtype = bool) for roi in rs]).sum(axis = 0), dtype = bool)
 			print areas[rois.index(rs)], (thisArea * overlap_array).sum(), (thisArea * excl_mask_array).sum(), (thisArea * incl_mask_data).sum(), float((thisArea * overlap_array).sum())/float((thisArea * incl_mask_data).sum())
-			ratios.append([(thisArea * overlap_array).sum(), (thisArea * excl_mask_array).sum(), (thisArea * incl_mask_data).sum(), float((thisArea * overlap_array).sum())/float((thisArea * incl_mask_data).sum())])
+			ratios.append([(thisArea * overlap_array).sum(), (thisArea * excl_mask_array).sum(), (thisArea * incl_mask_data).sum(), float((thisArea * overlap_array).sum())/float((thisArea * incl_mask_data).sum()), thisArea.sum()])
 		ratios = np.array(ratios)
 		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'voxel_overlap_ratios.npy'), ratios)
 		# for rn, roi in enumerate(roiFileNames):

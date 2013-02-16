@@ -1263,7 +1263,7 @@ class TEAESession(EyeLinkSession):
 		# logistic and gauss (core = ab) deliver similar results
 		nafc = 2
 		sig = 'gumbel_l'	
-		core = 'ab'
+		core = 'weibull'
 		
 		tested_contrasts = np.unique(self.test_contrasts[boolean_array])
 		tested_contrast_indices = [self.test_contrasts == tc for tc in tested_contrasts]
