@@ -827,6 +827,15 @@ class RivalrySession7T(RivalryReplaySession):
 	
 	def decoding(self, runArray, run_type = 'rivalry', subSamplingRatio = 100.0, postFix = ['mcf']):
 		
+		from sklearn import datasets
+		from sklearn.cross_validation import train_test_split
+		from sklearn.grid_search import GridSearchCV
+		from sklearn.metrics import classification_report
+		from sklearn.metrics import precision_score
+		from sklearn.metrics import recall_score
+		from sklearn.svm import SVC
+		from sklearn.metrics import *
+		
 		shell()
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
@@ -866,97 +875,115 @@ class RivalrySession7T(RivalryReplaySession):
 		tr, nr_trs = niiFile.rtime, niiFile.timepoints
 		run_duration = tr * nr_trs
 		
-		# resample decoding indices to TR's:
+		# resample decoding indices to TR's
 		for i in range(nr_runs):
 			decoding_indices_BR[i] = decoding_indices_BR[i][::(round(subSamplingRatio*tr,0))]
 			decoding_indices_SFM[i] = decoding_indices_SFM[i][::(round(subSamplingRatio*tr,0))]
-		
-		# concatenate
+			
+		# concatenate runs
 		roi_data_c = np.concatenate(roi_data, axis=1).T
 		decod_BR_c = np.concatenate(decoding_indices_BR, axis=1).T
 		decod_SFM_c = np.concatenate(decoding_indices_SFM, axis=1).T
 		
-		
-		from sklearn import datasets
-		from sklearn.cross_validation import train_test_split
-		from sklearn.grid_search import GridSearchCV
-		from sklearn.metrics import classification_report
-		from sklearn.metrics import precision_score
-		from sklearn.metrics import recall_score
-		from sklearn.svm import SVC
-		
-		
-		
 		X = roi_data_c[decod_BR_c!=0]
 		y = decod_BR_c[decod_BR_c!=0]
 		
-		# Split the dataset in two equal parts
-		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=10)
 		
-		# Set the parameters by cross-validation
-		tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
+		decoding = 2
 		
-		scores = [('precision', precision_score),('recall', recall_score),]
-		
-		for score_name, score_func in scores:
-			print "# Tuning hyper-parameters for %s" % score_name
-			print
+		# Split into train / test set with a particular fraction:
+		if decoding_kind == 1:
 			
-			clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
-			clf.fit(X_train, y_train, cv=5)
+			# Split the dataset in train and test set
+			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=10)
+		
+			# Set the parameters by cross-validation
+			tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
+		
+			scores = [('precision', precision_score),('recall', recall_score),]
+		
+			for score_name, score_func in scores:
+				print "# Tuning hyper-parameters for %s" % score_name
+				print
 			
-			print "Best parameters set found on development set:"
-			print
-			print clf.best_estimator_
-			print
-			print "Grid scores on development set:"
-			print
-			for params, mean_score, scores in clf.grid_scores_:
-				print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
-			print
+				clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
+				clf.fit(X_train, y_train, cv=5)
 			
-			print "Detailed classification report:"
-			print
-			print "The model is trained on the full development set."
-			print "The scores are computed on the full evaluation set."
-			print
-			y_true, y_pred = y_test, clf.predict(X_test)
-			print classification_report(y_true, y_pred)
-			print
+				print "Best parameters set found on development set:"
+				print
+				print clf.best_estimator_
+				print
+				print "Grid scores on development set:"
+				print
+				for params, mean_score, scores in clf.grid_scores_:
+					print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
+				print
+			
+				print "Detailed classification report:"
+				print
+				print "The model is trained on the full development set."
+				print "The scores are computed on the full evaluation set."
+				print
+				y_true, y_pred = y_test, clf.predict(X_test)
+				print classification_report(y_true, y_pred)
+				print
 		
+		# Split into train / test based on runs:
+		if decoding_kind == 2:
+			
+			auc_precision = []
+			auc_recall = []
+			for i in range(nr_runs):
+				
+				train_indices = np.ones(nr_runs * nr_trs, dtype = bool)
+				train_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 0
+				train_indices = train_indices[decod_BR_c!=0]
+				
+				test_indices = np.zeros(nr_runs * nr_trs, dtype = bool)
+				test_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 1
+				test_indices = test_indices[decod_BR_c!=0]
+				
+				# Split the dataset in train and test set
+				X_train = X[train_indices]
+				X_test = X[test_indices]
+				y_train = y[train_indices]
+				y_test = y[test_indices]
 		
+				# Set the parameters by cross-validation
+				tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
 		
+				scores = [('precision', precision_score),('recall', recall_score),]
+				
+				for score_name, score_func in scores:
+					print "# Tuning hyper-parameters for %s" % score_name
+					print
+			
+					clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
+					clf.fit(X_train, y_train, cv=5)
+			
+					print "Best parameters set found on development set:"
+					print
+					print clf.best_estimator_
+					print
+					print "Grid scores on development set:"
+					print
+					for params, mean_score, scores in clf.grid_scores_:
+						print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
+					print
+			
+					print "Detailed classification report:"
+					print
+					print "The model is trained on the full development set."
+					print "The scores are computed on the full evaluation set."
+					print
+					y_true, y_pred = y_test, clf.predict(X_test)
+					print classification_report(y_true, y_pred)
+					print
 		
-		
-		
-		
-		
-		
-		
-		decod_SFM_c = np.concatenate(decoding_indices_SFM, axis=1).T
-		
-		
-		
-		
-		
-		
-		
-		
-		
-
-
-		# Loading the Digits dataset
-		digits = datasets.load_digits()
-
-		# To apply an classifier on this data, we need to flatten the image, to
-		# turn the data in a (samples, feature) matrix:
-		n_samples = len(digits.images)
-		X = digits.images.reshape((n_samples, -1))
-		y = digits.target
-		
-		
-		
-		
+					if score_name == 'precision':
+						auc_precision.append(auc_score(y_true, y_pred))
+					if score_name == 'recall':
+						auc_recall.append(auc_score(y_true, y_pred))
 		
 		
 		
@@ -975,174 +1002,174 @@ class RivalrySession7T(RivalryReplaySession):
 	
 
 
-	def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
-		reward_h5file = self.hdf5_file('reward')
-		mapper_h5file = self.hdf5_file('mapper')
-
-		conditions_data_types = ['left_CW_Z', 'left_CCW_Z', 'right_CW_Z', 'right_CCW_Z']
-		condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
-
-		# check out the duration of these runs, assuming they're all the same length.
-		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-		tr, nr_trs = niiFile.rtime, niiFile.timepoints
-		run_duration = tr * nr_trs
-
-		event_data = []
-		roi_data = []
-		nr_runs = 0
-		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf']))
-			this_run_events = []
-			for cond in condition_labels:
-				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
-			this_run_events = np.array(this_run_events) + nr_runs * run_duration
-			event_data.append(this_run_events)
-			self.rewarded_stimulus_run(r, postFix = postFix)
-			nr_runs += 1
-
-		# zscore the functional data
-		for roid in roi_data:
-			roid = ((roid.T - roid.mean(axis = 1)) / roid.std(axis = 1)).T
-			roid = (roid - roid.mean(axis = 0)) / roid.std(axis = 0)
-
-		event_data_per_run = event_data
-		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
-
-		# mapping data
-		mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
-		mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
-
-		# thresholding of mapping data stat values
-		if mask_direction == 'pos':
-			mapping_mask_L = mapping_data_L[:,0] > mask_threshold
-			mapping_mask_R = mapping_data_R[:,0] > mask_threshold
-		else:
-			mapping_mask_L = mapping_data_L[:,0] < mask_threshold
-			mapping_mask_R = mapping_data_R[:,0] < mask_threshold
-
-		which_orientation_rewarded = self.which_stimulus_rewarded % 2
-		reward_run_list = [self.runList[j] for j in self.conditionDict['reward']]
-		L_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_L]
-		R_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_R]
-
-		ormd = []
-		mcd = []
-		for mf in [0,-1]:
-			mapper_run_events = []
-			for cond in condition_labels:
-				mapper_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][mf]], extension = '.txt', postFix = [cond]))[:,0])	
-			mapper_condition_order = np.array([np.array([np.ones(m.shape) * i, m]).T for (i, m) in enumerate(mapper_run_events)]).reshape(-1,2)
-			mapper_condition_order = mapper_condition_order[np.argsort(mapper_condition_order[:,1]), 0]
-			mapper_condition_order_indices = np.array([mapper_condition_order == i for i in range(len(condition_labels))], dtype = bool)
-			mcd.append(mapper_condition_order_indices)
-			orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf','tf'])
-			orientation_mapper_data = ((orientation_mapper_data.T - orientation_mapper_data.mean(axis = 1)) / orientation_mapper_data.std(axis = 1)).T
-			orientation_mapper_data = (orientation_mapper_data - orientation_mapper_data.mean(axis = 0)) / orientation_mapper_data.std(axis = 0)
-			ormd.append(orientation_mapper_data)
-
-		mapper_condition_order_indices = np.hstack(mcd)
-		orientation_mapper_data = np.hstack(ormd)
-
-		all_ori_data = np.array([orientation_mapper_data[:,moi].T for moi in mapper_condition_order_indices])
-		L_ori_data = all_ori_data[...,mapping_mask_L]
-		R_ori_data = all_ori_data[...,mapping_mask_R]
-
-		train_data_L, train_labels_L = [np.vstack((L_ori_data[i],L_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_ori_data.shape[1]),np.ones(L_ori_data.shape[1])))  for i in [0,2]]
-		train_data_R, train_labels_R = [np.vstack((R_ori_data[i],R_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_ori_data.shape[1]),np.ones(R_ori_data.shape[1])))  for i in [0,2]]
-
-		test_data_L, test_labels_L = [np.vstack((L_data[i],L_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_data.shape[1]),np.ones(L_data.shape[1])))  for i in [0,2]]
-		test_data_R, test_labels_R = [np.vstack((R_data[i],R_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_data.shape[1]),np.ones(R_data.shape[1])))  for i in [0,2]]
-
-		# shell()
-		from sklearn import neighbors, datasets, linear_model, svm, lda, qda
-		# kern = svm.SVC(probability=True, kernel = 'linear', C=1e4) # , C=1e3), NuSVC , C = 1.0
-		# kern = svm.LinearSVC(C=1e5, loss='l1') # , C=1e3), NuSVC , C = 1.0
-		# kern = svm.SVC(probability=True, kernel='rbf', degree=2) # , C=1e3), NuSVC , C = 1.0
-		kern = lda.LDA()
-		# kern = qda.QDA()
-		# kern = neighbors.KNeighborsClassifier()
-		# kern = linear_model.LogisticRegression(C=1e5)
-
-
-		corrects_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict(test_data_L[i]) * test_labels_L[i] for i in [0,1]]
-		corrects_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict(test_data_R[i]) * test_labels_R[i] for i in [0,1]]
-
-		corrects_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in corrects_L]).reshape(4,-1)
-		corrects_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in corrects_R]).reshape(4,-1)
-
-		probs_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict_proba(test_data_L[i])[:,0] for i in [0,1]]
-		probs_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict_proba(test_data_R[i])[:,0] for i in [0,1]]
-
-		probs_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in probs_L]).reshape(4,-1)
-		probs_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in probs_R]).reshape(4,-1)
-
-		print roi
-		print 'left: ' + str(((corrects_per_cond_L + 1) / 2).mean(axis = 1))
-		print 'right: ' + str(((corrects_per_cond_R + 1) / 2).mean(axis = 1))
-
-		# now, plotting
-		alphas = np.ones(4) * 0.45
-		alphas[self.which_stimulus_rewarded] = 1.0
-		colors = ['r', 'r--', 'k', 'k--']
-		if self.which_stimulus_rewarded % 2 == 0:
-			diff_color = 'b'
-		else:
-			diff_color = 'b--'
-		if self.which_stimulus_rewarded < 2:
-			diff_alpha = [0.75, 0, 0.25]
-		else:
-			diff_alpha = [0.25, 0, 0.75]
-
-		f = pl.figure(figsize = (12,6))
-		s = f.add_subplot(2,2,1)
-		s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		s.set_title('left stimulus ROI in ' + roi)
-		s.set_xlabel('time [trials]')
-		s.set_ylabel('percentage CW')
-		s.set_xlim([0,probs_per_cond_L[0].shape[0]])
-		s.set_ylim([0,1])
-		[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
-		for i in range(4):
-			plot(probs_per_cond_L[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
-		# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
-		s = f.add_subplot(2,2,3)
-		s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		s.set_title('right stimulus ROI in ' + roi)
-		[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
-		for i in range(4):
-			plot(probs_per_cond_R[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
-		s.set_xlabel('time [trials]')
-		s.set_ylabel('percentage CW')
-		s.set_xlim([0,probs_per_cond_L[0].shape[0]])
-		s.set_ylim([0,1])
-		# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
-		leg = s.legend(fancybox = True)
-		leg.get_frame().set_alpha(0.5)
-		if leg:
-			for t in leg.get_texts():
-			    t.set_fontsize('small')    # the legend text fontsize
-			for l in leg.get_lines():
-			    l.set_linewidth(3.5)  # the legend line width
-		s = f.add_subplot(2,2,2)
-		s.set_title('histogram left ROI in ' + roi)
-		s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		for i in range(4):
-			s.axhline(y = probs_per_cond_L[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
-			pl.hist(probs_per_cond_L[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'step', linewidth = 2.5, orientation = 'horizontal' )
-		pl.text(0.5, 0.5, str(((corrects_per_cond_L + 1) / 2).mean(axis = 1)))
-		s.set_ylim([0,1])
-		s = f.add_subplot(2,2,4)
-		s.set_title('histogram right ROI in ' + roi)
-		s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		for i in range(4):
-			s.axhline(y = probs_per_cond_R[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
-			pl.hist(probs_per_cond_R[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'stepfilled', orientation = 'horizontal' )
-		pl.text(0.5, 0.5, str(((corrects_per_cond_R + 1) / 2).mean(axis = 1)))
-		s.set_ylim([0,1])
-
-		# shell()
-
-		return [((corrects_per_cond_L + 1) / 2).mean(axis = 1), ((corrects_per_cond_R + 1) / 2).mean(axis = 1)]
+	# def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
+	# 	reward_h5file = self.hdf5_file('reward')
+	# 	mapper_h5file = self.hdf5_file('mapper')
+	# 
+	# 	conditions_data_types = ['left_CW_Z', 'left_CCW_Z', 'right_CW_Z', 'right_CCW_Z']
+	# 	condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
+	# 
+	# 	# check out the duration of these runs, assuming they're all the same length.
+	# 	niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+	# 	tr, nr_trs = niiFile.rtime, niiFile.timepoints
+	# 	run_duration = tr * nr_trs
+	# 
+	# 	event_data = []
+	# 	roi_data = []
+	# 	nr_runs = 0
+	# 	for r in [self.runList[i] for i in self.conditionDict['reward']]:
+	# 		roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf']))
+	# 		this_run_events = []
+	# 		for cond in condition_labels:
+	# 			this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+	# 		this_run_events = np.array(this_run_events) + nr_runs * run_duration
+	# 		event_data.append(this_run_events)
+	# 		self.rewarded_stimulus_run(r, postFix = postFix)
+	# 		nr_runs += 1
+	# 
+	# 	# zscore the functional data
+	# 	for roid in roi_data:
+	# 		roid = ((roid.T - roid.mean(axis = 1)) / roid.std(axis = 1)).T
+	# 		roid = (roid - roid.mean(axis = 0)) / roid.std(axis = 0)
+	# 
+	# 	event_data_per_run = event_data
+	# 	event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+	# 
+	# 	# mapping data
+	# 	mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
+	# 	mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
+	# 
+	# 	# thresholding of mapping data stat values
+	# 	if mask_direction == 'pos':
+	# 		mapping_mask_L = mapping_data_L[:,0] > mask_threshold
+	# 		mapping_mask_R = mapping_data_R[:,0] > mask_threshold
+	# 	else:
+	# 		mapping_mask_L = mapping_data_L[:,0] < mask_threshold
+	# 		mapping_mask_R = mapping_data_R[:,0] < mask_threshold
+	# 
+	# 	which_orientation_rewarded = self.which_stimulus_rewarded % 2
+	# 	reward_run_list = [self.runList[j] for j in self.conditionDict['reward']]
+	# 	L_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_L]
+	# 	R_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_R]
+	# 
+	# 	ormd = []
+	# 	mcd = []
+	# 	for mf in [0,-1]:
+	# 		mapper_run_events = []
+	# 		for cond in condition_labels:
+	# 			mapper_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][mf]], extension = '.txt', postFix = [cond]))[:,0])	
+	# 		mapper_condition_order = np.array([np.array([np.ones(m.shape) * i, m]).T for (i, m) in enumerate(mapper_run_events)]).reshape(-1,2)
+	# 		mapper_condition_order = mapper_condition_order[np.argsort(mapper_condition_order[:,1]), 0]
+	# 		mapper_condition_order_indices = np.array([mapper_condition_order == i for i in range(len(condition_labels))], dtype = bool)
+	# 		mcd.append(mapper_condition_order_indices)
+	# 		orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf','tf'])
+	# 		orientation_mapper_data = ((orientation_mapper_data.T - orientation_mapper_data.mean(axis = 1)) / orientation_mapper_data.std(axis = 1)).T
+	# 		orientation_mapper_data = (orientation_mapper_data - orientation_mapper_data.mean(axis = 0)) / orientation_mapper_data.std(axis = 0)
+	# 		ormd.append(orientation_mapper_data)
+	# 
+	# 	mapper_condition_order_indices = np.hstack(mcd)
+	# 	orientation_mapper_data = np.hstack(ormd)
+	# 
+	# 	all_ori_data = np.array([orientation_mapper_data[:,moi].T for moi in mapper_condition_order_indices])
+	# 	L_ori_data = all_ori_data[...,mapping_mask_L]
+	# 	R_ori_data = all_ori_data[...,mapping_mask_R]
+	# 
+	# 	train_data_L, train_labels_L = [np.vstack((L_ori_data[i],L_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_ori_data.shape[1]),np.ones(L_ori_data.shape[1])))  for i in [0,2]]
+	# 	train_data_R, train_labels_R = [np.vstack((R_ori_data[i],R_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_ori_data.shape[1]),np.ones(R_ori_data.shape[1])))  for i in [0,2]]
+	# 
+	# 	test_data_L, test_labels_L = [np.vstack((L_data[i],L_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_data.shape[1]),np.ones(L_data.shape[1])))  for i in [0,2]]
+	# 	test_data_R, test_labels_R = [np.vstack((R_data[i],R_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_data.shape[1]),np.ones(R_data.shape[1])))  for i in [0,2]]
+	# 
+	# 	# shell()
+	# 	from sklearn import neighbors, datasets, linear_model, svm, lda, qda
+	# 	# kern = svm.SVC(probability=True, kernel = 'linear', C=1e4) # , C=1e3), NuSVC , C = 1.0
+	# 	# kern = svm.LinearSVC(C=1e5, loss='l1') # , C=1e3), NuSVC , C = 1.0
+	# 	# kern = svm.SVC(probability=True, kernel='rbf', degree=2) # , C=1e3), NuSVC , C = 1.0
+	# 	kern = lda.LDA()
+	# 	# kern = qda.QDA()
+	# 	# kern = neighbors.KNeighborsClassifier()
+	# 	# kern = linear_model.LogisticRegression(C=1e5)
+	# 
+	# 
+	# 	corrects_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict(test_data_L[i]) * test_labels_L[i] for i in [0,1]]
+	# 	corrects_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict(test_data_R[i]) * test_labels_R[i] for i in [0,1]]
+	# 
+	# 	corrects_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in corrects_L]).reshape(4,-1)
+	# 	corrects_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in corrects_R]).reshape(4,-1)
+	# 
+	# 	probs_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict_proba(test_data_L[i])[:,0] for i in [0,1]]
+	# 	probs_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict_proba(test_data_R[i])[:,0] for i in [0,1]]
+	# 
+	# 	probs_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in probs_L]).reshape(4,-1)
+	# 	probs_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in probs_R]).reshape(4,-1)
+	# 
+	# 	print roi
+	# 	print 'left: ' + str(((corrects_per_cond_L + 1) / 2).mean(axis = 1))
+	# 	print 'right: ' + str(((corrects_per_cond_R + 1) / 2).mean(axis = 1))
+	# 
+	# 	# now, plotting
+	# 	alphas = np.ones(4) * 0.45
+	# 	alphas[self.which_stimulus_rewarded] = 1.0
+	# 	colors = ['r', 'r--', 'k', 'k--']
+	# 	if self.which_stimulus_rewarded % 2 == 0:
+	# 		diff_color = 'b'
+	# 	else:
+	# 		diff_color = 'b--'
+	# 	if self.which_stimulus_rewarded < 2:
+	# 		diff_alpha = [0.75, 0, 0.25]
+	# 	else:
+	# 		diff_alpha = [0.25, 0, 0.75]
+	# 
+	# 	f = pl.figure(figsize = (12,6))
+	# 	s = f.add_subplot(2,2,1)
+	# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+	# 	s.set_title('left stimulus ROI in ' + roi)
+	# 	s.set_xlabel('time [trials]')
+	# 	s.set_ylabel('percentage CW')
+	# 	s.set_xlim([0,probs_per_cond_L[0].shape[0]])
+	# 	s.set_ylim([0,1])
+	# 	[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
+	# 	for i in range(4):
+	# 		plot(probs_per_cond_L[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
+	# 	# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
+	# 	s = f.add_subplot(2,2,3)
+	# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+	# 	s.set_title('right stimulus ROI in ' + roi)
+	# 	[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
+	# 	for i in range(4):
+	# 		plot(probs_per_cond_R[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
+	# 	s.set_xlabel('time [trials]')
+	# 	s.set_ylabel('percentage CW')
+	# 	s.set_xlim([0,probs_per_cond_L[0].shape[0]])
+	# 	s.set_ylim([0,1])
+	# 	# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
+	# 	leg = s.legend(fancybox = True)
+	# 	leg.get_frame().set_alpha(0.5)
+	# 	if leg:
+	# 		for t in leg.get_texts():
+	# 		    t.set_fontsize('small')    # the legend text fontsize
+	# 		for l in leg.get_lines():
+	# 		    l.set_linewidth(3.5)  # the legend line width
+	# 	s = f.add_subplot(2,2,2)
+	# 	s.set_title('histogram left ROI in ' + roi)
+	# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+	# 	for i in range(4):
+	# 		s.axhline(y = probs_per_cond_L[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
+	# 		pl.hist(probs_per_cond_L[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'step', linewidth = 2.5, orientation = 'horizontal' )
+	# 	pl.text(0.5, 0.5, str(((corrects_per_cond_L + 1) / 2).mean(axis = 1)))
+	# 	s.set_ylim([0,1])
+	# 	s = f.add_subplot(2,2,4)
+	# 	s.set_title('histogram right ROI in ' + roi)
+	# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+	# 	for i in range(4):
+	# 		s.axhline(y = probs_per_cond_R[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
+	# 		pl.hist(probs_per_cond_R[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'stepfilled', orientation = 'horizontal' )
+	# 	pl.text(0.5, 0.5, str(((corrects_per_cond_R + 1) / 2).mean(axis = 1)))
+	# 	s.set_ylim([0,1])
+	# 
+	# 	# shell()
+	# 
+	# 	return [((corrects_per_cond_L + 1) / 2).mean(axis = 1), ((corrects_per_cond_R + 1) / 2).mean(axis = 1)]
 
 
 
