@@ -1267,3 +1267,229 @@ class DualRewardSession(SingleRewardSession):
 			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range, np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
+	def calculate_event_history(self, times, parameters):
+		"""
+		calculate for each trial, the intertrial interval preceding that trial, based on:
+		the raw last trial
+		the last reward signal in the line
+		return the fixation reward trial onsets, with their itis depending on iti, fixation reward and general reward itis.
+		"""
+		
+		left_none_right = np.sign(parameters['x_position'])
+		CW_none_CCW = np.sign(parameters['orientation'])
+			
+		condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
+		left_CW_trials = (left_none_right == -1) * (CW_none_CCW == -1)
+		left_CCW_trials = (left_none_right == -1) * (CW_none_CCW == 1)
+		right_CW_trials = (left_none_right == 1) * (CW_none_CCW == -1)
+		right_CCW_trials = (left_none_right == 1) * (CW_none_CCW == 1)
+				
+		run.all_stimulus_trials = [left_CW_trials, left_CCW_trials, right_CW_trials, right_CCW_trials]
+		all_reward_trials = np.array(parameters['sound'], dtype = bool)
+				
+		which_trials_rewarded = np.array([(trials * all_reward_trials).sum() > 0 for trials in [left_CW_trials, left_CCW_trials, right_CW_trials, right_CCW_trials]])
+		which_stimulus_rewarded = np.arange(4)[which_trials_rewarded]
+		stim_trials_rewarded = np.squeeze(np.array(run.all_stimulus_trials)[which_trials_rewarded])
+				
+		blank_trials_rewarded = all_reward_trials - stim_trials_rewarded
+		blank_trials_silence = -np.array(np.abs(left_none_right) + blank_trials_rewarded, dtype = bool)
+				
+		
+		
+		blank_sound_within_sound_trials = np.array([np.arange(sound_trials.shape[0])[sound_trials] == x for x in np.arange(sound_trials.shape[0])[blank_sound_trials]],dtype = bool).sum(axis = 0, dtype = bool)
+		# the first sound trial shouldn't be counted if it's a blank sound trial, at least not for the fixation reward onsets
+		blank_sound_within_sound_trials[0] = False
+		
+		experiment_start_time = (times['trial_phase_timestamps'][0,0,0])
+		stim_onsets = (times['trial_phase_timestamps'][:,1,0] - experiment_start_time ) / 1000.0
+		
+		raw_itis = np.diff(stim_onsets)
+		all_reward_itis = np.diff(stim_onsets[sound_trials])
+		fixation_reward_itis = np.diff(stim_onsets[blank_sound_trials])
+		
+		raw_itis_of_fix_reward_trials = raw_itis[blank_sound_trials[1:]]
+		raw_onsets_fix_reward_trial = stim_onsets[1:][blank_sound_trials[1:]]
+		
+		all_reward_itis_of_fix_reward_trials = all_reward_itis[blank_sound_within_sound_trials[1:]]
+		all_reward_onsets_fix_reward_trial = stim_onsets[1:][sound_trials[1:]][blank_sound_within_sound_trials[1:]]
+		
+		fixation_reward_itis_fix_reward_trials = fixation_reward_itis
+		fixation_reward_onsets_fix_reward_trials = stim_onsets[blank_sound_trials][1:]
+		
+		# shell()
+		
+		return raw_itis_of_fix_reward_trials, raw_onsets_fix_reward_trial, all_reward_itis_of_fix_reward_trials, all_reward_onsets_fix_reward_trial, fixation_reward_itis_fix_reward_trials, fixation_reward_onsets_fix_reward_trials
+	
+	def deconvolve_interval_roi(self, roi, threshold = 3.5, mask_type = 'center_surround_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'mean', nr_bins = 2, iti_type = 'all_reward', binning_grain = 'session'):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		iti_data = []
+		event_data = []
+		roi_data = []
+		blink_events = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times')
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters')
+			
+			raw_itis_of_fix_reward_trials, raw_onsets_fix_reward_trial, all_reward_itis_of_fix_reward_trials, all_reward_onsets_fix_reward_trial, fixation_reward_itis_fix_reward_trials, fixation_reward_onsets_fix_reward_trials = self.calculate_event_history(trial_times, parameter_data)
+			
+			if iti_type == 'all_reward':
+				itis = all_reward_itis_of_fix_reward_trials
+				events_of_interest = all_reward_onsets_fix_reward_trial + nr_runs * run_duration
+			elif iti_type == 'fix_reward':
+				itis = fixation_reward_itis_fix_reward_trials
+				events_of_interest = fixation_reward_onsets_fix_reward_trials + nr_runs * run_duration
+			elif iti_type == 'all_trials':
+				itis = raw_itis_of_fix_reward_trials
+				events_of_interest = raw_onsets_fix_reward_trial + nr_runs * run_duration
+			
+			iti_order = np.argsort(itis)
+			stepsize = floor(itis.shape[0]/float(nr_bins))
+			if binning_grain == 'run':
+				event_data.append([events_of_interest[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)])
+				iti_data.append([itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)])
+			else:
+				iti_data.append([itis, events_of_interest])
+			# do median split here
+			# event_data.append([events_of_interest[itis < np.median(itis)], events_of_interest[itis > np.median(itis)]])
+			
+			nr_runs += 1
+		
+		if binning_grain == 'run':
+			# event_data_per_run = event_data
+			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(nr_bins)]
+			iti_data = [np.concatenate([e[i] for e in iti_data]) for i in range(nr_bins)]
+		elif binning_grain == 'session':
+			itis = np.concatenate([it[0] for it in iti_data])
+			event_times = np.concatenate([it[1] for it in iti_data])
+			iti_order = np.argsort(itis)
+			stepsize = floor(itis.shape[0]/float(nr_bins))
+			event_data = [event_times[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)]
+			iti_data = [itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)]
+		
+		# shell()
+		
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		roi_data_per_run = demeaned_roi_data
+		roi_data = np.hstack(demeaned_roi_data)
+		
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+		
+		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
+		
+		fig = pl.figure(figsize = (6, 5))
+		s = fig.add_subplot(111)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		colors = [(c, 0, 1-c) for c in np.linspace(0.1,0.9,nr_bins)]
+		time_signals = []
+		interval = [0.0,12.0]
+		# nuisance version?
+		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		nuisance_design.configure(np.array([np.hstack(blink_events)]))
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+		# shell()
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
+			# shell()
+			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), color = colors[i], alpha = 0.7, label = '%2.1f'%iti_data[i].mean())
+			
+		# the following commented code doesn't factor in blinks as nuisances
+		# deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		# for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
+		# 	pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+		# 	time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
+		s.set_title('deconvolution' + roi + ' ' + mask_type)
+		# deco_per_run = []
+		# for i, rd in enumerate(roi_data_per_run):
+		# 	event_data_this_run = event_data_per_run[i] - i * run_duration
+		# 	deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
+		# 	deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
+		# 	# deco = DeconvolutionOperator(inputObject = rd[mapping_mask,:].mean(axis = 0), eventObject = event_data_this_run, TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		# 	# deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix[i*nr_trs*2:(i+1)*nr_trs*2])
+		# 	# deco_per_run.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance)
+		# deco_per_run = np.array(deco_per_run)
+		# mean_deco = deco_per_run.mean(axis = 0)
+		# std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(roi_data_per_run))
+		# for i in range(0, mean_deco.shape[0]):
+		# 	# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
+		# 	s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), (np.array(time_signals[i]) + std_deco[i].T)[0], (np.array(time_signals[i]) - std_deco[i].T)[0], color = ['k','r'][i], alpha = 0.3 * [0.5, 1.0][i])
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+
+		reward_h5file.close()
+		mapper_h5file.close()
+		
+		pl.draw()
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'interval_' + roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '.pdf'))
+		
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type, event_data, timeseries, np.array(time_signals)]
+	
+	def deconvolve_intervals(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean'):
+		results = []
+		for roi in rois:
+			results.append([])
+			for itit in ['all_reward', 'fix_reward', 'all_trials']:
+				results[-1].append(self.deconvolve_interval_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', nr_bins = 2, signal_type = signal_type, iti_type = itit, binning_grain = 'session'))
+			# results.append(self.deconvolve_interval_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type))
+			# results.append(self.deconvolve_interval_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+		
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'deconvolution_interval_results' + '_' + signal_type
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for res in results:
+			for r in res:
+				try:
+					reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type)
+					# reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
+				except NoSuchNodeError:
+					pass
+				reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type, r[-1], 'interval deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+				# reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+		reward_h5file.close()
+	

@@ -1510,7 +1510,8 @@ class SASession(EyeLinkSession):
 				s.plot(np.array([trial_ps['saccade_endpoint_x']]), np.array([trial_ps['saccade_endpoint_y']]), colors[i] + 's', mew = 2.5, alpha = 0.5, mec = 'w', ms = 8)
 				s.plot(np.array([trial_ps['fixation_target_x'], trial_ps['saccade_target_x']]), np.array([trial_ps['fixation_target_y'], trial_ps['saccade_target_y']]), colors[i] + 'D', mew = 2.5, alpha = 0.65, mec = 'w', ms = 8)
 				# fit the screen
-				s.axis([0,800,0,600])
+				s.axis([0,1920,0,1200])
+				# s.axis([0,800,0,600])
 				s.set_title('gaze in screen coordinates')
 				
 				pre_fix_pix = np.array([trial_ps['fixation_target_x'], trial_ps['fixation_target_y']])
@@ -1555,7 +1556,9 @@ class SASession(EyeLinkSession):
 			kern =  stats.norm.pdf( np.linspace(-3.25,3.25,smooth_width) )
 			sm_signal = np.convolve( gains[1], kern / kern.sum(), 'valid' )
 			pl.plot( np.arange(sm_signal.shape[0]) + smooth_width/2.0,  sm_signal, c = colors[i], alpha = 0.5, linewidth = 1.75 )
+			np.save(os.path.join(self.base_directory, 'figs', 'saccade_gains' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '_' + str(i) + '.pdf'), gains)
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
+		
 	
 	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], plot = False):
 		"""
@@ -1684,8 +1687,8 @@ class SASession(EyeLinkSession):
 			s3.plot( binned_data[:,0], binned_data[:,1], ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
 			bd.append(binned_data)
 			
-		s1.axis([0,100,0.6,1.4])
-		s2.axis([0,100,0.6,1.4])
+		s1.axis([0,np.array([t[1] - t[0] for t in trial_ranges]).max(),0.6,1.4])
+		s2.axis([0,np.array([t[1] - t[0] for t in trial_ranges]).max(),0.6,1.4])
 		pl.savefig(os.path.join(self.base_directory, 'figs', 'saccade_gains_per_block_with_fits_' + '_' + str(self.wildcard) + '_run_' + str(run_index) + '.pdf'))
 		
 		pickle.dump(np.array(bd), file(os.path.join(self.base_directory, 'processed', 'bd.pickle'), 'w'))
