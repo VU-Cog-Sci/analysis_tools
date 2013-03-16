@@ -11,12 +11,63 @@ Created by Jan Willem de Gee on 2012-06-19.
 Copyright (c) 2012 Jan Willem de Gee. All rights reserved.
 """
 
+from IPython import embed as shell
+
+def IRF_canonical(t=0, s=1.0/(10**26), n=10.1, tmax=930):
+	
+	import math
+	
+	h = ( (s) * (t**n) * (math.e**((-n*t)/930)) )
+	return(h)
+
+
+def createRegressors(inputObject, len_run, pupil_IRF, type_convolve = 'stick'):
+	
+	import numpy as np
+	import scipy as sp
+	
+	inputObject = inputObject
+	len_run = len_run
+	pupil_IRF = pupil_IRF
+	
+	if type_convolve == 'stick':
+		regr = np.zeros((len_run,inputObject.shape[0]))
+		for i in range(inputObject.shape[0]):
+			start = round(inputObject[i,0], 0)
+			regr[start,i] = 1.0
+		regr_collapsed = np.sum(regr, axis=1)
+	
+	if type_convolve == 'ramp_down':
+		regr = np.zeros((len_run,inputObject.shape[0]))
+		for i in range(inputObject.shape[0]):
+			start = round(inputObject[i,0], 0)
+			dur = round(inputObject[i,1], 0)
+			regr[start:start+dur,i] = np.linspace((2/dur),0,dur)
+		regr_collapsed = np.sum(regr, axis=1)
+	
+	if type_convolve == 'ramp_up':
+		regr = np.zeros((len_run,inputObject.shape[0]))
+		for i in range(inputObject.shape[0]):
+			start = round(inputObject[i,0], 0)
+			dur = round(inputObject[i,1], 0)
+			regr[start:start+dur,i] = np.linspace(0,(2/dur),dur)
+		regr_collapsed = np.sum(regr, axis=1)
+	
+	regr_convolved = np.zeros((len_run,inputObject.shape[0]))
+	for i in range(inputObject.shape[0]):
+		regr_convolved[:,i] = (sp.convolve(regr[:,i], pupil_IRF, 'full'))[:-(pupil_IRF.shape[0]-1)]
+	regr_convolved_collapsed = np.sum(regr_convolved, axis=1)
+	
+	return(regr_collapsed, regr_convolved_collapsed)
+
+
 def movingaverage(interval, window_size):
 	
 	import numpy as np
 	
 	window = np.ones(int(window_size))/float(window_size)
 	return np.convolve(interval, window, 'same')
+
 
 def permutationTest(group1, group2, nrand = 1000): 
 	
@@ -211,7 +262,7 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 		min_value = min(MEANS[i]-SEMS[i], MEANS[j]-SEMS[j])
 		dx = abs(X[i]-X[j])
 		
-		props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':22,'shrinkB':22,'lw':2}
+		props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':12,'shrinkB':12,'lw':2}
 		# ax.annotate(text, xy=(X[i],y+0.4), zorder=10) 
 		# ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
 		ax.annotate('', xy=(X[i],max_value), xytext=(X[j],max_value), arrowprops=props)
@@ -219,16 +270,16 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 		if values == False:
 			if text == 'n.s.':
 				kwargs = {'zorder':10, 'size':16, 'ha':'center'}
-				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.0/10))), **kwargs)
 			if text != 'n.s.':
 				kwargs = {'zorder':10, 'size':24, 'ha':'center'}
-				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.0/10))), **kwargs)
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(0.60/10))), **kwargs)
 		if values == True:
-			kwargs = {'zorder':10, 'size':16, 'ha':'center'}
+			kwargs = {'zorder':10, 'size':12, 'ha':'center'}
 			ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
 	
 	
-	my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 4, 'capsize': 0, 'align': 'center'}
+	my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
 	
 	N = 4
 	ind = np.linspace(0,2,4)  # the x locations for the groups
@@ -236,29 +287,32 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 	spacing = [0.30, 0, 0, -0.30]
 	
 	# FIGURE 1
-	fig = plt.figure(figsize=(10,6))
+	fig = plt.figure(figsize=(5,4))
 	ax = fig.add_subplot(111)
 	if type_plot == 1:
 		for i in range(N):
-			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','r','b'][i], alpha = [1,.5,.5,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 2, capsize = 0, align = 'center')
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','r','b'][i], alpha = [1,.5,.5,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
 		simpleaxis(ax)
 		spine_shift(ax)
-		ax.set_xticklabels( ('HIT', 'MISS','FA', 'CR') )
+		ax.set_xticklabels( ('H', 'M','FA', 'CR') )
 	if type_plot == 2:
 		for i in range(N):
-			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','k','k'][i], alpha = [1,1,.5,.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 2, capsize = 0, align = 'center')
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','k','k'][i], alpha = [1,1,.5,.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
 		simpleaxis(ax)
 		spine_shift(ax)
-		ax.set_xticklabels( ('YES', 'NO','CORR.', 'INCORR.') )
+		ax.set_xticklabels( ('Yes', 'No','Corr.', 'Incorr.') )
 	ax.set_xticks( (ind[0]+bar_width, ind[1], ind[2], ind[3]-bar_width) )
-	ax.tick_params(axis='x', which='major', labelsize=16)
-	ax.tick_params(axis='y', which='major', labelsize=16)
+	ax.tick_params(axis='x', which='major', labelsize=10)
+	ax.tick_params(axis='y', which='major', labelsize=10)
 	maxvalue = max(MEANS)+max(SEMS)
 	minvalue = min(MEANS)-min(SEMS)
 	if y_axis_swap == True:
 		ax.set_ylim([plt.axis()[2] - (minvalue - plt.axis()[2]) * 1.2, 0])
 	if y_axis_swap == False:
 		ax.set_ylim([0, plt.axis()[2] + (maxvalue - plt.axis()[2]) * 1.2])
+	plt.subplots_adjust(top = 0.925, bottom = 0.1, left = 0.15)
+	plt.gca().spines["bottom"].set_linewidth(.5)
+	plt.gca().spines["left"].set_linewidth(.5)
 	
 	# STATS:
 	
@@ -1009,35 +1063,55 @@ def plot_PPDs_feed2(subject, ppd_feed, hit, cr, confidence_0, confidence_1, conf
 		
 		ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
 		
-		ax.annotate(text, xy=(x,y+0.15), zorder=10, size='24', ha='center')
+		ax.annotate(text, xy=(x,y+0.15), zorder=10, size=24, ha='center')
+	
+	def simpleaxis(ax):
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
+		ax.get_xaxis().tick_bottom()
+		ax.get_yaxis().tick_left()
+	
+	def spine_shift(ax, shift = 10):
+		for loc, spine in ax.spines.iteritems():
+			if loc in ['left','bottom']:
+				spine.set_position(('outward', shift)) # outward by 10 points
+			elif loc in ['right','top']:
+				spine.set_color('none') # don't draw spine
+			else:
+				raise ValueError('unknown spine location: %s'%loc)
 	
 	N = 8
 	ind = np.arange(N)  # the x locations for the groups
 	width = 0.45       # the width of the bars
-	fig = plt.figure(figsize=(10,6))
+	fig = plt.figure(figsize=(7,4))
 	ax = fig.add_subplot(111)
-	rects1 = ax.bar(ind[0]+width, hit1, width, yerr=hit1_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center' )
-	rects2 = ax.bar(ind[1], hit2, width, yerr=hit2_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center' )
-	rects3 = ax.bar(ind[2]-width, hit3, width, yerr=hit3_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center' )
-	rects4 = ax.bar(ind[2]+(0.25*width), hit4, width, yerr=hit4_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center' )
+	rects1 = ax.bar(ind[0]+width, hit1, width, yerr=hit1_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center', capsize=0 )
+	rects2 = ax.bar(ind[1], hit2, width, yerr=hit2_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center', capsize=0 )
+	rects3 = ax.bar(ind[2]-width, hit3, width, yerr=hit3_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center', capsize=0 )
+	rects4 = ax.bar(ind[2]+(0.25*width), hit4, width, yerr=hit4_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center', capsize=0 )
+	rects5 = ax.bar(ind[3]+width, cr1, width, yerr=cr1_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center', capsize=0 )
+	rects6 = ax.bar(ind[4], cr2, width, yerr=cr2_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center', capsize=0 )
+	rects7 = ax.bar(ind[5]-width, cr3, width, yerr=cr3_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center', capsize=0 )
+	rects8 = ax.bar(ind[5]+(0.25*width), cr4, width, yerr=cr4_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center', capsize=0 )
 	
-	
-	rects5 = ax.bar(ind[3]+width, cr1, width, yerr=cr1_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center' )
-	rects6 = ax.bar(ind[4], cr2, width, yerr=cr2_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center' )
-	rects7 = ax.bar(ind[5]-width, cr3, width, yerr=cr3_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center' )
-	rects8 = ax.bar(ind[5]+(0.25*width), cr4, width, yerr=cr4_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center' )
-	
+	simpleaxis(ax)
+	spine_shift(ax)
 	
 	# ax.set_ylim( (0.5) )
-	ax.set_ylabel('PPD - linearly projected', size = 'xx-large')
-	ax.set_title(str(subject) + ' - mean PPD after feedback', size = 'xx-large')
+	ax.set_ylabel('PPR amplitude (linearly projected)', size = 10)
+	ax.set_title('mean PPR after feedback', size = 12)
 	ax.set_xticks( (ind[0]+width, ind[1], ind[2]-width, ind[2]+(0.25*width), ind[3]+width, ind[4], ind[5]-width, ind[5]+(0.25*width)) )
-	ax.set_xticklabels( ('HIT - not', 'HIT - little', 'HIT - quite', 'HIT - very', 'CR - not', 'CR - little', 'CR - quite', 'CR - very') )
-	ax.tick_params(axis='x', which='major', labelsize=16)
-	ax.tick_params(axis='y', which='major', labelsize=16)
-	ax.set_ylim(ymin = 0, ymax = 2)
+	ax.set_xticklabels( ('H --', 'H -', 'H +', 'H ++', 'CR --', 'CR -', 'CR +', 'CR ++') )
+	ax.tick_params(axis='x', which='major', labelsize=10)
+	ax.tick_params(axis='y', which='major', labelsize=10)
 	
-	fig.autofmt_xdate()
+	maxvalue = max(MEANS)+max(SEMS)
+	minvalue = min(MEANS)-min(SEMS)
+	ax.set_ylim([0, plt.axis()[2] + (maxvalue - plt.axis()[2]) * 1.3])
+	ax.set_xlim([0,5.5])
+	plt.gca().spines["bottom"].set_linewidth(.5)
+	plt.gca().spines["left"].set_linewidth(.5)
+	plt.subplots_adjust(top = 0.925, bottom = 0.1)
 	
 	X = (ind[0]+width, ind[1], ind[2]-width, ind[2]+(0.25*width), ind[3]+width, ind[4], ind[5]-width, ind[5]+(0.25*width))
 	
@@ -1076,7 +1150,6 @@ def plot_PPDs_feed2(subject, ppd_feed, hit, cr, confidence_0, confidence_1, conf
 	label_diff(0,1,sig1,X,MEANS, SEMS)
 	label_diff(1,2,sig2,X,MEANS, SEMS)
 	label_diff(2,3,sig3,X,MEANS, SEMS)
-	
 	
 	props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':10,'shrinkB':10,'lw':2}
 	
@@ -1143,35 +1216,59 @@ def plot_PPDs_feed3(subject, ppd_feed, hit, cr, confidence_0, confidence_1, conf
 		
 		ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
 		
-		ax.annotate(text, xy=(x,y+0.15), zorder=10, size='24', ha='center')
+		ax.annotate(text, xy=(x,y+0.15), zorder=10, size=24, ha='center')
 		
+	my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
+	
+	def simpleaxis(ax):
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
+		ax.get_xaxis().tick_bottom()
+		ax.get_yaxis().tick_left()
+	
+	def spine_shift(ax, shift = 10):
+		for loc, spine in ax.spines.iteritems():
+			if loc in ['left','bottom']:
+				spine.set_position(('outward', shift)) # outward by 10 points
+			elif loc in ['right','top']:
+				spine.set_color('none') # don't draw spine
+			else:
+				raise ValueError('unknown spine location: %s'%loc)
+	
 	N = 8
 	ind = np.arange(N)  # the x locations for the groups
 	width = 0.45       # the width of the bars
-	fig = plt.figure(figsize=(10,6))
+	fig = plt.figure(figsize=(7,4))
 	ax = fig.add_subplot(111)
-	rects1 = ax.bar(ind[0]+width, hit1, width, yerr=hit1_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center' )
-	rects2 = ax.bar(ind[1], hit2, width, yerr=hit2_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center' )
-	rects3 = ax.bar(ind[2]-width, hit3, width, yerr=hit3_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center' )
-	rects4 = ax.bar(ind[2]+(0.25*width), hit4, width, yerr=hit4_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center' )
+	rects1 = ax.bar(ind[0]+width, hit1, width, yerr=hit1_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center', capsize=0 )
+	rects2 = ax.bar(ind[1], hit2, width, yerr=hit2_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center', capsize=0 )
+	rects3 = ax.bar(ind[2]-width, hit3, width, yerr=hit3_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center', capsize=0 )
+	rects4 = ax.bar(ind[2]+(0.25*width), hit4, width, yerr=hit4_sem, color='r', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center', capsize=0 )
+	rects5 = ax.bar(ind[3]+width, cr1, width, yerr=cr1_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center', capsize=0 )
+	rects6 = ax.bar(ind[4], cr2, width, yerr=cr2_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center', capsize=0 )
+	rects7 = ax.bar(ind[5]-width, cr3, width, yerr=cr3_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center', capsize=0 )
+	rects8 = ax.bar(ind[5]+(0.25*width), cr4, width, yerr=cr4_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center', capsize=0 )
 	
-	
-	rects5 = ax.bar(ind[3]+width, cr1, width, yerr=cr1_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.15, align ='center' )
-	rects6 = ax.bar(ind[4], cr2, width, yerr=cr2_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.40, align ='center' )
-	rects7 = ax.bar(ind[5]-width, cr3, width, yerr=cr3_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.65, align ='center' )
-	rects8 = ax.bar(ind[5]+(0.25*width), cr4, width, yerr=cr4_sem, color='b', edgecolor=('k'), ecolor = 'k', linewidth = 0, alpha = 0.90, align ='center' )
-	
+	simpleaxis(ax)
+	spine_shift(ax)
 	
 	# ax.set_ylim( (0.5) )
-	ax.set_ylabel('PPD - linearly projected', size = 'xx-large')
-	ax.set_title(str(subject) + ' - mean PPD after feedback', size = 'xx-large')
+	ax.set_ylabel('PPR amplitude (linearly projected)', size = 10)
+	ax.set_title('mean PPR after feedback', size = 12)
 	ax.set_xticks( (ind[0]+width, ind[1], ind[2]-width, ind[2]+(0.25*width), ind[3]+width, ind[4], ind[5]-width, ind[5]+(0.25*width)) )
-	ax.set_xticklabels( ('HIT - not', 'HIT - little', 'HIT - quite', 'HIT - very', 'CR - not', 'CR - little', 'CR - quite', 'CR - very') )
-	ax.tick_params(axis='x', which='major', labelsize=16)
-	ax.tick_params(axis='y', which='major', labelsize=16)
-	ax.set_ylim(ymin = 0, ymax = 1.5)
+	ax.set_xticklabels( ('H --', 'H -', 'H +', 'H ++', 'CR --', 'CR -', 'CR +', 'CR ++') )
+	ax.tick_params(axis='x', which='major', labelsize=10)
+	ax.tick_params(axis='y', which='major', labelsize=10)
 	
-	fig.autofmt_xdate()
+	maxvalue = max(MEANS)+max(SEMS)
+	minvalue = min(MEANS)-min(SEMS)
+	ax.set_ylim([0, plt.axis()[2] + (maxvalue - plt.axis()[2]) * 1.3])
+	ax.set_xlim([0,5.5])
+	plt.gca().spines["bottom"].set_linewidth(.5)
+	plt.gca().spines["left"].set_linewidth(.5)
+	plt.subplots_adjust(top = 0.925, bottom = 0.1)
+		
+	# fig.autofmt_xdate()
 	
 	X = (ind[0]+width, ind[1], ind[2]-width, ind[2]+(0.25*width), ind[3]+width, ind[4], ind[5]-width, ind[5]+(0.25*width))
 	
@@ -1313,8 +1410,8 @@ def SDT_measures_per_subject_per_run(subject, target_indices, no_target_indices,
 		
 		# Third, calculate z-scored hit_rate and fa_rate 
 		# For whole trial:
-		hit_rate_joined = float(np.sum(hit_indices[i])+1)/float(np.sum(target_indices[i])+1)
-		fa_rate_joined = float(np.sum(fa_indices[i])+1)/float(np.sum(no_target_indices[i])+1)
+		hit_rate_joined = float(np.sum(hit_indices[i])+1.0)/float(np.sum(target_indices[i])+2.0)
+		fa_rate_joined = float(np.sum(fa_indices[i])+1.0)/float(np.sum(no_target_indices[i])+2.0)
 		hit_rate_joined_zscored = stats.norm.isf(1-hit_rate_joined)
 		fa_rate_joined_zscored = stats.norm.isf(1-fa_rate_joined)
 		
@@ -1324,6 +1421,142 @@ def SDT_measures_per_subject_per_run(subject, target_indices, no_target_indices,
 		criterion.append( -((hit_rate_joined_zscored + fa_rate_joined_zscored) / 2) )
 		
 	return(d_prime, criterion)
+
+
+
+def GLM_betas_barplot(subject, beta1, beta2, beta3, beta4, beta5, p1, p2):
+	
+	import numpy as np
+	import scipy as sp
+	import scipy.stats as stats
+	import matplotlib.pyplot as plt
+		
+	def simpleaxis(ax):
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
+		ax.get_xaxis().tick_bottom()
+		ax.get_yaxis().tick_left()
+	
+	def spine_shift(ax, shift = 10):
+		for loc, spine in ax.spines.iteritems():
+			if loc in ['left','bottom']:
+				spine.set_position(('outward', shift)) # outward by 10 points
+			elif loc in ['right','top']:
+				spine.set_color('none') # don't draw spine
+			else:
+				raise ValueError('unknown spine location: %s'%loc)
+	
+	beta1_mean = sp.mean(beta1)
+	beta2_mean = sp.mean(beta2)
+	beta3_mean = sp.mean(beta3)
+	beta4_mean = sp.mean(beta4)
+	beta5_mean = sp.mean(beta5)
+	
+	beta1_sem = stats.sem(beta1)
+	beta2_sem = stats.sem(beta2)
+	beta3_sem = stats.sem(beta3)
+	beta4_sem = stats.sem(beta4)
+	beta5_sem = stats.sem(beta5)
+	
+	MEANS = (beta1_mean, beta2_mean, beta3_mean, beta4_mean, beta5_mean)
+	SEMS = (beta1_sem, beta2_sem, beta3_sem, beta4_sem, beta5_sem)
+	
+	sig1 = 'n.s.'
+	if p1 <= 0.05:
+		sig1 = '*'
+	if p1 <= 0.01:
+		sig1 = '**'
+	if p1 <= 0.001:
+		sig1 = '***'
+	
+	sig2 = 'n.s.'
+	if p2 <= 0.05:
+		sig2 = '*'
+	if p2 <= 0.01:
+		sig2 = '**'
+	if p2 <= 0.001:
+		sig2 = '***'
+	
+	def label_diff(i,j,text,X,Y,Z, values = False):
+		
+		# i = 2
+		# j = 3
+		# text = '***'
+		# X = (ind[0]+width, ind[1], ind[2], ind[3]-width)
+		# MEANS = MEANS
+		# SEMS = SEMS
+
+		middle_x = (X[i]+X[j])/2
+		max_value = max(MEANS[i]+SEMS[i], MEANS[j]+SEMS[j])
+		min_value = min(MEANS[i]-SEMS[i], MEANS[j]-SEMS[j])
+		dx = abs(X[i]-X[j])
+		
+		props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':8,'shrinkB':8,'lw':2}
+		# ax.annotate(text, xy=(X[i],y+0.4), zorder=10) 
+		# ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
+		ax.annotate('', xy=(X[i],max_value), xytext=(X[j],max_value), arrowprops=props)
+		
+		if values == False:
+			if text == 'n.s.':
+				kwargs = {'zorder':10, 'size':16, 'ha':'center'}
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.0/10))), **kwargs)
+			if text != 'n.s.':
+				kwargs = {'zorder':10, 'size':24, 'ha':'center'}
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(0.60/10))), **kwargs)
+		if values == True:
+			kwargs = {'zorder':10, 'size':12, 'ha':'center'}
+			ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
+	
+	my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
+	
+	N = 5
+	ind = np.linspace(0,2.6667,5)  # the x locations for the groups
+	bar_width = 0.30       # the width of the bars
+	spacing = [0.30, 0, 0, -0.30, -.30]
+	
+	# FIGURE 1
+	fig = plt.figure(figsize=(5,4))
+	ax = fig.add_subplot(111)
+	for i in range(N):
+		ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['k','k','k','k','k'][i], alpha = [0.80, 0.80, 0.80, 0.80, 0.80][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+	simpleaxis(ax)
+	spine_shift(ax)
+	ax.set_xticklabels( ('Stim', 'Resp','Down', 'Up', 'Feed') )
+	ax.set_xticks( (ind[0]+bar_width, ind[1], ind[2], ind[3]-bar_width, ind[4]-bar_width) )
+	ax.tick_params(axis='x', which='major', labelsize=10)
+	ax.tick_params(axis='y', which='major', labelsize=10)
+	maxvalue = max(MEANS)+max(SEMS)
+	minvalue = min(MEANS)-max(SEMS)
+	ax.set_ylim([minvalue - abs(minvalue/20.0), maxvalue + (maxvalue/5.0)])
+	ax.set_xlim(right = ind[4])
+	plt.subplots_adjust(top = 0.925, bottom = 0.1, left = 0.15)
+	plt.gca().spines["bottom"].set_linewidth(.5)
+	plt.gca().spines["left"].set_linewidth(.5)
+	
+	# STATS:
+	
+	X = (ind[0]+bar_width, ind[1], ind[2], ind[3]-bar_width)
+	
+	label_diff(0,1,sig1,X,MEANS, SEMS)
+	label_diff(2,3,sig2,X,MEANS, SEMS)
+	
+	return(fig)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
