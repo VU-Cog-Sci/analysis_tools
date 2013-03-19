@@ -58,7 +58,7 @@ class EyeLinkSession(object):
 		self.create_folder_hierarchy()
 		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
 		
-		self.saccade_dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')])
+		self.saccade_dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_time_raw', '<f8'), ('end_time_raw', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8')])
 		
 		# add logging for this session
 		# sessions create their own logging file handler
@@ -94,8 +94,12 @@ class EyeLinkSession(object):
 		"""docstring for import_raw_data"""
 		os.chdir(original_data_directory)
 		behavior_files = subprocess.Popen('ls ' + self.wildcard + '*_outputDict.pickle', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
-		self.logger.info('importing files ' + str(behavior_files) + ' from ' + original_data_directory)
-		eye_files = [f.split('_outputDict.pickle')[0] + '.edf' for f in behavior_files]
+		if len(behavior_files)>0:
+			eye_files = [f.split('_outputDict.pickle')[0] + '.edf' for f in behavior_files]
+		else:
+			behavior_files = subprocess.Popen('ls ' + self.wildcard + '*.edf', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
+			eye_files = subprocess.Popen('ls ' + self.wildcard + '*.edf', shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('importing files ' + str(eye_files) + ' from ' + original_data_directory)
 		
 		# put output dicts and eyelink files next to one another - that's what the eyelinkoperator expects.
 		for i in range(len(behavior_files)):
@@ -287,7 +291,7 @@ class EyeLinkSession(object):
 	# 	h5f.close()
 	# 	return export_data
 	
-	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 5, sample_times = None, pixels_per_degree = 33.0, plot = False):
+	def detect_saccade_from_data(self, xy_data = None, xy_velocity_data = None, l = 7.5, sample_times = None, pixels_per_degree = 33.0, plot = False):
 		"""
 		detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 		L determines the threshold - standard set at 5 median-based standard deviations from the median
@@ -359,7 +363,7 @@ class EyeLinkSession(object):
 					sacc_on = False
 		
 		threshold_crossing_indices = np.array(tci)
-		
+		# shell()
 		if threshold_crossing_indices.shape[0] > 0:
 			saccades = np.zeros( (floor(sample_times[threshold_crossing_indices].shape[0]/2.0)) , dtype = self.saccade_dtype )
 		
@@ -368,25 +372,28 @@ class EyeLinkSession(object):
 				j = i/2
 				saccades[j]['start_time'] = sample_times[threshold_crossing_indices[i]] - sample_times[0]
 				saccades[j]['end_time'] = sample_times[threshold_crossing_indices[i+1]] - sample_times[0]
+				saccades[j]['start_time_raw'] = sample_times[threshold_crossing_indices[i]]
+				saccades[j]['end_time_raw'] = sample_times[threshold_crossing_indices[i+1]]
 				saccades[j]['start_point'][:] = xy_data[threshold_crossing_indices[i],:]
 				saccades[j]['end_point'][:] = xy_data[threshold_crossing_indices[i+1],:]
 				saccades[j]['duration'] = saccades[j]['end_time'] - saccades[j]['start_time']
-				saccades[j]['vector'] = saccades[j]['end_point'] - saccades[j]['start_point']
+				saccades[j]['vector'][:] = saccades[j]['end_point'] - saccades[j]['start_point']
 				saccades[j]['amplitude'] = np.linalg.norm(saccades[j]['vector'])
 				saccades[j]['direction'] = math.atan(saccades[j]['vector'][0] / (saccades[j]['vector'][1] + 0.00001))
-				saccades[j]['peak_velocity'] = vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]].max()
+				saccades[j]['peak_velocity'] = np.array([np.linalg.norm(v) for v in vel_data[threshold_crossing_indices[i]:threshold_crossing_indices[i+1]]]).max()
 		else: saccades = np.array([])
 		
 		if plot:
-			fig = pl.figure(figsize = (8,3))
-#			pl.plot(sample_times[:vel_data[0].shape[0]], vel_data[0], 'r')
-#			pl.plot(sample_times[:vel_data[0].shape[0]], vel_data[1], 'c')
-			pl.plot(sample_times[:scaled_vel_data.shape[0]], np.abs(scaled_vel_data), 'k', alpha = 0.5)
-			pl.plot(sample_times[:scaled_vel_data.shape[0]], np.array([np.linalg.norm(s) for s in scaled_vel_data]), 'b')
+			fig = pl.figure(figsize = (14,4))
+			pl.axhline(0, linewidth = 0.125)
+			pl.plot(scaled_vel_data[::10,0], 'r', rasterized = True)
+			pl.plot(scaled_vel_data[::10,1], 'c', rasterized = True)
+			# pl.plot(sample_times[:scaled_vel_data.shape[0]:10], np.abs(scaled_vel_data[::10]), 'k', alpha = 0.5, rasterized = True)
+			pl.plot(np.array([np.linalg.norm(s) for s in scaled_vel_data[::10]]), 'b', rasterized = True)
 			if saccades.shape[0] > 0:
-				pl.scatter(sample_times[threshold_crossing_indices], np.ones((sample_times[threshold_crossing_indices].shape[0]))* 10, s = 25, color = 'k')
-			pl.ylim([-20,20])
-		
+				pl.scatter(threshold_crossing_indices / 10.0, np.ones((sample_times[threshold_crossing_indices].shape[0]))* 10, s = 25, color = 'k')
+			# pl.ylim([-10,20])
+			# pl.show()
 		return saccades
 		
 	
@@ -2012,3 +2019,171 @@ class MIBSession(EyeLinkSession):
 		pl.savefig(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '_bars.pdf'))		
 		np.save(os.path.join(os.path.split(self.hdf5_filename)[0], self.subject.initials + '.npy'), np.array([irms[:,0], dtms[:,0], ids[:,0], vds[:,0], rate]))
 		return np.array([irms[:,0], dtms[:,0], ids[:,0], vds[:,0], rate])
+
+class PupilSDTEyeLinkSession(EyeLinkSession):
+	def __init__(self, ID, subject, project_name, experiment_name, base_directory, wildcard, loggingLevel = logging.DEBUG):
+		self.ID = ID
+		self.subject = subject
+		self.project_name = project_name
+		self.experiment_name = experiment_name
+		self.wildcard = wildcard
+		self.base_directory = base_directory
+		
+		self.hdf5_filename = os.path.join(self.base_directory, self.experiment_name, self.subject.initials, self.subject.initials + '.hdf5')
+		
+		self.saccade_dtype = np.dtype([('peak_velocity', '<f8'), ('start_time', '<f8'), ('end_time', '<f8'), ('start_time_raw', '<f8'), ('end_time_raw', '<f8'), ('start_point', '<f8', (2)), ('vector', '<f8', (2)), ('end_point', '<f8', (2)), ('amplitude', '<f8'), ('duration', '<f8'), ('direction', '<f8'), ('end_timestamp', '<f8'), ('trial_nr', '<f8')])
+		
+		# add logging for this session
+		# sessions create their own logging file handler
+		self.loggingLevel = loggingLevel
+		self.logger = logging.getLogger( self.__class__.__name__ )
+		self.logger.setLevel(self.loggingLevel)
+		addLoggingHandler( logging.handlers.TimedRotatingFileHandler( os.path.join(self.base_directory, self.experiment_name, self.subject.initials, 'sessionLogFile.log'), when = 'H', delay = 2, backupCount = 10), loggingLevel = self.loggingLevel )
+		loggingLevelSetup()
+		for handler in logging_handlers:
+			self.logger.addHandler(handler)
+		self.logger.info('starting analysis of session ' + str(self.ID))
+	
+	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
+		h5f = openFile(self.hdf5_filename, mode = "r" )
+		run = None
+		for r in h5f.iterNodes(where = '/', classname = 'Group'):
+			if not isinstance(run_index, str):
+				if 'run_' + str(run_index) == r._v_name:
+					run = r
+					break
+			else:
+				if run_index == r._v_name:
+					run = r
+					break
+		if run == None:
+			self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+		timings = run.trial_times.read()
+		gaze_timestamps = run.gaze_data.read()[:,0] / scaling_factor
+		
+		# select data_type
+		if data_type == 'smoothed_velocity_x':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,0] / scaling_factor
+		elif data_type == 'smoothed_velocity_y':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,1] / scaling_factor
+		elif data_type == 'smoothed_velocity_xy':
+			all_data_of_requested_type = run.smoothed_velocity_data.read()[:,[0,1]] / scaling_factor
+		elif data_type == 'velocity_x':
+			all_data_of_requested_type = run.gaze_data.read()[:,[4]] / scaling_factor
+		elif data_type == 'velocity_y':
+			all_data_of_requested_type = run.gaze_data.read()[:,[5]] / scaling_factor
+		elif data_type == 'velocity_xy':
+			all_data_of_requested_type = run.gaze_data.read()[:,[4,5]] / scaling_factor
+		elif data_type == 'gaze_xy':
+			all_data_of_requested_type = run.gaze_data.read()[:,[1,2]] / scaling_factor
+		elif data_type == 'gaze_x':
+			all_data_of_requested_type = run.gaze_data.read()[:,1] / scaling_factor
+		elif data_type == 'gaze_y':
+			all_data_of_requested_type = run.gaze_data.read()[:,2] / scaling_factor
+		elif data_type == 'smoothed_gaze_xy':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,[0,1]] / scaling_factor
+		elif data_type == 'smoothed_gaze_x':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,0] / scaling_factor
+		elif data_type == 'smoothed_gaze_y':
+			all_data_of_requested_type = run.smoothed_gaze_data.read()[:,1] / scaling_factor
+		elif data_type == 'pupil_size':
+			all_data_of_requested_type = run.gaze_data.read()[:,3] / scaling_factor
+		
+		# run for loop for actual data
+		export_data = []
+		for (i, trial_range) in zip(range(len(trial_ranges)), trial_ranges):
+			export_data.append([])
+			for t in timings[trial_range[0]:trial_range[1]]:
+				phase_timestamps = np.concatenate((np.array([t['trial_start_EL_timestamp']]), t['trial_phase_timestamps'][:,0], np.array([t['trial_end_EL_timestamp']])))
+				which_samples = (gaze_timestamps >= phase_timestamps[trial_phase_range[0]]) * (gaze_timestamps <= phase_timestamps[trial_phase_range[1]])
+				export_data[-1].append(np.vstack((gaze_timestamps[which_samples].T, all_data_of_requested_type[which_samples].T)).T)
+		# clean-up
+		h5f.close()
+		return export_data
+	
+	def find_saccades_per_trial_for_run(self, run_index = 0, trial_phase_range = [1,4], trial_ranges = [[0,80]], plot = True, save = True):
+		"""
+		finds saccades in a session 
+		"""
+		self.logger.debug('importing data from run # ' + str(run_index) + ' for saccade detection')
+		gaze_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'gaze_xy', scaling_factor = 1.0)
+		vel_data = self.get_EL_samples_per_trial(run_index = run_index, trial_ranges = trial_ranges, trial_phase_range = trial_phase_range, data_type = 'velocity_xy', scaling_factor = 1.0)
+		
+		self.import_parameters(run_name = 'run_' + str(run_index))
+		ps = [self.parameter_data[tr[0]:tr[1]] for tr in trial_ranges]
+		
+		if plot:
+			from matplotlib.backends.backend_pdf import PdfPages
+			pp = PdfPages(os.path.join(os.path.split(self.hdf5_filename)[0], 'saccades_run_' + str(run_index) + '.pdf'))
+		
+		saccades = []
+		for (i, trial_block_vel_data, trial_block_gaze_data) in zip(range(len(vel_data)), vel_data, gaze_data):
+			saccades.append([])
+			for (j, trial_vel_data, trial_gaze_data) in zip(range(len(trial_block_vel_data)), trial_block_vel_data, trial_block_gaze_data):
+				saccs = self.detect_saccade_from_data(xy_data = trial_gaze_data[:,1:], xy_velocity_data = trial_vel_data[:,1:], l = 5, sample_times = trial_gaze_data[:,0], pixels_per_degree = 1.0, plot = plot)
+				if saccs.shape[0] > 0:
+					for s in saccs:	# add trial number to saccades for clarity
+						s['trial_nr'] = j
+					saccades[-1].append(saccs)
+				else:
+					saccades[-1].append(np.zeros((1), dtype = self.saccade_dtype))
+				if plot:
+					pp.savefig()
+					pl.close()
+		
+		if plot:
+			pp.close()
+		
+		if save:
+			h5f = openFile(self.hdf5_filename, mode = "r+" )
+			run = None
+			for r in h5f.iterNodes(where = '/', classname = 'Group'):
+				if not isinstance(run_index, str):
+					if 'run_' + str(run_index) == r._v_name:
+						run = r
+						break
+				else:
+					if run_index == r._v_name:
+						run = r
+						break
+			if run == None:
+				self.logger.error('No run named ' + self.wildcard + '_run_' + str(run_index) + ' in this session\'s hdf5 file ' + self.hdf5_filename )
+			else:
+				self.logger.info( 'About to enter saccade information into ' + self.hdf5_filename )
+			try: 
+				h5f.removeNode(where = run, name = 'micro_saccades')
+			except NoSuchNodeError:
+				pass
+			
+			# now for some info manipulations
+			import numpy.lib.recfunctions as rfn
+			np_saccades = np.hstack(np.ravel(saccades))
+			
+			saccTable = h5f.createTable(run, 'micro_saccades', self.saccade_dtype, '(Micro)-saccades for trials in run ' + str(run_index))
+			# fill up the table
+			trial = saccTable.row
+			for tr in np_saccades:
+				for par in rfn.get_names(self.saccade_dtype):
+					trial[par] = tr[par]
+				trial.append()
+			saccTable.flush()
+			
+			
+			h5f.close()
+		
+		self.logger.debug('Detected saccades using velocity algorithm from run # ' + str(run_index))
+		return saccades, gaze_data, vel_data
+	
+	def find_saccades_per_trial_for_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[0,80]], plot = True):
+		not_finished  = True
+		i = 0
+		while not_finished:
+			try:
+				self.find_saccades_per_trial_for_run(run_index = i, trial_phase_range = trial_phase_range, trial_ranges = trial_ranges, plot = plot )
+				i += 1
+			except AttributeError:
+				not_finished = False
+				break
+			
+	
+	
