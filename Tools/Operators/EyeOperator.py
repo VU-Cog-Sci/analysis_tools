@@ -199,7 +199,7 @@ class EyelinkOperator( EyeOperator ):
 			self.gazeData = np.load(self.gazeFile)
 			self.gazeData = self.gazeData.astype(np.float64)
 	
-	def findAll(self, check_answers = False):
+	def findAll(self, check_answers = False, el_key_event_RE = None):
 		"""docstring for findAll"""
 		if not hasattr(self, 'msgData'):
 			self.loadData(get_gaze_data = False)
@@ -208,8 +208,11 @@ class EyelinkOperator( EyeOperator ):
 		self.findTrialPhases()
 		self.findParameters()
 		self.findRecordingParameters()
-		self.findKeyEvents()
 		self.findELEvents()
+		if el_key_event_RE == None:
+			self.findKeyEvents()
+		else:
+			self.findKeyEvents(RE = el_key_event_RE)
 		
 		logString = 'data parameters:'
 		if hasattr(self, 'gazeData'):
@@ -324,13 +327,18 @@ class EyelinkOperator( EyeOperator ):
 		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			eventStrings = self.findOccurences(thisRE)
-			events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
+			if len(eventStrings[0]) == 8:
+				events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
+			elif len(eventStrings[0]) == 3:
+				events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'presentation_time':float(e[2])} for e in eventStrings])
 		self.events = events
 		#
 		# add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
 		#
-		self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
-		
+		if len(eventStrings[0]) == 8:
+			self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
+		elif len(eventStrings[0]) == 3:
+			self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('presentation_time', np.float64)])
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 	
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s\s+: ([-\d\.]*|[\w]*)', add_parameters = None):
@@ -448,7 +456,7 @@ class EyelinkOperator( EyeOperator ):
 		
 		self.logger.info('fourier velocity calculation of data at smoothing width of ' + str(smoothingFilterWidth) + ' s finished')
 	
-	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = False, check_answers = False):
+	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = False, check_answers = False, el_key_event_RE = None):
 		"""
 		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
 		"""
@@ -474,7 +482,7 @@ class EyelinkOperator( EyeOperator ):
 			
 			# create all the parameters, events and such if they haven't already been created.
 			if not hasattr(self, 'parameters'):
-				self.findAll(check_answers = check_answers)
+				self.findAll(check_answers = check_answers, el_key_event_RE = el_key_event_RE)
 				
 			# create a table for the trial times of this run's trials
 			thisRunTimeTable = h5file.createTable(thisRunGroup, 'trial_times', self.trialTypeDictionary, 'Timestamps for trials in run ' + self.inputFileName)
