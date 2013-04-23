@@ -92,6 +92,8 @@ class preprocessing():
 		if self.experiment == 2:
 			if self.subject == 'td':
 				order = np.array([9,0,1,2,3,4,5,6,7,8])
+			if self.subject == 'fg':
+				order = np.array([9,0,1,2,3,4,5,6,7,8])
 			else:
 				order = np.argsort(np.arange(0,len(edf_files)))
 		
@@ -662,7 +664,7 @@ class preprocessing():
 			regressor_feed = np.array(run.GLM_regressors.read()[5])
 			regressor_whole_trials = np.array(run.GLM_regressors.read()[6])
 		if self.experiment == 2:
-			regressor_whole_trials = np.array(run[i].GLM_regressors.read()[4])
+			regressor_whole_trials = np.array(run.GLM_regressors.read()[4])
 		hit = np.array(run.SDT_indices.read()[0])
 		fa = np.array(run.SDT_indices.read()[1])
 		miss = np.array(run.SDT_indices.read()[2])
@@ -806,7 +808,8 @@ class preprocessing():
 		
 		h5f.close()
 	
-	
+
+
 class make_dataframe():
 	def __init__(self, subject, experiment, version, number_runs, this_dir, sample_rate, downsample_rate):
 		self.subject = subject
@@ -816,6 +819,7 @@ class make_dataframe():
 		self.this_dir = this_dir
 		self.sample_rate = sample_rate
 		self.downsample_rate = downsample_rate
+		
 	
 	def data_frame(self):
 		
@@ -1276,7 +1280,6 @@ class make_dataframe():
 	
 
 
-
 class within_subjects_stats():
 	
 	def __init__(self, subject, experiment, version, number_runs, this_dir, sample_rate, downsample_rate):
@@ -1288,7 +1291,7 @@ class within_subjects_stats():
 		self.sample_rate = sample_rate
 		self.downsample_rate = downsample_rate
 		
-		os.chdir(self.this_dir)
+		os.chdir('/Research/PUPIL/data_ALL/')
 		
 		df = pd.load(self.subject + '_data')
 		self.stimulus_locked_array = np.load(self.subject + '_stimulus_locked_array_lp_joined.npy')
@@ -1336,10 +1339,12 @@ class within_subjects_stats():
 		self.ppd_lin = np.array(df['ppd_lin'])
 		self.ppd_lin_RT = np.array(df['ppd_lin_RT'])
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir)
 	
 	
 	def PPR_amplitude_within_stats(self, use_ppd_lin = True):
+		
+		os.chdir(self.this_dir + 'ppr_bars/')
 		
 		# ppd_measure = ppd_lin
 		# 
@@ -1424,6 +1429,8 @@ class within_subjects_stats():
 	
 	def BPD_within_stats(self):
 		
+		os.chdir(self.this_dir + 'bpd_bars/')
+		
 		# Permutation Tests:
 		indices_to_test1 = [self.hit, self.fa, self.answer_yes, self.correct]
 		indices_to_test2 = [self.miss, self.cr, self.answer_no, self.incorrect]
@@ -1451,6 +1458,8 @@ class within_subjects_stats():
 	
 	
 	def response_figures(self):
+		
+		os.chdir(self.this_dir + 'response_figures/')
 		
 		#********************************************************************************
 		#************************ CORRECT RESPONSE MATRICES FOR BPD's *******************
@@ -1603,6 +1612,8 @@ class within_subjects_stats():
 	
 	
 	def PPR_feedback_amplitude_within_stats(self):
+		
+		os.chdir(self.this_dir + 'ppr_bars_feedback/')
 		
 		if self.experiment == 1:
 			ppd_measure = self.ppd_feed_lin
@@ -1899,7 +1910,7 @@ class within_subjects_stats():
 		#####################################################################################
 		###### PLOT #########################################################################
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir + 'glm_betas/')
 		
 		# BARPLOT BETAS:
 		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_1_' + self.subject + '.pdf')
@@ -1908,6 +1919,8 @@ class within_subjects_stats():
 		title('GLM', size = '12')
 		fig.savefig(pp, format='pdf')
 		pp.close()
+		
+		os.chdir(self.this_dir + 'glm_response_figures/')
 		
 		# PREDICTED VERSUS MEASURED:
 		predicted_pupil = []
@@ -2128,24 +2141,20 @@ class within_subjects_stats():
 
 class across_subject_stats():
 	
-	def __init__(self, experiment, this_dir, sample_rate, downsample_rate):
+	def __init__(self, experiment, this_dir, sample_rate, downsample_rate, these_subjects):
 		
 		self.experiment = experiment
 		self.this_dir = this_dir
 		self.sample_rate = sample_rate
 		self.downsample_rate = downsample_rate
-		
-		if self.experiment == 1:
-			self.subject = ('jwg', 'rn', 'dh', 'dl')
-		if self.experiment == 2:
-			subject = ('jw', 'ml', 'te', 'ln', 'td', 'ch', 'lm', 'al', 'dli', 'kr', 'vp', 'js', 'ek', 'dho', 'tk')
+		self.subject = these_subjects
 		
 		# cut-off 35 trials:
 		# self.subject = ('jw', 'ml', 'te', 'ln', 'td', 'lm', 'al', 'dli', 'vp', 'ek', 'dho', 'tk')
 		# # cut-off 40 trials:
 		# self.subject = ('jw', 'ml', 'te', 'ln', 'td', 'al', 'vp', 'ek', 'tk')
 		
-		os.chdir(self.this_dir)
+		os.chdir('/Research/PUPIL/data_ALL/')
 		
 		# LIST VARIABLES (one entry per subject):
 		df = []
@@ -2219,11 +2228,6 @@ class across_subject_stats():
 		self.PPD_LIN_RT = np.concatenate(self.ppd_lin_RT)
 		if self.experiment == 1:
 			self.PPD_FEED_LIN = np.concatenate(self.ppd_feed_lin)
-			
-		self.SUBJECT = []
-		for i in range(len(self.subject)):
-			self.SUBJECT.append(np.repeat(i,len(self.ppd_lin[i])))
-		self.SUBJECT = np.concatenate(self.SUBJECT, axis = 1)
 		
 		##########################################
 		## INDICES BASED ON CRITERION ############
@@ -2231,15 +2235,28 @@ class across_subject_stats():
 		median_subject_criterion = median(subject_criterion)
 		self.liberal_indices = subject_criterion < median_subject_criterion
 		self.conservative_indices = subject_criterion >= median_subject_criterion
+		
+		# SUBJECT AND LIBERAL (FOR IN DATAFRAME FOR ANAOVA)
+		self.SUBJECT = []
+		self.LIBERAL = []
+		for i in range(len(self.subject)):
+			self.SUBJECT.append(np.repeat(i,len(self.ppd_lin[i])))
+			if self.liberal_indices[i] == True:
+				self.LIBERAL.append(np.repeat(1,len(self.ppd_lin[i])))
+			if self.liberal_indices[i] == False:
+				self.LIBERAL.append(np.repeat(0,len(self.ppd_lin[i])))
+		self.SUBJECT = np.concatenate(self.SUBJECT, axis = 1)
+		self.LIBERAL = np.concatenate(self.LIBERAL, axis = 1)
 	
 	
-	def PPR_amplitude_across_stats(self):
+	def PPR_amplitude_across_stats(self, use = 'ppd_lin', indices = 'all'):
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir + 'ppr_bars/')
 		
-		use = self.ppd_lin
-		# if str(this_ppr_measure)
-		# 	for_pp = 'ppd_lin_'
+		if use == 'ppd_lin':
+			use = self.ppd_lin
+		if use == 'ppd_lin_RT':
+			use = self.ppd_lin_RT
 		
 		hit_means = zeros(len(self.subject))
 		fa_means = zeros(len(self.subject))
@@ -2260,6 +2277,7 @@ class across_subject_stats():
 		# 	no_means[i] = mean(use[i][answer_no[i]]) / ((mean(use[i][answer_yes[i]]) + mean(use[i][answer_no[i]])) / 2 )
 		# 	correct_means[i] = mean(use[i][correct[i]]) / ((mean(use[i][correct[i]]) + mean(use[i][incorrect[i]])) / 2 )
 		# 	incorrect_means[i] = mean(use[i][incorrect[i]]) / ((mean(use[i][correct[i]]) + mean(use[i][incorrect[i]])) / 2 )
+		
 		for i in range(len(self.subject)):
 			hit_means[i] = mean(use[i][self.hit[i]])
 			fa_means[i] = mean(use[i][self.fa[i]])
@@ -2269,15 +2287,27 @@ class across_subject_stats():
 			no_means[i] = mean(use[i][self.answer_no[i]])
 			correct_means[i] = mean(use[i][self.correct[i]])
 			incorrect_means[i] = mean(use[i][self.incorrect[i]])
-			
-		# hit_means = hit_means[conservative]
-		# fa_means = fa_means[conservative]
-		# miss_means = miss_means[conservative]
-		# cr_means = cr_means[conservative]
-		# yes_means = yes_means[conservative]
-		# no_means = no_means[conservative]
-		# correct_means = correct_means[conservative]
-		# incorrect_means = incorrect_means[conservative]
+		
+		if indices == 'conservative':
+			hit_means = hit_means[self.conservative_indices]
+			fa_means = fa_means[self.conservative_indices]
+			miss_means = miss_means[self.conservative_indices]
+			cr_means = cr_means[self.conservative_indices]
+			yes_means = yes_means[self.conservative_indices]
+			no_means = no_means[self.conservative_indices]
+			correct_means = correct_means[self.conservative_indices]
+			incorrect_means = incorrect_means[self.conservative_indices]
+		if indices == 'liberal':
+			hit_means = hit_means[self.liberal_indices]
+			fa_means = fa_means[self.liberal_indices]
+			miss_means = miss_means[self.liberal_indices]
+			cr_means = cr_means[self.liberal_indices]
+			yes_means = yes_means[self.liberal_indices]
+			no_means = no_means[self.liberal_indices]
+			correct_means = correct_means[self.liberal_indices]
+			incorrect_means = incorrect_means[self.liberal_indices]
+		if indices == 'all':
+			pass
 		
 		# t-test:
 		p1 = ttest_rel(hit_means, miss_means)[1]
@@ -2290,38 +2320,97 @@ class across_subject_stats():
 		p7 = wilcoxon(yes_means, no_means)[1]
 		p8 = wilcoxon(correct_means, incorrect_means)[1]
 		
-		fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
-		ylabel('PPR amplitude (linearly projected)', size = '10')
-		title(str(len(self.subject)) + ' subjects - mean mean PPR amplitude', size = '12')
-		pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_T-tests.pdf'))
-		fig1.savefig(pp, format='pdf')
-		pp.close()
-		
-		fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
-		ylabel('PPR amplitude (linearly projected)', size = '10')
-		title(str(len(self.subject)) + ' subjects - mean mean PPR amplitude', size = '12')
-		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_T-tests.pdf')
-		fig2.savefig(pp, format='pdf')
-		pp.close()
-		
-		fig3 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p5, p2=p6, values = True)
-		ylabel('PPR amplitude (linearly projected)', size = '10')
-		title(str(len(self.subject)) + ' subjects - mean mean PPR amplitude', size = '12')
-		pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_Wilcoxon.pdf'))
-		fig3.savefig(pp, format='pdf')
-		pp.close()
-		
-		fig4 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p7, p2=p8, values = True, type_plot = 2)
-		ylabel('PPR amplitude (linearly projected)', size = '10')
-		title(str(len(self.subject)) + ' subjects - mean PPR amplitude', size = '12')
-		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_Wilcoxon.pdf')
-		fig4.savefig(pp, format='pdf')
-		pp.close()
+		if indices == 'conservative':
+			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_CONSERVATIVE_T-tests.pdf'))
+			fig1.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_CONSERVATIVE_T-tests.pdf')
+			fig2.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig3 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p5, p2=p6, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_CONSERVATIVE_Wilcoxon.pdf'))
+			fig3.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig4 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p7, p2=p8, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_CONSERVATIVE_Wilcoxon.pdf')
+			fig4.savefig(pp, format='pdf')
+			pp.close()
+			
+		if indices == 'liberal':
+			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_LIBERAL_T-tests.pdf'))
+			fig1.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_LIBERAL_T-tests.pdf')
+			fig2.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig3 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p5, p2=p6, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_LIBERAL_Wilcoxon.pdf'))
+			fig3.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig4 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p7, p2=p8, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_LIBERAL_Wilcoxon.pdf')
+			fig4.savefig(pp, format='pdf')
+			pp.close()
+			
+		if indices == 'all':
+			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_T-tests.pdf'))
+			fig1.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_T-tests.pdf')
+			fig2.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig3 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p5, p2=p6, values = True)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_Wilcoxon.pdf'))
+			fig3.savefig(pp, format='pdf')
+			pp.close()
+			
+			fig4 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p7, p2=p8, values = True, type_plot = 2)
+			ylabel('PPR amplitude (linearly projected)', size = '10')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_Wilcoxon.pdf')
+			fig4.savefig(pp, format='pdf')
+			pp.close()
 	
 	
 	def BPD_across_stats(self):
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir + 'bpd_bars/')
 		
 		use = self.bpd
 		
@@ -2390,37 +2479,45 @@ class across_subject_stats():
 	
 	def ANOVA(self):
 		
+		dd = np.vstack((self.SUBJECT.ravel(), self.LIBERAL.ravel(), self.PRESENT.ravel(), self.YES.ravel(), self.CORRECT.ravel(), self.PPD_LIN.ravel(), self.PPD_LIN_RT.ravel())).T
+		np.savetxt('/Users/jwdegee/Desktop/ANOVA/pupil_dataframe.csv', dd, fmt='%3.2f', delimiter = '\t')
+		
 		# ANOVA ACCROSS SUBJECTS:
-		d = rlc.OrdDict([ ('present', robjects.IntVector(list(np.asarray(self.PRESENT.ravel(), dtype=int)))), ('yes', robjects.IntVector(list(np.asarray(self.YES.ravel(), dtype=int)))), ('correct', robjects.IntVector(list(np.asarray(self.CORRECT.ravel(), dtype=int)))), ('subject', robjects.IntVector(list(self.SUBJECT.ravel()))), ('PPD_LIN', robjects.FloatVector(list(self.PPD.ravel()))), ('PPD_LIN_RT', robjects.FloatVector(list(self.PPD_LIN_RT.ravel()))) ])
+		d = rlc.OrdDict([ ('subject', robjects.IntVector(list(self.SUBJECT.ravel()))), ('liberal', robjects.IntVector(list(self.LIBERAL.ravel()))), ('present', robjects.IntVector(list(np.asarray(self.PRESENT.ravel(), dtype=int)))), ('yes', robjects.IntVector(list(np.asarray(self.YES.ravel(), dtype=int)))), ('correct', robjects.IntVector(list(np.asarray(self.CORRECT.ravel(), dtype=int)))), ('PPD_LIN', robjects.FloatVector(list(self.PPD_LIN.ravel()))), ('PPD_LIN_RT', robjects.FloatVector(list(self.PPD_LIN_RT.ravel()))) ])
 		robjects.r.assign('dataf', robjects.DataFrame(d))
 		robjects.r('attach(dataf)')
 		
 		# OPTION 1:
-		res1 = robjects.r('res1 = summary(aov(PPD_LIN ~ factor(present)*factor(yes) + Error(factor(subject)), dataf))')
+		res1 = robjects.r('res1 = summary(aov(PPD_LIN ~ factor(present)*factor(yes)*factor(liberal) + Error(factor(subject)), dataf))')
 		robjects.r('print(res1)')
-		res2 = robjects.r('res2 = summary(aov(PPD_LIN ~ factor(correct)*factor(yes) + Error(factor(subject)), dataf))')
-		robjects.r('print(res2)')
 		
-		# OPTION 2: ((CORRECT I THINK!))
-		res3 = robjects.r('res3 = summary(aov(PPD_LIN ~ factor(yes) + Error(factor(subject)/factor(yes)), dataf))')
-		robjects.r('print(res3)')
-		res4 = robjects.r('res4 = summary(aov(PPD_LIN ~ factor(present) + Error(factor(subject)/factor(present)), dataf))')
-		robjects.r('print(res4)')
-		res5 = robjects.r('res5 = summary(aov(PPD_LIN ~ factor(correct) + Error(factor(subject)/factor(correct)), dataf))')
-		robjects.r('print(res5)')
 		
-		# OPTION 3:
-		res6 = robjects.r('res6 = summary(aov(PPD_LIN ~ factor(present)*factor(yes) + Error(factor(subject)/(factor(present)*factor(yes))), data = dataf))')
-		robjects.r('print(res6)')
-		res7 = robjects.r('res7 = summary(aov(PPD_LIN ~ factor(correct)*factor(yes) + Error(factor(subject)/(factor(correct)*factor(yes))), data = dataf))')
-		robjects.r('print(res7)')	
+		# # OPTION 1:
+		# res1 = robjects.r('res1 = summary(aov(PPD_LIN ~ factor(present)*factor(yes) + Error(factor(subject)), dataf))')
+		# robjects.r('print(res1)')
+		# res2 = robjects.r('res2 = summary(aov(PPD_LIN ~ factor(correct)*factor(yes) + Error(factor(subject)), dataf))')
+		# robjects.r('print(res2)')
+		# 
+		# # OPTION 2: ((CORRECT I THINK!))
+		# res3 = robjects.r('res3 = summary(aov(PPD_LIN ~ factor(yes) + Error(factor(subject)/factor(yes)), dataf))')
+		# robjects.r('print(res3)')
+		# res4 = robjects.r('res4 = summary(aov(PPD_LIN ~ factor(present) + Error(factor(subject)/factor(present)), dataf))')
+		# robjects.r('print(res4)')
+		# res5 = robjects.r('res5 = summary(aov(PPD_LIN ~ factor(correct) + Error(factor(subject)/factor(correct)), dataf))')
+		# robjects.r('print(res5)')
+		# 
+		# # OPTION 3:
+		# res6 = robjects.r('res6 = summary(aov(PPD_LIN ~ factor(present)*factor(yes) + Error(factor(subject)/(factor(present)*factor(yes))), data = dataf))')
+		# robjects.r('print(res6)')
+		# res7 = robjects.r('res7 = summary(aov(PPD_LIN ~ factor(correct)*factor(yes) + Error(factor(subject)/(factor(correct)*factor(yes))), data = dataf))')
+		# robjects.r('print(res7)')	
 	
 	
 	def correlation_PPRa_BPD(self):
 		
 		"Last plot all the way down is the pooled across subjects one."
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir + '/correlation/')
 		
 		ppd_measures = self.ppd_lin
 		bpd_measures = self.bpd
@@ -2558,7 +2655,7 @@ class across_subject_stats():
 	
 	def collapsed_response_figure(self):
 		
-		os.chdir(self.this_dir)
+		os.chdir('/Research/PUPIL/data_ALL/')
 		
 		## COLLAPSED ACCROSS ALL TRIALS PLOT:
 		a1 = np.load("jwg_resp_locked_grand_mean.npy")[250:-500]
@@ -2570,7 +2667,7 @@ class across_subject_stats():
 		d1 = np.load("dl_resp_locked_grand_mean.npy")[250:-500]
 		d2 = np.load("dl_resp_locked_grand_sem.npy")[250:-500]
 		
-		os.chdir(self.this_dir + '/figures/')
+		os.chdir(self.this_dir + 'response_figures/')
 		
 		# Response
 		fig = figure(figsize=(4,4))
