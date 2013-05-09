@@ -371,7 +371,7 @@ class RivalrySession7T(RivalryReplaySession):
 	
 	
 	
-	def setup_all_data_for_decoding(self, runArray, decoding, roi, run_type = 'rivalry', postFix = ['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
+	def setup_all_data_for_decoding(self, runArray, decoding, roi, input_data='tf_psc_data', run_type='rivalry', postFix=['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
@@ -383,7 +383,7 @@ class RivalrySession7T(RivalryReplaySession):
 			roi_data = []
 			mask_data = []
 			for r in [self.runList[i] for i in self.conditionDict['rivalry']]:
-				roi_data.append(self.roi_data_from_hdf(h5file, r, roi[j], 'residuals', postFix = ['mcf'])) # tf_psc_data
+				roi_data.append(self.roi_data_from_hdf(h5file, r, roi[j], input_data, postFix = ['mcf'])) # tf_psc_data
 				mask_data.append(self.roi_data_from_hdf(h5file, r, roi[j], mask_type))
 			roi_data_per_roi.append(np.hstack(roi_data))
 			mask_data_per_roi.append(np.hstack(mask_data))
@@ -1598,9 +1598,9 @@ class RivalrySession7T(RivalryReplaySession):
 			h5file.close()
 	
 	
-	def decoding_plain(self, runArray, decoding, roi, mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
+	def decoding_plain(self, runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
 		
-		self.setup_all_data_for_decoding(runArray, decoding, roi, mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
+		self.setup_all_data_for_decoding(runArray, decoding, roi, input_data=input_data, mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
 		
 		if decoding == 'BR':
 			print('BR decoding!' + ' --- ' + str(split_by_relative_time) + ' in percept')
@@ -1611,7 +1611,7 @@ class RivalrySession7T(RivalryReplaySession):
 		print('number of test samples (TRs) = ' + str(round(self.X.shape[0]*0.2)))
 		
 		accuracy = []
-		for i in range(50):
+		for i in range(100):
 			# Balance classes:
 			
 			Xa = self.X[self.y == 1,:]
@@ -1626,98 +1626,470 @@ class RivalrySession7T(RivalryReplaySession):
 			ya = ya[random_indices]
 		
 			X = np.vstack((Xa,Xb))
+			X = sp.stats.zscore(X, axis=1) # z-score X
+			X = sp.stats.zscore(X, axis=0) # x-score X
 			y = np.concatenate((ya,yb))
 			
 			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
 			# print('sample_weight = ' + str(sample_weight))
-			clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-					gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-					tol=0.001, verbose=False)
+			# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+			# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
+			# 		tol=0.001, verbose=False)
+			clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+			                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
+			                random_state=None)
 			clf.fit(X_train, y_train)
-			predictions = clf.predict(X_test)
-			accuracy.append( sum(predictions == y_test) / float(len(predictions)) )
-			
+			# predictions = clf.predict(X_test)
+			accuracy.append( clf.score(X_test, y_test) )
 			print('accuracy = ' + str(accuracy[i]))
 		
+		mean_accuracy = mean(accuracy)
+		
+		print('')
+		print('mean accuracy = ' + str(mean_accuracy))
 		print('')
 		print('')
-		print('mean accuracy = ' + str(mean(accuracy)))
+		print('')
+		
+		return(mean_accuracy)
 	
-	
-	def decoding_complex(self, runArray, decoding, roi, mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False, lag=0):
+	def decoding_loop_over_rois(self, runArray, decoding, roi, input_data='tf_psc_data'):
 		
-		self.setup_all_data_for_decoding(runArray, decoding, roi, mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
+		these_rois = []
+		for i in range(len(roi)+1):
+			if i == (len(roi)):
+				these_rois.append( roi )
+			else:
+				these_rois.append( [roi[i]] )
 		
-		lag = lag
-		phases = np.concatenate([positivePhases(self.eccen_data_c[9,:]-lag)-2*pi, positivePhases(self.eccen_data_c[9,:]-lag), positivePhases(self.eccen_data_c[9,:]-lag)+2*pi])
-		zs = np.concatenate([self.mask_data_mean,self.mask_data_mean,self.mask_data_mean])
-		phase_order = np.argsort(phases)
-		kern =  norm.pdf( np.linspace(-2.25,2.25,200) )
-		sm_phases = np.convolve( phases[phase_order], kern / kern.sum(), 'valid' )
-		sm_zs = np.convolve( zs[phase_order], kern / kern.sum(), 'valid' )
+		accuracy = []
+		for i in range(len(roi)+1):
+			accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data) )
 		
-		fig = figure()
+		bar_heights = np.array(accuracy)
+		N = len(bar_heights)
+		ind = np.linspace(0,N,N)
+		fig = plt.figure(figsize = (3,6))
 		ax = fig.add_subplot(111)
-		ax.scatter(phases, zs )
-		plot(sm_phases, sm_zs, 'k', linewidth = 3.0)
-		axhline(0)
-		ylabel("stim contrast (Z)")
-		xlabel("eccentricity")
-		ax.set_xlim([0,2*pi])
+		ax.bar(ind, bar_heights, width=1, align='center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_ylim(ymin=.50)
+		ax.set_xticks(ind)
+		ax.set_xticklabels( ('V1', 'V2','V3', 'V123') )
+		ax.set_ylabel( 'Performance (%)' )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		left = 0.25
+		top = 0.915
+		bottom = 0.2
+		plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
 		
+		ax.set_title("plain decoding")
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_bar1_decoding_plain_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+	
+	
+	def decoding_loop_over_rois_time(self, runArray, decoding, roi, input_data='tf_psc_data'):
 		
-		############################################
+		these_rois = []
+		for i in range(len(roi)+1):
+			if i == (len(roi)):
+				these_rois.append( roi )
+			else:
+				these_rois.append( [roi[i]] )
+		
+		these_times = ['early', 'late']
+		
+		accuracy = []
+		for j in range(len(these_times)):
+			for i in range(len(roi)+1):
+				accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data, split_by_relative_time=these_times[j]) )
+		
+		bar_heights1,bar_heights2=np.array(accuracy)[:len(np.array(accuracy))/2],np.array(accuracy)[len(np.array(accuracy))/2:]
+		N = len(bar_heights1)
+		ind = np.linspace(0,N,N)
+		fig, axes = plt.subplots(nrows=1, ncols=2, figsize = (6,6))
+		for i, ax in enumerate(axes.flat):
+			ax.bar(ind, [bar_heights1, bar_heights2][i], width=1, align='center')
+			simpleaxis(ax)
+			spine_shift(ax)
+			# plt.gca().spines["bottom"].set_linewidth(.5)
+			# plt.gca().spines["left"].set_linewidth(.5)
+			ax.set_ylim(ymin=.50, ymax=max(np.array(accuracy))+0.1)
+			ax.set_xticks(ind)
+			ax.set_xticklabels( ('V1', 'V2','V3', 'V123') )
+			ax.tick_params(axis='x', which='major', labelsize=10)
+			ax.tick_params(axis='y', which='major', labelsize=10)
+			ax.set_title(["decoding early", "decoding late"][i])
+			# ax.text(0, max(np.array(accuracy))+0.05, [str(number_voxels)+ ' most positive voxels', str(number_voxels)+ ' most negative voxels'][i])
+			if i == 0:
+				ax.set_ylabel( 'Performance (%)' )
+			left = 0.25
+			top = 0.915
+			bottom = 0.2
+			plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_bar2_decoding_early_late_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+	
+	
+	def decoding_loop_over_rois_stimcontrast(self, runArray, decoding, roi, number_voxels, input_data='tf_psc_data'):
+		
+		these_rois = []
+		for i in range(len(roi)+1):
+			if i == (len(roi)):
+				these_rois.append( roi )
+			else:
+				these_rois.append( [roi[i]] )
+		
+		these_mask_directions = ['pos', 'neg']
+		
+		accuracy = []
+		for j in range(len(these_mask_directions)):
+			for i in range(len(roi)+1):
+				accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data, mask_direction=these_mask_directions[j], number_voxels=number_voxels) )
+		
+		bar_heights1,bar_heights2=np.array(accuracy)[:len(np.array(accuracy))/2],np.array(accuracy)[len(np.array(accuracy))/2:]
+		N = len(bar_heights1)
+		ind = np.linspace(0,N,N)
+		fig, axes = plt.subplots(nrows=1, ncols=2, figsize = (6,6))
+		for i, ax in enumerate(axes.flat):
+			ax.bar(ind, [bar_heights1, bar_heights2][i], width=1, align='center')
+			simpleaxis(ax)
+			spine_shift(ax)
+			# plt.gca().spines["bottom"].set_linewidth(.5)
+			# plt.gca().spines["left"].set_linewidth(.5)
+			ax.set_ylim(ymin=.50, ymax=max(np.array(accuracy))+0.1)
+			ax.set_xticks(ind)
+			ax.set_xticklabels( ('V1', 'V2','V3', 'V123') )
+			ax.tick_params(axis='x', which='major', labelsize=10)
+			ax.tick_params(axis='y', which='major', labelsize=10)
+			ax.set_title(["decoding stim", "decoding suround"][i])
+			ax.text(0, max(np.array(accuracy))+0.05, [str(number_voxels)+ ' most positive voxels', str(number_voxels)+ ' most negative voxels'][i])
+			if i == 0:
+				ax.set_ylabel( 'Performance (%)' )
+			left = 0.25
+			top = 0.915
+			bottom = 0.2
+			plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_bar3_decoding_stim_surround_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+	
+	def decoding_complex(self, runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False, width_sliding_window=100, lag=0):
+		
+		self.setup_all_data_for_decoding(runArray, decoding, roi, input_data='tf_psc_data', mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
+		
+		width_sliding_window = width_sliding_window/2
 		
 		shell()
 		
-		phases_sorted = phases[phase_order]
-		zs_sorted = zs[phase_order]
-		XX = np.hstack((self.X,self.X,self.X))
-		X_sorted = XX[:,phase_order]
-		y = self.y
+		# Variables
+		lag = lag
+		phases = positivePhases(self.eccen_data_c[9,:]-lag)
+		phases_order = np.argsort(phases)
+		phases_3 = np.concatenate((phases-2*pi, phases, phases+2*pi))
+		phases_3_order = np.argsort(phases_3)
+		zs = self.mask_data_mean
+		zs_order = np.argsort(zs)
+		zs_3 = np.concatenate((zs, zs, zs))
+		zs_3_order = np.argsort(zs_3)
+		X_3 = np.hstack((self.X,self.X,self.X))
 		
-		accuracy = []
-		number_voxels = phases.shape[0]/3
-		for j in np.arange(0,number_voxels,10):
-			voxels_for_decoding = np.arange(j+number_voxels-200, j+number_voxels+200)
-			xx = X_sorted[:,voxels_for_decoding]
-			
-			
-			for i in range(3):
-				# Balance classes:
-			
-				Xa = xx[y == 1,:]
-				Xb = xx[y == -1,:]
-				ya = y[y == 1]
-				yb = y[y == -1]
+		# Sort variables by eccentricity [CIRCULAR!]:
+		phases_sorted_eccen = phases_3[phases_3_order]
+		zs_sorted_eccen = zs_3[phases_3_order]
+		X_sorted_eccen = X_3[:,phases_3_order]
 		
-				import random
+		# Sort variables by stim contrast z:
+		phases_sorted_zs = phases[zs_order]
+		zs_sorted_zs = zs[zs_order]
+		X_sorted_zs = self.X[:,zs_order]
+		
+		############################################
+		
+		# CORRELATION STIM CONTRAST (Z) - ECCENTRICITY:
+		
+		kern =  norm.pdf( np.linspace(-2.25,2.25,200) )
+		sm_phases = np.convolve( phases_sorted_eccen, kern / kern.sum(), 'valid' )
+		sm_zs = np.convolve( zs_sorted_eccen, kern / kern.sum(), 'valid' )
+		
+		# plot:
+		fig = figure(figsize = (4,3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
+		ax = fig.add_subplot(111)
+		ax.scatter(phases,zs, color='#808080', alpha = 0.75)
+		axhline(0, lw=1)
+		plot(sm_phases,sm_zs, 'b', linewidth = 3.0)
+		simpleaxis(ax)
+		spine_shift(ax)
+		ylabel("stim contrast (Z)", size=10)
+		xlabel("eccentricity", size=10)
+		ax.set_xlim([0,2*pi])
+		plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_figure1_eccentricity_stimcontrast', extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		############################################
+		
+		# CORRELATION ECCENTRICITY - DECODING PERFORMANCE:
+		
+		import random
+		
+		mean_accuracy = []
+		number_voxels = self.X.shape[1]
+		for j in np.arange(0,number_voxels,1):
+		# for j in range(10):
+			voxels_for_decoding = np.arange(j+number_voxels-width_sliding_window, j+number_voxels+width_sliding_window)
+			xx = X_sorted_eccen[:,voxels_for_decoding]
+			# xx = XX[:,voxels_for_decoding]
 			
+			Xa = xx[self.y == 1,:]
+			Xb = xx[self.y == -1,:]
+			ya = self.y[self.y == 1]
+			yb = self.y[self.y == -1]
+			
+			accuracy = []
+			for i in range(1):
+				
 				random_indices = random.sample(range(len(Xa)), Xb.shape[0])
 				Xa = Xa[random_indices,:]
 				ya = ya[random_indices]
-		
+			
 				X = np.vstack((Xa,Xb))
 				y = np.concatenate((ya,yb))
 			
 				X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
 				# print('sample_weight = ' + str(sample_weight))
-				clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-						gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-						tol=0.001, verbose=False)
+				# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+				# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
+				# 		tol=0.001, verbose=False)
+				clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+				                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
+				                random_state=None)
 				clf.fit(X_train, y_train)
-				predictions = clf.predict(X_test)
-				accuracy.append( sum(predictions == y_test) / float(len(predictions)) )
-			
+				# predictions = clf.predict(X_test)
+				accuracy.append( clf.score(X_test, y_test) )
 				print('accuracy = ' + str(accuracy[i]))
+			
+			mean_accuracy.append(mean(accuracy))
 		
 		print('')
 		print('')
 		print('mean accuracy = ' + str(mean(accuracy)))
 		
+		decoding_performance_sorted_eccen = np.concatenate((np.array(mean_accuracy),np.array(mean_accuracy),np.array(mean_accuracy)))
+		
+		kern =  norm.pdf( np.linspace(-2.25,2.25,width_sliding_window*4) )
+		sm_phases = np.convolve( phases_sorted_eccen, kern / kern.sum(), 'valid' )
+		sm_decoding_performance = np.convolve( decoding_performance_sorted_eccen, kern / kern.sum(), 'valid' )
+		
+		# plot:
+		fig = figure(figsize = (4,3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
+		ax = fig.add_subplot(111)
+		ax.scatter(phases_sorted_eccen,decoding_performance_sorted_eccen, color='#808080', alpha = 0.75)
+		plot(sm_phases,sm_decoding_performance, 'b', linewidth = 3.0)
+		simpleaxis(ax)
+		spine_shift(ax)
+		ylabel("decoding performance", size=10)
+		xlabel("eccentricity", size=10)
+		ax.set_xlim([0,2*pi])
+		plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_figure2_eccentricity_decodingPerformance_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		#######################################################
+		
+		# CORRELATION STIM CONTRAST (Z) - DECODING PERFORMANCE:
+		
+		import random
+		
+		mean_accuracy = []
+		number_voxels = self.X.shape[1]
+		for j in np.arange(width_sliding_window,number_voxels-width_sliding_window,1):
+		# for j in range(10):
+			voxels_for_decoding = np.arange(j-width_sliding_window, j+width_sliding_window)
+			xx = X_sorted_zs[:,voxels_for_decoding]
+			# xx = XX[:,voxels_for_decoding]
+			
+			Xa = xx[self.y == 1,:]
+			Xb = xx[self.y == -1,:]
+			ya = self.y[self.y == 1]
+			yb = self.y[self.y == -1]
+			
+			accuracy = []
+			for i in range(1):
+				
+				random_indices = random.sample(range(len(Xa)), Xb.shape[0])
+				Xa = Xa[random_indices,:]
+				ya = ya[random_indices]
+			
+				X = np.vstack((Xa,Xb))
+				y = np.concatenate((ya,yb))
+			
+				X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
+				# print('sample_weight = ' + str(sample_weight))
+				# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+				# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
+				# 		tol=0.001, verbose=False)
+				clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+				                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
+				                random_state=None)
+				clf.fit(X_train, y_train)
+				# predictions = clf.predict(X_test)
+				accuracy.append( clf.score(X_test, y_test) )
+				print('accuracy = ' + str(accuracy[i]))
+			
+			mean_accuracy.append(mean(accuracy))
+		
+		print('')
+		print('')
+		print('mean accuracy = ' + str(mean(accuracy)))
+		
+		decoding_performance_sorted_zs = np.array(mean_accuracy)
+		
+		kern =  norm.pdf( np.linspace(-2.25,2.25,width_sliding_window*4) )
+		sm_zs = np.convolve( zs_sorted_zs, kern / kern.sum(), 'valid' )
+		sm_decoding_performance = np.convolve( decoding_performance_sorted_zs, kern / kern.sum(), 'valid' )
+		
+		# varX = zs_sorted_zs[width_sliding_window:-width_sliding_window]
+		# varY = decoding_performance_sorted_zs
+		# 
+		# slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+		# (m,b,c,v) = sp.polyfit(varX, varY, 3)
+		# line = sp.polyval([m,b,c,v], varX)
+		
+		# plot:
+		fig = figure(figsize = (4,3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
+		ax = fig.add_subplot(111)
+		ax.scatter(zs_sorted_zs[width_sliding_window:-width_sliding_window],decoding_performance_sorted_zs, color='#808080', alpha = 0.75)
+		ax.plot(sm_zs[width_sliding_window:-width_sliding_window],sm_decoding_performance, 'b', linewidth = 3.0)
+		# ax.plot(varX,line, color = 'k', linewidth = 1.5)
+		# if round(p_value,5) < 0.005:
+		# 	ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
+		# else:	
+		# 	ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xlim((min(zs_sorted_zs[width_sliding_window:-width_sliding_window]),max(zs_sorted_zs[width_sliding_window:-width_sliding_window])))
+		ylabel("decoding performance", size=10)
+		xlabel("stim contrast (z)", size=10)
+		plt.subplots_adjust(bottom=bottom, top=top, left=left)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_figure3_stimContrast_decodingPerformance_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
 		
 		
 		
+		## GRID SEARCH: ##
+		
+		# accuracy = []
+		# number_voxels = self.X.shape[1]
+		# for j in np.arange(0,number_voxels,50):
+		# # for j in range(10):
+		# 	voxels_for_decoding = np.arange(j+number_voxels-100, j+number_voxels+100)
+		# 	xx = X_sorted[:,voxels_for_decoding]
+		# 	
+		# 	acc = []
+		# 	# for i in range(3):
+		# 		# Balance classes:
+		# 	
+		# 	Xa = xx[y == 1,:]
+		# 	Xb = xx[y == -1,:]
+		# 	ya = y[y == 1]
+		# 	yb = y[y == -1]
+		# 	
+		# 	import random
+		# 
+		# 	random_indices = random.sample(range(len(Xa)), Xb.shape[0])
+		# 	Xa = Xa[random_indices,:]
+		# 	ya = ya[random_indices]
+		# 	
+		# 	X = np.vstack((Xa,Xb))
+		# 	y = np.concatenate((ya,yb))
+		# 
+		# 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
+		# 	# Set the parameters by cross-validation
+		# 	tuned_parameters = [{'kernel': ['linear'], 'C': [0.01, 0.1, 1, 10, 100, 1000]}]
+		# 	
+		# 	scores = [
+		# 	    ('precision', precision_score),
+		# 	    ('recall', recall_score),]
+		# 	
+		# 	for score_name, score_func in scores:
+		# 		print "# Tuning hyper-parameters for %s" % score_name
+		# 		print
+		# 		
+		# 		clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
+		# 		clf.fit(X_train, y_train, cv=5, njobs=-1)
+		# 		
+		# 		print "Best parameters set found on development set:"
+		# 		print
+		# 		print clf.best_estimator_
+		# 		print
+		# 		print "Grid scores on development set:"
+		# 		print
+		# 		for params, mean_score, scores in clf.grid_scores_:
+		# 			print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
+		# 		print
+		# 		
+		# 		print "Detailed classification report:"
+		# 		print
+		# 		print "The model is trained on the full development set."
+		# 		print "The scores are computed on the full evaluation set."
+		# 		print
+		# 		y_true, y_pred = y_test, clf.predict(X_test)
+		# 		print classification_report(y_true, y_pred)
+		# 		print
+		# 		
+		# 		predictions = clf.predict(X_test)
+		# 		accuracy.append( sum(y_pred == y_test) / float(len(y_pred)) )
+		# 	
+		# 		
+		# print('')
+		# print('')
+		# print('mean accuracy = ' + str(mean(accuracy)))
+		
+		
+		
+		
+	
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+	def old(self):
 		
 		ac = []
 		number_voxels = phases.shape[0]/3
@@ -1792,9 +2164,9 @@ class RivalrySession7T(RivalryReplaySession):
 		ax2.set_ylabel('Decoding performance', size = 10)
 		
 		
-	
-	
-	def decoding(self, runArray, run_type='rivalry', subSamplingRatio=100.0, postFix=['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=4, number_voxels = 200):
+		
+		
+	def old_decoding(self, runArray, run_type='rivalry', subSamplingRatio=100.0, postFix=['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=4, number_voxels = 200):
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")	
@@ -1901,283 +2273,283 @@ class RivalrySession7T(RivalryReplaySession):
 		accuracy = mean(accuracy)
 		print('accuracy = ' + str(accuracy))
 		
-		# decoding_kind = 1
-		# 
-		# # Split into train / test set with a particular fraction:
-		# if decoding_kind == 1:
-		# 	
-		# 	auc_precision = []
-		# 	auc_recall = []
-		# 	for i in range(2):
-		# 		# Split the dataset in train and test set
-		# 		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-		# 
-		# 		# Set the parameters by cross-validation
-		# 		tuned_parameters = [{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
-		# 		# tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
-		# 		
-		# 		scores = [('precision', precision_score),('recall', recall_score),]
-		# 		
-		# 		for score_name, score_func in scores:
-		# 			print "# Tuning hyper-parameters for %s" % score_name
-		# 			print
-		# 	
-		# 			clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func, n_jobs=-1)
-		# 			clf.fit(X_train, y_train, cv=5)
-		# 	
-		# 			print "Best parameters set found on development set:"
-		# 			print
-		# 			print clf.best_estimator_
-		# 			print
-		# 			print "Grid scores on development set:"
-		# 			print
-		# 			for params, mean_score, scores in clf.grid_scores_:
-		# 				print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
-		# 			print
-		# 	
-		# 			print "Detailed classification report:"
-		# 			print
-		# 			print "The model is trained on the full development set."
-		# 			print "The scores are computed on the full evaluation set."
-		# 			print
-		# 			y_true, y_pred = y_test, clf.predict(X_test)
-		# 			print classification_report(y_true, y_pred)
-		# 			print
-		# 		
-		# 			if score_name == 'precision':
-		# 				auc_precision.append(auc_score(y_true, y_pred))
-		# 			if score_name == 'recall':
-		# 				auc_recall.append(auc_score(y_true, y_pred))
-		# 		
-		# 		
-		# 		
-		# 
-		# # Split into train / test based on runs:
-		# if decoding_kind == 2:
-		# 	
-		# 	auc_precision = []
-		# 	auc_recall = []
-		# 	for i in range(nr_runs):
-		# 		
-		# 		train_indices = np.ones(nr_runs * nr_trs, dtype = bool)
-		# 		train_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 0
-		# 		train_indices = train_indices[decod_BR_c!=0]
-		# 		
-		# 		test_indices = np.zeros(nr_runs * nr_trs, dtype = bool)
-		# 		test_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 1
-		# 		test_indices = test_indices[decod_BR_c!=0]
-		# 		
-		# 		# Split the dataset in train and test set
-		# 		X_train = X[train_indices]
-		# 		X_test = X[test_indices]
-		# 		y_train = y[train_indices]
-		# 		y_test = y[test_indices]
-		# 
-		# 		# Set the parameters by cross-validation
-		# 		tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
-		# 
-		# 		scores = [('precision', precision_score),('recall', recall_score),]
-		# 		
-		# 		for score_name, score_func in scores:
-		# 			print "# Tuning hyper-parameters for %s" % score_name
-		# 			print
-		# 	
-		# 			clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
-		# 			clf.fit(X_train, y_train, cv=5)
-		# 	
-		# 			print "Best parameters set found on development set:"
-		# 			print
-		# 			print clf.best_estimator_
-		# 			print
-		# 			print "Grid scores on development set:"
-		# 			print
-		# 			for params, mean_score, scores in clf.grid_scores_:
-		# 				print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
-		# 			print
-		# 	
-		# 			print "Detailed classification report:"
-		# 			print
-		# 			print "The model is trained on the full development set."
-		# 			print "The scores are computed on the full evaluation set."
-		# 			print
-		# 			y_true, y_pred = y_test, clf.predict(X_test)
-		# 			print classification_report(y_true, y_pred)
-		# 			print
-		# 
-		# 			if score_name == 'precision':
-		# 				auc_precision.append(auc_score(y_true, y_pred))
-		# 			if score_name == 'recall':
-		# 				auc_recall.append(auc_score(y_true, y_pred))
-		# 
-		# 		
-		# def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
-		# 	reward_h5file = self.hdf5_file('reward')
-		# 	mapper_h5file = self.hdf5_file('mapper')
-		# 
-		# 	conditions_data_types = ['left_CW_Z', 'left_CCW_Z', 'right_CW_Z', 'right_CCW_Z']
-		# 	condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
-		# 
-		# 	# check out the duration of these runs, assuming they're all the same length.
-		# 	niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-		# 	tr, nr_trs = niiFile.rtime, niiFile.timepoints
-		# 	run_duration = tr * nr_trs
-		# 
-		# 	event_data = []
-		# 	roi_data = []
-		# 	nr_runs = 0
-		# 	for r in [self.runList[i] for i in self.conditionDict['reward']]:
-		# 		roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf']))
-		# 		this_run_events = []
-		# 		for cond in condition_labels:
-		# 			this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
-		# 		this_run_events = np.array(this_run_events) + nr_runs * run_duration
-		# 		event_data.append(this_run_events)
-		# 		self.rewarded_stimulus_run(r, postFix = postFix)
-		# 		nr_runs += 1
-		# 
-		# 	# zscore the functional data
-		# 	for roid in roi_data:
-		# 		roid = ((roid.T - roid.mean(axis = 1)) / roid.std(axis = 1)).T
-		# 		roid = (roid - roid.mean(axis = 0)) / roid.std(axis = 0)
-		# 
-		# 	event_data_per_run = event_data
-		# 	event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
-		# 
-		# 	# mapping data
-		# 	mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
-		# 	mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
-		# 
-		# 	# thresholding of mapping data stat values
-		# 	if mask_direction == 'pos':
-		# 		mapping_mask_L = mapping_data_L[:,0] > mask_threshold
-		# 		mapping_mask_R = mapping_data_R[:,0] > mask_threshold
-		# 	else:
-		# 		mapping_mask_L = mapping_data_L[:,0] < mask_threshold
-		# 		mapping_mask_R = mapping_data_R[:,0] < mask_threshold
-		# 
-		# 	which_orientation_rewarded = self.which_stimulus_rewarded % 2
-		# 	reward_run_list = [self.runList[j] for j in self.conditionDict['reward']]
-		# 	L_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_L]
-		# 	R_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_R]
-		# 
-		# 	ormd = []
-		# 	mcd = []
-		# 	for mf in [0,-1]:
-		# 		mapper_run_events = []
-		# 		for cond in condition_labels:
-		# 			mapper_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][mf]], extension = '.txt', postFix = [cond]))[:,0])	
-		# 		mapper_condition_order = np.array([np.array([np.ones(m.shape) * i, m]).T for (i, m) in enumerate(mapper_run_events)]).reshape(-1,2)
-		# 		mapper_condition_order = mapper_condition_order[np.argsort(mapper_condition_order[:,1]), 0]
-		# 		mapper_condition_order_indices = np.array([mapper_condition_order == i for i in range(len(condition_labels))], dtype = bool)
-		# 		mcd.append(mapper_condition_order_indices)
-		# 		orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf','tf'])
-		# 		orientation_mapper_data = ((orientation_mapper_data.T - orientation_mapper_data.mean(axis = 1)) / orientation_mapper_data.std(axis = 1)).T
-		# 		orientation_mapper_data = (orientation_mapper_data - orientation_mapper_data.mean(axis = 0)) / orientation_mapper_data.std(axis = 0)
-		# 		ormd.append(orientation_mapper_data)
-		# 
-		# 	mapper_condition_order_indices = np.hstack(mcd)
-		# 	orientation_mapper_data = np.hstack(ormd)
-		# 
-		# 	all_ori_data = np.array([orientation_mapper_data[:,moi].T for moi in mapper_condition_order_indices])
-		# 	L_ori_data = all_ori_data[...,mapping_mask_L]
-		# 	R_ori_data = all_ori_data[...,mapping_mask_R]
-		# 
-		# 	train_data_L, train_labels_L = [np.vstack((L_ori_data[i],L_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_ori_data.shape[1]),np.ones(L_ori_data.shape[1])))  for i in [0,2]]
-		# 	train_data_R, train_labels_R = [np.vstack((R_ori_data[i],R_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_ori_data.shape[1]),np.ones(R_ori_data.shape[1])))  for i in [0,2]]
-		# 
-		# 	test_data_L, test_labels_L = [np.vstack((L_data[i],L_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_data.shape[1]),np.ones(L_data.shape[1])))  for i in [0,2]]
-		# 	test_data_R, test_labels_R = [np.vstack((R_data[i],R_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_data.shape[1]),np.ones(R_data.shape[1])))  for i in [0,2]]
-		# 
-		# 	# shell()
-		# 	from sklearn import neighbors, datasets, linear_model, svm, lda, qda
-		# 	# kern = svm.SVC(probability=True, kernel = 'linear', C=1e4) # , C=1e3), NuSVC , C = 1.0
-		# 	# kern = svm.LinearSVC(C=1e5, loss='l1') # , C=1e3), NuSVC , C = 1.0
-		# 	# kern = svm.SVC(probability=True, kernel='rbf', degree=2) # , C=1e3), NuSVC , C = 1.0
-		# 	kern = lda.LDA()
-		# 	# kern = qda.QDA()
-		# 	# kern = neighbors.KNeighborsClassifier()
-		# 	# kern = linear_model.LogisticRegression(C=1e5)
-		# 
-		# 
-		# 	corrects_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict(test_data_L[i]) * test_labels_L[i] for i in [0,1]]
-		# 	corrects_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict(test_data_R[i]) * test_labels_R[i] for i in [0,1]]
-		# 
-		# 	corrects_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in corrects_L]).reshape(4,-1)
-		# 	corrects_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in corrects_R]).reshape(4,-1)
-		# 
-		# 	probs_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict_proba(test_data_L[i])[:,0] for i in [0,1]]
-		# 	probs_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict_proba(test_data_R[i])[:,0] for i in [0,1]]
-		# 
-		# 	probs_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in probs_L]).reshape(4,-1)
-		# 	probs_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in probs_R]).reshape(4,-1)
-		# 
-		# 	print roi
-		# 	print 'left: ' + str(((corrects_per_cond_L + 1) / 2).mean(axis = 1))
-		# 	print 'right: ' + str(((corrects_per_cond_R + 1) / 2).mean(axis = 1))
-		# 
-		# 	# now, plotting
-		# 	alphas = np.ones(4) * 0.45
-		# 	alphas[self.which_stimulus_rewarded] = 1.0
-		# 	colors = ['r', 'r--', 'k', 'k--']
-		# 	if self.which_stimulus_rewarded % 2 == 0:
-		# 		diff_color = 'b'
-		# 	else:
-		# 		diff_color = 'b--'
-		# 	if self.which_stimulus_rewarded < 2:
-		# 		diff_alpha = [0.75, 0, 0.25]
-		# 	else:
-		# 		diff_alpha = [0.25, 0, 0.75]
-		# 
-		# 	f = pl.figure(figsize = (12,6))
-		# 	s = f.add_subplot(2,2,1)
-		# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		# 	s.set_title('left stimulus ROI in ' + roi)
-		# 	s.set_xlabel('time [trials]')
-		# 	s.set_ylabel('percentage CW')
-		# 	s.set_xlim([0,probs_per_cond_L[0].shape[0]])
-		# 	s.set_ylim([0,1])
-		# 	[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
-		# 	for i in range(4):
-		# 		plot(probs_per_cond_L[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
-		# 	# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
-		# 	s = f.add_subplot(2,2,3)
-		# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		# 	s.set_title('right stimulus ROI in ' + roi)
-		# 	[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
-		# 	for i in range(4):
-		# 		plot(probs_per_cond_R[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
-		# 	s.set_xlabel('time [trials]')
-		# 	s.set_ylabel('percentage CW')
-		# 	s.set_xlim([0,probs_per_cond_L[0].shape[0]])
-		# 	s.set_ylim([0,1])
-		# 	# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
-		# 	leg = s.legend(fancybox = True)
-		# 	leg.get_frame().set_alpha(0.5)
-		# 	if leg:
-		# 		for t in leg.get_texts():
-		# 		    t.set_fontsize('small')    # the legend text fontsize
-		# 		for l in leg.get_lines():
-		# 		    l.set_linewidth(3.5)  # the legend line width
-		# 	s = f.add_subplot(2,2,2)
-		# 	s.set_title('histogram left ROI in ' + roi)
-		# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		# 	for i in range(4):
-		# 		s.axhline(y = probs_per_cond_L[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
-		# 		pl.hist(probs_per_cond_L[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'step', linewidth = 2.5, orientation = 'horizontal' )
-		# 	pl.text(0.5, 0.5, str(((corrects_per_cond_L + 1) / 2).mean(axis = 1)))
-		# 	s.set_ylim([0,1])
-		# 	s = f.add_subplot(2,2,4)
-		# 	s.set_title('histogram right ROI in ' + roi)
-		# 	s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
-		# 	for i in range(4):
-		# 		s.axhline(y = probs_per_cond_R[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
-		# 		pl.hist(probs_per_cond_R[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'stepfilled', orientation = 'horizontal' )
-		# 	pl.text(0.5, 0.5, str(((corrects_per_cond_R + 1) / 2).mean(axis = 1)))
-		# 	s.set_ylim([0,1])
-		# 
-		# 	# shell()
-		# 
-		# 	return [((corrects_per_cond_L + 1) / 2).mean(axis = 1), ((corrects_per_cond_R + 1) / 2).mean(axis = 1)]
+		decoding_kind = 1
+		
+		# Split into train / test set with a particular fraction:
+		if decoding_kind == 1:
+			
+			auc_precision = []
+			auc_recall = []
+			for i in range(2):
+				# Split the dataset in train and test set
+				X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+		
+				# Set the parameters by cross-validation
+				tuned_parameters = [{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
+				# tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
+				
+				scores = [('precision', precision_score),('recall', recall_score),]
+				
+				for score_name, score_func in scores:
+					print "# Tuning hyper-parameters for %s" % score_name
+					print
+			
+					clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func, n_jobs=-1)
+					clf.fit(X_train, y_train, cv=5)
+			
+					print "Best parameters set found on development set:"
+					print
+					print clf.best_estimator_
+					print
+					print "Grid scores on development set:"
+					print
+					for params, mean_score, scores in clf.grid_scores_:
+						print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
+					print
+			
+					print "Detailed classification report:"
+					print
+					print "The model is trained on the full development set."
+					print "The scores are computed on the full evaluation set."
+					print
+					y_true, y_pred = y_test, clf.predict(X_test)
+					print classification_report(y_true, y_pred)
+					print
+				
+					if score_name == 'precision':
+						auc_precision.append(auc_score(y_true, y_pred))
+					if score_name == 'recall':
+						auc_recall.append(auc_score(y_true, y_pred))
+				
+				
+				
+		
+		# Split into train / test based on runs:
+		if decoding_kind == 2:
+			
+			auc_precision = []
+			auc_recall = []
+			for i in range(nr_runs):
+				
+				train_indices = np.ones(nr_runs * nr_trs, dtype = bool)
+				train_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 0
+				train_indices = train_indices[decod_BR_c!=0]
+				
+				test_indices = np.zeros(nr_runs * nr_trs, dtype = bool)
+				test_indices[(i*nr_trs):(i*nr_trs)+nr_trs] = 1
+				test_indices = test_indices[decod_BR_c!=0]
+				
+				# Split the dataset in train and test set
+				X_train = X[train_indices]
+				X_test = X[test_indices]
+				y_train = y[train_indices]
+				y_test = y[test_indices]
+		
+				# Set the parameters by cross-validation
+				tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],'C': [1, 10, 100, 1000]},{'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
+		
+				scores = [('precision', precision_score),('recall', recall_score),]
+				
+				for score_name, score_func in scores:
+					print "# Tuning hyper-parameters for %s" % score_name
+					print
+			
+					clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
+					clf.fit(X_train, y_train, cv=5)
+			
+					print "Best parameters set found on development set:"
+					print
+					print clf.best_estimator_
+					print
+					print "Grid scores on development set:"
+					print
+					for params, mean_score, scores in clf.grid_scores_:
+						print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
+					print
+			
+					print "Detailed classification report:"
+					print
+					print "The model is trained on the full development set."
+					print "The scores are computed on the full evaluation set."
+					print
+					y_true, y_pred = y_test, clf.predict(X_test)
+					print classification_report(y_true, y_pred)
+					print
+		
+					if score_name == 'precision':
+						auc_precision.append(auc_score(y_true, y_pred))
+					if score_name == 'recall':
+						auc_recall.append(auc_score(y_true, y_pred))
+		
+				
+		def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
+			reward_h5file = self.hdf5_file('reward')
+			mapper_h5file = self.hdf5_file('mapper')
+		
+			conditions_data_types = ['left_CW_Z', 'left_CCW_Z', 'right_CW_Z', 'right_CCW_Z']
+			condition_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW']
+		
+			# check out the duration of these runs, assuming they're all the same length.
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+			tr, nr_trs = niiFile.rtime, niiFile.timepoints
+			run_duration = tr * nr_trs
+		
+			event_data = []
+			roi_data = []
+			nr_runs = 0
+			for r in [self.runList[i] for i in self.conditionDict['reward']]:
+				roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf']))
+				this_run_events = []
+				for cond in condition_labels:
+					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+				this_run_events = np.array(this_run_events) + nr_runs * run_duration
+				event_data.append(this_run_events)
+				self.rewarded_stimulus_run(r, postFix = postFix)
+				nr_runs += 1
+		
+			# zscore the functional data
+			for roid in roi_data:
+				roid = ((roid.T - roid.mean(axis = 1)) / roid.std(axis = 1)).T
+				roid = (roid - roid.mean(axis = 0)) / roid.std(axis = 0)
+		
+			event_data_per_run = event_data
+			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		
+			# mapping data
+			mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
+			mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
+		
+			# thresholding of mapping data stat values
+			if mask_direction == 'pos':
+				mapping_mask_L = mapping_data_L[:,0] > mask_threshold
+				mapping_mask_R = mapping_data_R[:,0] > mask_threshold
+			else:
+				mapping_mask_L = mapping_data_L[:,0] < mask_threshold
+				mapping_mask_R = mapping_data_R[:,0] < mask_threshold
+		
+			which_orientation_rewarded = self.which_stimulus_rewarded % 2
+			reward_run_list = [self.runList[j] for j in self.conditionDict['reward']]
+			L_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_L]
+			R_data = np.hstack([[r[:,k].T for k in reward_run_list[i].all_stimulus_trials] for (i, r) in enumerate(roi_data)])[...,mapping_mask_R]
+		
+			ormd = []
+			mcd = []
+			for mf in [0,-1]:
+				mapper_run_events = []
+				for cond in condition_labels:
+					mapper_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][mf]], extension = '.txt', postFix = [cond]))[:,0])	
+				mapper_condition_order = np.array([np.array([np.ones(m.shape) * i, m]).T for (i, m) in enumerate(mapper_run_events)]).reshape(-1,2)
+				mapper_condition_order = mapper_condition_order[np.argsort(mapper_condition_order[:,1]), 0]
+				mapper_condition_order_indices = np.array([mapper_condition_order == i for i in range(len(condition_labels))], dtype = bool)
+				mcd.append(mapper_condition_order_indices)
+				orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf','tf'])
+				orientation_mapper_data = ((orientation_mapper_data.T - orientation_mapper_data.mean(axis = 1)) / orientation_mapper_data.std(axis = 1)).T
+				orientation_mapper_data = (orientation_mapper_data - orientation_mapper_data.mean(axis = 0)) / orientation_mapper_data.std(axis = 0)
+				ormd.append(orientation_mapper_data)
+		
+			mapper_condition_order_indices = np.hstack(mcd)
+			orientation_mapper_data = np.hstack(ormd)
+		
+			all_ori_data = np.array([orientation_mapper_data[:,moi].T for moi in mapper_condition_order_indices])
+			L_ori_data = all_ori_data[...,mapping_mask_L]
+			R_ori_data = all_ori_data[...,mapping_mask_R]
+		
+			train_data_L, train_labels_L = [np.vstack((L_ori_data[i],L_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_ori_data.shape[1]),np.ones(L_ori_data.shape[1])))  for i in [0,2]]
+			train_data_R, train_labels_R = [np.vstack((R_ori_data[i],R_ori_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_ori_data.shape[1]),np.ones(R_ori_data.shape[1])))  for i in [0,2]]
+		
+			test_data_L, test_labels_L = [np.vstack((L_data[i],L_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(L_data.shape[1]),np.ones(L_data.shape[1])))  for i in [0,2]]
+			test_data_R, test_labels_R = [np.vstack((R_data[i],R_data[i+1])) for i in [0,2]], [np.concatenate((-np.ones(R_data.shape[1]),np.ones(R_data.shape[1])))  for i in [0,2]]
+		
+			# shell()
+			from sklearn import neighbors, datasets, linear_model, svm, lda, qda
+			# kern = svm.SVC(probability=True, kernel = 'linear', C=1e4) # , C=1e3), NuSVC , C = 1.0
+			# kern = svm.LinearSVC(C=1e5, loss='l1') # , C=1e3), NuSVC , C = 1.0
+			# kern = svm.SVC(probability=True, kernel='rbf', degree=2) # , C=1e3), NuSVC , C = 1.0
+			kern = lda.LDA()
+			# kern = qda.QDA()
+			# kern = neighbors.KNeighborsClassifier()
+			# kern = linear_model.LogisticRegression(C=1e5)
+		
+		
+			corrects_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict(test_data_L[i]) * test_labels_L[i] for i in [0,1]]
+			corrects_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict(test_data_R[i]) * test_labels_R[i] for i in [0,1]]
+		
+			corrects_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in corrects_L]).reshape(4,-1)
+			corrects_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in corrects_R]).reshape(4,-1)
+		
+			probs_L = [kern.fit(train_data_L[i], train_labels_L[i]).predict_proba(test_data_L[i])[:,0] for i in [0,1]]
+			probs_R = [kern.fit(train_data_R[i], train_labels_R[i]).predict_proba(test_data_R[i])[:,0] for i in [0,1]]
+		
+			probs_per_cond_L = np.array([[cl[:cl.shape[0]/2], cl[cl.shape[0]/2:]] for cl in probs_L]).reshape(4,-1)
+			probs_per_cond_R = np.array([[cr[:cr.shape[0]/2], cr[cr.shape[0]/2:]] for cr in probs_R]).reshape(4,-1)
+		
+			print roi
+			print 'left: ' + str(((corrects_per_cond_L + 1) / 2).mean(axis = 1))
+			print 'right: ' + str(((corrects_per_cond_R + 1) / 2).mean(axis = 1))
+		
+			# now, plotting
+			alphas = np.ones(4) * 0.45
+			alphas[self.which_stimulus_rewarded] = 1.0
+			colors = ['r', 'r--', 'k', 'k--']
+			if self.which_stimulus_rewarded % 2 == 0:
+				diff_color = 'b'
+			else:
+				diff_color = 'b--'
+			if self.which_stimulus_rewarded < 2:
+				diff_alpha = [0.75, 0, 0.25]
+			else:
+				diff_alpha = [0.25, 0, 0.75]
+		
+			f = pl.figure(figsize = (12,6))
+			s = f.add_subplot(2,2,1)
+			s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+			s.set_title('left stimulus ROI in ' + roi)
+			s.set_xlabel('time [trials]')
+			s.set_ylabel('percentage CW')
+			s.set_xlim([0,probs_per_cond_L[0].shape[0]])
+			s.set_ylim([0,1])
+			[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
+			for i in range(4):
+				plot(probs_per_cond_L[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
+			# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
+			s = f.add_subplot(2,2,3)
+			s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+			s.set_title('right stimulus ROI in ' + roi)
+			[s.axvspan(i * 12, (i+1) * 12, facecolor='k', alpha=0.05, edgecolor = 'w') for i in [0,2,4]]
+			for i in range(4):
+				plot(probs_per_cond_R[i], colors[i], alpha = alphas[i], label = condition_labels[i], linewidth = alphas[i] * 2.0)
+			s.set_xlabel('time [trials]')
+			s.set_ylabel('percentage CW')
+			s.set_xlim([0,probs_per_cond_L[0].shape[0]])
+			s.set_ylim([0,1])
+			# s.axis([0,rew_corr[i,:,0].shape[0],-1.0,1.0])
+			leg = s.legend(fancybox = True)
+			leg.get_frame().set_alpha(0.5)
+			if leg:
+				for t in leg.get_texts():
+				    t.set_fontsize('small')    # the legend text fontsize
+				for l in leg.get_lines():
+				    l.set_linewidth(3.5)  # the legend line width
+			s = f.add_subplot(2,2,2)
+			s.set_title('histogram left ROI in ' + roi)
+			s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+			for i in range(4):
+				s.axhline(y = probs_per_cond_L[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
+				pl.hist(probs_per_cond_L[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'step', linewidth = 2.5, orientation = 'horizontal' )
+			pl.text(0.5, 0.5, str(((corrects_per_cond_L + 1) / 2).mean(axis = 1)))
+			s.set_ylim([0,1])
+			s = f.add_subplot(2,2,4)
+			s.set_title('histogram right ROI in ' + roi)
+			s.axhline(y = 0.5, c = 'k', linewidth = 0.5)
+			for i in range(4):
+				s.axhline(y = probs_per_cond_R[i].mean(), c = colors[i][0], linewidth = 2.5, linestyle = '--')
+				pl.hist(probs_per_cond_R[i], color=colors[i][0], alpha = alphas[i], normed = True, bins = 20, rwidth = 0.5, histtype = 'stepfilled', orientation = 'horizontal' )
+			pl.text(0.5, 0.5, str(((corrects_per_cond_R + 1) / 2).mean(axis = 1)))
+			s.set_ylim([0,1])
+		
+			# shell()
+		
+			return [((corrects_per_cond_L + 1) / 2).mean(axis = 1), ((corrects_per_cond_R + 1) / 2).mean(axis = 1)]
 		
 	
 	
