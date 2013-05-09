@@ -38,6 +38,7 @@ from tables import *
 from math import *
 from pypsignifit import *
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import MultipleLocator
 from scipy import interpolate
 from scipy.signal import butter, filtfilt
 
@@ -1081,6 +1082,7 @@ class make_dataframe():
 		ppd_lin = []
 		# ppd_lin_S = []
 		# pooled_mean = []
+		sign_template = []
 		for i in range(len(run)):
 			
 			# PPD - Method 1 (max minus baseline): 
@@ -1098,6 +1100,7 @@ class make_dataframe():
 			
 			# PPD - Method 3 (linear projection):
 			template = (bottleneck.nanmean(use_this_resp_array_joined[:,2500:5000], axis=0)) - mean(bpd_joined)
+			sign_template.append(sum(template))
 			# template = ( (bottleneck.nanmean(response_locked_array_joined[hit_indices_joined,2500:5000], axis=0) - mean(bpd_joined[hit_indices_joined])) + (bottleneck.nanmean(response_locked_array_joined[fa_indices_joined,2500:5000], axis=0) - mean(bpd_joined[fa_indices_joined])) + (bottleneck.nanmean(response_locked_array_joined[miss_indices_joined,2500:5000], axis=0) - mean(bpd_joined[miss_indices_joined])) + (bottleneck.nanmean(response_locked_array_joined[cr_indices_joined,2500:5000], axis=0) - mean(bpd_joined[cr_indices_joined])) ) / 4
 			ppd_dum =  np.zeros(use_this_resp_array[i].shape[0])
 			for j in range(use_this_resp_array[i].shape[0]):
@@ -1112,7 +1115,9 @@ class make_dataframe():
 			# for j in range(response_locked_arrays[i].shape[0]):
 			# 	ppd_dum[j] = ( np.dot( pooled_mean_ppd, (response_locked_arrays[i][j,2500:5000])-bpd[i][j] ) / np.dot(pooled_mean_ppd, pooled_mean_ppd) )
 			# ppd_lin_S.append(ppd_dum)
-			
+		
+		sign_template = mean(sign_template)
+		
 		# PPD's after feedback:
 		if self.experiment == 1:
 			ppd_feed = []
@@ -1198,7 +1203,8 @@ class make_dataframe():
 				'ppd_lin_RT' : pd.Series(ppd_lin_RT_corrected),
 				'ppd_feed' : pd.Series(ppd_feed_joined),
 				'ppd_feed_mean' : pd.Series(ppd_feed_mean_joined),
-				'ppd_feed_lin' : pd.Series(ppd_feed_lin_joined)
+				'ppd_feed_lin' : pd.Series(ppd_feed_lin_joined),
+				'sign_template': pd.Series(sign_template)
 				}
 			
 		if self.experiment == 2:
@@ -1218,10 +1224,11 @@ class make_dataframe():
 				'ppd' : pd.Series(ppd_joined),
 				'ppd_mean' : pd.Series(ppd_mean_joined),
 				'ppd_lin' : pd.Series(ppd_lin_joined),
-				'ppd_lin_RT' : pd.Series(ppd_lin_RT_corrected)
+				'ppd_lin_RT' : pd.Series(ppd_lin_RT_corrected),
 				# 'ppd_feed' : pd.Series(ppd_feed_joined),
 				# 'ppd_feed_mean' : pd.Series(ppd_feed_mean_joined),
 				# 'ppd_feed_lin' : pd.Series(ppd_feed_lin_joined),
+				'sign_template': pd.Series(sign_template),
 				}
 			
 		df = pd.DataFrame(d)
@@ -1342,7 +1349,7 @@ class within_subjects_stats():
 		os.chdir(self.this_dir)
 	
 	
-	def PPR_amplitude_within_stats(self, use_ppd_lin = True):
+	def PPR_amplitude_stats(self, use_ppd_lin=True):
 		
 		os.chdir(self.this_dir + 'ppr_bars/')
 		
@@ -1377,7 +1384,7 @@ class within_subjects_stats():
 		for i in range(len(indices_to_test1)):
 			group1 = ppd_measure[indices_to_test1[i]]
 			group2 = ppd_measure[indices_to_test2[i]]
-			output = functions_jw.permutationTest(group1 = group1, group2 = group2, nrand = 5000)
+			output = functions_jw.permutationTest(group1 = group1, group2 = group2, nrand = 10000)
 			observed_mean_difference.append(output[0]) 
 			perm_results.append(output[1])
 			significance.append(output[2])
@@ -1427,7 +1434,39 @@ class within_subjects_stats():
 		# out_i_time = np.array(out_i_time)
 	
 	
-	def BPD_within_stats(self):
+	def PPR_amplitude_stats_confidence(self, use_ppd_lin=True):
+		
+		os.chdir(self.this_dir + 'ppr_bars_confidence')
+		
+		if use_ppd_lin == True:
+			ppd_measure = self.ppd_lin
+		else:
+			ppd_measure = self.ppd_lin_RT
+		
+		# Permutation Tests:
+		indices_to_test1 = [self.confidence_0, self.confidence_1, self.confidence_2]
+		indices_to_test2 = [self.confidence_1, self.confidence_2, self.confidence_3]
+		observed_mean_difference = []
+		perm_results = []
+		significance = []
+		for i in range(len(indices_to_test1)):
+			group1 = ppd_measure[indices_to_test1[i]]
+			group2 = ppd_measure[indices_to_test2[i]]
+			output = functions_jw.permutationTest(group1=group1, group2=group2, nrand=10000)
+			observed_mean_difference.append(output[0]) 
+			perm_results.append(output[1])
+			significance.append(output[2])
+		
+		## PPD's at response SDT:
+		fig = functions_jw.confidence_barplot(subject = self.subject, hit = ppd_measure[self.confidence_0], fa = ppd_measure[self.confidence_1], miss = ppd_measure[self.confidence_2], cr = ppd_measure[self.confidence_3], p1 = significance[0], p2=significance[1], p3=significance[2])
+		ylabel('PPR amplitude (linearly projected)', size = 10)
+		title('Mean PPR amplitude', size = 12)
+		
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_confidence_' + self.subject + '.pdf')
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+	def BPD_stats(self):
 		
 		os.chdir(self.this_dir + 'bpd_bars/')
 		
@@ -1457,7 +1496,7 @@ class within_subjects_stats():
 		
 	
 	
-	def response_figures(self):
+	def response_figure_stimulus(self):
 		
 		os.chdir(self.this_dir + 'response_figures/')
 		
@@ -1471,18 +1510,6 @@ class within_subjects_stats():
 		for i in range(self.stimulus_locked_array.shape[0]):
 			self.stimulus_locked_array[i,:] = self.stimulus_locked_array[i,:] - self.bpd[i]
 		
-		for i in range(self.response_locked_array.shape[0]):
-			self.response_locked_array[i,:] = self.response_locked_array[i,:] - self.bpd[i]
-		
-		if self.experiment == 1:
-			for i in range(self.feedback_locked_array.shape[0]):
-				self.feedback_locked_array[i,:] = self.feedback_locked_array[i,:] - self.bpd_feed[i]
-		
-		# for i in range(response_locked_array.shape[0]):
-		# 	response_locked_array[i,:] = response_locked_array[i,:] - response_locked_array[i,3250]
-		# 
-		# sum(response_locked_array[:,3250])
-		
 		#********************************************************************************
 		#***************************** PUPIL RESPONSE FIGURE  ***************************
 		#********************************************************************************
@@ -1490,39 +1517,26 @@ class within_subjects_stats():
 		#********************************************************************************
 		
 		stim_data = self.stimulus_locked_array[:,500:-1000]
-		resp_data = self.response_locked_array[:,250:-500]
-		if self.experiment == 1:
-			feed_data = self.feedback_locked_array[:,500:2499]
 		condition = [self.hit, self.fa, self.miss, self.cr]
 		
 		stim_means = []
 		stim_sems = []
-		resp_means = []
-		resp_sems = []
-		feed_means = []
-		feed_sems = []
 		for i in range(len(condition)):
 			stim_means.append( bottleneck.nanmean(stim_data[condition[i]], axis=0))
 			stim_sems.append( (bottleneck.nanstd(stim_data[condition[i]], axis=0)) / sp.sqrt(condition[i].sum()) )
-			resp_means.append( bottleneck.nanmean(resp_data[condition[i]], axis=0))
-			resp_sems.append( (bottleneck.nanstd(resp_data[condition[i]], axis=0)) / sp.sqrt(condition[i].sum()) )
-			if self.experiment == 1:
-				feed_means.append( bottleneck.nanmean(feed_data[condition[i]], axis=0))
-				feed_sems.append( (bottleneck.nanstd(feed_data[condition[i]], axis=0)) / sp.sqrt(condition[i].sum()) )
+		
+		max_y_stim = max(np.concatenate( np.vstack(stim_means)+np.vstack(stim_sems) ))
+		min_y_stim = min(np.concatenate( np.vstack(stim_means)-np.vstack(stim_sems) ))
+		diff_stim = max_y_stim - min_y_stim
 		
 		# Make the plt.plot
-		if self.experiment == 1:
-			figure_mean_pupil_locked_to_stimulus_response_feedback_SDT = plt.figure(figsize=(4, 9))
-		if self.experiment == 2:
-			figure_mean_pupil_locked_to_stimulus_response_feedback_SDT = plt.figure(figsize=(4, 6))
-		hspace = 0.45
+		figure_mean_pupil_locked_to_stimulus_SDT = plt.figure(figsize=(4, 3))
 		left = 0.2
+		top = 0.915
+		bottom = 0.2
 		
 		# Stimulus 
-		if self.experiment == 1:
-			a = plt.subplot(311)
-		if self.experiment == 2:
-			a = plt.subplot(211)
+		a = plt.subplot(111)
 		xa = np.arange(-499,4000)
 		for i in range(len(condition)):
 			plt.plot(xa, stim_means[i], linewidth=2, color = ['r','r','b','b'][i], alpha = [1,0.5,0.5,1][i])
@@ -1533,7 +1547,7 @@ class within_subjects_stats():
 		# plt.text(sp.mean(response_time[answer_yes])+30,plt.axis()[3]-0.05,"'yes!'", size=18)
 		# plt.text(sp.mean(response_time[answer_no])+30,plt.axis()[3]-0.05,"'no!'", size=18)
 		plt.xlim( (-500, 4000) )
-		leg = plt.legend(["HIT; " + str(self.hit.sum()) + " trials", "FA; " + str(self.fa.sum()) + " trials", "MISS; " + str(self.miss.sum()) + " trials", "CR; " + str(self.cr.sum()) + " trials"], loc = 2, fancybox = True)
+		leg = plt.legend(["H; " + str(self.hit.sum()) + " trials", "FA; " + str(self.fa.sum()) + " trials", "M; " + str(self.miss.sum()) + " trials", "CR; " + str(self.cr.sum()) + " trials"], loc = 2, fancybox = True)
 		leg.get_frame().set_alpha(0.9)
 		if leg:
 			for t in leg.get_texts():
@@ -1541,11 +1555,15 @@ class within_subjects_stats():
 			for l in leg.get_lines():
 				l.set_linewidth(2)  # the legend line width
 		plt.tick_params(axis='both', which='major', labelsize=8)
-		# plt.legend([p1, p2, p3, p4], ["HIT; " + str(hit.sum()) + " trials", "FA; " + str(fa.sum()) + " trials", "MISS; " + str(miss.sum()) + " trials", "CR; " + str(cr.sum()) + " trials"], loc = 2)
 		simpleaxis(a)
 		spine_shift(a) 
-		subplots_adjust(hspace = hspace, left = left)
+		subplots_adjust(bottom=bottom, top=top, left=left)
 		plt.xticks([0,1000,2000,3000,4000], [0,1,2,3,4])
+		if (max_y_stim+(diff_stim/20.0)) < 1:
+			a.yaxis.set_major_locator(MultipleLocator(0.25))
+		else:
+			a.yaxis.set_major_locator(MultipleLocator(0.5))
+		plt.ylim(ymin=min_y_stim-(diff_stim/20.0), ymax=max_y_stim+(diff_stim/20.0))
 		plt.title('Stimulus locked PPR', size=12)
 		plt.ylabel("PPR (Z)", size=10)
 		plt.xlabel("Time from stimulus (s)", size=10)
@@ -1554,11 +1572,180 @@ class within_subjects_stats():
 		gca().spines["bottom"].set_linewidth(.5)
 		gca().spines["left"].set_linewidth(.5)
 		
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_stimulus_response_figure_' + self.subject + '.pdf')
+		figure_mean_pupil_locked_to_stimulus_SDT.savefig(pp, format='pdf')
+		pp.close()
+	
+	def response_figure_stimulus_confidence(self, split_by_SDT=False):
+		
+		os.chdir(self.this_dir + 'response_figures_confidence/')
+		
+		#********************************************************************************
+		#************************ CORRECT RESPONSE MATRICES FOR BPD's *******************
+		#********************************************************************************
+		#*    'pupil change' is computed by taking the time series of each seperate     *
+		#*         trial, and subtract the associated bpd from every data point         *
+		#********************************************************************************
+		
+		for i in range(self.stimulus_locked_array.shape[0]):
+			self.stimulus_locked_array[i,:] = self.stimulus_locked_array[i,:] - self.bpd[i]
+		
+		#********************************************************************************
+		#***************************** PUPIL RESPONSE FIGURE  ***************************
+		#********************************************************************************
+		#*       Stimulus-, response and feedback-locked pupillary response plots:      *
+		#********************************************************************************
+		
+		stim_data = self.stimulus_locked_array[:,500:-1000]
+		
+		confidence_condition = [self.confidence_0, self.confidence_1, self.confidence_2, self.confidence_3]
+		SDT_condition = [self.hit, self.fa, self.miss, self.cr]
+		
+		if split_by_SDT == False:
+			stim_means = []
+			stim_sems = []
+			for i in range(len(confidence_condition)):
+				stim_means.append( bottleneck.nanmean(stim_data[confidence_condition[i]], axis=0))
+				stim_sems.append( (bottleneck.nanstd(stim_data[confidence_condition[i]], axis=0)) / sp.sqrt(confidence_condition[i].sum()) )
+			max_y_stim = max(np.concatenate( np.vstack(stim_means)+np.vstack(stim_sems) ))
+			min_y_stim = min(np.concatenate( np.vstack(stim_means)-np.vstack(stim_sems) ))
+			diff_stim = max_y_stim - min_y_stim
+		
+			# Make the plt.plot
+			figure_mean_pupil_locked_to_stimulus_SDT = plt.figure(figsize=(4, 3))
+			left = 0.2
+			top = 0.915
+			bottom = 0.2
+			# Stimulus 
+			a = plt.subplot(111)
+			xa = np.arange(-499,4000)
+			for i in range(len(SDT_condition)):
+				plt.plot(xa, stim_means[i], linewidth=2, color = ['g','g','g','g'][i], alpha = [0.25,0.5,0.75,1][i])
+				plt.fill_between( xa, (stim_means[i]+stim_sems[i]), (stim_means[i]-stim_sems[i]), color = ['g','g','g','g'][i], alpha=0.1 )
+			plt.axvline(0, -1, 1, linewidth=1)
+			plt.xlim( (-500, 4000) )
+			leg = plt.legend(["--; " + str(self.confidence_0.sum()) + " trials", "-; " + str(self.confidence_1.sum()) + " trials", "+; " + str(self.confidence_2.sum()) + " trials", "++; " + str(self.confidence_3.sum()) + " trials"], loc = 2, fancybox = True)
+			leg.get_frame().set_alpha(0.9)
+			if leg:
+				for t in leg.get_texts():
+					t.set_fontsize(7)    # the legend text fontsize
+				for l in leg.get_lines():
+					l.set_linewidth(2)  # the legend line width
+			plt.tick_params(axis='both', which='major', labelsize=8)
+			simpleaxis(a)
+			spine_shift(a) 
+			subplots_adjust(bottom=bottom, top=top, left=left)
+			plt.xticks([0,1000,2000,3000,4000], [0,1,2,3,4])
+			if (max_y_stim+(diff_stim/20.0)) < 1:
+				a.yaxis.set_major_locator(MultipleLocator(0.25))
+			else:
+				a.yaxis.set_major_locator(MultipleLocator(0.5))
+			plt.ylim(ymin=min_y_stim-(diff_stim/20.0), ymax=max_y_stim+(diff_stim/20.0))
+			plt.title('Stimulus locked PPR', size=12)
+			plt.ylabel("PPR (Z)", size=10)
+			plt.xlabel("Time from stimulus (s)", size=10)
+			gca().spines["bottom"].set_linewidth(.5)
+			gca().spines["left"].set_linewidth(.5)
+		
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_stimulus_response_figure_confidence_' + self.subject + '.pdf')
+			figure_mean_pupil_locked_to_stimulus_SDT.savefig(pp, format='pdf')
+			pp.close()
+		
+		if split_by_SDT == True:
+			stim_means = []
+			stim_sems = []
+			for i in range(len(SDT_condition)):
+				for j in range(len(confidence_condition)):
+					stim_means.append( bottleneck.nanmean(stim_data[SDT_condition[i]*confidence_condition[j]], axis=0))
+					stim_sems.append( (bottleneck.nanstd(stim_data[SDT_condition[i]*confidence_condition[j]], axis=0)) / sp.sqrt((SDT_condition[i]*confidence_condition[j]).sum()) )
+			max_y_stim = max(np.concatenate( np.vstack(stim_means)+np.vstack(stim_sems) ))
+			min_y_stim = min(np.concatenate( np.vstack(stim_means)-np.vstack(stim_sems) ))
+			diff_stim = max_y_stim - min_y_stim
+			
+			# Make the plt.plot
+			figure_mean_pupil_locked_to_stimulus_SDT = plt.figure(figsize=(16, 12))
+			left = 0.2
+			top = 0.915
+			bottom = 0.2
+			# Stimulus 
+			for SDT in range(len(SDT_condition)):
+				# Response
+				a = plt.subplot(2,2,SDT+1)
+				xa = np.arange(-499,4000)
+				for i in range(len(confidence_condition)):
+					plt.plot(xa, stim_means[(4*SDT)+i], linewidth=2, color = [['r','r','r','r'],['r','r','r','r'],['b','b','b','b'],['b','b','b','b']][SDT][i], alpha = [0.25,0.5,0.75,1][i])
+					plt.fill_between( xa, (stim_means[(4*SDT)+i]+stim_sems[(4*SDT)+i]), (stim_means[(4*SDT)+i]-stim_sems[(4*SDT)+i]), color = [['r','r','r','r'],['r','r','r','r'],['b','b','b','b'],['b','b','b','b']][SDT][i], alpha=0.1 )
+				plt.axvline(0, -1, 1, linewidth=1)
+				plt.xlim( (-500, 4000) )
+				leg = plt.legend(["--; " + str(self.confidence_0.sum()) + " trials", "-; " + str(self.confidence_1.sum()) + " trials", "+; " + str(self.confidence_2.sum()) + " trials", "++; " + str(self.confidence_3.sum()) + " trials"], loc = 2, fancybox = True)
+				leg.get_frame().set_alpha(0.9)
+				if leg:
+					for t in leg.get_texts():
+						t.set_fontsize(7)    # the legend text fontsize
+					for l in leg.get_lines():
+						l.set_linewidth(2)  # the legend line width
+				plt.tick_params(axis='both', which='major', labelsize=8)
+				simpleaxis(a)
+				spine_shift(a) 
+				plt.xticks([0,1000,2000,3000,4000], [0,1,2,3,4])
+				if (max_y_stim+(diff_stim/20.0)) < 1:
+					a.yaxis.set_major_locator(MultipleLocator(0.25))
+				else:
+					a.yaxis.set_major_locator(MultipleLocator(0.5))
+				plt.ylim(ymin=min_y_stim-(diff_stim/20.0), ymax=max_y_stim+(diff_stim/20.0))
+				plt.title(['Hits','False Alarms','Misses','Correct Rejections'][SDT], size=12)
+				plt.ylabel("PPR (Z)", size=10)
+				plt.xlabel("Time from stimulus (s)", size=10)
+				gca().spines["bottom"].set_linewidth(.5)
+				gca().spines["left"].set_linewidth(.5)
+			subplots_adjust(top=top)
+			figure_mean_pupil_locked_to_stimulus_SDT.suptitle('Stimulus locked PPR', size=12)
+				
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_stimulus_response_figure_SDT_confidence_' + self.subject + '.pdf')
+			figure_mean_pupil_locked_to_stimulus_SDT.savefig(pp, format='pdf')
+			pp.close()
+		
+	def response_figure_response(self):
+	
+		os.chdir(self.this_dir + 'response_figures/')
+	
+		#********************************************************************************
+		#************************ CORRECT RESPONSE MATRICES FOR BPD's *******************
+		#********************************************************************************
+		#*    'pupil change' is computed by taking the time series of each seperate     *
+		#*         trial, and subtract the associated bpd from every data point         *
+		#********************************************************************************
+	
+		for i in range(self.response_locked_array.shape[0]):
+			self.response_locked_array[i,:] = self.response_locked_array[i,:] - self.bpd[i]
+	
+		#********************************************************************************
+		#***************************** PUPIL RESPONSE FIGURE  ***************************
+		#********************************************************************************
+		#*       Stimulus-, response and feedback-locked pupillary response plots:      *
+		#********************************************************************************
+		
+		resp_data = self.response_locked_array[:,250:-500]
+		condition = [self.hit, self.fa, self.miss, self.cr]
+		
+		resp_means = []
+		resp_sems = []
+		for i in range(len(condition)):
+			resp_means.append( bottleneck.nanmean(resp_data[condition[i]], axis=0))
+			resp_sems.append( (bottleneck.nanstd(resp_data[condition[i]], axis=0)) / sp.sqrt(condition[i].sum()) )
+		
+		max_y_resp = max(np.concatenate( np.vstack(resp_means)+np.vstack(resp_sems) ))
+		min_y_resp = min(np.concatenate( np.vstack(resp_means)-np.vstack(resp_sems) ))
+		diff_resp = max_y_resp - min_y_resp
+	
+		# Make the plt.plot
+		figure_mean_pupil_locked_to_response_SDT = plt.figure(figsize=(4,3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
+		
 		# Response
-		if self.experiment == 1:
-			b = plt.subplot(312)
-		if self.experiment == 2:
-			b = plt.subplot(212)
+		b = plt.subplot(111)
 		xb = np.arange(-3249,2000)
 		for i in range(len(condition)):
 			plt.plot(xb, resp_means[i], linewidth=2, color = ['r','r','b','b'][i], alpha = [1,0.5,0.5,1][i])
@@ -1570,12 +1757,15 @@ class within_subjects_stats():
 		# plt.text(0-sp.mean(response_time[answer_no])+10,0.35,"'no!'")
 		plt.xlim( (-3225, 1500) )
 		plt.tick_params(axis='both', which='major', labelsize=8)
-		# plt.legend([p1, p2, p3, p4], ["HIT; " + str(hit.sum()) + " trials", "FA; " + str(fa.sum()) + " trials", "CR; " + str(cr.sum()) + " trials", "MISS; " + str(miss.sum()) + " trials"], loc = 2)
-		bottom = 0.1
 		simpleaxis(b)
 		spine_shift(b)
-		subplots_adjust(hspace = hspace, left = left)
+		subplots_adjust(bottom=bottom, top=top, left=left)
 		plt.xticks([-3000,-2000,-1000,0,1000], [-3,-2,-1,0,1])
+		if (max_y_resp+(diff_resp/20.0)) < 1:
+			b.yaxis.set_major_locator(MultipleLocator(0.25))
+		else:
+			b.yaxis.set_major_locator(MultipleLocator(0.5))
+		plt.ylim(ymin=min_y_resp-(diff_resp/20.0), ymax=max_y_resp+(diff_resp/20.0))
 		plt.title('Response locked PPR', size=12)
 		plt.ylabel("PPR (Z)", size=10)
 		plt.xlabel("Time from report (s)", size=10)
@@ -1583,35 +1773,241 @@ class within_subjects_stats():
 		plt.hist(0-self.response_time[self.answer_no], bins=20, rwidth=0.8, weights = np.ones(condition[2].sum()+condition[3].sum()) / 2500 * ((axis()[3] - axis()[2])*3), bottom = plt.axis()[3]-0.3, color = 'b', alpha = 0.5)
 		gca().spines["bottom"].set_linewidth(.5)
 		gca().spines["left"].set_linewidth(.5)
+	
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_response_response_figure_' + self.subject + '.pdf')
+		figure_mean_pupil_locked_to_response_SDT.savefig(pp, format='pdf')
+		pp.close()
+	
+	
+	def response_figure_response_confidence(self, split_by_SDT=False):
+	
+		os.chdir(self.this_dir + 'response_figures_confidence/')
+	
+		#********************************************************************************
+		#************************ CORRECT RESPONSE MATRICES FOR BPD's *******************
+		#********************************************************************************
+		#*    'pupil change' is computed by taking the time series of each seperate     *
+		#*         trial, and subtract the associated bpd from every data point         *
+		#********************************************************************************
+	
+		for i in range(self.response_locked_array.shape[0]):
+			self.response_locked_array[i,:] = self.response_locked_array[i,:] - self.bpd[i]
+	
+		#********************************************************************************
+		#***************************** PUPIL RESPONSE FIGURE  ***************************
+		#********************************************************************************
+		#*       Stimulus-, response and feedback-locked pupillary response plots:      *
+		#********************************************************************************
 		
-		if self.experiment == 1:
-			# Feedback
-			c = plt.subplot(313)
-			xc = np.arange(-499,1500)
-			for i in range(len(condition)):
-				plt.plot(xc, feed_means[i], linewidth=2, color = ['r','r','b','b'][i], alpha = [1,0.5,0.5,1][i])
-				plt.fill_between( xc, (feed_means[i]+feed_sems[i]), (feed_means[i]-feed_sems[i]), color = ['r','r','b','b'][i], alpha=0.1 )
-			plt.tick_params(axis='both', which='major', labelsize=8)
+		resp_data = self.response_locked_array[:,250:-500]
+		
+		confidence_condition = [self.confidence_0, self.confidence_1, self.confidence_2, self.confidence_3]
+		SDT_condition = [self.hit, self.fa, self.miss, self.cr]
+		
+		if split_by_SDT == False:
+			resp_means = []
+			resp_sems = []
+			for i in range(len(confidence_condition)):
+				resp_means.append( bottleneck.nanmean(resp_data[confidence_condition[i]], axis=0))
+				resp_sems.append( (bottleneck.nanstd(resp_data[confidence_condition[i]], axis=0)) / sp.sqrt(confidence_condition[i].sum()) )
+			max_y_resp = max(np.concatenate( np.vstack(resp_means)+np.vstack(resp_sems) ))
+			min_y_resp = min(np.concatenate( np.vstack(resp_means)-np.vstack(resp_sems) ))
+			diff_resp = max_y_resp - min_y_resp
+			
+			# Make the plt.plot
+			figure_mean_pupil_locked_to_response_SDT = plt.figure(figsize=(4,3))
+			left = 0.2
+			top = 0.915
+			bottom = 0.2
+		
+			# Response
+			b = plt.subplot(111)
+			xb = np.arange(-3249,2000)
+			for i in range(len(confidence_condition)):
+				plt.plot(xb, resp_means[i], linewidth=2, color = ['g','g','g','g'][i], alpha = [0.25,0.5,0.75,1][i])
+				plt.fill_between( xb, (resp_means[i]+resp_sems[i]), (resp_means[i]-resp_sems[i]), color = ['g','g','g','g'][i], alpha=0.1 )
 			plt.axvline(0, -1, 1, linewidth=1)
-			# plt.legend([p1, p2, p3, p4], ["HIT; " + str(hit[0].sum()) + " trials", "FA; " + str(fa[0].sum()) + " trials", "MISS; " + str(miss[0].sum()) + " trials", "CR; " + str(cr[0].sum()) + " trials"], loc = 2)
-			bottom = 0.1
-			simpleaxis(c)
-			spine_shift(c)
-			subplots_adjust(hspace = hspace, left = left)
-			plt.xticks([-500,-0,500,1000,1500], [-.5,0,.5,1,1.5])
-			plt.title('Feedback locked PPR', size=12)
+			plt.xlim( (-3225, 1500) )
+			plt.tick_params(axis='both', which='major', labelsize=8)
+			simpleaxis(b)
+			spine_shift(b)
+			subplots_adjust(bottom=bottom, top=top, left=left)
+			plt.xticks([-3000,-2000,-1000,0,1000], [-3,-2,-1,0,1])
+			if (max_y_resp+(diff_resp/20.0)) < 1:
+				b.yaxis.set_major_locator(MultipleLocator(0.25))
+			else:
+				b.yaxis.set_major_locator(MultipleLocator(0.5))
+			plt.ylim(ymin=min_y_resp-(diff_resp/20.0), ymax=max_y_resp+(diff_resp/20.0))
+			plt.title('Response locked PPR', size=12)
 			plt.ylabel("PPR (Z)", size=10)
-			plt.xlabel("Time from feedback (s)", size=10)
+			plt.xlabel("Time from report (s)", size=10)
 			gca().spines["bottom"].set_linewidth(.5)
 			gca().spines["left"].set_linewidth(.5)
+	
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_response_response_figure_confidence_' + self.subject + '.pdf')
+			figure_mean_pupil_locked_to_response_SDT.savefig(pp, format='pdf')
+			pp.close()
 		
-		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_response_figure_' + self.subject + '.pdf')
-		figure_mean_pupil_locked_to_stimulus_response_feedback_SDT.savefig(pp, format='pdf')
+		if split_by_SDT == True:
+			resp_means = []
+			resp_sems = []
+			for i in range(len(SDT_condition)):
+				for j in range(len(confidence_condition)):
+					resp_means.append( bottleneck.nanmean(resp_data[SDT_condition[i]*confidence_condition[j]], axis=0))
+					resp_sems.append( (bottleneck.nanstd(resp_data[SDT_condition[i]*confidence_condition[j]], axis=0)) / sp.sqrt((SDT_condition[i]*confidence_condition[j]).sum()) )
+			max_y_resp = max(np.concatenate( np.vstack(resp_means)+np.vstack(resp_sems) ))
+			min_y_resp = min(np.concatenate( np.vstack(resp_means)-np.vstack(resp_sems) ))
+			diff_resp = max_y_resp - min_y_resp
+			
+			# Make the plt.plot
+			figure_mean_pupil_locked_to_response_SDT = plt.figure(figsize=(16,12))
+			left = 0.2
+			top = 0.915
+			bottom = 0.2
+			for SDT in range(len(SDT_condition)):
+				# Response
+				b = plt.subplot(2,2,SDT+1)
+				xb = np.arange(-3249,2000)
+				for i in range(len(confidence_condition)):
+					plt.plot(xb, resp_means[(4*SDT)+i], linewidth=2, color = [['r','r','r','r'],['r','r','r','r'],['b','b','b','b'],['b','b','b','b']][SDT][i], alpha = [0.25,0.5,0.75,1][i])
+					plt.fill_between( xb, (resp_means[(4*SDT)+i]+resp_sems[(4*SDT)+i]), (resp_means[(4*SDT)+i]-resp_sems[(4*SDT)+i]), color = [['r','r','r','r'],['r','r','r','r'],['b','b','b','b'],['b','b','b','b']][SDT][i], alpha=0.1 )
+				plt.axvline(0, -1, 1, linewidth=1)
+				plt.xlim( (-3225, 1500) )
+				plt.tick_params(axis='both', which='major', labelsize=8)
+				simpleaxis(b)
+				spine_shift(b)
+				plt.xticks([-3000,-2000,-1000,0,1000], [-3,-2,-1,0,1])
+				if (max_y_resp+(diff_resp/20.0)) < 1:
+					b.yaxis.set_major_locator(MultipleLocator(0.25))
+				else:
+					b.yaxis.set_major_locator(MultipleLocator(0.5))
+				plt.ylim(ymin=min_y_resp-(diff_resp/20.0), ymax=max_y_resp+(diff_resp/20.0))
+				plt.title(['Hits','False Alarms','Misses','Correct Rejections'][SDT], size=12)
+				plt.ylabel("PPR (Z)", size=10)
+				plt.xlabel("Time from report (s)", size=10)
+				gca().spines["bottom"].set_linewidth(.5)
+				gca().spines["left"].set_linewidth(.5)
+			subplots_adjust(top=top)
+			figure_mean_pupil_locked_to_response_SDT.suptitle('Response locked PPR', size=12)
+			
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_response_response_figure_SDT_confidence_' + self.subject + '.pdf')
+			figure_mean_pupil_locked_to_response_SDT.savefig(pp, format='pdf')
+			pp.close()
+	
+	
+
+	
+	
+	def response_figure_feedback(self):
+		
+		os.chdir(self.this_dir + 'response_figures/')
+		
+		#********************************************************************************
+		#************************ CORRECT RESPONSE MATRICES FOR BPD's *******************
+		#********************************************************************************
+		#*    'pupil change' is computed by taking the time series of each seperate     *
+		#*         trial, and subtract the associated bpd from every data point         *
+		#********************************************************************************
+		
+		for i in range(self.feedback_locked_array.shape[0]):
+			self.feedback_locked_array[i,:] = self.feedback_locked_array[i,:] - self.bpd_feed[i]
+		
+		#********************************************************************************
+		#***************************** PUPIL RESPONSE FIGURE  ***************************
+		#********************************************************************************
+		#*       Stimulus-, response and feedback-locked pupillary response plots:      *
+		#********************************************************************************
+		
+		feed_data = self.feedback_locked_array[:,500:2499]
+		condition = [self.hit, self.fa, self.miss, self.cr]
+		
+		feed_means = []
+		feed_sems = []
+		for i in range(len(condition)):
+			feed_means.append( bottleneck.nanmean(feed_data[condition[i]], axis=0))
+			feed_sems.append( (bottleneck.nanstd(feed_data[condition[i]], axis=0)) / sp.sqrt(condition[i].sum()) )
+		
+		max_y_feed = max(np.concatenate( np.vstack(feed_means)+np.vstack(feed_sems) ))
+		min_y_feed = min(np.concatenate( np.vstack(feed_means)-np.vstack(feed_sems) ))
+		diff_feed = max_y_feed - min_y_feed
+		
+		# Make the plt.plot
+		figure_mean_pupil_locked_to_feedback_SDT = plt.figure(figsize=(4,3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
+		
+		# Feedback
+		c = plt.subplot(111)
+		xc = np.arange(-499,1500)
+		for i in range(len(condition)):
+			plt.plot(xc, feed_means[i], linewidth=2, color = ['r','r','b','b'][i], alpha = [1,0.5,0.5,1][i])
+			plt.fill_between( xc, (feed_means[i]+feed_sems[i]), (feed_means[i]-feed_sems[i]), color = ['r','r','b','b'][i], alpha=0.1 )
+		plt.tick_params(axis='both', which='major', labelsize=8)
+		plt.axvline(0, -1, 1, linewidth=1)
+		leg = plt.legend(["H; " + str(self.hit.sum()) + " trials", "FA; " + str(self.fa.sum()) + " trials", "M; " + str(self.miss.sum()) + " trials", "CR; " + str(self.cr.sum()) + " trials"], loc = 2, fancybox = True)
+		leg.get_frame().set_alpha(0.9)
+		if leg:
+			for t in leg.get_texts():
+				t.set_fontsize(7)    # the legend text fontsize
+			for l in leg.get_lines():
+				l.set_linewidth(2)  # the legend line width
+		simpleaxis(c)
+		spine_shift(c)
+		subplots_adjust(bottom=bottom, top=top, left=left)
+		plt.xticks([-500,-0,500,1000,1500], [-.5,0,.5,1,1.5])
+		if (max_y_feed+(diff_feed/20.0)) < 1:
+			c.yaxis.set_major_locator(MultipleLocator(0.25))
+		else:
+			c.yaxis.set_major_locator(MultipleLocator(0.5))
+		plt.ylim(ymin=min_y_feed-(diff_feed/20.0), ymax=max_y_feed+(diff_feed/20.0))
+		plt.title('Feedback locked PPR', size=12)
+		plt.ylabel("PPR (Z)", size=10)
+		plt.xlabel("Time from feedback (s)", size=10)
+		gca().spines["bottom"].set_linewidth(.5)
+		gca().spines["left"].set_linewidth(.5)
+		
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_feedback_response_figure_' + self.subject + '.pdf')
+		figure_mean_pupil_locked_to_feedback_SDT.savefig(pp, format='pdf')
 		pp.close()
 		
 	
-	
-	def PPR_feedback_amplitude_within_stats(self):
+	def PPR_feedback_amplitude_stats(self, use_ppd_lin=True):
+		
+		os.chdir(self.this_dir + 'ppr_bars_feedback/')
+		
+		ppd_measure = self.ppd_feed_lin
+		
+		# Permutation Tests:
+		indices_to_test1 = [self.hit, self.fa, self.answer_yes, self.correct]
+		indices_to_test2 = [self.miss, self.cr, self.answer_no, self.incorrect]
+		observed_mean_difference = []
+		perm_results = []
+		significance = []
+		for i in range(len(indices_to_test1)):
+			group1 = ppd_measure[indices_to_test1[i]]
+			group2 = ppd_measure[indices_to_test2[i]]
+			output = functions_jw.permutationTest(group1 = group1, group2 = group2, nrand = 10000)
+			observed_mean_difference.append(output[0]) 
+			perm_results.append(output[1])
+			significance.append(output[2])
+		
+		## PPD's at response SDT:
+		fig = functions_jw.sdt_barplot(subject = self.subject, hit = ppd_measure[self.hit], fa = ppd_measure[self.fa], miss = ppd_measure[self.miss], cr = ppd_measure[self.cr], p1 = significance[0], p2=significance[1])
+		ylabel('PPR amplitude (linearly projected)', size = 10)
+		title('Mean PPR amplitude feedback', size = 12)
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_5_feedback_' + self.subject + '.pdf')
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		## PPD's at response yes vs no and corr. vs incorr.:
+		fig = functions_jw.sdt_barplot(subject = self.subject, hit = ppd_measure[self.hit], fa = ppd_measure[self.fa], miss = ppd_measure[self.miss], cr = ppd_measure[self.cr], p1 = significance[2], p2=significance[3], type_plot = 2)
+		ylabel('PPR amplitude (linearly projected)', size = 10)
+		title('Mean PPR amplitude feedback', size = 12)
+		pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_6_feedback_' + self.subject + '.pdf')
+		fig.savefig(pp, format='pdf')
+		pp.close()
+	def PPR_feedback_amplitude_stats_confidence(self):
 		
 		os.chdir(self.this_dir + 'ppr_bars_feedback/')
 		
@@ -1666,7 +2062,6 @@ class within_subjects_stats():
 			# 	output = functions_jw.roc_analysis(group1 = group1, group2 = group2, nrand=1000)
 			# 	out_i_feed.append(output[0])
 			# 	out_p_feed.append(output[1])
-	
 	
 	def pupil_GLM(self):
 		
@@ -1889,9 +2284,16 @@ class within_subjects_stats():
 		betas_up = mean(betas_up_matrix, axis=0)
 		
 		# T-test:
-		t_test1 = ttest_1samp(np.array(betas_resp)-np.array(betas_stim), 0)
-		t_test2 = ttest_1samp(np.array(betas_up)-np.array(betas_down), 0)
+		# t_test1 = ttest_1samp(np.array(betas_resp)-np.array(betas_stim), 0)
+		# t_test2 = ttest_1samp(np.array(betas_up)-np.array(betas_down), 0)
 		
+		# Permutation test:
+		t_test1 = functions_jw.permutationTest(np.array(betas_stim), np.zeros(len(run)), nrand = 10000)
+		t_test2 = functions_jw.permutationTest(np.array(betas_resp), np.zeros(len(run)), nrand = 10000)
+		t_test3 = functions_jw.permutationTest(np.array(betas_down), np.zeros(len(run)), nrand = 10000)
+		t_test4 = functions_jw.permutationTest(np.array(betas_up), np.zeros(len(run)), nrand = 10000)
+		t_test5 = functions_jw.permutationTest(np.array(betas_resp),np.array(betas_stim), nrand = 10000)
+		t_test6 = functions_jw.permutationTest(np.array(betas_up),np.array(betas_down), nrand = 10000)
 		
 		# if split_up_by_SDT == True:
 		# 	t_test1 = ttest_1samp(np.array(betas_resp_hit)-np.array(betas_resp_miss), 0)
@@ -1914,11 +2316,15 @@ class within_subjects_stats():
 		
 		# BARPLOT BETAS:
 		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_1_' + self.subject + '.pdf')
-		fig = functions_jw.GLM_betas_barplot(self.subject, betas_stim, betas_resp, betas_down, betas_up, betas_feed, t_test1[1], t_test2[1])
-		ylabel('beta value', size = '10')
-		title('GLM', size = '12')
+		fig = functions_jw.GLM_betas_barplot(self.subject, betas_stim, betas_resp, betas_down, betas_up, t_test1[2], t_test2[2], t_test3[2], t_test4[2], t_test5[2], t_test6[2])
+		ylabel('beta value', size = 10)
+		title('GLM', size = 12)
 		fig.savefig(pp, format='pdf')
 		pp.close()
+		
+		
+		shell()
+		
 		
 		os.chdir(self.this_dir + 'glm_response_figures/')
 		
@@ -2013,16 +2419,26 @@ class within_subjects_stats():
 		r_squared_stim = round(stats.linregress(mean2, mean3)[2]**2,3)
 		r_squared_resp = round(stats.linregress(mean5, mean6)[2]**2,3)
 		
-		figure_predicted_measured = plt.figure(figsize=(4, 6))
-		hspace = 0.40
+		max_y_stim = max(max(mean2 + sem2), max(mean3 + sem3))
+		min_y_stim = min(min(mean2 + sem2), min(mean3 + sem3))
+		diff_stim = max_y_stim - min_y_stim
+		
+		max_y_resp = max(max(mean5 + sem5), max(mean6 + sem6))
+		min_y_resp = min(min(mean5 + sem5), min(mean6 + sem6))
+		diff_resp = max_y_resp - min_y_resp
+		
+		figure_predicted_measured_stimulus = plt.figure(figsize=(4, 3))
 		left = 0.2
+		top = 0.915
+		bottom = 0.2
+
 		# Stimulus 
-		a = plt.subplot(211)
+		a = plt.subplot(111)
 		xa = np.arange(-40,160)
 		plt.plot(xa, mean2, linewidth=2, color = 'k', alpha = 0.25)
 		plt.fill_between( xa, mean2+sem2, mean2-sem2, color = 'k', alpha=0.1 )
-		plt.plot(xa, mean3, linewidth=2, color = 'r', alpha = 0.80)
-		plt.fill_between( xa, mean3+sem3, mean3-sem3, color = 'b', alpha=0.1 )
+		plt.plot(xa, mean3, linewidth=2, color = 'k', alpha = 0.80)
+		plt.fill_between( xa, mean3+sem3, mean3-sem3, color = 'k', alpha=0.1 )
 		plt.axvline(0, -1, 1, linewidth=1)
 		plt.xlim( (-40, 160) )
 		leg = plt.legend(["Measured pupil", "Predicted pupil"], loc = 2, fancybox = True)
@@ -2036,40 +2452,64 @@ class within_subjects_stats():
 		# plt.legend([p1, p2, p3, p4], ["HIT; " + str(hit.sum()) + " trials", "FA; " + str(fa.sum()) + " trials", "MISS; " + str(miss.sum()) + " trials", "CR; " + str(cr.sum()) + " trials"], loc = 2)
 		simpleaxis(a)
 		spine_shift(a)
-		plt.xticks([-40,0,40,80,120,160], [-1,0,1,2,3,4]) 
-		subplots_adjust(hspace = hspace, left = left, bottom = 0.1)
+		plt.xticks([-40,0,40,80,120,160], [-1,0,1,2,3,4])
+		if (max_y_stim+(diff_stim/20.0)) < 0.5:
+			a.yaxis.set_major_locator(MultipleLocator(0.1))
+		elif (max_y_stim+(diff_stim/20.0)) < 1:
+			a.yaxis.set_major_locator(MultipleLocator(0.25))
+		else:
+			a.yaxis.set_major_locator(MultipleLocator(0.5))
+		plt.ylim(ymin=min_y_stim-(diff_stim/20.0), ymax=max_y_stim+(diff_stim/20.0))
+		subplots_adjust(bottom=bottom, top=top, left=left)
 		plt.title('Stimulus locked PPR', size=12)
 		plt.ylabel("PPR (Z)", size=10)
 		plt.xlabel("Time from stimulus (s)", size=10)
-		plt.text(-20, 0.3, 'R-squared = ' + str(r_squared_stim))
+		# plt.text(-20, 0.3, 'R-squared = ' + str(r_squared_stim))
 		gca().spines["bottom"].set_linewidth(.5)
 		gca().spines["left"].set_linewidth(.5)
-		bottom = 0.1
+		
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_stimulus_response_figure_' + self.subject + '.pdf')
+		figure_predicted_measured_stimulus.savefig(pp, format='pdf')
+		pp.close()
+		
+		
+		figure_predicted_measured_response = plt.figure(figsize=(4, 3))
+		left = 0.2
+		top = 0.915
+		bottom = 0.2
 		
 		# Response
-		b = plt.subplot(212)
+		b = plt.subplot(111)
 		xb = np.arange(-140,60)
 		plt.plot(xb, mean5, linewidth=2, color = 'k', alpha = 0.25)
 		plt.fill_between( xb, mean5+sem5, mean5-sem5, color = 'k', alpha=0.1 )
-		plt.plot(xb, mean6, linewidth=2, color = 'r', alpha = 0.80)
-		plt.fill_between( xb, mean6+sem6, mean6-sem6, color = 'b', alpha=0.1 )
+		plt.plot(xb, mean6, linewidth=2, color = 'k', alpha = 0.80)
+		plt.fill_between( xb, mean6+sem6, mean6-sem6, color = 'k', alpha=0.1 )
 		plt.axvline(0, -1, 1, linewidth=1)
 		plt.xlim( (-140, 60) )
 		plt.tick_params(axis='both', which='major', labelsize=8)
 		simpleaxis(b)
 		spine_shift(b)
-		plt.xticks([-120,-80,-40,0,40], [-3,-2,-1,0,1]) 
-		subplots_adjust(hspace = hspace, left = left, bottom = 0.1)
+		plt.xticks([-120,-80,-40,0,40], [-3,-2,-1,0,1])
+		if (max_y_resp+(diff_resp/20.0)) < 0.5:
+			b.yaxis.set_major_locator(MultipleLocator(0.1))
+		elif (max_y_resp+(diff_resp/20.0)) < 1:
+			b.yaxis.set_major_locator(MultipleLocator(0.25))
+		else:
+			b.yaxis.set_major_locator(MultipleLocator(0.5))
+		plt.ylim(ymin=min_y_resp-(diff_resp/20.0), ymax=max_y_resp+(diff_resp/20.0))
+		subplots_adjust(bottom=bottom, top=top, left=left)
 		plt.title('Response locked PPR', size=12)
 		plt.ylabel("PPR (Z)", size=10)
 		plt.xlabel("Time from report (s)", size=10)
-		plt.text(-120, 0.3, 'R-squared = ' + str(r_squared_resp))
+		# plt.text(-120, 0.3, 'R-squared = ' + str(r_squared_resp))
 		gca().spines["bottom"].set_linewidth(.5)
 		gca().spines["left"].set_linewidth(.5)
 		
-		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_predicted_measured_response_figure_' + self.subject + '.pdf')
-		figure_predicted_measured.savefig(pp, format='pdf')
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_response_response_figure_' + self.subject + '.pdf')
+		figure_predicted_measured_response.savefig(pp, format='pdf')
 		pp.close()
+
 		
 		# #########################
 		# # Combined over runs: ###
@@ -2141,13 +2581,14 @@ class within_subjects_stats():
 
 class across_subject_stats():
 	
-	def __init__(self, experiment, this_dir, sample_rate, downsample_rate, these_subjects):
+	def __init__(self, experiment, this_dir, sample_rate, downsample_rate, these_subjects, number_runs):
 		
 		self.experiment = experiment
 		self.this_dir = this_dir
 		self.sample_rate = sample_rate
 		self.downsample_rate = downsample_rate
 		self.subject = these_subjects
+		self.number_runs = number_runs
 		
 		# cut-off 35 trials:
 		# self.subject = ('jw', 'ml', 'te', 'ln', 'td', 'lm', 'al', 'dli', 'vp', 'ek', 'dho', 'tk')
@@ -2158,6 +2599,7 @@ class across_subject_stats():
 		
 		# LIST VARIABLES (one entry per subject):
 		df = []
+		self.test_contrast_per_run = []
 		self.stimulus_present = []
 		self.answer_yes = []
 		self.answer_no = []
@@ -2183,8 +2625,14 @@ class across_subject_stats():
 		self.d_prime_overall = []
 		self.criterion_per_run = []
 		self.criterion_overall = []
+		self.sign_template = []
 		for i in range(len(self.subject)):
+			
 			df.append(pd.load(self.subject[i] + '_data'))
+			
+			self.test_contrast_per_run.append(np.array(df[i]['test_contrast_per_run']))
+			self.test_contrast_per_run[i] = self.test_contrast_per_run[i][-np.isnan(self.test_contrast_per_run[i])]
+			
 			self.stimulus_present.append( np.array(df[i]['stimulus'], dtype = bool))
 			self.answer_yes.append( np.array(df[i]['answer'], dtype = bool))
 			self.answer_no.append( -self.answer_yes[i])
@@ -2214,6 +2662,10 @@ class across_subject_stats():
 			self.criterion_per_run[i] = self.criterion_per_run[i][-np.isnan(self.criterion_per_run[i])]
 			self.criterion_overall.append(np.array(df[i]['criterion_overall'])[0])
 			self.d_prime_overall.append(np.array(df[i]['d_prime_overall'])[0])
+			if np.array(df[i]['sign_template'])[0] < 0:
+				self.sign_template.append(-1.0)
+			else:
+				self.sign_template.append(1.0)
 		
 		# CONCATENATED ACCROSS SUBJECTS:
 		self.YES = np.array(np.concatenate(self.answer_yes))
@@ -2222,6 +2674,7 @@ class across_subject_stats():
 		self.INCORRECT = -self.CORRECT
 		self.PRESENT = np.array(np.concatenate(self.stimulus_present))
 		self.ABSENT = -self.PRESENT
+		self.BPD = np.concatenate(self.bpd)
 		self.PPD = np.concatenate(self.ppd)
 		self.PPD_MEAN = np.concatenate(self.ppd_mean)
 		self.PPD_LIN = np.concatenate(self.ppd_lin)
@@ -2249,7 +2702,9 @@ class across_subject_stats():
 		self.LIBERAL = np.concatenate(self.LIBERAL, axis = 1)
 	
 	
-	def PPR_amplitude_across_stats(self, use = 'ppd_lin', indices = 'all'):
+	def PPR_amplitude_stats(self, use='ppd_lin', indices='all'):
+		
+		shell()
 		
 		os.chdir(self.this_dir + 'ppr_bars/')
 		
@@ -2309,11 +2764,16 @@ class across_subject_stats():
 		if indices == 'all':
 			pass
 		
-		# t-test:
-		p1 = ttest_rel(hit_means, miss_means)[1]
-		p2 = ttest_rel(fa_means, cr_means)[1]
-		p3 = ttest_rel(yes_means, no_means)[1]
-		p4 = ttest_rel(correct_means, incorrect_means)[1]
+		# permutation test:
+		p1 = functions_jw.permutationTest(group1 = hit_means, group2 = miss_means, nrand = 10000)[2]
+		p2 = functions_jw.permutationTest(group1 = fa_means, group2 = cr_means, nrand = 10000)[2]
+		p3 = functions_jw.permutationTest(group1 = yes_means, group2 = no_means, nrand = 10000)[2]
+		p4 = functions_jw.permutationTest(group1 = correct_means, group2 = incorrect_means, nrand = 10000)[2]
+		# # t-test:
+		# p1 = ttest_rel(hit_means, miss_means)[1]
+		# p2 = ttest_rel(fa_means, cr_means)[1]
+		# p3 = ttest_rel(yes_means, no_means)[1]
+		# p4 = ttest_rel(correct_means, incorrect_means)[1]
 		# wilcoxon:
 		p5 = wilcoxon(hit_means, miss_means)[1]
 		p6 = wilcoxon(fa_means, cr_means)[1]
@@ -2324,14 +2784,14 @@ class across_subject_stats():
 			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
 			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
-			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_CONSERVATIVE_T-tests.pdf'))
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_CONSERVATIVE_PermTest.pdf'))
 			fig1.savefig(pp, format='pdf')
 			pp.close()
 			
 			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
 			title(str(len(hit_means)) + ' subjects - mean PPR amplitude CONSERVATIVE', size = '12')
-			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_CONSERVATIVE_T-tests.pdf')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_CONSERVATIVE_PermTest.pdf')
 			fig2.savefig(pp, format='pdf')
 			pp.close()
 			
@@ -2353,14 +2813,14 @@ class across_subject_stats():
 			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
 			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
-			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_LIBERAL_T-tests.pdf'))
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_LIBERAL_PermTest.pdf'))
 			fig1.savefig(pp, format='pdf')
 			pp.close()
 			
 			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
 			title(str(len(hit_means)) + ' subjects - mean PPR amplitude LIBERAL', size = '12')
-			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_LIBERAL_T-tests.pdf')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_LIBERAL_PermTest.pdf')
 			fig2.savefig(pp, format='pdf')
 			pp.close()
 			
@@ -2381,15 +2841,19 @@ class across_subject_stats():
 		if indices == 'all':
 			fig1 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p1, p2=p2, values = True)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
-			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
-			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_T-tests.pdf'))
+			# title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			# pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_T-tests.pdf'))
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude - permutation test', size = '12')
+			pp = PdfPages(('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects1_PermTest.pdf'))
 			fig1.savefig(pp, format='pdf')
 			pp.close()
 			
 			fig2 = functions_jw.sdt_barplot(subject = 'Across', hit = hit_means, fa = fa_means, miss = miss_means, cr = cr_means, p1 = p3, p2=p4, values = True, type_plot = 2)
 			ylabel('PPR amplitude (linearly projected)', size = '10')
-			title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
-			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_T-tests.pdf')
+			# title(str(len(hit_means)) + ' subjects - mean PPR amplitude', size = '12')
+			# pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_T-tests.pdf')
+			title(str(len(hit_means)) + ' subjects - mean PPR amplitude - permutation test', size = '12')
+			pp = PdfPages('Exp' + str(self.experiment) + '_PPR_bars_AccrosSubjects2_PermTest.pdf')
 			fig2.savefig(pp, format='pdf')
 			pp.close()
 			
@@ -2408,7 +2872,7 @@ class across_subject_stats():
 			pp.close()
 	
 	
-	def BPD_across_stats(self):
+	def BPD_stats(self):
 		
 		os.chdir(self.this_dir + 'bpd_bars/')
 		
@@ -2488,7 +2952,7 @@ class across_subject_stats():
 		robjects.r('attach(dataf)')
 		
 		# OPTION 1:
-		res1 = robjects.r('res1 = summary(aov(PPD_LIN ~ factor(present)*factor(yes)*factor(liberal) + Error(factor(subject)), dataf))')
+		res1 = robjects.r('res1 = summary(aov(PPD_LIN ~ factor()*factor(yes)*factor(liberal) + Error(factor(subject)), dataf))')
 		robjects.r('print(res1)')
 		
 		
@@ -2515,142 +2979,100 @@ class across_subject_stats():
 	
 	def correlation_PPRa_BPD(self):
 		
-		"Last plot all the way down is the pooled across subjects one."
-		
 		os.chdir(self.this_dir + '/correlation/')
 		
-		ppd_measures = self.ppd_lin
-		bpd_measures = self.bpd
-		reg_slope = []
-		reg_intercept = []
-		reg_p = []
-		reg_r = []
+		if self.experiment == 1:
+			
+			ppd_measures = self.ppd_lin
+			bpd_measures = self.bpd
+			reg_slope = []
+			reg_intercept = []
+			reg_p = []
+			reg_r = []
 		
-		fig = plt.figure(figsize=(8,16))	
+			fig = plt.figure(figsize=(8,8))
+			fig.suptitle("Correlation BPD PPR", fontsize=12)
+			# text(0.5, 0.95, 'test', transform=fig.transFigure, horizontalalignment='center')
+			# fig.set_title('Correlation BPD PPR')
+			
+			for i in range(len(self.subject)):
+			
+				varX = bpd_measures[i]
+				varY = ppd_measures[i]
+				
+				slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+				(m,b) = sp.polyfit(varX, varY, 1)
+				regression_line = sp.polyval([m,b], varX)
+				ax = fig.add_subplot(2,2,i+1)
+				ax.plot(varX,regression_line, color = 'k', linewidth = 1.5)
+				ax.scatter(varX, varY, color='#808080', alpha = 0.75)
+				simpleaxis(ax)
+				spine_shift(ax)
+				if i == 0:
+					ax.set_ylabel('PPR (linearly projected)', size = 10)
+				if i == 2:
+					ax.set_xlabel('BPD (Z)', size = 10)
+					ax.set_ylabel('PPR (linearly projected)', size = 10)
+				if i == 3:
+					ax.set_xlabel('BPD (Z)', size = 10)
+				plt.tick_params(axis='both', which='major', labelsize=10)
+				if round(p_value,5) < 0.005:
+					ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
+				else:	
+					ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+				plt.gca().spines["bottom"].set_linewidth(.5)
+				plt.gca().spines["left"].set_linewidth(.5)
+				
+			# left = 0.2
+			top = 0.915
+			bottom = 0.1
+			plt.subplots_adjust(top=top, bottom=bottom)
+				
+			pp = PdfPages('Exp' + str(self.experiment) + '_Correlation_PPRa_BPD.pdf')
+			fig.savefig(pp, format='pdf')
+			pp.close()
 		
-		# Subject 1:
-		ppd = ppd_measures[0]
-		bpd = bpd_measures[0]
-		slope, intercept, r_value, p_value, std_err = stats.linregress(bpd,ppd)
-		(m,b) = sp.polyfit(bpd, ppd, 1)
-		phasic_pupil_diameter_p = sp.polyval([m,b], bpd)
-		ax2 = plt.subplot2grid( (4,2), (2,0), colspan=1, rowspan=1 )
-		ax2.plot(bpd,phasic_pupil_diameter_p, color = 'k', linewidth = 1.5)
-		ax2.scatter(bpd, ppd, color='#808080', alpha = 0.75)
-		ax2.set_title('subject 1', size = 12)
-		plt.tick_params(axis='both', which='major', labelsize=10)
-		if round(p_value,5) < 0.005:
-			ax2.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
-		else:	
-			ax2.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
-		simpleaxis(ax2)
-		spine_shift(ax2)
-		# ax2.set_xlabel('BPD (Z)', size = 'x-large')
-		ax2.set_ylabel('PPR amplitude (linearly projected)', size = 10)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		reg_slope.append(slope)
-		reg_intercept.append(intercept)
-		reg_r.append(r_value)
-		reg_p.append(p_value)
-		# Subject 2:
-		ppd = ppd_measures[1]
-		bpd = bpd_measures[1]
-		slope, intercept, r_value, p_value, std_err = stats.linregress(bpd,ppd)
-		(m,b) = sp.polyfit(bpd, ppd, 1)
-		phasic_pupil_diameter_p = sp.polyval([m,b], bpd)
-		ax3 = plt.subplot2grid((4,2), (2,1), colspan=1, rowspan=1 )
-		ax3.plot(bpd,phasic_pupil_diameter_p, color = 'k', linewidth = 1.5)
-		ax3.scatter(bpd, ppd, color='#808080', alpha = 0.75)
-		# ax3.set_ylabel('PPD - linearly projected', size = 'x-large')
-		ax3.set_title('subject 2', size = 12)
-		plt.tick_params(axis='both', which='major', labelsize=10)
-		if round(p_value,5) < 0.005:
-			ax3.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
-		else:	
-			ax3.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
-		simpleaxis(ax3)
-		spine_shift(ax3)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		reg_slope.append(slope)
-		reg_intercept.append(intercept)
-		reg_r.append(r_value)
-		reg_p.append(p_value)
-		# Subject 3:
-		ppd = ppd_measures[2]
-		bpd = bpd_measures[2]
-		slope, intercept, r_value, p_value, std_err = stats.linregress(bpd,ppd)
-		(m,b) = sp.polyfit(bpd, ppd, 1)
-		phasic_pupil_diameter_p = sp.polyval([m,b], bpd)
-		ax4 = plt.subplot2grid((4,2), (3,0), colspan=1, rowspan=1)
-		ax4.plot(bpd,phasic_pupil_diameter_p, color = 'k', linewidth = 1.5)
-		ax4.scatter(bpd, ppd, color='#808080', alpha = 0.75)
-		ax4.set_title('subject 3', size = 12)
-		plt.tick_params(axis='both', which='major', labelsize=10)
-		if round(p_value,5) < 0.005:
-			ax4.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
-		else:	
-			ax4.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
-		simpleaxis(ax4)
-		spine_shift(ax4)
-		ax4.set_xlabel('BPD', size = 10)
-		ax4.set_ylabel('PPR amplitude (linearly projected)', size = 10)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		reg_slope.append(slope)
-		reg_intercept.append(intercept)
-		reg_r.append(r_value)
-		reg_p.append(p_value)
-		# Subject 4:
-		ppd = ppd_measures[3]
-		bpd = bpd_measures[3]
-		slope, intercept, r_value, p_value, std_err = stats.linregress(bpd,ppd)
-		(m,b) = sp.polyfit(bpd, ppd, 1)
-		phasic_pupil_diameter_p = sp.polyval([m,b], bpd)
-		ax5 = plt.subplot2grid((4,2), (3,1), colspan=1, rowspan=1)
-		ax5.plot(bpd,phasic_pupil_diameter_p, color = 'k', linewidth = 1.5)
-		ax5.scatter(bpd, ppd, color='#808080', alpha = 0.75)
-		ax5.set_title('subject 4', size = 12)
-		plt.tick_params(axis='both', which='major', labelsize=10)
-		if round(p_value,5) < 0.005:
-			ax5.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
-		else:	
-			ax5.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
-		simpleaxis(ax5)
-		spine_shift(ax5)
-		ax5.set_xlabel('BPD', size = 10)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		reg_slope.append(slope)
-		reg_intercept.append(intercept)
-		reg_r.append(r_value)
-		reg_p.append(p_value)
-		# Across subjects:
-		reg_slope = mean(reg_slope)
-		reg_intercept = mean(reg_intercept)
-		reg_plot = reg_intercept + (reg_slope * linspace(-5,6))
-		p_value = mean(reg_p)
-		r_value = mean(reg_r)
-		ax1 = plt.subplot2grid((4,2), (0,0), colspan=2, rowspan=2)
-		ax1.scatter(np.concatenate(bpd_measures), np.concatenate(ppd_measures), color='#808080', alpha = 0.75)
-		ax1.plot(linspace(-5,6), reg_plot, color = 'k', linewidth = 1.5)
-		plt.tick_params(axis='both', which='major', labelsize=10)
-		ax1.set_title("Correlation PPR amplitude and BPD, across subjects", size = 12)
-		if round(p_value,5) < 0.005:
-			ax1.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/16), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/16),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
-		else:	
-			ax1.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/16), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/16),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
-		simpleaxis(ax1)
-		spine_shift(ax1)
-		ax1.set_xlabel('BPD', size = 10)
-		ax1.set_ylabel('PPR amplitude (linearly projected)', size = 10)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		
-		pp = PdfPages('Exp' + str(self.experiment) + '_Correlation_PPRa_BPD_AcrossSubjects.pdf')
-		fig.savefig(pp, format='pdf')
-		pp.close()
+		if self.experiment == 2:
+			
+			shell()
+			
+			fig = plt.figure(figsize=(12,12))
+			for i in range(len(self.subject)):
+			
+				varX = self.bpd[i]
+				varY = self.ppd_lin[i]
+			
+				slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+				(m,b) = sp.polyfit(varX, varY, 1)
+				regression_line = sp.polyval([m,b], varX)
+			
+				
+				ax = fig.add_subplot(5,5,i)
+				ax.plot(varX,regression_line, color = 'k', linewidth = 1.5)
+				ax.scatter(varX, varY, color='#808080', alpha = 0.75)
+				simpleaxis(ax)
+				spine_shift(ax)
+				ax.set_title(str(i) + 'Correlation BPD PPR', size = 12)
+				ax.set_ylabel('PPR (linearly projected)', size = 10)
+				ax.set_xlabel('BPD (Z)', size = 10)
+				plt.tick_params(axis='both', which='major', labelsize=10)
+				if round(p_value,5) < 0.005:
+					ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
+				else:	
+					ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+				# left = 0.25
+				top = 0.915
+				bottom = 0.1
+				plt.subplots_adjust(top=top, bottom=bottom)
+				plt.gca().spines["bottom"].set_linewidth(.5)
+				plt.gca().spines["left"].set_linewidth(.5)
+			
+			pp = PdfPages('Exp' + str(self.experiment) + '_Correlation_PPRa_BPD_AcrossSubjects.pdf')
+			fig.savefig(pp, format='pdf')
+			pp.close()
+
+			
+			
 	
 	
 	def collapsed_response_figure(self):
@@ -2700,20 +3122,546 @@ class across_subject_stats():
 		fig.savefig(pp, format='pdf')
 		pp.close()
 		
+	def pupil_GLM(self):
+		
+		
+		h5f = []
+		run_per_subject = []
+		for subject in range(len(self.subject)):
+		
+			# Set working directory and open hdf5 file
+			this_dir = '/Research/PUPIL/PupilExperiment2/data/' + self.subject[subject] + '/'
+			os.chdir(this_dir)
+			h5f.append( openFile(( self.subject[subject] + '.hdf5'), mode = "r" ) ) # mode = "r" means 'read only'
+		
+			run = []
+			for this_run in range(self.number_runs[subject]):
+				search_name = 'run_' + str(this_run)
+				for r in h5f[subject].iterNodes(where = '/', classname = 'Group'):
+					if search_name == r._v_name:
+						run.append(r)
+						break
+			run_per_subject.append(run)
+		
+		run = run_per_subject
+		
+		#################################################################################
+		
+		# This section I use to be able to calculate the baseline mean pupil diameter, in order to subtract this in every trial. 
+		
+		include_per_subject = []
+		for subject in range(len(self.subject)):
+			include = []
+			for i in range(len(run[subject])):
+			
+				# times:
+				gaze_timestamps = run[subject][i].pupil_data_filtered.read()[0,:]
+				trial_times = run[subject][i].trial_times.read()
+				trial_parameters = run[subject][i].trial_parameters.read()
+			
+				timesss = []
+				duration = 0
+				include_indices = np.zeros(gaze_timestamps.shape[0], dtype = bool)
+				for j in range(len(trial_parameters['trial_nr'])):
+					timesss.append((gaze_timestamps > trial_times['trial_phase_timestamps'][j,1,0] - 500) * (gaze_timestamps < trial_times['trial_phase_timestamps'][j,1,0]))
+					if sum(timesss[j]) > duration:
+						duration = sum(timesss[j])
+					include_indices = include_indices + timesss[j]
+			
+				include.append(include_indices)
+			
+			include_joined = np.concatenate(include, axis = 0)
+			
+			include_per_subject.append(include)
+		
+		###################################################################################################################
+		## DATA AND INDICES! ##############################################################################################
+		
+		blink_convolved_per_subject = []
+		blink_convolved2_per_subject = []
+		stim_convolved_per_subject = []
+		stim_convolved2_per_subject = []
+		resp_convolved_per_subject = []
+		resp_convolved2_per_subject = []
+		resp_convolved_hit_per_subject = []
+		resp_convolved2_hit_per_subject = []
+		resp_convolved_fa_per_subject = []
+		resp_convolved2_fa_per_subject = []
+		resp_convolved_miss_per_subject = []
+		resp_convolved2_miss_per_subject = []
+		resp_convolved_cr_per_subject = []
+		resp_convolved2_cr_per_subject = []
+		down_convolved_per_subject = []
+		down_convolved2_per_subject = []
+		down_convolved_hit_per_subject = []
+		down_convolved2_hit_per_subject = []
+		down_convolved_fa_per_subject = []
+		down_convolved2_fa_per_subject = []
+		down_convolved_miss_per_subject = []
+		down_convolved2_miss_per_subject = []
+		down_convolved_cr_per_subject = []
+		down_convolved2_cr_per_subject = []
+		up_convolved_per_subject = []
+		up_convolved2_per_subject = []
+		up_convolved_hit_per_subject = []
+		up_convolved2_hit_per_subject = []
+		up_convolved_fa_per_subject = []
+		up_convolved2_fa_per_subject = []
+		up_convolved_miss_per_subject = []
+		up_convolved2_miss_per_subject = []
+		up_convolved_cr_per_subject = []
+		up_convolved2_cr_per_subject = []
+		GLM_pupil_diameter_per_subject = []
+		GLM_pupil_diameter2_per_subject = []
+		
+		for subject in range(len(self.subject)):
+			
+			blink_convolved = []
+			blink_convolved2 = []
+			stim_convolved = []
+			stim_convolved2 = []
+			resp_convolved = []
+			resp_convolved2 = []
+			resp_convolved_hit = []
+			resp_convolved2_hit = []
+			resp_convolved_fa = []
+			resp_convolved2_fa = []
+			resp_convolved_miss = []
+			resp_convolved2_miss = []
+			resp_convolved_cr = []
+			resp_convolved2_cr = []
+			down_convolved = []
+			down_convolved2 = []
+			down_convolved_hit = []
+			down_convolved2_hit = []
+			down_convolved_fa = []
+			down_convolved2_fa = []
+			down_convolved_miss = []
+			down_convolved2_miss = []
+			down_convolved_cr = []
+			down_convolved2_cr = []
+			up_convolved = []
+			up_convolved2 = []
+			up_convolved_hit = []
+			up_convolved2_hit = []
+			up_convolved_fa = []
+			up_convolved2_fa = []
+			up_convolved_miss = []
+			up_convolved2_miss = []
+			up_convolved_cr = []
+			up_convolved2_cr = []
+			GLM_pupil_diameter = []
+			GLM_pupil_diameter2 = []
+		
+			for i in range(len(run[subject])):
+				
+				# This downsampled times series per run. Z-scored per run based on ALL measurements (except ITI), to use for GLM:
+				GLM_pupil_diameter.append(run[subject][i].pupil_data_filtered.read()[6,:])
+				GLM_pupil_diameter2.append(GLM_pupil_diameter[i]- mean(GLM_pupil_diameter[i][include_per_subject[subject][i]]))
+				# blinks:
+				blink_convolved.append( np.array(run[subject][i].GLM_regressors_convolved.read()[0]) )
+				blink_convolved2.append( blink_convolved[i]- mean(blink_convolved[i][include_per_subject[subject][i]]) )
+				# stimulus:
+				stim_convolved.append( np.array(run[subject][i].GLM_regressors_convolved.read()[1]) )
+				stim_convolved2.append( stim_convolved[i]- mean(stim_convolved[i][include_per_subject[subject][i]]) )
+				# response:
+				resp_convolved_hit.append( np.array(run[subject][i].GLM_regressors_convolved.read()[2]) )
+				resp_convolved2_hit.append( resp_convolved_hit[i]- mean(resp_convolved_hit[i][include_per_subject[subject][i]]) )
+				resp_convolved_fa.append( np.array(run[subject][i].GLM_regressors_convolved.read()[3]) )
+				resp_convolved2_fa.append( resp_convolved_fa[i]- mean(resp_convolved_fa[i][include_per_subject[subject][i]]) )
+				resp_convolved_miss.append( np.array(run[subject][i].GLM_regressors_convolved.read()[4]) )
+				resp_convolved2_miss.append( resp_convolved_miss[i]- mean(resp_convolved_miss[i][include_per_subject[subject][i]]) )
+				resp_convolved_cr.append( np.array(run[subject][i].GLM_regressors_convolved.read()[5]) )
+				resp_convolved2_cr.append( resp_convolved_cr[i]- mean(resp_convolved_cr[i][include_per_subject[subject][i]]) )
+				resp_convolved.append( (resp_convolved_hit[i]+resp_convolved_fa[i]+resp_convolved_miss[i]+resp_convolved_cr[i]) )
+				resp_convolved2.append( resp_convolved[i] - mean(resp_convolved[i][include_per_subject[subject][i]]) )
+				# down:
+				down_convolved_hit.append( np.array(run[subject][i].GLM_regressors_convolved.read()[6]) )
+				down_convolved2_hit.append(down_convolved_hit[i]- mean(down_convolved_hit[i][include_per_subject[subject][i]]) )
+				down_convolved_fa.append( np.array(run[subject][i].GLM_regressors_convolved.read()[7]) )
+				down_convolved2_fa.append( down_convolved_fa[i]- mean(down_convolved_fa[i][include_per_subject[subject][i]]) )
+				down_convolved_miss.append( np.array(run[subject][i].GLM_regressors_convolved.read()[8]) )
+				down_convolved2_miss.append( down_convolved_miss[i]- mean(down_convolved_miss[i][include_per_subject[subject][i]]) )
+				down_convolved_cr.append( np.array(run[subject][i].GLM_regressors_convolved.read()[9]) )
+				down_convolved2_cr.append( down_convolved_cr[i]- mean(down_convolved_cr[i][include_per_subject[subject][i]]) )
+				down_convolved.append( (down_convolved_hit[i]+down_convolved_fa[i]+down_convolved_miss[i]+down_convolved_cr[i]) )
+				down_convolved2.append( down_convolved[i] - mean(down_convolved[i][include_per_subject[subject][i]]) )
+				# up:
+				up_convolved_hit.append( np.array(run[subject][i].GLM_regressors_convolved.read()[10]) )
+				up_convolved2_hit.append( up_convolved_hit[i]- mean(up_convolved_hit[i][include_per_subject[subject][i]]) )
+				up_convolved_fa.append( np.array(run[subject][i].GLM_regressors_convolved.read()[11]) )
+				up_convolved2_fa.append( up_convolved_fa[i]- mean(up_convolved_fa[i][include_per_subject[subject][i]]) )
+				up_convolved_miss.append( np.array(run[subject][i].GLM_regressors_convolved.read()[12]) )
+				up_convolved2_miss.append( up_convolved_miss[i]- mean(up_convolved_miss[i][include_per_subject[subject][i]]) )
+				up_convolved_cr.append( np.array(run[subject][i].GLM_regressors_convolved.read()[13]) )
+				up_convolved2_cr.append( up_convolved_cr[i]- mean(up_convolved_cr[i][include_per_subject[subject][i]]) )
+				up_convolved.append( (up_convolved_hit[i]+up_convolved_fa[i]+up_convolved_miss[i]+up_convolved_cr[i]) )
+				up_convolved2.append( up_convolved[i] - mean(up_convolved[i][include_per_subject[subject][i]]) )
+			
+			blink_convolved_per_subject.append( np.concatenate(blink_convolved, axis=1) )
+			blink_convolved2_per_subject.append( np.concatenate(blink_convolved2, axis=1) )
+			stim_convolved_per_subject.append( np.concatenate(stim_convolved, axis=1) )
+			stim_convolved2_per_subject.append( np.concatenate(stim_convolved2, axis=1) )
+			resp_convolved_per_subject.append( np.concatenate(resp_convolved, axis=1) )
+			resp_convolved2_per_subject.append( np.concatenate(resp_convolved2, axis=1) )
+			resp_convolved_hit_per_subject.append( np.concatenate(resp_convolved_hit, axis=1) )
+			resp_convolved2_hit_per_subject.append( np.concatenate(resp_convolved2_hit, axis=1) )
+			resp_convolved_fa_per_subject.append( np.concatenate(resp_convolved_fa, axis=1) )
+			resp_convolved2_fa_per_subject.append( np.concatenate(resp_convolved2_fa, axis=1) )
+			resp_convolved_miss_per_subject.append( np.concatenate(resp_convolved_miss, axis=1) )
+			resp_convolved2_miss_per_subject.append( np.concatenate(resp_convolved2_miss, axis=1) )
+			resp_convolved_cr_per_subject.append( np.concatenate(resp_convolved_cr, axis=1) )
+			resp_convolved2_cr_per_subject.append( np.concatenate(resp_convolved2_cr, axis=1) )
+			down_convolved_per_subject.append( np.concatenate(down_convolved, axis=1) )
+			down_convolved2_per_subject.append( np.concatenate(down_convolved2, axis=1) )
+			down_convolved_hit_per_subject.append( np.concatenate(down_convolved_hit, axis=1) )
+			down_convolved2_hit_per_subject.append( np.concatenate(down_convolved2_hit, axis=1) )
+			down_convolved_fa_per_subject.append( np.concatenate(down_convolved_fa, axis=1) )
+			down_convolved2_fa_per_subject.append( np.concatenate(down_convolved2_fa, axis=1) )
+			down_convolved_miss_per_subject.append( np.concatenate(down_convolved_miss, axis=1) )
+			down_convolved2_miss_per_subject.append( np.concatenate(down_convolved2_miss, axis=1) )
+			down_convolved_cr_per_subject.append( np.concatenate(down_convolved_cr, axis=1) )
+			down_convolved2_cr_per_subject.append( np.concatenate(down_convolved2_cr, axis=1) )
+			up_convolved_per_subject.append( np.concatenate(up_convolved, axis=1) )
+			up_convolved2_per_subject.append( np.concatenate(up_convolved2, axis=1) )
+			up_convolved_hit_per_subject.append( np.concatenate(up_convolved_hit, axis=1) )
+			up_convolved2_hit_per_subject.append( np.concatenate(up_convolved2_hit, axis=1) )
+			up_convolved_fa_per_subject.append( np.concatenate(up_convolved_fa, axis=1) )
+			up_convolved2_fa_per_subject.append( np.concatenate(up_convolved2_fa, axis=1) )
+			up_convolved_miss_per_subject.append( np.concatenate(up_convolved_miss, axis=1) )
+			up_convolved2_miss_per_subject.append( np.concatenate(up_convolved2_miss, axis=1) )
+			up_convolved_cr_per_subject.append( np.concatenate(up_convolved_cr, axis=1) )
+			up_convolved2_cr_per_subject.append( np.concatenate(up_convolved2_cr, axis=1) )
+			GLM_pupil_diameter_per_subject.append( np.concatenate(GLM_pupil_diameter, axis=1) )
+			GLM_pupil_diameter2_per_subject.append( np.concatenate(GLM_pupil_diameter2, axis=1) )
+			
+			## NOT CONCATENATED OVER RUNS : ##
+			# blink_convolved_per_subject.append( blink_convolved )
+			# blink_convolved2_per_subject.append( blink_convolved2 )
+			# stim_convolved_per_subject.append( stim_convolved )
+			# stim_convolved2_per_subject.append( stim_convolved2 )
+			# resp_convolved_per_subject.append( resp_convolved )
+			# resp_convolved2_per_subject.append( resp_convolved2 )
+			# resp_convolved_hit_per_subject.append( resp_convolved_hit )
+			# resp_convolved2_hit_per_subject.append( resp_convolved2_hit )
+			# resp_convolved_fa_per_subject.append( resp_convolved_fa )
+			# resp_convolved2_fa_per_subject.append( resp_convolved2_fa )
+			# resp_convolved_miss_per_subject.append( resp_convolved_miss )
+			# resp_convolved2_miss_per_subject.append( resp_convolved2_miss )
+			# resp_convolved_cr_per_subject.append( resp_convolved_cr )
+			# resp_convolved2_cr_per_subject.append( resp_convolved2_cr )
+			# down_convolved_per_subject.append( down_convolved )
+			# down_convolved2_per_subject.append( down_convolved2 )
+			# down_convolved_hit_per_subject.append( down_convolved_hit )
+			# down_convolved2_hit_per_subject.append( down_convolved2_hit )
+			# down_convolved_fa_per_subject.append( down_convolved_fa )
+			# down_convolved2_fa_per_subject.append( down_convolved2_fa )
+			# down_convolved_miss_per_subject.append( down_convolved_miss )
+			# down_convolved2_miss_per_subject.append( down_convolved2_miss )
+			# down_convolved_cr_per_subject.append( down_convolved_cr )
+			# down_convolved2_cr_per_subject.append( down_convolved2_cr )
+			# up_convolved_per_subject.append( up_convolved )
+			# up_convolved2_per_subject.append( up_convolved2 )
+			# up_convolved_hit_per_subject.append( up_convolved_hit )
+			# up_convolved2_hit_per_subject.append( up_convolved2_hit )
+			# up_convolved_fa_per_subject.append( up_convolved_fa )
+			# up_convolved2_fa_per_subject.append( up_convolved2_fa )
+			# up_convolved_miss_per_subject.append( up_convolved_miss )
+			# up_convolved2_miss_per_subject.append( up_convolved2_miss )
+			# up_convolved_cr_per_subject.append( up_convolved_cr )
+			# up_convolved2_cr_per_subject.append( up_convolved2_cr )
+			# GLM_pupil_diameter_per_subject.append( GLM_pupil_diameter )
+			# GLM_pupil_diameter2_per_subject.append( GLM_pupil_diameter2 )
+		
+		
+		#########################
+		# Combined over runs: ###
+		#########################
+		
+		sign_template = np.array(self.sign_template)
+		
+		betas_blink = []
+		betas_stim = []
+		betas_resp = []
+		betas_resp_hit = []
+		betas_resp_fa = []
+		betas_resp_miss = []
+		betas_resp_cr = []
+		betas_conf = []
+		betas_feed = []
+		betas_down = []
+		betas_down_hit = []
+		betas_down_fa = []
+		betas_down_miss = []
+		betas_down_cr = []
+		betas_up = []
+		betas_up_hit = []
+		betas_up_fa = []
+		betas_up_miss = []
+		betas_up_cr = []
+		t_values = []
+		p_values = []
+		residuals = []
+		for subject in range(len(self.subject)):
+		
+			pupil = GLM_pupil_diameter2_per_subject[subject]
+			pupil = np.array(pupil, dtype= np.float32)
+			pupil = np.matrix(pupil)
+			
+			designMatrix = np.array(np.vstack((blink_convolved2_per_subject[subject], stim_convolved2_per_subject[subject], resp_convolved2_hit_per_subject[subject], resp_convolved2_fa_per_subject[subject], resp_convolved2_miss_per_subject[subject], resp_convolved2_cr_per_subject[subject], down_convolved2_hit_per_subject[subject], down_convolved2_fa_per_subject[subject], down_convolved2_miss_per_subject[subject], down_convolved2_cr_per_subject[subject], up_convolved2_hit_per_subject[subject], up_convolved2_fa_per_subject[subject], up_convolved2_miss_per_subject[subject], up_convolved2_cr_per_subject[subject])), dtype = np.float32)
+			designMatrix = np.mat(designMatrix)
+			designMatrix = np.matrix(designMatrix).T
+			
+			# GLM:
+			GLM = sm.GLM(pupil,designMatrix)
+			GLM_results = GLM.fit()
+			GLM_results.summary()
+			
+			# if split_up_by_SDT == False:
+			# 	betas_blink.append( GLM_results.params[0] )
+			# 	betas_stim.append( GLM_results.params[1] )
+			# 	betas_resp.append( GLM_results.params[2] )
+			# 	betas_conf.append( GLM_results.params[3] )
+			# 	betas_feed.append( GLM_results.params[4] )
+			# 	betas_down.append( GLM_results.params[5] )
+			# 	betas_up.append( GLM_results.params[6] )
+			
+			betas_blink.append( GLM_results.params[0])
+			betas_stim.append( GLM_results.params[1])
+			betas_resp_hit.append( GLM_results.params[2])
+			betas_resp_fa.append( GLM_results.params[3])
+			betas_resp_miss.append( GLM_results.params[4])
+			betas_resp_cr.append( GLM_results.params[5])
+			# betas_conf.append( GLM_results.params[6] )
+			# betas_feed.append( GLM_results.params[7] )
+			betas_down_hit.append( GLM_results.params[6])
+			betas_down_fa.append( GLM_results.params[7])
+			betas_down_miss.append( GLM_results.params[8])
+			betas_down_cr.append( GLM_results.params[9])
+			betas_up_hit.append( GLM_results.params[10])
+			betas_up_fa.append( GLM_results.params[11])
+			betas_up_miss.append( GLM_results.params[12])
+			betas_up_cr.append( GLM_results.params[13])
+			
+			t_values.append( GLM_results.tvalues )
+			p_values.append( GLM_results.pvalues )
+			residuals.append( GLM_results.resid_response )
+		
+		# flip sign:
+		betas_blink_corrected = []
+		betas_stim_corrected = []
+		betas_resp_hit_corrected = []
+		betas_resp_fa_corrected = []
+		betas_resp_miss_corrected = []
+		betas_resp_cr_corrected = []
+		betas_down_hit_corrected = []
+		betas_down_fa_corrected = []
+		betas_down_miss_corrected = []
+		betas_down_cr_corrected = []
+		betas_up_hit_corrected = []
+		betas_up_fa_corrected = []
+		betas_up_miss_corrected = []
+		betas_up_cr_corrected = []	
+		for subject in range(len(self.subject)):
+			betas_blink_corrected.append( betas_blink[subject] * sign_template[subject] )
+			betas_stim_corrected.append( betas_stim[subject] * sign_template[subject] )
+			betas_resp_hit_corrected.append( betas_resp_hit[subject] * sign_template[subject] )
+			betas_resp_fa_corrected.append( betas_resp_fa[subject] * sign_template[subject] )
+			betas_resp_miss_corrected.append( betas_resp_miss[subject] * sign_template[subject] )
+			betas_resp_cr_corrected.append( betas_resp_cr[subject] * sign_template[subject] )
+			betas_down_hit_corrected.append( betas_down_hit[subject] * sign_template[subject] )
+			betas_down_fa_corrected.append( betas_down_fa[subject] * sign_template[subject] )
+			betas_down_miss_corrected.append( betas_down_miss[subject] * sign_template[subject] )
+			betas_down_cr_corrected.append( betas_down_cr[subject] * sign_template[subject] )
+			betas_up_hit_corrected.append( betas_up_hit[subject] * sign_template[subject] )
+			betas_up_fa_corrected.append( betas_up_fa[subject] * sign_template[subject] )
+			betas_up_miss_corrected.append( betas_up_miss[subject] * sign_template[subject] )
+			betas_up_cr_corrected.append( betas_up_cr[subject] * sign_template[subject] )
+		
+		# Recombine separate betas for SDT condition into one: 
+		betas_resp_matrix = np.vstack( (np.array(betas_resp_hit), np.array(betas_resp_fa), np.array(betas_resp_miss), np.array(betas_resp_cr)) ) 
+		betas_resp = mean(betas_resp_matrix, axis=0)
+		betas_down_matrix = np.vstack( (np.array(betas_down_hit), np.array(betas_down_fa), np.array(betas_down_miss), np.array(betas_down_cr)) ) 
+		betas_down = mean(betas_down_matrix, axis=0)
+		betas_up_matrix = np.vstack( (np.array(betas_up_hit), np.array(betas_up_fa), np.array(betas_up_miss), np.array(betas_up_cr)) ) 
+		betas_up = mean(betas_up_matrix, axis=0)
+		
+		# Recombine separate betas for SDT condition into one: 
+		betas_resp_matrix_corrected = np.vstack( (np.array(betas_resp_hit_corrected), np.array(betas_resp_fa_corrected), np.array(betas_resp_miss_corrected), np.array(betas_resp_cr_corrected)) ) 
+		betas_resp_corrected = mean(betas_resp_matrix_corrected, axis=0)
+		betas_down_matrix_corrected = np.vstack( (np.array(betas_down_hit_corrected), np.array(betas_down_fa_corrected), np.array(betas_down_miss_corrected), np.array(betas_down_cr_corrected)) ) 
+		betas_down_corrected = mean(betas_down_matrix_corrected, axis=0)
+		betas_up_matrix_corrected = np.vstack( (np.array(betas_up_hit_corrected), np.array(betas_up_fa_corrected), np.array(betas_up_miss_corrected), np.array(betas_up_cr_corrected)) ) 
+		betas_up_corrected = mean(betas_up_matrix_corrected, axis=0)
+		
+		# T-test:
+				
+		# t_test1 = ttest_1samp(np.array(betas_stim), 0)
+		# t_test2 = ttest_1samp(np.array(betas_resp), 0)
+		# t_test3 = ttest_1samp(np.array(betas_down), 0)
+		# t_test4 = ttest_1samp(np.array(betas_up), 0)
+		# t_test5 = ttest_1samp(np.array(betas_resp)-np.array(betas_stim), 0)
+		# t_test6 = ttest_1samp(np.array(betas_up)-np.array(betas_down), 0)
+		
+		t_test1 = functions_jw.permutationTest(np.array(betas_stim), np.zeros(len(self.subject)))
+		t_test2 = functions_jw.permutationTest(np.array(betas_resp), np.zeros(len(self.subject)))
+		t_test3 = functions_jw.permutationTest(np.array(betas_down), np.zeros(len(self.subject)))
+		t_test4 = functions_jw.permutationTest(np.array(betas_up), np.zeros(len(self.subject)))
+		t_test5 = functions_jw.permutationTest(np.array(betas_resp),np.array(betas_stim))
+		t_test6 = functions_jw.permutationTest(np.array(betas_up),np.array(betas_down))
+		
+		# T-test corrected:
+		# t_test7 = ttest_1samp(np.array(betas_stim_corrected), 0)
+		# t_test8 = ttest_1samp(np.array(betas_resp_corrected), 0)
+		# t_test9 = ttest_1samp(np.array(betas_down_corrected), 0)
+		# t_test10 = ttest_1samp(np.array(betas_up_corrected), 0)
+		# t_test11 = ttest_1samp(np.array(betas_resp_corrected)-np.array(betas_stim_corrected), 0)
+		# t_test12 = ttest_1samp(np.array(betas_up_corrected)-np.array(betas_down_corrected), 0)
+		
+		t_test7 = functions_jw.permutationTest(np.array(betas_stim_corrected), np.zeros(len(self.subject)))
+		t_test8 = functions_jw.permutationTest(np.array(betas_resp_corrected), np.zeros(len(self.subject)))
+		t_test9 = functions_jw.permutationTest(np.array(betas_down_corrected), np.zeros(len(self.subject)))
+		t_test10 = functions_jw.permutationTest(np.array(betas_up_corrected), np.zeros(len(self.subject)))
+		t_test11 = functions_jw.permutationTest(np.array(betas_up_corrected)-np.array(betas_down_corrected), np.zeros(len(self.subject)))
+		t_test12 = functions_jw.permutationTest(np.array(betas_up_corrected)-np.array(betas_down_corrected), np.zeros(len(self.subject)))
+		
+			
+		#####################################################################################
+		###### PLOT #########################################################################
+		
+		os.chdir(self.this_dir + 'glm_betas/')
+		
+		# BARPLOT BETAS:
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_uncorrected.pdf')
+		fig = functions_jw.GLM_betas_barplot(self.subject, betas_stim, betas_resp, betas_down, betas_up, t_test1[2], t_test2[2], t_test3[2], t_test4[2], t_test5[2], t_test6[2])
+		ylabel('beta value', size = 10)
+		title('GLM', size = 12)
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		# BARPLOT BETAS:
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_corrected.pdf')
+		fig = functions_jw.GLM_betas_barplot(self.subject, betas_stim_corrected, betas_resp_corrected, betas_down_corrected, betas_up_corrected, t_test7[2], t_test8[2], t_test9[2], t_test10[2], t_test11[2], t_test12[2])
+		ylabel('beta value', size = 10)
+		title('GLM', size = 12)
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		
+		
+		# # CORRELATION WITH CRITERION UNCORRECTED:
+		# 
+		# betas_up_yes = mean((betas_up_hit, betas_up_fa), axis=0)
+		# betas_down_yes = mean((betas_down_hit, betas_down_fa), axis=0)
+		# betas_up_no = mean((betas_up_miss, betas_up_cr), axis=0)
+		# betas_down_no = mean((betas_down_miss, betas_down_cr), axis=0)
+		# 
+		# diff1 = betas_up_yes - betas_down_yes
+		# diff2 = betas_up_no - betas_down_no
+		# 
+		# varX = self.criterion_overall
+		# varY = diff1
+		# slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+		# (m,b) = sp.polyfit(varX, varY, 1)
+		# regression_line = sp.polyval([m,b], varX)
+		# fig = figure()
+		# scatter(varX,varY)
+		# plot(varX, regression_line)
+		# title('YES judgements: Correlation betas criterion', size = 12)
+		# ylabel('YES judgements: diff beta up / down', size = 10)
+		# xlabel('criterion', size = 10)
+		# 
+		# pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_uncorrected_criterion_YES.pdf')
+		# fig.savefig(pp, format='pdf')
+		# pp.close()
+		# 
+		# 
+		# varX = self.criterion_overall
+		# varY = diff2
+		# slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+		# (m,b) = sp.polyfit(varX, varY, 1)
+		# regression_line = sp.polyval([m,b], varX)
+		# fig = figure()
+		# scatter(varX,varY)
+		# plot(varX, regression_line)
+		# title('NO judgements: Correlation betas criterion', size = 12)
+		# ylabel('NO judgements: diff beta up / down', size = 10)
+		# xlabel('criterion', size = 10)
+		# 
+		# pp = PdfPages('Exp' + str(self.experiment) + '_GLM_betas_uncorrected_criterion_NO.pdf')
+		# fig.savefig(pp, format='pdf')
+		# pp.close()
+		# 
+		# 
+		# 
+		# 
+		# 
+		# CORRELATION WITH CRITERION CORRECTED:
+		
+		os.chdir(self.this_dir + 'glm_betas/')
+		
+		betas_up_yes_corrected = mean((betas_up_hit_corrected, betas_up_fa_corrected), axis=0)
+		betas_down_yes_corrected = mean((betas_down_hit_corrected, betas_down_fa_corrected), axis=0)
+		betas_up_no_corrected = mean((betas_up_miss_corrected, betas_up_cr_corrected), axis=0)
+		betas_down_no_corrected = mean((betas_down_miss_corrected, betas_down_cr_corrected), axis=0)
+		betas_resp_yes_corrected = mean((betas_resp_hit_corrected, betas_resp_fa_corrected), axis=0)
+		betas_resp_no_corrected = mean((betas_resp_miss_corrected, betas_resp_cr_corrected), axis=0)
+		
+		diff3 = betas_up_yes_corrected - betas_up_no_corrected
+		diff4 = betas_down_yes_corrected - betas_down_no_corrected
+		diff5 = betas_resp_yes_corrected - betas_resp_no_corrected
+		
+		# scatter up-ramp - criterion:		
+		varX = self.criterion_overall
+		varY = diff3
+		slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+		(m,b) = sp.polyfit(varX, varY, 1)
+		regression_line = sp.polyval([m,b], varX)
+		fig = figure(figsize=(4,4))
+		ax = fig.add_subplot(111)
+		ax.scatter(varX,varY, color='#808080', alpha = 0.75)
+		ax.plot(varX, regression_line, color='k')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_title('Correlation betas ramp-up and criterion', size = 12)
+		ax.set_ylabel('difference beta ramp up yes / resp no', size = 10)
+		ax.set_xlabel('criterion', size = 10)
+		ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		top = 0.915
+		bottom = 0.15
+		left = 0.2
+		plt.subplots_adjust(top=top, bottom=bottom, left=left)
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_correlation_betas_UP_corrected_criterion.pdf')
+		fig.savefig(pp, format='pdf')
+		pp.close()
+		
+		# scatter response transient - criterion:		
+		varX = self.criterion_overall
+		varY = diff5
+		slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+		(m,b) = sp.polyfit(varX, varY, 1)
+		regression_line = sp.polyval([m,b], varX)
+		fig = figure(figsize=(4,4))
+		ax = fig.add_subplot(111)
+		ax.scatter(varX,varY, color='#808080', alpha = 0.75)
+		ax.plot(varX, regression_line, color='k')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_title('Correlation betas response and criterion', size = 12)
+		ax.set_ylabel('difference beta response yes / resp no', size = 10)
+		ax.set_xlabel('criterion', size = 10)
+		ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		top = 0.915
+		bottom = 0.15
+		left = 0.2
+		plt.subplots_adjust(top=top, bottom=bottom, left=left)
+		
+		pp = PdfPages('Exp' + str(self.experiment) + '_GLM_correlation_betas_RESPONSE_corrected_criterion.pdf')
+		fig.savefig(pp, format='pdf')
+		pp.close()
 	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	
