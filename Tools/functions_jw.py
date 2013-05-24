@@ -14,6 +14,7 @@ Copyright (c) 2012 Jan Willem de Gee. All rights reserved.
 import numpy as np
 import scipy as sp
 import scipy.stats as stats
+import math
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
@@ -21,16 +22,16 @@ from IPython import embed as shell
 
 def IRF_canonical(t=0, s=1.0/(10**26), n=10.1, tmax=930):
 	
-	import math
+	"""
+	Canocial pupil impulse fucntion.
+	
+	"""
 	
 	h = ( (s) * (t**n) * (math.e**((-n*t)/930)) )
 	return(h)
 
 
 def createRegressors(inputObject, len_run, pupil_IRF, type_convolve = 'stick'):
-	
-	import numpy as np
-	import scipy as sp
 	
 	inputObject = inputObject
 	len_run = len_run
@@ -69,31 +70,88 @@ def createRegressors(inputObject, len_run, pupil_IRF, type_convolve = 'stick'):
 
 def movingaverage(interval, window_size):
 	
-	import numpy as np
-	
 	window = np.ones(int(window_size))/float(window_size)
-	return np.convolve(interval, window, 'same')
+	moving_average = np.repeat(np.nan, len(interval))
+	moving_average[(window_size/2):-(window_size/2)] = np.convolve(interval, window, 'full')[window_size-1:-window_size]
+	
+	return(moving_average)
 
 
-def permutationTest(group1, group2, nrand = 1000): 
+
+def permutationTest(group1, group2, nrand=5000, tail=0):
+	
+	"""
+	non-parametric permutation test (Efron & Tibshirani, 1998)
+	
+	tail = 0 (test A~=B), 1 (test A>B), -1 (test A<B)
+	
+	"""
 	
 	import numpy as np
 	import numpy.random as random
 	
-	observed_mean_difference = np.mean(group1) - np.mean(group2)
-	combined_data = np.concatenate((group1, group2))
-	indices = np.arange(combined_data.shape[0])
-	perm_results = np.zeros((nrand))
+	a = group1
+	b = group2
+	ntra = len(a)
+	ntrb = len(b) 
+	meana = np.mean(a)
+	meanb = np.mean(b)
+	alldat = np.concatenate((a,b))
+	
+	triala = np.zeros(nrand)
+	trialb = np.zeros(nrand)
+	
+	indices = np.arange(alldat.shape[0])
+	
 	for i in range(nrand):
 		random.shuffle(indices)
-		perm_results[i] = np.mean(combined_data[indices[:group1.shape[0]]]) - np.mean(combined_data[indices[group2.shape[0]:]])
-	np.sort(perm_results)
-	significance = (perm_results > observed_mean_difference).sum()  / float(nrand)
+		triala[i] = np.mean(alldat[indices[:ntra]])
+		trialb[i] = np.mean(alldat[indices[ntra:]])
 	
-	if (float(1) - significance) < significance:
-		significance = float(1) - significance
+	if tail == 0:
+		out = sum(abs(triala-trialb)>=abs(meana-meanb)) / float(nrand)
+	else:
+		out = sum((tail*(triala-trialb))>=(tail*(meana-meanb))) / float(nrand)
 	
-	return(observed_mean_difference, perm_results, significance)
+	return(out, out, out)
+
+
+def permutationTest_correlation(a, b, tail=0, nrand=5000):
+	"""
+	test whether 2 correlations are significantly different. For permuting single corr see randtest_corr2
+	function out = randtest_corr(a,b,tail,nrand, type)
+	tail = 0 (test A~=B), 1 (test A>B), -1 (test A<B)
+	type = 'Spearman' or 'Pearson'
+	"""
+	
+	import numpy as np
+	import numpy.random as random
+	
+	ntra = a.shape[0]
+	ntrb = b.shape[0]
+	
+	truecorrdiff = sp.stats.pearsonr(a[:,0],a[:,1])[0] - sp.stats.pearsonr(b[:,0],b[:,1])[0]
+	
+	alldat = np.vstack((a,b))
+	corrdiffrand = np.zeros(nrand)
+	
+	indices = np.arange(alldat.shape[0])
+	
+	for irand in range(nrand):
+		
+		random.shuffle(indices)
+		
+		randa = sp.stats.pearsonr(alldat[indices[:ntra],0],alldat[indices[:ntra],1])[0]
+		randb = sp.stats.pearsonr(alldat[indices[ntra:],0],alldat[indices[ntra:],1])[0]
+		
+		corrdiffrand[irand] = randa - randb
+		
+	if tail == 0:
+		p_value = sum(abs(corrdiffrand) >= abs(truecorrdiff)) / float(nrand)
+	else:
+		p_value = sum(tail*(corrdiffrand) >= tail*(truecorrdiff)) / float(nrand)
+	
+	return(truecorrdiff, p_value)
 
 
 def roc_analysis(group1, group2, nrand=1000, tail=1):
@@ -170,7 +228,7 @@ def roc_analysis(group1, group2, nrand=1000, tail=1):
 def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = False):
 	
 	def label_diff(i,j,text,X,Y,Z, values = False):
-	
+		
 		# i = 2
 		# j = 3
 		# text = '***'
@@ -182,7 +240,7 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 		max_value = max(MEANS[i]+SEMS[i], MEANS[j]+SEMS[j])
 		min_value = min(MEANS[i]-SEMS[i], MEANS[j]-SEMS[j])
 		dx = abs(X[i]-X[j])
-	
+		
 		props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':10,'shrinkB':10,'lw':2}
 		# ax.annotate(text, xy=(X[i],y+0.4), zorder=10) 
 		# ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
@@ -199,21 +257,6 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 			kwargs = {'zorder':10, 'size':12, 'ha':'center'}
 			ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
 	
-	# Type_plot = 1: SDT categories
-	# Type_plot = 2: Yes vs No, Correct vs Incorrect
-	
-	import numpy as np
-	import scipy as sp
-	import scipy.stats as stats
-	import matplotlib.pyplot as plt
-	
-	# hit = -HIT
-	# fa = -FA
-	# miss = -MISS
-	# cr = -CR
-	# p1 = 0.05
-	# p2 = 0.05
-	
 	def simpleaxis(ax):
 		ax.spines['top'].set_visible(False)
 		ax.spines['right'].set_visible(False)
@@ -228,6 +271,16 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 				spine.set_color('none') # don't draw spine
 			else:
 				raise ValueError('unknown spine location: %s'%loc)
+	
+	# Type_plot = 1: SDT categories
+	# Type_plot = 2: Yes vs No, Correct vs Incorrect
+	
+	# hit = -HIT
+	# fa = -FA
+	# miss = -MISS
+	# cr = -CR
+	# p1 = 0.05
+	# p2 = 0.05
 	
 	hit_mean = sp.mean(hit)
 	fa_mean = sp.mean(fa)
@@ -335,6 +388,166 @@ def sdt_barplot(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = Fals
 	
 	return(fig)
 
+def sdt_barplot_bpd(subject, hit, fa, miss, cr, p1, p2, type_plot = 1, values = False):
+	
+	def label_diff(i,j,text,X,Y,Z, values = False):
+		
+		# i = 2
+		# j = 3
+		# text = '***'
+		# X = (ind[0]+width, ind[1], ind[2], ind[3]-width)
+		# MEANS = MEANS
+		# SEMS = SEMS
+	
+		middle_x = (X[i]+X[j])/2
+		max_value = max(MEANS[i]+SEMS[i], MEANS[j]+SEMS[j])
+		min_value = min(MEANS[i]-SEMS[i], MEANS[j]-SEMS[j])
+		dx = abs(X[i]-X[j])
+		
+		props = {'connectionstyle':'bar','arrowstyle':'-','shrinkA':10,'shrinkB':10,'lw':2}
+		# ax.annotate(text, xy=(X[i],y+0.4), zorder=10) 
+		# ax.annotate('', xy=(X[i],y), xytext=(X[j],y), arrowprops=props)
+		ax.annotate('', xy=(X[i],max_value), xytext=(X[j],max_value), arrowprops=props)
+	
+		if values == False:
+			if text == 'n.s.':
+				kwargs = {'zorder':10, 'size':16, 'ha':'center'}
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.0/10))), **kwargs)
+			if text != 'n.s.':
+				kwargs = {'zorder':10, 'size':24, 'ha':'center'}
+				ax.annotate(text, xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(0.60/10))), **kwargs)
+		if values == True:
+			kwargs = {'zorder':10, 'size':12, 'ha':'center'}
+			ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
+	
+	def simpleaxis(ax):
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
+		ax.get_xaxis().tick_bottom()
+		ax.get_yaxis().tick_left()
+		
+	def spine_shift(ax, shift = 10):
+		for loc, spine in ax.spines.iteritems():
+			if loc in ['left','bottom']:
+				spine.set_position(('outward', shift)) # outward by 10 points
+			elif loc in ['right','top']:
+				spine.set_color('none') # don't draw spine
+			else:
+				raise ValueError('unknown spine location: %s'%loc)
+	
+	# Type_plot = 1: SDT categories
+	# Type_plot = 2: Yes vs No, Correct vs Incorrect
+	
+	# hit = -HIT
+	# fa = -FA
+	# miss = -MISS
+	# cr = -CR
+	# p1 = 0.05
+	# p2 = 0.05
+	
+	hit_mean = sp.mean(hit)
+	fa_mean = sp.mean(fa)
+	miss_mean = sp.mean(miss)
+	cr_mean = sp.mean(cr)
+	
+	hit_sem = stats.sem(hit)
+	fa_sem = stats.sem(fa)
+	miss_sem = stats.sem(miss)
+	cr_sem = stats.sem(cr)
+	
+	yes_mean = sp.mean(np.concatenate((hit, fa), axis=0))
+	no_mean = sp.mean(np.concatenate((miss, cr), axis=0))
+	correct_mean = sp.mean(np.concatenate((hit, cr), axis=0))
+	incorrect_mean = sp.mean(np.concatenate((fa, miss), axis=0))
+	
+	yes_sem = stats.sem(np.concatenate((hit, fa), axis=0))
+	no_sem = stats.sem(np.concatenate((miss, cr), axis=0))
+	correct_sem = stats.sem(np.concatenate((hit, cr), axis=0))
+	incorrect_sem = stats.sem(np.concatenate((fa, miss), axis=0))
+	
+	y_axis_swap = False
+	if hit_mean < 0:
+		if fa_mean < 0:
+			if miss_mean < 0:
+				if cr_mean < 0:
+					y_axis_swap = True
+	
+	if type_plot == 1:
+		MEANS = (hit_mean, miss_mean, fa_mean, cr_mean)
+		SEMS = (hit_sem, miss_sem, fa_sem, cr_sem)
+	if type_plot == 2:
+		MEANS = (yes_mean, no_mean, correct_mean, incorrect_mean)
+		SEMS = (yes_sem, no_sem, correct_sem, incorrect_sem)	
+		
+	if values == False:
+		sig1 = 'n.s.'
+		if p1 <= 0.05:
+			sig1 = '*'
+		if p1 <= 0.01:
+			sig1 = '**'
+		if p1 <= 0.001:
+			sig1 = '***'
+			
+		sig2 = 'n.s.'
+		if p2 <= 0.05:
+			sig2 = '*'
+		if p2 <= 0.01:
+			sig2 = '**'
+		if p2 <= 0.001:
+			sig2 = '***'
+	else:
+		sig1 = round(p1,5)
+		sig2 = round(p2,5)
+	
+	my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
+	
+	N = 4
+	ind = np.linspace(0,2,4)  # the x locations for the groups
+	bar_width = 0.30       # the width of the bars
+	spacing = [0.30, 0, 0, -0.30]
+	
+	# FIGURE 1
+	fig = plt.figure(figsize=(4,3))
+	ax = fig.add_subplot(111)
+	if type_plot == 1:
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','r','b'][i], alpha = [1,.5,.5,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('H', 'M','FA', 'CR') )
+	if type_plot == 2:
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r','b','k','k'][i], alpha = [1,1,.5,.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('Yes', 'No','Corr.', 'Incorr.') )
+	ax.set_xticks( (ind[0]+bar_width, ind[1], ind[2], ind[3]-bar_width) )
+	# ax.yaxis.set_major_locator(MultipleLocator(0.25))
+	ax.tick_params(axis='x', which='major', labelsize=10)
+	ax.tick_params(axis='y', which='major', labelsize=10)
+	maxvalue = max( np.vstack(MEANS) + np.vstack(SEMS) )
+	minvalue = min( np.vstack(MEANS) - np.vstack(SEMS) )
+	diff = maxvalue - minvalue
+	ax.set_ylim(ymin=minvalue-(diff/16.0), ymax=maxvalue+(diff/4.0))
+	left = 0.20
+	top = 0.915
+	bottom = 0.20
+	plt.subplots_adjust(top=top, bottom=bottom, left=left)
+	plt.gca().spines["bottom"].set_linewidth(.5)
+	plt.gca().spines["left"].set_linewidth(.5)
+	
+	# STATS:
+	
+	if y_axis_swap == False:
+		X = (ind[0]+bar_width, ind[1], ind[2], ind[3]-bar_width)
+		if values == True:
+			label_diff(0,1,sig1,X,MEANS, SEMS, values = True)
+			label_diff(2,3,sig2,X,MEANS, SEMS, values = True)
+		if values == False:
+			label_diff(0,1,sig1,X,MEANS, SEMS)
+			label_diff(2,3,sig2,X,MEANS, SEMS)
+	
+	return(fig)
 
 def confidence_barplot(subject, hit, fa, miss, cr, p1, p2, p3, values=False):
 	
@@ -1745,6 +1958,24 @@ def GLM_betas_barplot(subject, beta1, beta2, beta3, beta4, p1, p2, p3, p4, p5, p
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # EXTRA STUFF:
 
 def plot_resp_confidence(subject, response_locked_array_joined, x, xx, confidence_0, confidence_1, confidence_2, confidence_3, decision_time_joined):
@@ -1799,9 +2030,9 @@ def plot_resp_confidence(subject, response_locked_array_joined, x, xx, confidenc
 	plt.xlabel("Time in milliseconds")
 	# plt.legend([p1, p2, p3, p4], ["HIT; " + str(hit_indices_joined[0].sum()) + " trials", "FA; " + str(fa_indices_joined[0].sum()) + " trials", "CR; " + str(cr_indices_joined[0].sum()) + " trials", "MISS; " + str(miss_indices_joined[0].sum()) + " trials"], loc = 2)
 	return(figure_mean_response_locked_confidence)
-
-
-# def d_primes(subject, bpd, ppd, answer_yes_indices_joined, answer_no_indices_joined, target_indices_joined, no_target_indices_joined, hit_indices_joined, fa_indices_joined, omission_indices_joined, bpd_low_indices, bpd_high_indices, ppd_low_indices, ppd_high_indices):
+	
+	
+	# def d_primes(subject, bpd, ppd, answer_yes_indices_joined, answer_no_indices_joined, target_indices_joined, no_target_indices_joined, hit_indices_joined, fa_indices_joined, omission_indices_joined, bpd_low_indices, bpd_high_indices, ppd_low_indices, ppd_high_indices):
 	"calculate d_primes"
 	
 	import scipy as sp
@@ -1877,7 +2108,7 @@ def plot_resp_confidence(subject, response_locked_array_joined, x, xx, confidenc
 	return(d_prime_joined, bpd_lowbin_d_prime, bpd_highbin_d_prime, ppd_lowbin_d_prime, ppd_highbin_d_prime, criterion_joined, bpd_lowbin_criterion, bpd_highbin_criterion, ppd_lowbin_criterion, ppd_highbin_criterion)
 
 
-# def d_primes2(subject, bpd, ppd, answer_yes_indices, answer_no_indices, target_indices, no_target_indices, hit_indices, fa_indices, omission_indices, bpd_low_indices, bpd_high_indices, ppd_low_indices, ppd_high_indices, confidence_ratings):
+	# def d_primes2(subject, bpd, ppd, answer_yes_indices, answer_no_indices, target_indices, no_target_indices, hit_indices, fa_indices, omission_indices, bpd_low_indices, bpd_high_indices, ppd_low_indices, ppd_high_indices, confidence_ratings):
 	"calculate d_primes"
 	
 	import scipy as sp
@@ -2002,10 +2233,10 @@ def plot_resp_confidence(subject, response_locked_array_joined, x, xx, confidenc
 
 
 
-# PLOTS:
-
-
-# def plot_stim_resp_feed(subject, stimulus_locked_array_joined, response_locked_array_joined, feedback_locked_array_joined, omission_indices_joined, hit_indices_joined, fa_indices_joined, cr_indices_joined, miss_indices_joined, decision_time_joined,answer_yes_indices_joined, answer_no_indices_joined):
+	# PLOTS:
+	
+	
+	# def plot_stim_resp_feed(subject, stimulus_locked_array_joined, response_locked_array_joined, feedback_locked_array_joined, omission_indices_joined, hit_indices_joined, fa_indices_joined, cr_indices_joined, miss_indices_joined, decision_time_joined,answer_yes_indices_joined, answer_no_indices_joined):
 	" plot stimulus locked and response locked mean pupil time series"
 	
 	import scipy as sp
