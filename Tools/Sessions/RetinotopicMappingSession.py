@@ -143,7 +143,7 @@ class RetinotopicMappingSession(Session):
 		"""
 		fs = 10
 		
-		if len(self.conditionDict['polar']) > 0:
+		if 'polar' in self.conditionDict.keys() and len(self.conditionDict['polar']) > 0:
 			# polar files
 			rawInputFileNames = [self.runFile( stage = 'processed/mri', run = self.runList[pC], postFix = ['mcf']) for pC in self.scanTypeDict['epi_bold'] if self.runList[pC].condition in ('polar','eccen')]
 			distilledInputFileNames = [os.path.join(self.runFolder(stage = 'processed/mri', run = self.runList[pC]), self.runList[pC].condition) for pC in self.scanTypeDict['epi_bold'] if self.runList[pC].condition in ('polar','eccen')]

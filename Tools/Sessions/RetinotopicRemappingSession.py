@@ -269,7 +269,8 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			maskedRunData.append([])
 			maskedFiles = self.maskFiles(dataFiles = runFiles[i], maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/'), maskFile ), maskThreshold = maskThreshold, maskFrame = 3)
 			for roi in regions:
-				thisRoiData = self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True)
+				# print roi[]
+				thisRoiData = self.maskFiles(dataFiles = maskedFiles, maskFile = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/'), roi[0] + '.nii.gz' ), maskThreshold = 0.0, maskFrame = 0, nrVoxels = nrVoxels, flat = True)
 				maskedRunData[-1].append(thisRoiData)
 		self.maskedRunData = maskedRunData
 		self.logger.debug('masked roi data shape is ' + str(len(self.maskedRunData)) + ' ' + str(len(self.maskedRunData[0])) + ' ' + str(len(self.maskedRunData[1][0]))+ ' ' + str(len(self.maskedRunData[0][0][0])))
@@ -636,7 +637,7 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		return outputData
 
 	
-	def combinationsPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery']], maskThreshold = 3.0, nrVoxels = False):
+	def combinationsPhaseDifferences(self, comparisons = [['fix_map','sacc_map'],['fix_map','remap'],['fix_map','fix_periphery'],['sacc_map','remap'],['sacc_map','fix_periphery']], maskThreshold = 3.0, nrVoxels = False):
 		self.runDataForRegions( maskThreshold = maskThreshold )
 		fitResults = []
 		
@@ -660,13 +661,14 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				diffs = diffs[diffs != 0.0]
 				[mu, kappa] =  fitVonMises(-diffs)
 				fitResults[-1].append([mu, kappa])
-				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b'][j], histtype = 'stepfilled', alpha = 0.15)
-				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-'][j])
+				pl.hist(diffs, range = (-pi,pi), normed = True, bins = 25, color = ['r','g','b','m','c'][j], histtype = 'stepfilled', alpha = 0.15)
+				pl.plot(np.linspace(-pi,pi,100), scipy.stats.vonmises.pdf(mu, kappa, np.linspace(pi,-pi,100)), ['r-','g-','b-','m-','c-'][j])
 				sbp.set_title(str(self.rois[i]), fontsize=10)
 				sbp.set_ylabel(self.conditionDict.keys()[cond1] + ' - ' + self.conditionDict.keys()[cond2] + ' ' + str(diffs.shape[0]), fontsize=10)
 			plotNr += 1	
 		self.combinationFitResults = np.array(fitResults)
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'combinationsPhaseDifferences.pdf' ))
+		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'combinationsPhaseDifferences.npy' ), self.combinationFitResults)
 	
 	def runEyeMovementControlsForRemapping(self, regions = [['V1'],['V2'],['V3'], ['V3AB'],['V4']], maskFile = 'polar_mask-1.5.nii.gz', nrVoxels = False, maskThreshold = 4.0):
 		# get original data
