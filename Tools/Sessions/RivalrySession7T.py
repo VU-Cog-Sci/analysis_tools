@@ -12,6 +12,7 @@ from scipy.stats import *
 from scipy.stats import norm
 import random
 from random import *
+import pandas as pd
 import bottleneck as bn
 from matplotlib.backends.backend_pdf import PdfPages
 from itertools import *
@@ -34,6 +35,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import *
 from sklearn.decomposition import *
 from sklearn import svm
+from sklearn import preprocessing
 
 sys.path.append( os.environ['ANALYSIS_HOME'] )
 
@@ -43,6 +45,7 @@ from Tools.Run import *
 from Tools.plotting_tools import *
 from Tools.circularTools import *
 from Tools.Operators import *
+from Tools import functions_jw
 
 class RivalrySession7T(RivalryReplaySession):
 	
@@ -264,7 +267,7 @@ class RivalrySession7T(RivalryReplaySession):
 				'BR_TRANS>SFM_TRANS_T_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/gfeat'), 'cope8_tstat1.nii.gz'),
 				'BR_TRANS>SFM_TRANS_Z_gfeat': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat/gfeat'), 'cope8_zstat1.nii.gz'),
 				'ECCEN': os.path.join(self.stageFolder(stage = 'processed/mri/masks/eccen'), 'eccen.nii.gz'),
-				'POLAR': os.path.join(self.stageFolder(stage = 'processed/mri/masks/polar'), 'polar.nii.gz'),
+				# 'POLAR': os.path.join(self.stageFolder(stage = 'processed/mri/masks/polar'), 'polar.nii.gz'),
 			}
 		else:
 			stat_files = {
@@ -391,13 +394,13 @@ class RivalrySession7T(RivalryReplaySession):
 		roi_data_c = np.vstack(roi_data_per_roi).T
 		mask_data_c = np.vstack(mask_data_per_roi).T
 		
-		mask_data_mean = mask_data_c.mean(axis = 0)
-		
 		# Load all decoding indices (per run):
 		decoding_indices_BR = []
 		decoding_indices_SFM = []
 		relative_times_BR = []
 		relative_times_SFM = []
+		absolute_times_BR = []
+		absolute_times_SFM = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['rivalry']]:
 			nr_runs += 1
@@ -411,95 +414,98 @@ class RivalrySession7T(RivalryReplaySession):
 					decoding_indices_SFM.append( decoding_node.decoding_SFM.read()[:,0] )
 					relative_times_BR.append( decoding_node.decoding_BR.read()[:,4] )
 					relative_times_SFM.append( decoding_node.decoding_SFM.read()[:,4] )
+					absolute_times_BR.append( decoding_node.decoding_BR.read()[:,2] )
+					absolute_times_SFM.append( decoding_node.decoding_SFM.read()[:,2] )
+					
 					break
 		decod_BR_c = np.concatenate(decoding_indices_BR, axis=1).T
 		decod_SFM_c = np.concatenate(decoding_indices_SFM, axis=1).T
 		relative_times_BR_c = np.concatenate(relative_times_BR, axis=1).T
 		relative_times_SFM_c = np.concatenate(relative_times_SFM, axis=1).T
+		absolute_times_BR_c = np.concatenate(absolute_times_BR, axis=1).T
+		absolute_times_SFM_c = np.concatenate(absolute_times_SFM, axis=1).T
 		
 		# Load eccen and polar data (combined over runs):
 		if polar_eccen == True:
-			polar_data = []
+			# polar_data = []
 			eccen_data = []
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri/', extension = '_combined'))[1]
 			for j in range(len(roi)):
 				eccen_data.append( self.roi_data_from_hdf_runsCombined(h5file, this_run_group_name, roi[j], 'ECCEN') )
-				polar_data.append( self.roi_data_from_hdf_runsCombined(h5file, this_run_group_name, roi[j], 'POLAR') )
+				# polar_data.append( self.roi_data_from_hdf_runsCombined(h5file, this_run_group_name, roi[j], 'POLAR') )
 			eccen_data_c = np.vstack(eccen_data).T
-			polar_data_c = np.vstack(polar_data).T
+			# polar_data_c = np.vstack(polar_data).T
 		
 		# DATA FOR DECODING:
-		self.X_BR = roi_data_c[decod_BR_c!=0,:]
-		self.X_SFM = roi_data_c[decod_SFM_c!=0,:]
-		self.y_BR = decod_BR_c[decod_BR_c!=0]
-		self.y_SFM = decod_SFM_c[decod_SFM_c!=0]
+		X_BR = roi_data_c[decod_BR_c!=0,:]
+		X_SFM = roi_data_c[decod_SFM_c!=0,:]
+		y_BR = decod_BR_c[decod_BR_c!=0]
+		y_SFM = decod_SFM_c[decod_SFM_c!=0]
 		
 		# DATA FOR MASKING:
-		self.mask_data_mean = mask_data_mean
+		mask_data_mean = mask_data_c.mean(axis = 0)
 		if polar_eccen==True:
-			self.eccen_data_c = eccen_data_c
-			self.polar_data_c = polar_data_c
-		self.relative_times_BR = relative_times_BR_c[relative_times_BR_c!=0]
-		self.relative_times_SFM = relative_times_SFM_c[relative_times_SFM_c!=0]
+			eccen_data_c = eccen_data_c
+			# self.polar_data_c = polar_data_c
+		else:
+			eccen_data_c = None
+		relative_times_BR = relative_times_BR_c[relative_times_BR_c!=0]
+		relative_times_SFM = relative_times_SFM_c[relative_times_SFM_c!=0]
+		absolute_times_BR = absolute_times_BR_c[absolute_times_BR_c!=0]
+		absolute_times_SFM = absolute_times_SFM_c[absolute_times_SFM_c!=0]
 		
 		# GET MASKING INDICES:
 		# masking indices features (voxels) based on gfeat data (thresholded!):
-		mask_data_indices_thresh = np.ones(self.X_BR.shape[1], dtype = bool)
+		mask_data_indices_thresh = np.ones(X_BR.shape[1], dtype = bool)
 		if threshold != None:
 			if mask_direction == 'pos':
-				mask_data_indices_thresh = self.mask_data_mean >= threshold
+				mask_data_indices_thresh = mask_data_mean >= threshold
 			if mask_direction == 'neg':
-				mask_data_indices_thresh = self.mask_data_mean < threshold
+				mask_data_indices_thresh = mask_data_mean < threshold
 		
 		# masking indices features (voxels) based on gfeat data (top or bottom # of voxels!):
-		mask_data_indices_max_voxels = np.ones(self.X_BR.shape[1], dtype = bool)
+		mask_data_indices_max_voxels = np.ones(X_BR.shape[1], dtype = bool)
 		if number_voxels != None:
 			if mask_direction == 'pos':
-				mask_data_indices_max_voxels = self.mask_data_mean >= min(bn.partsort(self.mask_data_mean, self.mask_data_mean.size-number_voxels)[-number_voxels:])
+				mask_data_indices_max_voxels = mask_data_mean >= min(bn.partsort(mask_data_mean, mask_data_mean.size-number_voxels)[-number_voxels:])
 			if mask_direction == 'neg':
-				mask_data_indices_max_voxels = self.mask_data_mean <= max(bn.partsort(self.mask_data_mean, number_voxels)[:number_voxels])
+				mask_data_indices_max_voxels = mask_data_mean <= max(bn.partsort(mask_data_mean, number_voxels)[:number_voxels])
 		
 		# masking indices samples (Trs) based on relative time:
 		if decoding == 'BR':
-			mask_data_indices_time = np.ones(self.y_BR.shape[0], dtype = bool)
+			mask_data_indices_time = np.ones(y_BR.shape[0], dtype = bool)
 			if split_by_relative_time != None:
 				if split_by_relative_time == 'early':
-					mask_data_indices_time = (self.relative_times_BR < np.median(self.relative_times_BR))
+					mask_data_indices_time = (relative_times_BR < np.median(relative_times_BR))
 				if split_by_relative_time == 'late':
-					mask_data_indices_time = (self.relative_times_BR > np.median(self.relative_times_BR))
+					mask_data_indices_time = (relative_times_BR > np.median(relative_times_BR))
 		if decoding == 'SFM':
-			mask_data_indices_time = np.ones(self.y_SFM.shape[0], dtype = bool)
+			mask_data_indices_time = np.ones(y_SFM.shape[0], dtype = bool)
 			if split_by_relative_time != None:
 				if split_by_relative_time == 'early':
-					mask_data_indices_time = (self.relative_times_SFM < np.median(self.relative_times_SFM))
+					mask_data_indices_time = (relative_times_SFM < np.median(relative_times_SFM))
 				if split_by_relative_time == 'late':
-					mask_data_indices_time = (self.relative_times_SFM > np.median(self.relative_times_SFM))
+					mask_data_indices_time = (relative_times_SFM > np.median(relative_times_SFM))
 		
 		# MASK AND ZSCORE:
 		mask_data_indices_features = mask_data_indices_thresh * mask_data_indices_max_voxels
 		mask_data_indices_samples = mask_data_indices_time
 		if decoding == 'BR':
-			X_BR_masked = self.X_BR[mask_data_indices_samples,:]
-			X_BR_masked = X_BR_masked[:,mask_data_indices_features]
-			y_BR_masked = self.y_BR[mask_data_indices_samples]
-			# z-score X_BR_masked:
-			X_BR_masked_z = sp.stats.zscore(X_BR_masked, axis=1)
-			X_BR_masked_z = sp.stats.zscore(X_BR_masked_z, axis=0)
-			self.X = X_BR_masked_z
-			self.y = y_BR_masked
+			X_masked = X_BR[mask_data_indices_samples,:]
+			X_masked = X_masked[:,mask_data_indices_features]
+			y_masked = y_BR[mask_data_indices_samples]
+			relative_times = relative_times_BR
+			absolute_times = absolute_times_BR
 		if decoding == 'SFM':
-			X_SFM_masked = self.X_SFM[mask_data_indices_samples,:]
-			X_SFM_masked = X_SFM_masked[:,mask_data_indices_features]
-			y_SFM_masked = self.y_SFM[mask_data_indices_samples]
-			# z-score X_SFM_masked:
-			X_SFM_masked_z = sp.stats.zscore(X_SFM_masked, axis=1)
-			X_SFM_masked_z = sp.stats.zscore(X_SFM_masked_z, axis=0)
-			# b = X_SFM_masked
-			# b1 = ((b - bn.nanmean(b, axis = 0)) / bn.nanstd(b, axis=0)).T
-			# b2 = ((b1 - bn.nanmean(b1, axis = 0)) / bn.nanstd(b1, axis=0)).T
-			# X_SFM_masked = b2
-			self.X = X_SFM_masked_z
-			self.y = y_SFM_masked
+			X_masked = self.X_SFM[mask_data_indices_samples,:]
+			X_masked = X_masked[:,mask_data_indices_features]
+			y_masked = self.y_SFM[mask_data_indices_samples]
+			relative_times = relative_times_SFM
+			absolute_times = absolute_times_SFM
+			
+		return(X_masked, y_masked, mask_data_mean, eccen_data_c, absolute_times, relative_times)
+		
+		
 	
 	####################################################################################
 	## General functions: ##############################################################
@@ -1598,60 +1604,81 @@ class RivalrySession7T(RivalryReplaySession):
 			h5file.close()
 	
 	
-	def decoding_plain(self, runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
+	
+	def balance_classes(self, X, y):
 		
-		self.setup_all_data_for_decoding(runArray, decoding, roi, input_data=input_data, mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
+		import random
 		
-		if decoding == 'BR':
-			print('BR decoding!' + ' --- ' + str(split_by_relative_time) + ' in percept')
-		if decoding == 'SFM':
-			print('SFM decoding!' + ' --- ' + str(split_by_relative_time) + ' in percept')
-		print(str(roi) + ', number of features (voxels) = ' + str(self.X.shape[1]) )
-		print('number of training samples (TRs) = ' + str(round(self.X.shape[0]*0.8)))
-		print('number of test samples (TRs) = ' + str(round(self.X.shape[0]*0.2)))
+		len_y_a = sum(y == 1)
+		len_y_b = sum(y == -1)
+		indices_y_a = (y == 1)
+		indices_y_b = (y == -1)
+		
+		if len_y_a == len_y_b:
+			X_balanced = X
+			y_balanced = y
+			big_class = indices_y_a
+			small_class = indices_y_b
+		else:
+			if len_y_a > len_y_b:
+				big_class = indices_y_a
+				small_class = indices_y_b
+			if len_y_a < len_y_b:
+				big_class = indices_y_b
+				small_class = indices_y_a
+			X_big = X[big_class,:]
+			X_small = X[small_class,:]
+			y_big = y[big_class]
+			y_small = y[small_class]
+			random_indices = random.sample(range(sum(big_class)), sum(small_class))
+			X_big_balanced = X_big[random_indices,:]
+			y_big_balanced = y_big[random_indices]
+			X_balanced = np.vstack((X_big_balanced,X_small))
+			y_balanced = np.concatenate((y_big_balanced,y_small))
+		
+		number_trs = sum(small_class)
+		
+		return(X_balanced, y_balanced, number_trs)
+		
+	def decoding(self, X, y, test_size=0.20):
+		
+		X_scaled = preprocessing.scale(X)
+		
+		X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size)
+		# print('sample_weight = ' + str(sample_weight))
+		# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+		# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
+		# 		tol=0.001, verbose=False)
+		clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
+		                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
+		                random_state=None)
+		clf.fit(X_train, y_train)
+		# predictions = clf.predict(X_test)
+		accuracy = clf.score(X_test, y_test)
+		# print('accuracy = ' + str(accuracy))
+		
+		return(accuracy)
+		
+	def decoding_plain(self, X, y, test_size=0.20, nrand=100):
 		
 		accuracy = []
-		for i in range(100):
-			# Balance classes:
+		number_samples = []
+		for i in range(nrand):
 			
-			Xa = self.X[self.y == 1,:]
-			Xb = self.X[self.y == -1,:]
-			ya = self.y[self.y == 1]
-			yb = self.y[self.y == -1]
-		
-			import random
+			X_balanced, y_balanced, number_trs = self.balance_classes(X, y)
 			
-			random_indices = random.sample(range(len(Xa)), Xb.shape[0])
-			Xa = Xa[random_indices,:]
-			ya = ya[random_indices]
-		
-			X = np.vstack((Xa,Xb))
-			X = sp.stats.zscore(X, axis=1) # z-score X
-			X = sp.stats.zscore(X, axis=0) # x-score X
-			y = np.concatenate((ya,yb))
-			
-			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
-			# print('sample_weight = ' + str(sample_weight))
-			# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-			# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-			# 		tol=0.001, verbose=False)
-			clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
-			                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
-			                random_state=None)
-			clf.fit(X_train, y_train)
-			# predictions = clf.predict(X_test)
-			accuracy.append( clf.score(X_test, y_test) )
-			print('accuracy = ' + str(accuracy[i]))
+			accuracy.append( self.decoding(X_balanced, y_balanced, test_size=test_size) )
+			number_samples.append( number_trs*(1. - test_size) )
+			# print('accuracy = ' + str(accuracy[i]))
 		
 		mean_accuracy = mean(accuracy)
+		number_samples = mean(number_samples)
 		
-		print('')
-		print('mean accuracy = ' + str(mean_accuracy))
-		print('')
-		print('')
-		print('')
+		print('mean accuracy = ' + str(mean_accuracy) )
+		print('number of samples = ' + str(number_samples) )
 		
-		return(mean_accuracy)
+		return(mean_accuracy, number_samples)
+		
 	
 	def decoding_loop_over_rois(self, runArray, decoding, roi, input_data='tf_psc_data'):
 		
@@ -1662,11 +1689,25 @@ class RivalrySession7T(RivalryReplaySession):
 			else:
 				these_rois.append( [roi[i]] )
 		
-		accuracy = []
-		for i in range(len(roi)+1):
-			accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data) )
+		mean_accuracy = []
+		for roi_index in range(len(these_rois)):
+			
+			X, y, mask_data_mean, eccen_data_c, relative_times = self.setup_all_data_for_decoding(runArray=runArray, decoding=decoding, roi=these_rois[roi_index], input_data=input_data, mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False)
 		
-		bar_heights = np.array(accuracy)
+			number_trs = (self.balance_classes(X, y)[1]).shape[0]
+			number_voxels = X.shape[1]
+		
+			if decoding == 'BR':
+				print('BR decoding!')
+			if decoding == 'SFM':
+				print('SFM decoding!')
+			print(str(these_rois[roi_index]) + ', number of features (voxels) = ' + str(number_voxels) )
+			print('number of training samples (TRs) = ' + str(number_trs*0.8))
+			print('number of test samples (TRs) = ' + str(number_trs*0.2))
+			
+			mean_accuracy.append( self.decoding_plain(X=X, y=y, nrand=100) )
+		
+		bar_heights = np.array(mean_accuracy)
 		N = len(bar_heights)
 		ind = np.linspace(0,N,N)
 		fig = plt.figure(figsize = (3,6))
@@ -1704,12 +1745,27 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		these_times = ['early', 'late']
 		
-		accuracy = []
-		for j in range(len(these_times)):
-			for i in range(len(roi)+1):
-				accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data, split_by_relative_time=these_times[j]) )
+		mean_accuracy = []
+		for time_index in range(len(these_times)):
+			for roi_index in range(len(these_rois)):
+				
+				X, y, mask_data_mean, eccen_data_c, relative_times = self.setup_all_data_for_decoding(runArray=runArray, decoding=decoding, roi=these_rois[roi_index], input_data=input_data, mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=these_times[time_index], polar_eccen=False)
 		
-		bar_heights1,bar_heights2=np.array(accuracy)[:len(np.array(accuracy))/2],np.array(accuracy)[len(np.array(accuracy))/2:]
+				number_trs = (self.balance_classes(X, y)[1]).shape[0]
+				number_voxels = X.shape[1]
+		
+				if decoding == 'BR':
+					print('BR decoding!' + '---------- ' + these_times[time_index] + ' in percept')
+				if decoding == 'SFM':
+					print('SFM decoding!' + '---------- ' + these_times[time_index] + ' in percept')
+				print(str(these_rois[roi_index]) + ', number of features (voxels) = ' + str(number_voxels) )
+				print('number of training samples (TRs) = ' + str(number_trs*0.8))
+				print('number of test samples (TRs) = ' + str(number_trs*0.2))
+				
+				mean_accuracy.append( self.decoding_plain(X=X, y=y, nrand=100) )
+		
+		bar_heights1 = np.array(mean_accuracy)[:len(np.array(mean_accuracy))/2]
+		bar_heights2 = np.array(mean_accuracy)[len(np.array(mean_accuracy))/2:]
 		N = len(bar_heights1)
 		ind = np.linspace(0,N,N)
 		fig, axes = plt.subplots(nrows=1, ncols=2, figsize = (6,6))
@@ -1749,12 +1805,27 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		these_mask_directions = ['pos', 'neg']
 		
-		accuracy = []
-		for j in range(len(these_mask_directions)):
-			for i in range(len(roi)+1):
-				accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[i], input_data=input_data, mask_direction=these_mask_directions[j], number_voxels=number_voxels) )
+		mean_accuracy = []
+		for mask_directions_index in range(len(these_mask_directions)):
+			for roi_index in range(len(these_rois)):
+				
+				X, y, mask_data_mean, eccen_data_c, relative_times = self.setup_all_data_for_decoding(runArray=runArray, decoding=decoding, roi=these_rois[roi_index], input_data=input_data, mask_type='STIM_Z', mask_direction=these_mask_directions[mask_direction_index], threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False)
 		
-		bar_heights1,bar_heights2=np.array(accuracy)[:len(np.array(accuracy))/2],np.array(accuracy)[len(np.array(accuracy))/2:]
+				number_trs = (self.balance_classes(X, y)[1]).shape[0]
+				number_voxels = X.shape[1]
+		
+				if decoding == 'BR':
+					print('BR decoding!')
+				if decoding == 'SFM':
+					print('SFM decoding!')
+				print(str(these_rois[roi_index]) + ', number of features (voxels) = ' + str(number_voxels) )
+				print('number of training samples (TRs) = ' + str(number_trs*0.8))
+				print('number of test samples (TRs) = ' + str(number_trs*0.2))
+				
+				mean_accuracy.append( self.decoding_plain(runArray=runArray, decoding=decoding, roi=these_rois[roi_index], input_data=input_data, mask_direction=these_mask_directions[mask_directions_index], number_voxels=number_voxels) )
+		
+		bar_heights1 = np.array(mean_accuracy)[:len(np.array(mean_accuracy))/2]
+		bar_heights2 = np.array(mean_accuracy)[len(np.array(mean_accuracy))/2:]
 		N = len(bar_heights1)
 		ind = np.linspace(0,N,N)
 		fig, axes = plt.subplots(nrows=1, ncols=2, figsize = (6,6))
@@ -1783,25 +1854,27 @@ class RivalrySession7T(RivalryReplaySession):
 		pp.close()
 		
 	
-	def decoding_complex(self, runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False, width_sliding_window=100, lag=0):
-		
-		self.setup_all_data_for_decoding(runArray, decoding, roi, input_data='tf_psc_data', mask_type=mask_type, mask_direction=mask_direction, threshold=threshold, number_voxels=number_voxels, split_by_relative_time=split_by_relative_time, polar_eccen=polar_eccen)
-		
-		width_sliding_window = width_sliding_window/2
+	def decoding_over_voxels(self, runArray, decoding, roi, input_data='tf_psc_data', width_sliding_window=100, polar_eccen=True, lag=0):
 		
 		shell()
 		
+		X, y, mask_data_mean, eccen_data_c, absolute_times, relative_times = self.setup_all_data_for_decoding(runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=polar_eccen)
+		
+		width_sliding_window = width_sliding_window/2
+		
+		# shell()
+		
 		# Variables
 		lag = lag
-		phases = positivePhases(self.eccen_data_c[9,:]-lag)
+		phases = positivePhases(eccen_data_c[9,:]-lag)
 		phases_order = np.argsort(phases)
 		phases_3 = np.concatenate((phases-2*pi, phases, phases+2*pi))
 		phases_3_order = np.argsort(phases_3)
-		zs = self.mask_data_mean
+		zs = mask_data_mean
 		zs_order = np.argsort(zs)
 		zs_3 = np.concatenate((zs, zs, zs))
 		zs_3_order = np.argsort(zs_3)
-		X_3 = np.hstack((self.X,self.X,self.X))
+		X_3 = np.hstack((X,X,X))
 		
 		# Sort variables by eccentricity [CIRCULAR!]:
 		phases_sorted_eccen = phases_3[phases_3_order]
@@ -1811,7 +1884,7 @@ class RivalrySession7T(RivalryReplaySession):
 		# Sort variables by stim contrast z:
 		phases_sorted_zs = phases[zs_order]
 		zs_sorted_zs = zs[zs_order]
-		X_sorted_zs = self.X[:,zs_order]
+		X_sorted_zs = X[:,zs_order]
 		
 		############################################
 		
@@ -1846,53 +1919,21 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		# CORRELATION ECCENTRICITY - DECODING PERFORMANCE:
 		
-		import random
-		
 		mean_accuracy = []
-		number_voxels = self.X.shape[1]
-		for j in np.arange(0,number_voxels,1):
-		# for j in range(10):
-			voxels_for_decoding = np.arange(j+number_voxels-width_sliding_window, j+number_voxels+width_sliding_window)
+		number_voxels = X.shape[1]
+		for i in np.arange(0,number_voxels,1):
+			voxels_for_decoding = np.arange(i+number_voxels-width_sliding_window, i+number_voxels+width_sliding_window)
 			xx = X_sorted_eccen[:,voxels_for_decoding]
-			# xx = XX[:,voxels_for_decoding]
+			mean_accuracy.append( self.decoding_plain(X=xx, y=y, nrand=5) )
+			print('accuracy = ' + str(mean_accuracy[i]))
 			
-			Xa = xx[self.y == 1,:]
-			Xb = xx[self.y == -1,:]
-			ya = self.y[self.y == 1]
-			yb = self.y[self.y == -1]
-			
-			accuracy = []
-			for i in range(1):
-				
-				random_indices = random.sample(range(len(Xa)), Xb.shape[0])
-				Xa = Xa[random_indices,:]
-				ya = ya[random_indices]
-			
-				X = np.vstack((Xa,Xb))
-				y = np.concatenate((ya,yb))
-			
-				X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
-				# print('sample_weight = ' + str(sample_weight))
-				# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-				# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-				# 		tol=0.001, verbose=False)
-				clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
-				                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
-				                random_state=None)
-				clf.fit(X_train, y_train)
-				# predictions = clf.predict(X_test)
-				accuracy.append( clf.score(X_test, y_test) )
-				print('accuracy = ' + str(accuracy[i]))
-			
-			mean_accuracy.append(mean(accuracy))
-		
 		print('')
 		print('')
-		print('mean accuracy = ' + str(mean(accuracy)))
+		print('mean accuracy = ' + str(mean(mean_accuracy)))
 		
 		decoding_performance_sorted_eccen = np.concatenate((np.array(mean_accuracy),np.array(mean_accuracy),np.array(mean_accuracy)))
 		
-		kern =  norm.pdf( np.linspace(-2.25,2.25,width_sliding_window*4) )
+		kern =  norm.pdf( np.linspace(-2.25,2.25,width_sliding_window*16) )
 		sm_phases = np.convolve( phases_sorted_eccen, kern / kern.sum(), 'valid' )
 		sm_decoding_performance = np.convolve( decoding_performance_sorted_eccen, kern / kern.sum(), 'valid' )
 		
@@ -1920,50 +1961,13 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		# CORRELATION STIM CONTRAST (Z) - DECODING PERFORMANCE:
 		
-		import random
-		
 		mean_accuracy = []
-		number_voxels = self.X.shape[1]
-		for j in np.arange(width_sliding_window,number_voxels-width_sliding_window,1):
-		# for j in range(10):
-			voxels_for_decoding = np.arange(j-width_sliding_window, j+width_sliding_window)
+		number_voxels = X.shape[1]
+		for i in np.arange(width_sliding_window,number_voxels-width_sliding_window,1):
+			voxels_for_decoding = np.arange(i-width_sliding_window, i+width_sliding_window)
 			xx = X_sorted_zs[:,voxels_for_decoding]
-			# xx = XX[:,voxels_for_decoding]
+			mean_accuracy.append( self.decoding_plain(X=xx, y=y, nrand=10) )
 			
-			Xa = xx[self.y == 1,:]
-			Xb = xx[self.y == -1,:]
-			ya = self.y[self.y == 1]
-			yb = self.y[self.y == -1]
-			
-			accuracy = []
-			for i in range(1):
-				
-				random_indices = random.sample(range(len(Xa)), Xb.shape[0])
-				Xa = Xa[random_indices,:]
-				ya = ya[random_indices]
-			
-				X = np.vstack((Xa,Xb))
-				y = np.concatenate((ya,yb))
-			
-				X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
-				# print('sample_weight = ' + str(sample_weight))
-				# clf = svm.SVC(C=10.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-				# 		gamma=0.001, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-				# 		tol=0.001, verbose=False)
-				clf = svm.LinearSVC(penalty='l2', loss='l2', dual=True, tol=0.0001, C=1.0, multi_class='ovr', 
-				                fit_intercept=True, intercept_scaling=1, class_weight=None, verbose=0, 
-				                random_state=None)
-				clf.fit(X_train, y_train)
-				# predictions = clf.predict(X_test)
-				accuracy.append( clf.score(X_test, y_test) )
-				print('accuracy = ' + str(accuracy[i]))
-			
-			mean_accuracy.append(mean(accuracy))
-		
-		print('')
-		print('')
-		print('mean accuracy = ' + str(mean(accuracy)))
-		
 		decoding_performance_sorted_zs = np.array(mean_accuracy)
 		
 		kern =  norm.pdf( np.linspace(-2.25,2.25,width_sliding_window*4) )
@@ -2001,94 +2005,97 @@ class RivalrySession7T(RivalryReplaySession):
 		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_figure3_stimContrast_decodingPerformance_' + input_data, extension = '.pdf'))
 		fig.savefig(pp, format='pdf')
 		pp.close()
-		
-		
-		
-		## GRID SEARCH: ##
-		
-		# accuracy = []
-		# number_voxels = self.X.shape[1]
-		# for j in np.arange(0,number_voxels,50):
-		# # for j in range(10):
-		# 	voxels_for_decoding = np.arange(j+number_voxels-100, j+number_voxels+100)
-		# 	xx = X_sorted[:,voxels_for_decoding]
-		# 	
-		# 	acc = []
-		# 	# for i in range(3):
-		# 		# Balance classes:
-		# 	
-		# 	Xa = xx[y == 1,:]
-		# 	Xb = xx[y == -1,:]
-		# 	ya = y[y == 1]
-		# 	yb = y[y == -1]
-		# 	
-		# 	import random
-		# 
-		# 	random_indices = random.sample(range(len(Xa)), Xb.shape[0])
-		# 	Xa = Xa[random_indices,:]
-		# 	ya = ya[random_indices]
-		# 	
-		# 	X = np.vstack((Xa,Xb))
-		# 	y = np.concatenate((ya,yb))
-		# 
-		# 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
-		# 	# Set the parameters by cross-validation
-		# 	tuned_parameters = [{'kernel': ['linear'], 'C': [0.01, 0.1, 1, 10, 100, 1000]}]
-		# 	
-		# 	scores = [
-		# 	    ('precision', precision_score),
-		# 	    ('recall', recall_score),]
-		# 	
-		# 	for score_name, score_func in scores:
-		# 		print "# Tuning hyper-parameters for %s" % score_name
-		# 		print
-		# 		
-		# 		clf = GridSearchCV(SVC(C=1), tuned_parameters, score_func=score_func)
-		# 		clf.fit(X_train, y_train, cv=5, njobs=-1)
-		# 		
-		# 		print "Best parameters set found on development set:"
-		# 		print
-		# 		print clf.best_estimator_
-		# 		print
-		# 		print "Grid scores on development set:"
-		# 		print
-		# 		for params, mean_score, scores in clf.grid_scores_:
-		# 			print "%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() / 2, params)
-		# 		print
-		# 		
-		# 		print "Detailed classification report:"
-		# 		print
-		# 		print "The model is trained on the full development set."
-		# 		print "The scores are computed on the full evaluation set."
-		# 		print
-		# 		y_true, y_pred = y_test, clf.predict(X_test)
-		# 		print classification_report(y_true, y_pred)
-		# 		print
-		# 		
-		# 		predictions = clf.predict(X_test)
-		# 		accuracy.append( sum(y_pred == y_test) / float(len(y_pred)) )
-		# 	
-		# 		
-		# print('')
-		# print('')
-		# print('mean accuracy = ' + str(mean(accuracy)))
-		
-		
-		
-		
 	
+	
+	def decoding_over_time(self, runArray, decoding, roi, input_data='tf_psc_data', type_time='rel', width_sliding_window=100):
 		
+		X, y, mask_data_mean, eccen_data_c, absolute_times, relative_times = self.setup_all_data_for_decoding(runArray, decoding, roi, input_data='tf_psc_data', mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=None)
 		
+		width_sliding_window = 100
 		
+		# Variables
+		relative_times_order = np.argsort(relative_times)
+		relative_times_sorted = relative_times[relative_times_order]
 		
+		absolute_times_order = np.argsort(absolute_times)
+		absolute_times_sorted = absolute_times[absolute_times_order]
 		
+		X_sorted_rel_time = X[relative_times_order,:]
+		y_sorted_rel_time = y[relative_times_order]
 		
+		X_sorted_abs_time = X[absolute_times_order,:]
+		y_sorted_abs_time = y[absolute_times_order]
 		
+		############################################
 		
+		# DECODING PERFORMANCE OVER TIME:
 		
+		mean_accuracy = []
+		number_trs = X.shape[0]
+		number_samples = []
+		for i in np.arange(width_sliding_window,number_trs-width_sliding_window,1):
+			trs_for_decoding = np.arange(i-width_sliding_window, i+width_sliding_window)
+			
+			if type_time == 'abs':
+				xx = X_sorted_abs_time[trs_for_decoding,:]
+				yy = y_sorted_abs_time[trs_for_decoding]
+			if type_time == 'rel':
+				xx = X_sorted_rel_time[trs_for_decoding,:]
+				yy = y_sorted_rel_time[trs_for_decoding]
+			
+			temp1, temp2 = self.decoding_plain(X=xx, y=yy, nrand=5)
+			
+			mean_accuracy.append( temp1 )
+			number_samples.append( temp2 )
+			
+		print('')
+		print('')
+		print('mean accuracy = ' + str(mean(mean_accuracy)))
 		
+		number_samples = np.array(number_samples)
+		number_samples_smooth = functions_jw.movingaverage(number_samples, width_sliding_window)
 		
+		decoding_performance_sorted = np.array(mean_accuracy)
+		decoding_performance_sorted_smooth = functions_jw.movingaverage(decoding_performance_sorted, width_sliding_window)
 		
+		# plot:
+		fig = figure(figsize = (4,3))
+		left = 0.15
+		right = 0.85
+		top = 0.9
+		bottom = 0.15
+		ax1 = fig.add_subplot(111)
+		if type_time == 'abs':
+			ax1.scatter(absolute_times_sorted[width_sliding_window:-width_sliding_window],decoding_performance_sorted, color='#808080', alpha = 0.75)
+			ax1.plot(absolute_times_sorted[width_sliding_window:-width_sliding_window],decoding_performance_sorted_smooth, 'b', linewidth = 3.0)
+			ax1.set_xlim((min(absolute_times_sorted[width_sliding_window:-width_sliding_window]),max(absolute_times_sorted[width_sliding_window:-width_sliding_window])))
+			ax1.set_xlabel("absolute time (s)", size=10)
+		if type_time == 'rel':
+			ax1.scatter(relative_times_sorted[width_sliding_window:-width_sliding_window],decoding_performance_sorted, color='#808080', alpha = 0.75)
+			ax1.plot(relative_times_sorted[width_sliding_window:-width_sliding_window],decoding_performance_sorted_smooth, 'b', linewidth = 3.0)
+			ax1.set_xlim((min(relative_times_sorted[width_sliding_window:-width_sliding_window]),max(relative_times_sorted[width_sliding_window:-width_sliding_window])))
+			ax1.set_xlabel("relative time (s)", size=10)
+		ax1.set_title("decoding over time", size=12)
+		ax1.set_ylabel("decoding performance", size=10)
+		ax2 = ax1.twinx()
+		if type_time == 'abs':
+			ax2.plot(absolute_times_sorted[width_sliding_window:-width_sliding_window], number_samples_smooth, linestyle='--', color='r', alpha=0.5)
+		if type_time == 'rel':
+			ax2.plot(relative_times_sorted[width_sliding_window:-width_sliding_window], number_samples_smooth, linestyle='--', color='r', alpha=0.5)
+		ax2.set_ylabel('# training samples one percept')
+		plt.subplots_adjust(bottom=bottom, top=top, left=left, right=right)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		
+		pp = PdfPages(self.runFile( stage = 'processed/mri/figs', base = self.subject.initials + '_' +  str(self.date) + '_figure4_time_decodingPerformance_' + type_time + '_' + input_data, extension = '.pdf'))
+		fig.savefig(pp, format='pdf')
+		pp.close()
+	
+	
+	
+	
+	####################################################################################
+	## Old stuff: ######################################################################
 	def old(self):
 		
 		ac = []
