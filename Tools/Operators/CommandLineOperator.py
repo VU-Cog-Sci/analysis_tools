@@ -235,7 +235,7 @@ class ConcatFlirtOperator( CommandLineOperator ):
 
 class BETOperator( CommandLineOperator ):
 	"""
-	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB  -f 0.5 -g 0 -m
+	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB -z -f 0.5 -g 0 -m
 	"""
 	def __init__(self, inputObject, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
@@ -255,7 +255,8 @@ class BETOperator( CommandLineOperator ):
 			runcmd += ' ' + os.path.splitext(self.inputFileName)[0] + '_NB'
 		# configure parameters - will perhaps make this amenable
 		# runcmd += ' -f 0.4 -g 0 -m '
-		runcmd += ' -Z '
+		# standard options for limited calcarine FOV:
+		runcmd += ' -Z -f 0.45 -g 0 -m '
 		self.runcmd = runcmd
 
 

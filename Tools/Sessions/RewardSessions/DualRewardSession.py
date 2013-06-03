@@ -225,7 +225,7 @@ class DualRewardSession(SingleRewardSession):
 		s.axhline(0, -10, 30, linewidth = 0.25)
 		
 		time_signals = []
-		interval = [0.0,16.0]
+		interval = [0.0,12.0]
 			
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
 		for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):

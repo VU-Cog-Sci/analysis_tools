@@ -123,6 +123,49 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf'))
 			pl.draw()
 	
+	def ASL_file_analysis(self, filename, threshold = 0.4, moving_mean_width_on_velocity = 4, stim_offset = 0.1):
+		from scipy.io import loadmat
+		import pandas as pd
+		
+		nrVolumes = 112
+		nrSecsBeforeCountingForSelfReqAvgs = 8
+		TR = 2.0
+		
+		fileData = loadmat(filename)['dataEYD'][0,0]
+		sampleFrequency = fileData['freq'][0,0]
+		sample_times = np.arange(0, float(fileData['time'].ravel().shape[0]) / sampleFrequency, 1.0/sampleFrequency)
+		
+		TRInfo = np.arange(np.array(fileData['XDAT'], dtype = float).ravel().shape[0])[np.diff(np.array(fileData['XDAT'], dtype = float).ravel()) == -1][int(nrSecsBeforeCountingForSelfReqAvgs/TR):]
+		blinks = (fileData['pupil_recogn'].ravel() == 0)
+		
+		x, y = fileData['horz_gaze_coord'],fileData['vert_gaze_coord']
+		vx, vy = np.diff(x.ravel()), np.diff(y.ravel())
+		v = sqrt(vx**2 + vy**2)
+		vp = pd.Series(v)
+		std_vp = pd.Series(np.roll(np.array(pd.rolling_mean(vp / np.std(vp), moving_mean_width_on_velocity)), -moving_mean_width_on_velocity/2))
+		threshold_crossings = np.array(std_vp > threshold, dtype = int)
+		sacc_starts = np.diff(threshold_crossings) == 1
+		sacc_ends = np.diff(threshold_crossings) == -1
+		
+		# adjust length of arrays to the experiment
+		interesting_range = np.arange(TRInfo[0],TRInfo[0]+sampleFrequency*nrVolumes*TR, dtype = int)
+		blinks = blinks[interesting_range]
+		sacc_starts = sacc_starts[interesting_range]
+		sacc_ends = sacc_ends[interesting_range]
+		x = x[interesting_range]
+		y = y[interesting_range]
+		sample_times = sample_times[interesting_range]
+		
+		landing_positions = np.array([x[sacc_ends - blinks], y[sacc_ends - blinks]]).T
+		
+		stim_onsets = np.arange(0, nrVolumes * TR, 1.0) + sample_times[0] + stim_offset * sampleFrequency
+		sacc_start_times = sample_times[(sacc_starts - blinks)]
+		sacc_end_times = sample_times[sacc_ends - blinks]
+		
+		saccade_latencies = [sacc_start_times[sacc_start_times > this_stim_onset][0] - this_stim_onset for this_stim_onset in stim_onsets if this_stim_onset < sacc_start_times[-1]]
+		saccade_offsets_per_trial = [sacc_ends[sacc_ends > sacc_start_times[sacc_start_times > this_stim_onset][0]] for this_stim_onset in stim_onsets if this_stim_onset < sacc_start_times[-1]]
+		
+	
 	def createFunctionalMask(self, exclusionThreshold = 2.0, maskFrame = 0, inclusion_threshold = 4.0):
 		"""
 		Take the eccen F-values, use as a mask, and take out the F-value mask of the peripheral fixation condition

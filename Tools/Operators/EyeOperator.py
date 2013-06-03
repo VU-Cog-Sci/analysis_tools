@@ -51,6 +51,7 @@ class ASLEyeOperator( EyeOperator ):
 		self.rawDataFile = loadmat(self.inputFileName)['dataEYD'][0,0]
 		
 		self.sampleFrequency = self.rawDataFile['freq'][0,0]
+		self.logger.info('sample_frequency of ASL eye tracker is %s', str(self.sampleFrequency))
 	
 	def trSignals(self, TR = None):
 		self.TRinfo = (np.array(self.rawDataFile['XDAT']-np.min(self.rawDataFile['XDAT']))/(np.max(self.rawDataFile['XDAT'])-np.min(self.rawDataFile['XDAT'])) == 1.0).ravel()
@@ -73,9 +74,9 @@ class ASLEyeOperator( EyeOperator ):
 		
 		self.logger.debug('TR is %f, nr of TRs as per .eyd file is %d, nrVolumes and delay: %i, %i', self.TR, len(self.TRtimes), self.nrVolumes, self.delay)
 		if len(self.TRtimes) != self.nrVolumes:
-			self.logger.warning('data amount in .eyd file doesn not correspond to the amount of data in the .nii file... Aborting this eye file. \n%s', self.inputFileName)
+			self.logger.warning('data amount in .eyd file (%s) doesn not correspond to the amount of data in the .nii file (%s)... Aborting this eye file. \n%s', self.TRTimes, self.nrVolumes, self.inputFileName)
 			self.error = True
-			return
+			# return
 		
 		self.gazeData = self.rawDataFile['horz_gaze_coord'][self.firstTR['index']:self.firstTR['index'] + self.sampleFrequency * self.TR * self.nrVolumes ]
 		self.gazeDataPerTR = self.gazeData.reshape(self.gazeData.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
@@ -809,5 +810,5 @@ class SMIEyeOperator( EyeOperator ):
 	Class for the analysis of SMI output.
 	Input is assumed to be already-converted text files, containing a mixture of samples and messages.
 	"""
-	
+
 
