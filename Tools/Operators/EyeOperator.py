@@ -26,7 +26,7 @@ from datetime import *
 from tables import *
 
 from BehaviorOperator import NewBehaviorOperator
-# from IPython import embed as shell
+from IPython import embed as shell
 
 def derivative_normal_pdf( mu, sigma, x ):
 	return -( np.exp( - ( (x - mu)**2 / (2.0 * (sigma ** 2))) ) * (x - mu)) / ( sqrt(2.0 * pi) * sigma ** 3)
@@ -74,52 +74,84 @@ class ASLEyeOperator( EyeOperator ):
 		
 		self.logger.debug('TR is %f, nr of TRs as per .eyd file is %d, nrVolumes and delay: %i, %i', self.TR, len(self.TRtimes), self.nrVolumes, self.delay)
 		if len(self.TRtimes) != self.nrVolumes:
-			self.logger.warning('data amount in .eyd file (%s) doesn not correspond to the amount of data in the .nii file (%s)... Aborting this eye file. \n%s', self.TRTimes, self.nrVolumes, self.inputFileName)
+			self.logger.warning('data amount in .eyd file (%s) doesn not correspond to the amount of data in the .nii file (%s)... Aborting this eye file. \n%s', self.TRtimes, self.nrVolumes, self.inputFileName)
 			self.error = True
+			# self.TRtimes = np.arange(self.TRtimes[0], self.TRtimes[0] + self.nrVolumes * self.TR, self.TR)
+			self.nrVolumes = self.TRtimeIndices.shape[0]
+			
 			# return
+		try:
+			# shell()
+			self.gazeDataHor = 14.0 * (self.rawDataFile['horz_gaze_coord'][self.firstTR['index']: self.firstTR['index'] + self.sampleFrequency * self.TR * self.nrVolumes] - 60.0) / 140.0
+			self.gazeDataHorPerTR = self.gazeDataHor.reshape(self.gazeDataHor.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			self.gazeDataVer = 14.0 * (self.rawDataFile['vert_gaze_coord'][self.firstTR['index']: self.firstTR['index'] + self.sampleFrequency * self.TR * self.nrVolumes] - 60.0) / 140.0
+			self.gazeDataVerPerTR = self.gazeDataVer.reshape(self.gazeDataVer.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			self.pupilRecogn = np.array(self.rawDataFile['pupil_recogn'][self.firstTR['index']: self.firstTR['index'] + self.TR * self.nrVolumes * self.sampleFrequency ], dtype = bool)
+			self.pupilRecognPerTR = self.pupilRecogn.reshape(self.gazeDataHor.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
-		self.gazeData = self.rawDataFile['horz_gaze_coord'][self.firstTR['index']:self.firstTR['index'] + self.sampleFrequency * self.TR * self.nrVolumes ]
-		self.gazeDataPerTR = self.gazeData.reshape(self.gazeData.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
-		self.pupilRecogn = np.array(self.rawDataFile['pupil_recogn'][self.firstTR['index']: self.firstTR['index'] + self.TR * self.nrVolumes * self.sampleFrequency ], dtype = bool)
-		self.pupilRecognPerTR = self.pupilRecogn.reshape(self.gazeData.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			self.horVelocities = np.abs(np.concatenate((self.gazeDataHor[:-1]-self.gazeDataHor[1:], [[0]]))) * 60.0
+			self.horVelocitiesPerTR = self.horVelocities.reshape(self.horVelocities.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			self.verVelocities = np.abs(np.concatenate((self.gazeDataVer[:-1]-self.gazeDataVer[1:], [[0]]))) * 60.0
+			self.verVelocitiesPerTR = self.verVelocities.reshape(self.verVelocities.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
 		
-		self.horVelocities = np.concatenate((self.gazeData[:-1]-self.gazeData[1:], [[0]]))
-		self.horVelocitiesPerTR = self.horVelocities.reshape(self.horVelocities.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			self.horVelocitiesNoA = np.concatenate((self.gazeDataHor[:-1]-self.gazeDataHor[1:], [[0]])) * 60.0
+			self.verVelocitiesNoA = np.concatenate((self.gazeDataVer[:-1]-self.gazeDataVer[1:], [[0]])) * 60.0
 		
-		self.hVRunningSD = np.concatenate((np.ones((6)) * self.horVelocities.std(), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)]))
-		self.hVRunningSDPerTR = self.hVRunningSD.reshape(self.hVRunningSD.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
-		
-		if makeFigure:
-			if figureFileName == '':
-				figureFileName = os.splitext(inputFileName)[0] + '.pdf'
+			self.hVRunningSD = np.concatenate((np.ones((6)) * self.horVelocities.std(), [self.horVelocities[i:i+6].std() for i in range(self.horVelocities.shape[0]-6)]))
+			self.hVRunningSDPerTR = self.hVRunningSD.reshape(self.hVRunningSD.shape[0]/(self.sampleFrequency * self.TR), self.sampleFrequency * self.TR).transpose()
+			
+			self.gazeDataDuringExpt = np.array([self.gazeDataHor, self.gazeDataVer, self.pupilRecogn, self.horVelocitiesNoA, self.verVelocitiesNoA]).T
+			
+			if makeFigure:
+				if figureFileName == '':
+					figureFileName = os.splitext(inputFileName)[0] + '.pdf'
 				
-			f = pl.figure(figsize = (10,5))
-			sbp = f.add_subplot(2,1,1)
-			for (g,p,i) in zip(self.gazeDataPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataPerTR.T.shape[0])):
-				if i >= delay:
-					pl.plot( np.arange(g.shape[0])[p], g[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
-			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+				f = pl.figure(figsize = (10,5))
+				sbp = f.add_subplot(2,1,1)
+				for (g,p,i) in zip(self.gazeDataHorPerTR.T, self.pupilRecognPerTR.T, range(self.gazeDataHorPerTR.T.shape[0])):
+					if i >= delay:
+						pl.plot( np.arange(g.shape[0])[p], g[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
+				pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+				pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
 			
-			sbp.annotate(os.path.splitext(os.path.split(figureFileName)[-1])[0], xy=(.5, .5),  xycoords='axes fraction',
-			                horizontalalignment='center', verticalalignment='center')
+				sbp.annotate(os.path.splitext(os.path.split(figureFileName)[-1])[0], xy=(.5, .5),  xycoords='axes fraction',
+				                horizontalalignment='center', verticalalignment='center')
 			
-			gazeMean = [g[p].mean() for (g,p) in zip(self.gazeDataPerTR, self.pupilRecognPerTR)]
-			pl.plot( np.arange(self.TR * self.sampleFrequency), gazeMean, 'o', c = 'k', alpha = 1.0, linewidth = 4.0 )
+				gazeMean = [g[p].mean() for (g,p) in zip(self.gazeDataHorPerTR, self.pupilRecognPerTR)]
+				pl.plot( np.arange(self.TR * self.sampleFrequency), gazeMean, 'o', c = 'k', alpha = 1.0, linewidth = 4.0 )
 			
-			sbp.axis([0, self.TR * self.sampleFrequency, 50, 210])
+				sbp.axis([0, self.TR * self.sampleFrequency, 50, 210])
 			
-			sbp = f.add_subplot(2,1,2)
-			for (v,p,sd) in zip(self.horVelocitiesPerTR.T, self.pupilRecognPerTR.T, self.hVRunningSDPerTR.T):
-				if i >= delay:
-					pl.plot( np.arange(v.shape[0])[p], v[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
-					pl.plot( np.arange(sd.shape[0])[p], sd[p], '+', c = 'b', alpha = 0.75, linewidth=0.5 )
+				sbp = f.add_subplot(2,1,2)
+				for (v,p,sd) in zip(self.horVelocitiesPerTR.T, self.pupilRecognPerTR.T, self.hVRunningSDPerTR.T):
+					if i >= delay:
+						pl.plot( np.arange(v.shape[0])[p], v[p], '-', c = 'k', alpha = 0.5, linewidth=0.5 )
+						pl.plot( np.arange(sd.shape[0])[p], sd[p], '+', c = 'b', alpha = 0.75, linewidth=0.5 )
 					
-			pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
-			sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
-			pl.savefig(figureFileName)
+				pl.axvspan(0.25 * self.sampleFrequency, 0.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+				pl.axvspan(1.25 * self.sampleFrequency, 1.5 * self.sampleFrequency, facecolor=(1.0,0.0,0.0), alpha=0.25)
+				sbp.axis([0, self.TR * self.sampleFrequency, -50, 50])
+				pl.savefig(figureFileName)
 			
+			# detect saccades
+			# shell()
+			stim_after_TR_delay = 0.25 * self.sampleFrequency
+			stim_duration = 0.25 * self.sampleFrequency
+			# saccade every second
+			stim_indices = np.arange(0, self.gazeDataHor.shape[0], self.sampleFrequency) + stim_after_TR_delay
+			left_gaze = np.array([[self.gazeDataHor[ind:ind+stim_duration], self.gazeDataVer[ind:ind+stim_duration]] for ind in stim_indices[::2]]).squeeze()
+			right_gaze = np.array([[self.gazeDataHor[ind:ind+stim_duration], self.gazeDataVer[ind:ind+stim_duration]] for ind in stim_indices[1::2]]).squeeze()
+			
+			left_gaze_zero_mean = left_gaze.mean(axis = -1) - left_gaze.mean(axis = -1).mean(axis = 0)
+			right_gaze_zero_mean = right_gaze.mean(axis = -1) - right_gaze.mean(axis = -1).mean(axis = 0)
+			
+			
+			
+			# if self.error:
+			# 	shell()
+			
+		except ValueError:
+			pass
 	
 
 class EyelinkOperator( EyeOperator ):

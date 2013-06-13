@@ -12,6 +12,8 @@ from RetinotopicMappingSession import *
 from ..circularTools import *
 import matplotlib.cm as cm
 from pylab import *
+import pandas as pd
+import pickle
 
 class RetinotopicRemappingSession(RetinotopicMappingSession):
 	def runQC(self, rois = ['V1','V2','V3']):
@@ -85,9 +87,12 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 		Take the eye movement data for the runs in this session
 		"""
 		for ri in self.scanTypeDict['epi_bold']:
+			print os.path.splitext(self.runList[ri].eyeLinkFile)[-1]
+			print self.runList[ri].eyeLinkFile
 			if os.path.splitext(self.runList[ri].eyeLinkFile)[-1] != '.edf':
 				self.runList[ri].eyeOp = ASLEyeOperator( inputObject = self.runList[ri].eyeLinkFile )
 				self.runList[ri].eyeOp.firstPass(132, 8, TR = 2.0, makeFigure = True, figureFileName = os.path.join( self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf') ))
+				gd = self.runList[ri].eyeOp.gazeDataDuringExpt
 			else:
 				import pickle
 				self.runList[ri].eyeOp = EyelinkOperator( inputObject = self.runList[ri].eyeLinkFile, date_format = 'obj_c_experiment' )
@@ -97,31 +102,102 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 				f = open(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pickle'), 'w')
 				pickle.dump([self.runList[ri].eyeOp.gazeData, self.runList[ri].eyeOp.msgData], f)
 				f.close()
+				self.secondaryEyeMovementAnalysis(run_index = ri)
+				gd = self.gazeDataDuringExpt
+			print gd
+			np.save(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.npy'), gd)
+			print self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.npy')
 	
-	def secondaryEyeMovementAnalysis(self):
-		for ri in self.scanTypeDict['epi_bold']:
-			f = open(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pickle'), 'r')
-			[gazeData, msgData] = pickle.load(f)
-			f.close()
+	def secondaryEyeMovementAnalysis(self, run_index = 0, wanted_sample_frequency = 60):
+		# for ri in self.scanTypeDict['epi_bold']:
+		f = open(self.runFile(stage = 'processed/eye', run = self.runList[run_index], extension = '.pickle'), 'r')
+		[gazeData, msgData] = pickle.load(f)
+		f.close()
+		
+		startTime = re.findall(re.compile('MSG\t([\d\.]+)\tTrial Phase: stimPresentationPhase'), msgData)[0]
+		sampleRate = int(re.findall(re.compile('MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'), msgData)[0][0])
+		blinks = np.array(re.findall(re.compile('EBLINK\t[RL]{1}\t([\d\.]+)\t([\d\.]+)'), msgData), dtype = int)
+		
+		blinks_binary_indices = np.array([(gazeData[:,0] > b[0]) * (gazeData[:,0] < b[1]) for b in blinks]).sum(axis = 0, dtype = bool)
+		
+		vel = np.diff(gazeData, axis = 0)
+		
+		# shell()
+		
+		startPoint = np.arange(gazeData.shape[0])[gazeData[:,0] == float(startTime)][0] 
+		startPoint += 8 * int(sampleRate)
+		endPoint = startPoint + int(sampleRate) * 256
+		
+		subsampling = 10
+		
+		xData = gazeData[startPoint:endPoint:subsampling, 1].reshape([128,sampleRate*2 / subsampling])
+		
+		# convert to degrees, and degrees per second.
+		export_gaze_data = np.array([14.0 * (gazeData[startPoint:endPoint, 1] + 480.0 ) / 960.0, 20.0 * (gazeData[startPoint:endPoint, 2] - 600.0 ) / 1200.0 , blinks_binary_indices[startPoint:endPoint], np.diff(14.0 * (gazeData[:, 1] + 480.0 ) / 960.0)[startPoint:endPoint] * 1000.0, np.diff(20.0 * (gazeData[:, 2] - 600.0 ) / 1200.0)[startPoint:endPoint]]).T
+		
+		from scipy.signal import resample
+		self.gazeDataDuringExpt = resample(export_gaze_data, 256*wanted_sample_frequency, axis = 0)
+		
+		pl.figure(figsize = (8,3))
+		pl.plot(xData.T, c = 'k', alpha = 0.2, linewidth = 0.5)
+		pl.fill([0.0,(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 8.0,0.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
+		pl.fill([(sampleRate*2 / subsampling) / 2.0, 5*(sampleRate*2 / subsampling) / 8.0, 5*(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 2.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
+		pl.axis([0,(sampleRate*2 / subsampling),-1000,1000])
+		pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[run_index], extension = '.pdf'))
+		pl.draw()
 			
-			startTime = re.findall(re.compile('MSG\t([\d\.]+)\tTrial Phase: stimPresentationPhase'), msgData)[0]
-			sampleRate = int(re.findall(re.compile('MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'), msgData)[0][0])
+	def moreEyeMovementAnalysis(self, threshold = 100, moving_mean_width_on_velocity = 2, stim_offset = 0.1, sample_frequency = 60.0):
+		# grab data for all conditions
+		run_data = {}
+		for condition in self.conditionDict.keys():
+			if condition[:3] != 'fix':
+				run_data.update({condition : []})
+				for c in self.conditionDict[condition]:
+					this_run_data = np.load(self.runFile(stage = 'processed/eye', run = self.runList[c], extension = '.npy')).squeeze()
+					
+					# v = sqrt(this_run_data[:,3]**2 + this_run_data[:,4]**2)
+					vp = pd.Series(np.abs(this_run_data[:,3]))
+					# std_vp = pd.Series(np.roll(np.array(pd.rolling_mean(vp / np.std(vp), moving_mean_width_on_velocity)), -moving_mean_width_on_velocity/2))
+					threshold_crossings = np.array(vp > threshold, dtype = int)
+					blinks = pd.rolling_mean(np.array(this_run_data[1:,2], dtype = bool), 15) > 0
+					# sacc_starts = (np.diff(threshold_crossings) == 1)[blinks]
+					# sacc_ends = (np.diff(threshold_crossings) == -1)[blinks]
+					sacc_starts = np.diff(threshold_crossings) == 1
+					sacc_ends = np.diff(threshold_crossings) == -1
+					
+					# shell()
+					sample_times = np.arange(this_run_data.shape[0]) / sample_frequency
+					landing_positions = np.array([this_run_data[:,3][sacc_ends - blinks], this_run_data[:,4][sacc_ends - blinks]]).T
+							
+					stim_onsets = np.arange(0, float(this_run_data.shape[0] - (48 * sample_frequency))/sample_frequency, 1.0) + stim_offset
+					sacc_start_times = sample_times[sacc_starts] # (sacc_starts - blinks)
+					sacc_end_times = sample_times[sacc_ends]
+					sacc_end_times = sacc_end_times[np.concatenate((np.diff(sacc_end_times) > 0.5, [True]))]
+					sacc_start_times = sacc_start_times[np.concatenate((np.diff(sacc_end_times) > 0.5, [True]))]
+		
+					saccade_latencies = np.array([sacc_start_times[sacc_start_times < this_stim_onset][-1] - this_stim_onset for this_stim_onset in stim_onsets[8:-8]])
+					saccade_offsets_per_trial = np.array([this_run_data[np.roll(sample_times == sacc_end_times[sacc_end_times > sacc_start_times[sacc_start_times < this_stim_onset][-1]][0],4), [0,1]] for this_stim_onset in stim_onsets[8:-8]])
+					saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] > 7] = saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] > 7] - saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] > 7].mean()
+					saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] < 7] = saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] < 7] - saccade_offsets_per_trial[saccade_offsets_per_trial[:,0] < 7].mean()
+					
+					stim_after_TR_delay = stim_offset * sample_frequency
+					stim_duration = 0.25 * sample_frequency
+					# saccade every second
+					stim_indices = np.arange(0, this_run_data.shape[0], sample_frequency) + stim_after_TR_delay
+					left_gaze = np.array([[this_run_data[ind:ind+stim_duration, 0], this_run_data[ind:ind+stim_duration, 1]] for ind in stim_indices[::2]]).squeeze()
+					right_gaze = np.array([[this_run_data[ind:ind+stim_duration, 0], this_run_data[ind:ind+stim_duration, 1]] for ind in stim_indices[1::2]]).squeeze()
 			
-			startPoint = np.arange(gazeData.shape[0])[gazeData[:,0] == float(startTime)][0] 
-			startPoint += 8 * int(sampleRate)
-			endPoint = startPoint + int(sampleRate) * 256
-			
-			subsampling = 10
-			
-			xData = gazeData[startPoint:endPoint:subsampling, 1].reshape([128,sampleRate*2 / subsampling])
-			
-			pl.figure(figsize = (8,3))
-			pl.plot(xData.T, c = 'k', alpha = 0.2, linewidth = 0.5)
-			pl.fill([0.0,(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 8.0,0.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
-			pl.fill([(sampleRate*2 / subsampling) / 2.0, 5*(sampleRate*2 / subsampling) / 8.0, 5*(sampleRate*2 / subsampling) / 8.0,(sampleRate*2 / subsampling) / 2.0], [-1000,-1000,1000,1000], 'r', alpha=0.2, edgecolor='r')
-			pl.axis([0,(sampleRate*2 / subsampling),-1000,1000])
-			pl.savefig(self.runFile(stage = 'processed/eye', run = self.runList[ri], extension = '.pdf'))
-			pl.draw()
+					left_gaze_zero_mean = left_gaze.mean(axis = -1) - left_gaze.mean(axis = -1).mean(axis = 0)
+					right_gaze_zero_mean = right_gaze.mean(axis = -1) - right_gaze.mean(axis = -1).mean(axis = 0)
+					
+					fix_deviations = np.array([[aa, bb] for aa, bb in zip(left_gaze_zero_mean,right_gaze_zero_mean)]).ravel()
+					
+					with open(self.runFile(stage = 'processed/eye', run = self.runList[c], extension = '.pickle'), 'w') as f:
+						pickle.dump([fix_deviations, saccade_offsets_per_trial, saccade_latencies], f)
+					
+					run_data[condition].append([fix_deviations, saccade_offsets_per_trial, saccade_latencies])
+				
+		shell()
 	
 	def ASL_file_analysis(self, filename, threshold = 0.4, moving_mean_width_on_velocity = 4, stim_offset = 0.1):
 		from scipy.io import loadmat
