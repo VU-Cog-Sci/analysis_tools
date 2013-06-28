@@ -171,6 +171,7 @@ class EyelinkOperator( EyeOperator ):
 				eac = EDF2ASCOperator(self.inputFileName)
 				eac.configure()
 				self.messageFile = eac.messageOutputFileName
+				# perhaps insert something that checks the messages for the reason that there's weird symbols in the output
 				self.gazeFile = eac.gazeOutputFileName
 				if not os.path.isfile(eac.messageOutputFileName):
 					eac.execute()
@@ -207,21 +208,27 @@ class EyelinkOperator( EyeOperator ):
 		f.close()
 		
 		# optimize this so that it doesn't delete the periods in the float time, for example.
-		self.workingString = re.sub(re.compile('\t*\.\.\.+'), '', self.workingString)
+		# first clean out those C and R occurrences. No letters allowed.
+		self.workingStringClean = re.sub(re.compile('[A-Z]*'), '', self.workingString)
+		self.workingStringClean = re.sub(re.compile('\t+\.+'), '', self.workingStringClean)
+		# # check for these really weird character shit in the final columns of the output.
+		# self.workingStringClean = re.sub(re.compile('C.'), '', self.workingStringClean)
+		
 		os.system('rm -rf ' + self.gazeFile)
 		
 		of = open(self.gazeFile, 'w')
-		of.write(self.workingString)
+		of.write(self.workingStringClean)
 		of.close()
 		
-		gd = np.loadtxt(self.gazeFile)
+		# now fix for the fact that loadtxt cannot read arrays of different columns: just take out a single eye
+		# now we use usecols parameter, and this is raw but useful. Up until 5 is with velocity output of edf2asc.
+		gd = np.loadtxt(self.gazeFile, usecols = (0,1,2,3,4,5))
 		# make sure the amount of samples is even, so that later filtering is made easier. 
 		# deleting the first data point of a session shouldn't matter at all..
 		if bool(gd.shape[0] % 2):
 			gd = gd[1:]
 		np.save( self.gazeFile, gd.astype(np.float64) )
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
-		
 	
 	def loadData(self, get_gaze_data = True):
 		mF = open(self.messageFile, 'r')
@@ -357,20 +364,25 @@ class EyelinkOperator( EyeOperator ):
 	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
 		events = []
+		this_length = 0
 		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			eventStrings = self.findOccurences(thisRE)
-			if len(eventStrings[0]) == 8:
-				events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
-			elif len(eventStrings[0]) == 3:
-				events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'presentation_time':float(e[2])} for e in eventStrings])
+			if len(eventStrings) > 0:
+				# shell()
+				if len(eventStrings[0]) == 8:
+					events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'presentation_time':float(e[7])} for e in eventStrings])
+					this_length = 8
+				elif len(eventStrings[0]) == 3:
+					events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'presentation_time':float(e[2])} for e in eventStrings])
+					this_length = 3
 		self.events = events
 		#
 		# add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
 		#
-		if len(eventStrings[0]) == 8:
+		if this_length == 8:
 			self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('presentation_time', np.float64)])
-		elif len(eventStrings[0]) == 3:
+		elif this_length == 3:
 			self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('presentation_time', np.float64)])
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 	
@@ -592,11 +604,14 @@ class EyelinkOperator( EyeOperator ):
 				fix.append()
 			thisRunFixationsTable.flush()
 			
+			
 			# create eye arrays for the run's eye movement data
 			if not hasattr(self, 'gazeData'):
 				self.loadData()
+			self.logger.info('Gaze data loaded. Inserting gaze data into hdf file')
 			
 			h5file.createArray(thisRunGroup, 'gaze_data', self.gazeData.astype(np.float64), 'Raw gaze data from ' + self.inputFileName)
+			self.logger.info('Inserted gaze data into hdf file')
 			
 			if not hasattr(self, 'velocityData') and compute_velocities:
 				# make the velocities arrays if it hasn't been done yet. 
