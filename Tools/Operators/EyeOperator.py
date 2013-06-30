@@ -386,13 +386,14 @@ class EyelinkOperator( EyeOperator ):
 			self.eventTypeDictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('presentation_time', np.float64)])
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 	
-	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s\s+: ([-\d\.]*|[\w]*)', add_parameters = None):
+	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s+: ([-\d\.]*|[\w]*)', add_parameters = None):
 		parameters = []
 		# if there are no duplicates in the edf file
 		trialCounter = 0
 		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			parameterStrings = self.findOccurences(thisRE)
+			# shell()
 			if len(parameterStrings) > 0:
 				if self.monotonic == False:
 					nrParameters = len(parameterStrings)/self.nrRunsInDataFile
