@@ -226,11 +226,12 @@ class VariableRewardSession(SingleRewardSession):
 		# stimulus_design.configure(stimulus_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})	# standard HRF for stimulus events
 		
 		# non-standard reward HRF for delay events
-		delay_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		# delay_design = Design(timeseries.shape[0] * 2, tr/2.0 )
 		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
-		delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
+		# delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
 		# delay_design.configure(delay_event_data)
-		nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix))
+		# nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix))
+		nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
 		
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
 		deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
@@ -296,9 +297,9 @@ class VariableRewardSession(SingleRewardSession):
 		results = []
 		for roi in rois:
 			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = 'reward'))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = 'reward'))
+			results.append(self.deconvolve_roi(roi, -threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = 'reward'))
 			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = 'stim'))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = 'stim'))
+			results.append(self.deconvolve_roi(roi, -threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = 'stim'))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_results'
@@ -698,9 +699,9 @@ class VariableRewardSession(SingleRewardSession):
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 				# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
 				if 'sara' in os.uname():
-					thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward_more_contrasts.fsf'
+					thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
 				else:
-					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward_more_contrasts.fsf'
+					thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/reward_more_contrasts.fsf'
 				
 				REDict = {
 				'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
@@ -1067,7 +1068,6 @@ class VariableRewardSession(SingleRewardSession):
 			
 				# general info we want in all hdf files
 				stat_files.update({
-									# 'residuals': os.path.join(this_orientation_feat, 'stats', 'res4d.nii.gz'),
 									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 									'hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf']), 
 									# os.path.join(this_orientation_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
@@ -1094,14 +1094,15 @@ class VariableRewardSession(SingleRewardSession):
 									'surround>center_cope': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'cope4.nii.gz'),
 									
 				})
-				# now we're going to add the results of film_gls' approximation.
-				for (i, name) in enumerate(self.full_design_names):
-					stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
-				for name in ['prewhitened_data','res4d','sigmasquareds','contrasts']:
-					stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
+				if False: # just taking these glm results out to do a deconvolution
+					# now we're going to add the results of film_gls' approximation.
+					for (i, name) in enumerate(self.full_design_names):
+						stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', 'pe' + str(i+1) + '.nii.gz')})
+					for name in ['prewhitened_data','res4d','sigmasquareds','contrasts']:
+						stat_files.update({name: os.path.join(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'glm'], extension = ''), 'stats', name + '.nii.gz')})
 			
 				stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
-			
+		
 				for (roi, roi_name) in zip(rois, roinames):
 					try:
 						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
@@ -1109,7 +1110,7 @@ class VariableRewardSession(SingleRewardSession):
 						# import actual data
 						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
 						thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
-				
+			
 					for (i, sf) in enumerate(stat_files.keys()):
 						# loop over stat_files and rois
 						# to mask the stat_files with the rois:

@@ -1108,6 +1108,9 @@ class SingleRewardSession(Session):
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type))
+			if 'residuals' in data_type:
+				roi_data[-1] = roi_data[-1] ** 2
+			
 			this_run_events = []
 			for cond in conds:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -1137,7 +1140,7 @@ class SingleRewardSession(Session):
 			mapping_mask = mapping_data[:,0] > threshold
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
-		
+				
 		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
 		if signal_type in ['std', 'var']:
 			timeseries = (timeseries - timeseries.mean() ) / timeseries.std()
@@ -1329,8 +1332,8 @@ class SingleRewardSession(Session):
 		# neg_threshold = -neg_threshold
 		print threshold
 		for roi in rois:
-			results.append(self.deconvolve_roi(roi, threshold = 3.0, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
-			results.append(self.deconvolve_roi(roi, threshold = -3.0, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
+			results.append(self.deconvolve_roi(roi, threshold = 2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
+			results.append(self.deconvolve_roi(roi, threshold = -2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
 			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
@@ -1350,7 +1353,7 @@ class SingleRewardSession(Session):
 			try:
 				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_' + data_type)
 				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
+				# reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
 			except NoSuchNodeError:
 				pass
 			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
