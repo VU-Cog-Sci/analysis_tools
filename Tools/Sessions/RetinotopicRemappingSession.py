@@ -458,8 +458,25 @@ class RetinotopicRemappingSession(RetinotopicMappingSession):
 			results.append(np.vstack(((eye_parameters_remap - eye_parameters_remap.mean(axis = 0)).T, remap_diffs.mean(axis = 1) - remap_diffs.mean(axis = 1).mean())))
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eye_remap_run_correlations.pdf' ))
 		np.save(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eye_remap_run_correlations.npy' ), np.array(results))
+	
+	def saccadeLatencies(self):
+		eye_data = self.eyeDataForRuns() # remap, sacc_map
+	
+		# saccade latency plots:
+		# remap is 0
+		saccade_latencies = [np.concatenate([eye_data[j][i][2] for i in range(len(eye_data[j]))]) for j in [0, 1]]
+		f = pl.figure(figsize = (6,4))
+		s = f.add_subplot(111)
+		pl.hist(saccade_latencies[0], normed = True, bins = 200, range = [-0.750, 0], color = 'g', histtype = 'step', alpha = 0.15, cumulative = False)
+		pl.hist(saccade_latencies[1], normed = True, bins = 200, range = [-0.750, 0], color = 'r', histtype = 'step', alpha = 0.15, cumulative = False)
+		s.set_xlim(-0.75, 0)
+		s.set_xlabel('pre-stimulus time [s]')
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eye_sacc_latencies.pdf' ))
 		
+		with open(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'eye_sacc_latencies.pickle'), 'w') as f:
+			pickle.dump(saccade_latencies, f)
 		
+		pl.show()
 	
 	def phasePhasePlots(self, nrBins = 24):
 		if not hasattr(self, 'maskedConditionData'):
