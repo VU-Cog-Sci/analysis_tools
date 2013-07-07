@@ -1689,7 +1689,7 @@ class SASession(EyeLinkSession):
 			sm_signal = np.convolve( runned_saccade_data[i][1], kern, 'valid' )
 			sm_time = np.convolve( runned_saccade_data[i][0] , kern, 'valid' )
 			s2.plot( sm_time, sm_signal, ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
-			bin_indices = [(runned_saccade_data[i][0] > (j * 10)) * (runned_saccade_data[i][0] <= ((j+1) * 10)) for j in range(10)]
+			bin_indices = [(runned_saccade_data[i][0] > (j * 5)) * (runned_saccade_data[i][0] <= ((j+1) * 5)) for j in range(20)]
 			binned_data = np.array([[np.mean(runned_saccade_data[i][0][b]), np.mean(runned_saccade_data[i][1][b])] for b in bin_indices])
 			s3.plot( binned_data[:,0], binned_data[:,1], ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
 			bd.append(binned_data)
@@ -1917,7 +1917,7 @@ class NewSASession(SASession):
 			sm_signal = np.convolve( runned_saccade_data[i][1], kern, 'valid' )
 			sm_time = np.convolve( runned_saccade_data[i][0] , kern, 'valid' )
 			s2.plot( sm_time, sm_signal, ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
-			bin_indices = [(runned_saccade_data[i][0] > (j * 10)) * (runned_saccade_data[i][0] <= ((j+1) * 10)) for j in range(15)]
+			bin_indices = [(runned_saccade_data[i][0] > (j * 5)) * (runned_saccade_data[i][0] <= ((j+1) * 5)) for j in range(30)]
 			binned_data = np.array([[np.mean(runned_saccade_data[i][0][b]), np.mean(runned_saccade_data[i][1][b])] for b in bin_indices])
 			s3.plot( binned_data[:,0], binned_data[:,1], ['r','g'][i%2] + '--', alpha = np.linspace(0.25,0.75,len(trial_ranges))[i], linewidth = 2.75 )
 			bd.append(binned_data)

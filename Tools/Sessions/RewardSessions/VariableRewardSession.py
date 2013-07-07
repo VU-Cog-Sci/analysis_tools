@@ -645,6 +645,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_delay_periods = np.array([stimulus_onset_times + 1,  (reward_onset_times - stimulus_onset_times)]).T
 		
 		self.condition_labels = ['75%_yes', '75%_no', '75%_stim', '50%_yes', '50%_no', '50%_stim', '25%_yes', '25%_no', '25%_stim', 'blank_reward', '75%_delay', '50%_delay', '25%_delay']
+		# this will need to be changed for a second run.
 		rewarded_trials = elO.parameter_data['sound'] == self.do_i_play_sound[1]
 		orientation_trials = [elO.parameter_data['stim_orientation'] == ori for ori in self.orientations_in_order]
 		
@@ -1500,11 +1501,11 @@ class VariableRewardSession(SingleRewardSession):
 		delay_event_data = [event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'delay' in s]
 		
 		# check the rois in the file
-		this_run_group_name = 'deconv_results'
+		this_run_group_name = 'deconvolution_results'
 		roi_names = []
 		for roi_name in reward_h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
-			if len(roi_name._v_name.split('.')) > 1:
-				hemi, area = roi_name._v_name.split('.')
+			if len(roi_name._v_name.split('_')) > 1:
+				area = roi_name._v_name.split('_')[0]
 				if roi == area:
 					roi_names.append(roi_name._v_name)
 		if len(roi_names) == 0:
@@ -1763,7 +1764,7 @@ class VariableRewardSession(SingleRewardSession):
 		results = []
 		for roi in rois:
 			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
-			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
+			results.append(self.deconvolve_with_correlation_roi(roi, -threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'
