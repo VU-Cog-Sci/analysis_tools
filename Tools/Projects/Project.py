@@ -18,8 +18,11 @@ from itertools import *
 
 class Project(object):
 	"""docstring for project"""
-	def __init__(self, projectName, **kwargs):
+	def __init__(self, projectName, subject, base_dir = '', **kwargs):
 		self.projectName = projectName
+		self.subject = subject
+		self.base_dir = base_dir
 		for k,v in kwargs.items():
 			setattr(self, k, v)
+			
 		
