@@ -8,6 +8,7 @@ Copyright (c) 2009 TK. All rights reserved.
 """
 import datetime
 from ..Session import * 
+from RewardSession import * 
 from ...Operators.ArrayOperator import *
 from ...Operators.EyeOperator import *
 from ...circularTools import *
@@ -19,7 +20,7 @@ import pickle
 from scipy.stats import *
 
 
-class SingleRewardSession(Session):
+class SingleRewardSession(RewardSession):
 	"""
 	Analyses for visual reward sessions
 	"""

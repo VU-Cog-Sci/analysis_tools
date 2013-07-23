@@ -75,13 +75,13 @@ class MCFlirtOperator( CommandLineOperator ):
 	"""docstring for MCFlirtOperator"""
 	def __init__(self, inputObject, costFunction = 'normmi', target = None, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
-		super(MCFlirtOperator, self).__init__(inputObject = inputObject, cmd = 'mcflirt', **kwargs)
+		super(MCFlirtOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; mcflirt', **kwargs)
 
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		self.costFunction = costFunction
 		self.target = target
 
-	def configure(self, plot = True, sinc = True, report = True, outputFileName = None):
+	def configure(self, plot = True, sinc = True, report = True, outputFileName = None, further_args = ''):
 		"""
 		configure will run mcflirt motion correction on file in inputObject
 		as specified by parameters in __init__ arguments and here to run.
@@ -95,6 +95,8 @@ class MCFlirtOperator( CommandLineOperator ):
 			runcmd += ' -r ' + self.target
 		if outputFileName:
 			self.outputFileName = outputFileName
+		# else:
+		# 	self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_mcf.nii.gz'
 			runcmd += ' -out ' + self.outputFileName
 		if plot:
 			runcmd += ' -stats'
@@ -106,7 +108,7 @@ class MCFlirtOperator( CommandLineOperator ):
 			runcmd += ' -stages 4'
 			runcmd += ' -sinc_final'
 
-		self.runcmd = runcmd
+		self.runcmd = runcmd + further_args
 
 class MRIConvertOperator( CommandLineOperator ):
 	def __init__(self, inputObject, cmd = 'mri_convert', **kwargs): # source ~/.bash_profile_fsl ;
@@ -123,7 +125,7 @@ class MRIConvertOperator( CommandLineOperator ):
 
 class FlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, referenceFileName = '$FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ;
+	def __init__(self, inputObject, referenceFileName = '$FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ;
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -142,7 +144,7 @@ class FlirtOperator( CommandLineOperator ):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.join(os.path.splitext(os.path.splitext(self.inputFileName)[0])[0], '_trans.nii.gz')
+			self.outputFileName = os.path.join(os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_trans.nii.gz')
 
 		applycmd = self.cmd + ' -applyxfm'
 		applycmd += ' -in ' + self.inputFileName
@@ -209,7 +211,7 @@ class InvertFlirtOperator( CommandLineOperator ):
 
 class ConcatFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = 'convert_xfm', **kwargs): # source ~/.bash_profile_fsl ;
+	def __init__(self, inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; convert_xfm', **kwargs): # source ~/.bash_profile_fsl ;
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
@@ -239,9 +241,9 @@ class BETOperator( CommandLineOperator ):
 	"""
 	def __init__(self, inputObject, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
-		super(BETOperator, self).__init__(inputObject = inputObject, cmd = 'bet', **kwargs)
+		super(BETOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; bet', **kwargs)
 
-	def configure(self, outputFileName = None):
+	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0):
 		"""
 		configure will run mcflirt motion correction on file in inputObject
 		as specified by parameters in __init__ arguments and here to run.
@@ -256,7 +258,7 @@ class BETOperator( CommandLineOperator ):
 		# configure parameters - will perhaps make this amenable
 		# runcmd += ' -f 0.4 -g 0 -m '
 		# standard options for limited calcarine FOV:
-		runcmd += ' -Z -f 0.45 -g 0 -m '
+		runcmd += ' -Z -f ' + str(f_value) + ' -g ' + str(g_value) + ' -m '
 		self.runcmd = runcmd
 
 
@@ -296,7 +298,7 @@ class BBRegisterOperator( CommandLineOperator ):
 
 class FSLMathsOperator( CommandLineOperator ):
 	"""docstring for FSLMathsOperator"""
-	def __init__(self, inputObject, cmd = 'fslmaths', outputDataType = 'float', **kwargs):
+	def __init__(self, inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths', outputDataType = 'float', **kwargs):
 		super(FSLMathsOperator, self).__init__( inputObject = inputObject, cmd = cmd, **kwargs )
 		self.outputDataType = outputDataType
 		self.outputFileName = None

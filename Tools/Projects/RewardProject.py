@@ -33,7 +33,7 @@ class RewardProject(Project):
 		self.standard_EPI_file = os.path.join(self.base_dir, self.subject.initials, 'standard_EPI.nii.gz')
 		
 	
-	def register(self, bet_f_value = 0.5, bet_g_value = 0.0, mni_feat = True, through_MC = True, sinc = False, label_folder = 'visual_areas'):
+	def registerProject(self, bet_f_value = 0.5, bet_g_value = 0.0, mni_feat = True, through_MC = True, sinc = False, label_folder = 'visual_areas'):
 		self.FSsubject = self.subject.standardFSID
 		feat_dir = os.path.join(self.base_dir, self.subject.initials, 'feat' )
 		mask_dir = os.path.join(self.base_dir, self.subject.initials, 'masks' )
@@ -42,31 +42,32 @@ class RewardProject(Project):
 			better = BETOperator( inputObject = self.input_T2_file )
 			better.configure( outputFileName = self.standard_T2_file, f_value = bet_f_value, g_value = bet_g_value )
 			better.execute()
-					
-		# motion correct to self
-		mcf = MCFlirtOperator( self.input_EPI_file, target = self.standard_T2_file )
-	 	mcf.configure(sinc = sinc)
-		if not os.path.isfile(os.path.splitext(os.path.splitext(self.input_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz'):
-			mcf.execute()
-		# add registration of non-motion corrected functionals to the forRegistration file
-		# to be run together with the motion correction runs
-		if through_MC == False:
-			fO = FlirtOperator(inputObject = os.path.splitext(os.path.splitext(self.input_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz', referenceFileName = self.standard_T2_file)
-			fO.configureRun()
-			fO.execute()
 		
-			f1 = FlirtOperator(inputObject = fO.outputFileName, referenceFileName = self.input_EPI_file)
-		else:
-			f1 = FlirtOperator(inputObject = os.path.splitext(os.path.splitext(self.input_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz', referenceFileName = self.input_EPI_file)
-		f1.configureApply(transformMatrixFileName = os.path.join(self.base_dir, 'eye.mtx'), sinc = sinc )
-		f1.execute()
-		ExecCommandLine('cp ' + f1.outputFileName + ' ' + self.standard_EPI_file)
-					
 		# bbregister
 		bbR = BBRegisterOperator( self.standard_T2_file, FSsubject = self.FSsubject, contrast = 'T2' )
 		bbR.configure( transformMatrixFileName = os.path.join(self.base_dir, self.subject.initials, 'register.dat' ), flirtOutputFile = True )
 		if not os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'register.dat' )):
 			bbR.execute()
+		
+		# check the registration using tkregister.
+		# os.system('tkregister2 --mov ' + fO.outputFileName + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(session_dir, 'project_no_reg.nii.gz' ) + ' --fsl ' + fO.transformMatrixFileName + ' --reg ' + os.path.join(session_dir, 'reg_to_project.dat'))
+		if os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )):
+			begin_file = os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )
+		else:
+			begin_file = os.path.join(self.base_dir, 'eye.mtx' )
+		tkr_cmd = 'tkregister2 --mov ' + self.input_EPI_file + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) + ' --reg ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.dat') + ' --fsl ' + begin_file
+		os.system(tkr_cmd)
+		
+		# nr_TRs = NiftiImage(self.input_EPI_file).timepoints
+		# np.savetxt(os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ), np.tile(np.loadtxt(os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )), (nr_TRs,1,1)))
+		
+		# motion correct to self
+		mcf = MCFlirtOperator( self.input_EPI_file, target = self.input_EPI_file )
+	 	mcf.configure(sinc = sinc, outputFileName = os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf', further_args = ' -init ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) )
+		if not os.path.isfile(os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz'):
+			mcf.execute()
+		# overwrite the motion corrected file with its mean volume - saves space.
+		ExecCommandLine('cp -f ' + os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz' + ' ' + self.standard_EPI_file)
 		
 		if mni_feat:
 			# to MNI 
@@ -131,5 +132,64 @@ class RewardProject(Project):
 								outputFileName = os.path.join(mask_dir, hemi + '.' + mask ), 
 								threshold = 0.001 )
 				stV.execute()
+	
+	def registerSession2Project(self, session_label, session_T2, session_EPI, bet_f_value = 0.2, bet_g_value = 0.45, sinc = True, flirt = True):
+		# copy the registration inputs to new folder in the subject's registration folder. Duplicate, but oh well. 
+		session_dir = os.path.join(self.base_dir, self.subject.initials, session_label )
+		try:
+			os.mkdir(session_dir)
+		except OSError:
+			pass
+		subprocess.Popen('cp ' + session_T2 + ' ' + os.path.join(session_dir, 'T2.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+		subprocess.Popen('cp ' + session_EPI + ' ' + os.path.join(session_dir, 'EPI_pre_MC.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+		
+		# bet the session_T2
+		better = BETOperator( inputObject = os.path.join(session_dir, 'T2.nii.gz') )
+		better.configure( outputFileName = os.path.join(session_dir, 'T2_BET.nii.gz'), f_value = bet_f_value, g_value = bet_g_value )
+		better.execute()
+		
+		# flirt the betted T2 to the project's T2 
+		# test whether to do this or do this by hand. 
+		fO = FlirtOperator(inputObject = os.path.join(session_dir,'T2_BET.nii.gz'), referenceFileName = self.standard_T2_file)
+		fO.configureApply(transformMatrixFileName = os.path.join(self.base_dir, 'eye.mtx'), sinc = sinc, outputFileName = os.path.join(session_dir, 'session_T2_no_reg.nii.gz' ))
+		fO.execute()
+		
+		if flirt:
+			fO = FlirtOperator(inputObject = os.path.join(session_dir, 'session_T2_no_reg.nii.gz'), referenceFileName = self.standard_T2_file)
+			fO.configureRun(transformMatrixFileName = os.path.join(session_dir, 'reg_to_project_flirt.mtx' ), sinc = sinc, outputFileName = os.path.join(session_dir, 'session_T2_flirt.nii.gz' ))
+			fO.execute()
+		
+		if os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_to_project.dat' )):
+			begin_file_fsl = '' # ' --fsl ' + os.path.join(self.base_dir, self.subject.initials, 'reg_to_project.mtx' )
+		elif os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )):
+			begin_file_fsl = ' --fsl ' + os.path.join(self.base_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )
+		else:
+			begin_file_fsl = ' --fsl ' + os.path.join(self.base_dir, 'eye.mtx' )
+		
+		# check the registration using tkregister.
+		# os.system('tkregister2 --mov ' + fO.outputFileName + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(session_dir, 'project_no_reg.nii.gz' ) + ' --fsl ' + fO.transformMatrixFileName + ' --reg ' + os.path.join(session_dir, 'reg_to_project.dat'))
+		tkr_cmd = 'tkregister2 --mov ' + os.path.join(session_dir, 'session_T2_no_reg.nii.gz') + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(session_dir, 'reg_to_project.mtx' ) + ' --reg ' + os.path.join(session_dir, 'reg_to_project.dat') + begin_file_fsl
+		print tkr_cmd
+		os.system(tkr_cmd)
+		
+		# mcf = MCFlirtOperator( os.path.join(session_dir, 'EPI_pre_MC.nii.gz' ), target = self.standard_EPI_file )
+		# 	 	mcf.configure(sinc = sinc, outputFileName = os.path.join(session_dir, 'EPI' ), further_args = ' -init ' + os.path.join(session_dir, 'reg_to_project.mtx' ))
+		# if not os.path.isfile(os.path.splitext(os.path.splitext(os.path.join(session_dir, 'EPI' ))[0])[0] + '_mcf_meanvol.nii.gz'):
+		# 	mcf.execute()
+		
+		f1 = FlirtOperator(inputObject = os.path.join(session_dir, 'T2_BET.nii.gz' ), referenceFileName = self.standard_T2_file)
+		f1.configureApply( transformMatrixFileName = os.path.join(session_dir, 'reg_to_project.mtx' ), outputFileName = os.path.join(session_dir, 'T2_transformed_to_project.nii.gz' ) )
+		f1.execute()
+		
+		f2 = FlirtOperator(inputObject = os.path.join(session_dir, 'EPI_pre_MC.nii.gz' ), referenceFileName = self.standard_T2_file)
+		f2.configureApply( transformMatrixFileName = os.path.join(session_dir, 'reg_to_project.mtx' ), outputFileName = os.path.join(session_dir, 'EPI_transformed_to_project.nii.gz' ) )
+		f2.execute()
+		
+		# ExecCommandLine('cp -f ' + os.path.splitext(os.path.splitext(os.path.join(session_dir, 'EPI' ))[0])[0] + '_meanvol.nii.gz' + ' ' + os.path.join(session_dir, 'EPI_transformed_to_project.nii.gz' ) )
+		
+		mcf = MCFlirtOperator( os.path.join(session_dir, 'EPI_transformed_to_project.nii.gz' ), target = self.standard_EPI_file )
+		mcf.configure(sinc = sinc, outputFileName = os.path.join(session_dir, 'EPI' ))
+		if not os.path.isfile(os.path.splitext(os.path.splitext(os.path.join(session_dir, 'EPI' ))[0])[0] + '_mcf_meanvol.nii.gz'):
+			mcf.execute()
 		
 	

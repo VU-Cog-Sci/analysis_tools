@@ -18,6 +18,7 @@ from tables import *
 import pickle
 from scipy.stats import *
 from SingleRewardSession import *
+from RewardSession import * 
 from ...plotting_tools import *
 
 class VariableRewardSession(SingleRewardSession):
