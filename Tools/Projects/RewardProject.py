@@ -32,11 +32,13 @@ class RewardProject(Project):
 		self.standard_T2_file = os.path.join(self.base_dir, self.subject.initials, 't2_BET.nii.gz')
 		self.standard_EPI_file = os.path.join(self.base_dir, self.subject.initials, 'standard_EPI.nii.gz')
 		
+		self.registration_dir = os.path.join(self.base_dir, 'registration')
+		
 	
 	def registerProject(self, bet_f_value = 0.5, bet_g_value = 0.0, mni_feat = True, through_MC = True, sinc = False, label_folder = 'visual_areas'):
 		self.FSsubject = self.subject.standardFSID
-		feat_dir = os.path.join(self.base_dir, self.subject.initials, 'feat' )
-		mask_dir = os.path.join(self.base_dir, self.subject.initials, 'masks' )
+		feat_dir = os.path.join(self.registration_dir, self.subject.initials, 'feat' )
+		mask_dir = os.path.join(self.registration_dir, self.subject.initials, 'masks' )
 		
 		if not os.path.isfile(self.standard_T2_file):
 			better = BETOperator( inputObject = self.input_T2_file )
@@ -45,17 +47,17 @@ class RewardProject(Project):
 		
 		# bbregister
 		bbR = BBRegisterOperator( self.standard_T2_file, FSsubject = self.FSsubject, contrast = 'T2' )
-		bbR.configure( transformMatrixFileName = os.path.join(self.base_dir, self.subject.initials, 'register.dat' ), flirtOutputFile = True )
-		if not os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'register.dat' )):
+		bbR.configure( transformMatrixFileName = os.path.join(self.registration_dir, self.subject.initials, 'register.dat' ), flirtOutputFile = True )
+		if not os.path.isfile(os.path.join(self.registration_dir, self.subject.initials, 'register.dat' )):
 			bbR.execute()
 		
 		# check the registration using tkregister.
 		# os.system('tkregister2 --mov ' + fO.outputFileName + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(session_dir, 'project_no_reg.nii.gz' ) + ' --fsl ' + fO.transformMatrixFileName + ' --reg ' + os.path.join(session_dir, 'reg_to_project.dat'))
-		if os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )):
-			begin_file = os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )
+		if os.path.isfile(os.path.join(self.registration_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )):
+			begin_file = os.path.join(self.registration_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' )
 		else:
-			begin_file = os.path.join(self.base_dir, 'eye.mtx' )
-		tkr_cmd = 'tkregister2 --mov ' + self.input_EPI_file + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) + ' --reg ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.dat') + ' --fsl ' + begin_file
+			begin_file = os.path.join(self.registration_dir, 'eye.mtx' )
+		tkr_cmd = 'tkregister2 --mov ' + self.input_EPI_file + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(self.registration_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) + ' --reg ' + os.path.join(self.registration_dir, self.subject.initials, 'reg_EPI_to_T2.dat') + ' --fsl ' + begin_file
 		os.system(tkr_cmd)
 		
 		# nr_TRs = NiftiImage(self.input_EPI_file).timepoints
@@ -63,7 +65,7 @@ class RewardProject(Project):
 		
 		# motion correct to self
 		mcf = MCFlirtOperator( self.input_EPI_file, target = self.input_EPI_file )
-	 	mcf.configure(sinc = sinc, outputFileName = os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf', further_args = ' -init ' + os.path.join(self.base_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) )
+	 	mcf.configure(sinc = sinc, outputFileName = os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf', further_args = ' -init ' + os.path.join(self.registration_dir, self.subject.initials, 'reg_EPI_to_T2.mtx' ) )
 		if not os.path.isfile(os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz'):
 			mcf.execute()
 		# overwrite the motion corrected file with its mean volume - saves space.
@@ -78,7 +80,7 @@ class RewardProject(Project):
 		
 			# this bbregisteroperatory does not actually execute.
 			cfO = ConcatFlirtOperator(bbR.flirtOutputFileName)
-			cfO.configure(secondInputFile = os.path.join(os.environ['SUBJECTS_DIR'], self.FSsubject, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(self.base_dir, self.subject.initials, 'register_MNI.mat' ))
+			cfO.configure(secondInputFile = os.path.join(os.environ['SUBJECTS_DIR'], self.FSsubject, 'mri', 'brain_MNI.mat'), outputFileName = os.path.join(self.registration_dir, self.subject.initials, 'register_MNI.mat' ))
 			cfO.execute()
 			# invert func to highres 
 			invFl_Session_HR = InvertFlirtOperator(bbR.flirtOutputFileName)
@@ -135,7 +137,7 @@ class RewardProject(Project):
 	
 	def registerSession2Project(self, session_label, session_T2, session_EPI, bet_f_value = 0.2, bet_g_value = 0.45, sinc = True, flirt = True):
 		# copy the registration inputs to new folder in the subject's registration folder. Duplicate, but oh well. 
-		session_dir = os.path.join(self.base_dir, self.subject.initials, session_label )
+		session_dir = os.path.join(self.registration_dir, self.subject.initials, session_label )
 		try:
 			os.mkdir(session_dir)
 		except OSError:
@@ -151,7 +153,7 @@ class RewardProject(Project):
 		# flirt the betted T2 to the project's T2 
 		# test whether to do this or do this by hand. 
 		fO = FlirtOperator(inputObject = os.path.join(session_dir,'T2_BET.nii.gz'), referenceFileName = self.standard_T2_file)
-		fO.configureApply(transformMatrixFileName = os.path.join(self.base_dir, 'eye.mtx'), sinc = sinc, outputFileName = os.path.join(session_dir, 'session_T2_no_reg.nii.gz' ))
+		fO.configureApply(transformMatrixFileName = os.path.join(self.registration_dir, 'eye.mtx'), sinc = sinc, outputFileName = os.path.join(session_dir, 'session_T2_no_reg.nii.gz' ))
 		fO.execute()
 		
 		if flirt:
@@ -159,12 +161,12 @@ class RewardProject(Project):
 			fO.configureRun(transformMatrixFileName = os.path.join(session_dir, 'reg_to_project_flirt.mtx' ), sinc = sinc, outputFileName = os.path.join(session_dir, 'session_T2_flirt.nii.gz' ))
 			fO.execute()
 		
-		if os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_to_project.dat' )):
+		if os.path.isfile(os.path.join(self.registration_dir, self.subject.initials, 'reg_to_project.dat' )):
 			begin_file_fsl = '' # ' --fsl ' + os.path.join(self.base_dir, self.subject.initials, 'reg_to_project.mtx' )
-		elif os.path.isfile(os.path.join(self.base_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )):
-			begin_file_fsl = ' --fsl ' + os.path.join(self.base_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )
+		elif os.path.isfile(os.path.join(self.registration_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )):
+			begin_file_fsl = ' --fsl ' + os.path.join(self.registration_dir, self.subject.initials, 'reg_to_project_flirt.mtx' )
 		else:
-			begin_file_fsl = ' --fsl ' + os.path.join(self.base_dir, 'eye.mtx' )
+			begin_file_fsl = ' --fsl ' + os.path.join(self.registration_dir, 'eye.mtx' )
 		
 		# check the registration using tkregister.
 		# os.system('tkregister2 --mov ' + fO.outputFileName + ' --targ ' + self.standard_T2_file + ' --fslregout ' + os.path.join(session_dir, 'project_no_reg.nii.gz' ) + ' --fsl ' + fO.transformMatrixFileName + ' --reg ' + os.path.join(session_dir, 'reg_to_project.dat'))

@@ -22,18 +22,30 @@ from ...plotting_tools import *
 class RewardSession(Session):
 	"""docstring for RewardSession"""
 	def __init__(self, ID, date, project, subject, session_label, parallelize = True, loggingLevel = logging.DEBUG):
-		super(RewardSession, self).__init__(ID, date, project, subject, parallelize = parallelize, loggingLevel = loggingLevel)
 		self.session_label = session_label
+		super(RewardSession, self).__init__(ID, date, project, subject, parallelize = parallelize, loggingLevel = loggingLevel)
+	
+	# these functions here to create the appropriate hierarchy for this project.
+	def baseFolder(self):
+		return os.path.join(self.project.base_dir, self.session_label, self.subject.initials, self.dateCode)
+	
+	def makeBaseFolder(self):
+		if not os.path.isdir(self.baseFolder()):
+			try:
+				os.mkdir(os.path.join(self.project.base_dir, self.session_label, self.subject.initials))
+			except OSError:
+				pass
+			try:
+				os.mkdir(self.baseFolder())
+			except OSError:
+				pass
 	
 	def registerSession(self, execute = True):
 		"""registration based on the standard of the reward sessions. 
 		just involves copying a bunch of standard registration files to the session's folder."""
 		self.logger.info('register files')
 		# setup what to register to
-		if not FSsubject:
-			self.FSsubject = self.subject.standardFSID
-		else:
-			self.FSsubject = FSsubject
+		self.FSsubject = self.subject.standardFSID
 		
 		# copy all the project files to the present session's hierarchy
 		self.project_reg_folder = os.path.join(self.project.base_dir, self.subject.initials)
@@ -74,7 +86,7 @@ class RewardSession(Session):
 		mcOperatorList = [];	
 		for er in self.scanTypeDict['epi_bold']:
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ), target = self.referenceFunctionalFileName )
-		 	mcf.configure( further_args = ' -init ' + os.path.join(self.session_reg_folder, 'reg_to_project.mtx') )
+		 	mcf.configure( further_args = ' -init ' + os.path.join(os.path.join(os.path.join(self.project.base_dir, self.subject.initials, self.runList[er].session_label), 'reg_to_project.mtx') )
 			mcOperatorList.append(mcf)
 	
 		if not self.parallelize:

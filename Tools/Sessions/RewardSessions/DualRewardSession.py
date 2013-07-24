@@ -23,6 +23,9 @@ from RewardSession import *
 
 class DualRewardSession(SingleRewardSession):
 	
+	def __init__(self, ID, date, project, subject, session_label = 'second', parallelize = True, loggingLevel = logging.DEBUG):
+		super(DualRewardSession, self).__init__(ID, date, project, subject, session_label = session_label, parallelize = parallelize, loggingLevel = loggingLevel)
+
 	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf'], version = 'orientation'):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results

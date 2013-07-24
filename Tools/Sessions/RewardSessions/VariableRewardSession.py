@@ -22,6 +22,9 @@ from RewardSession import *
 from ...plotting_tools import *
 
 class VariableRewardSession(SingleRewardSession):
+	def __init__(self, ID, date, project, subject, session_label = 'var', parallelize = True, loggingLevel = logging.DEBUG):
+		super(VariableRewardSession, self).__init__(ID, date, project, subject, session_label = session_label, parallelize = parallelize, loggingLevel = loggingLevel)
+	
 	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'reward'):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 

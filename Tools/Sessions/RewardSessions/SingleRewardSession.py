@@ -24,6 +24,9 @@ class SingleRewardSession(RewardSession):
 	"""
 	Analyses for visual reward sessions
 	"""
+	def __init__(self, ID, date, project, subject, session_label = 'first', parallelize = True, loggingLevel = logging.DEBUG):
+		super(SingleRewardSession, self).__init__(ID, date, project, subject, session_label = session_label, parallelize = parallelize, loggingLevel = loggingLevel)
+	
 	def create_feat_event_files_one_run(self, run, minimum_blink_duration = 0.01):
 		"""
 		creates feat analysis event files for reward runs. 
