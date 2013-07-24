@@ -48,11 +48,11 @@ class RewardSession(Session):
 		self.FSsubject = self.subject.standardFSID
 		
 		# copy all the project files to the present session's hierarchy
-		self.project_reg_folder = os.path.join(self.project.base_dir, self.subject.initials)
-		self.project_feat_folder = os.path.join(self.project.base_dir, self.subject.initials, 'feat')
-		self.project_masks_folder = os.path.join(self.project.base_dir, self.subject.initials, 'masks')
-		self.project_register_file = os.path.join(self.project_reg_folder, self.session_label, 'register.dat')
-		self.project_register_flirt_file = os.path.join(self.project_reg_folder, self.session_label, 'register_flirt_BB.mtx')
+		self.project_reg_folder = os.path.join(self.project.registration_dir, self.subject.initials)
+		self.project_feat_folder = os.path.join(self.project.registration_dir, self.subject.initials, 'feat')
+		self.project_masks_folder = os.path.join(self.project.registration_dir, self.subject.initials, 'masks/')
+		self.project_register_file = os.path.join(self.project_reg_folder, 'register.dat')
+		self.project_register_flirt_file = os.path.join(self.project_reg_folder, 'register_flirt_BB.mtx')
 		self.reg_to_project_flirt_file = os.path.join(self.project_reg_folder, self.session_label, 'reg_to_project.mtx')
 		self.reg_to_project_bb_file = os.path.join(self.project_reg_folder, self.session_label, 'reg_to_project.dat')
 		
@@ -69,8 +69,8 @@ class RewardSession(Session):
 			os.system('cp ' + self.project_register_flirt_file + ' ' + self.register_flirt_file)
 			os.system('cp ' + self.reg_to_project_flirt_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project.mtx'))
 			os.system('cp ' + self.reg_to_project_bb_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project.dat'))
-			os.system('cp ' + self.project.standard_EPI_file + ' ' + self.referenceFunctionalFileName)
-			os.system('cp ' + self.project.standard_T2_file + ' ' + os.path.join(self.session_reg_folder, 'T2.nii.gz') )
+			os.system('cp ' + os.path.join(self.project_reg_folder, 'standard_EPI.nii.gz') + ' ' + self.referenceFunctionalFileName)
+			os.system('cp ' + os.path.join(self.project_reg_folder, 't2_BET.nii.gz') + ' ' + os.path.join(self.session_reg_folder, 'T2.nii.gz') )
 			os.system('cp -rf ' + self.project_feat_folder + ' ' + self.feat_folder)
 			os.system('cp -rf ' + self.project_masks_folder + ' ' + self.masks_folder)
 				
@@ -85,8 +85,13 @@ class RewardSession(Session):
 		# set up a list of motion correction operator objects for the runs
 		mcOperatorList = [];	
 		for er in self.scanTypeDict['epi_bold']:
-			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ), target = self.referenceFunctionalFileName )
-		 	mcf.configure( further_args = ' -init ' + os.path.join(os.path.join(os.path.join(self.project.base_dir, self.subject.initials, self.runList[er].session_label), 'reg_to_project.mtx') )
+			# run non-moco registration first. 
+			f1 = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = self.runList[er] ), referenceFileName = self.referenceFunctionalFileName)
+			f1.configureApply( transformMatrixFileName = os.path.join(self.stageFolder('processed/mri/reg/'), 'reg_to_project.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['reg'] ) )
+			mcOperatorList.append(f1)
+			
+			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['reg'], extension = '' ), target = self.referenceFunctionalFileName )
+		 	mcf.configure( outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['mcf'] ) )
 			mcOperatorList.append(mcf)
 	
 		if not self.parallelize:
