@@ -202,7 +202,7 @@ class SingleRewardSession(RewardSession):
 					pass
 				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['all_trials']), np.array([stimulus_onset_times[all_stimulus_trials_sum], np.ones((all_stimulus_trials_sum.sum())), np.ones((all_stimulus_trials_sum.sum()))]).T, fmt = '%3.2f', delimiter = '\t')
 	
-	def feat_reward_analysis(self, version = '', postFix = ['mcf'], run_feat = True, feat_file = 'reward_more_contrasts.fsf'):
+	def feat_reward_analysis(self, version = '', postFix = ['mcf'], run_feat = True, feat_file = 'reward_more_contrasts.fsf', waitForExecute = False):
 		"""
 		Runs feat analysis for all reward runs. 
 		Takes run and minimum blink duration in seconds as arguments
@@ -270,7 +270,7 @@ class SingleRewardSession(RewardSession):
 						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
 							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 						else:
-							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = waitForExecute )
 						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 						# run feat
 						featOp.execute()
@@ -318,7 +318,7 @@ class SingleRewardSession(RewardSession):
 					if r == [self.runList[i] for i in self.conditionDict['reward']][-1]:
 						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 					else:
-						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = waitForExecute )
 					self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 					# run feat
 					featOp.execute()
@@ -357,7 +357,7 @@ class SingleRewardSession(RewardSession):
 						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
 							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 						else:
-							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = waitForExecute )
 						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 						# run feat
 						featOp.execute()
@@ -390,7 +390,7 @@ class SingleRewardSession(RewardSession):
 						if r == [self.runList[i] for i in self.conditionDict['mapper']][-1]:
 							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 						else:
-							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+							featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = waitForExecute )
 						self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 						# run feat
 						featOp.execute()
@@ -534,7 +534,7 @@ class SingleRewardSession(RewardSession):
 				# general info we want in all hdf files
 				stat_files.update({
 									'residuals': os.path.join(this_feat, 'stats', 'res4d.nii.gz'),
-									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'psc', 'tf']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
+									'psc_hpf_data': self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'tf', 'psc']), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 									'hpf_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'), # 'input_data': os.path.join(this_feat, 'filtered_func_data.nii.gz'),
 									# for these final two, we need to pre-setup the retinotopic mapping data
 									'eccen_phase': os.path.join(self.stageFolder(stage = 'processed/mri/masks/stat'), 'eccen.nii.gz'),
@@ -1390,7 +1390,7 @@ class SingleRewardSession(RewardSession):
 			nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
 		
 			for (j, r) in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
-				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','psc','tf'])).data
+				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','tf','psc'])).data
 				this_run_events = []
 				for cond in conds:
 					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects

@@ -29,12 +29,15 @@ class RewardProject(Project):
 		super(RewardProject, self).__init__(projectName, subject, base_dir, **kwargs)
 		self.input_T2_file = input_T2_file
 		self.input_EPI_file = input_EPI_file
-		self.standard_T2_file = os.path.join(self.base_dir, self.subject.initials, 't2_BET.nii.gz')
-		self.standard_EPI_file = os.path.join(self.base_dir, self.subject.initials, 'standard_EPI.nii.gz')
 		
 		self.registration_dir = os.path.join(self.base_dir, 'registration')
 		
-	
+		self.standard_T2_file = os.path.join(self.registration_dir, self.subject.initials, 't2_BET.nii.gz')
+		self.standard_EPI_file = os.path.join(self.registration_dir, self.subject.initials, 'standard_EPI.nii.gz')
+		
+		self.feat_dir = os.path.join(self.registration_dir, self.subject.initials, 'feat' )
+		self.mask_dir = os.path.join(self.registration_dir, self.subject.initials, 'masks' )
+		
 	def registerProject(self, bet_f_value = 0.5, bet_g_value = 0.0, mni_feat = True, through_MC = True, sinc = False, label_folder = 'visual_areas'):
 		self.FSsubject = self.subject.standardFSID
 		feat_dir = os.path.join(self.registration_dir, self.subject.initials, 'feat' )
@@ -70,6 +73,8 @@ class RewardProject(Project):
 			mcf.execute()
 		# overwrite the motion corrected file with its mean volume - saves space.
 		ExecCommandLine('cp -f ' + os.path.splitext(os.path.splitext(self.standard_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz' + ' ' + self.standard_EPI_file)
+		
+		self.make_epi_bet()
 		
 		if mni_feat:
 			# to MNI 
@@ -113,26 +118,34 @@ class RewardProject(Project):
 			# now take the firstFunc and create an example_func for it. 
 			subprocess.Popen('cp ' + self.standard_EPI_file + ' ' + os.path.join(feat_dir,'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 	
-		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
+	def make_epi_bet(self, bet_f_value = 0.2, bet_g_value = 0.45):
+		"""make_epi_bet will bet the standard_EPI file for use in the compression of data in the sessions"""
+		better = BETOperator( inputObject = self.standard_EPI_file )
+		better.configure( outputFileName = os.path.join(self.registration_dir, self.subject.initials, 'standard_EPI_BET.nii.gz'), f_value = bet_f_value, g_value = bet_g_value )
+		better.execute()
+		
+	
+	def make_visual_masks(self, regions = ['V1','V2','V3','V3AB','V4'], label_folder = 'retmap'):
+		"""docstring for make_visual_masks"""
 		try:
-			os.mkdir(mask_dir)
+			os.mkdir(os.path.join(self.registration_dir, self.subject.initials, 'masks' ))
 		except OSError:
 			pass
-	
 		# set up the first mean functional in the registration folder anyway for making masks. note that it's necessary to have run the moco first...
 		# ExecCommandLine('cp ' + os.path.splitext(os.path.splitext(self.input_EPI_file)[0])[0] + '_mcf_meanvol.nii.gz' + ' ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf', 'meanvol'], base = 'firstFunc' ) )
 		
-		maskList = ['V1','V2','V3','V3AB','V4']
+		maskList = regions
 		for mask in maskList:
 			for hemi in ['lh','rh']:
-				maskFileName = os.path.join(os.path.expandvars('${SUBJECTS_DIR}'), self.FSsubject, 'label', label_folder, hemi + '.' + mask + '.' + 'label')
+				maskFileName = os.path.join(os.path.expandvars('${SUBJECTS_DIR}'), self.subject.standardFSID, 'label', label_folder, hemi + '.' + mask + '.' + 'label')
 				stV = LabelToVolOperator(maskFileName)
 				stV.configure( 	templateFileName = self.standard_EPI_file,
 								hemispheres = [hemi], 
-								register = os.path.join(self.base_dir, self.subject.initials, 'register.dat' ), 
-								fsSubject = self.FSsubject,
-								outputFileName = os.path.join(mask_dir, hemi + '.' + mask ), 
-								threshold = 0.001 )
+								register = os.path.join(self.registration_dir, self.subject.initials, 'register.dat' ), 
+								fsSubject = self.subject.standardFSID,
+								outputFileName = os.path.join(self.mask_dir, hemi + '.' + mask ), 
+								threshold = 0.5,
+								proj_frac = '0 1 .1' )
 				stV.execute()
 	
 	def registerSession2Project(self, session_label, session_T2, session_EPI, bet_f_value = 0.2, bet_g_value = 0.45, sinc = True, flirt = True):

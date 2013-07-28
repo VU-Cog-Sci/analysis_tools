@@ -23,7 +23,7 @@ from RewardSession import *
 
 class DualRewardSession(SingleRewardSession):
 	
-	def __init__(self, ID, date, project, subject, session_label = 'second', parallelize = True, loggingLevel = logging.DEBUG):
+	def __init__(self, ID, date, project, subject, session_label = 'dual', parallelize = True, loggingLevel = logging.DEBUG):
 		super(DualRewardSession, self).__init__(ID, date, project, subject, session_label = session_label, parallelize = parallelize, loggingLevel = loggingLevel)
 
 	def mask_stats_to_hdf(self, run_type = 'reward', postFix = ['mcf'], version = 'orientation'):
@@ -200,7 +200,7 @@ class DualRewardSession(SingleRewardSession):
 		roi_data = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type, postFix = ['mcf','tf']))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type, postFix = ['mcf']))
 			if 'residuals' in data_type:
 				roi_data[-1] = roi_data[-1] ** 2
 			
@@ -223,7 +223,7 @@ class DualRewardSession(SingleRewardSession):
 		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 		# mapping data
-		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf','tf'])
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf'])
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold
@@ -281,7 +281,7 @@ class DualRewardSession(SingleRewardSession):
 		
 		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco_per_run]
 	
-	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean', data_type = 'hpf_psc_data' ):
+	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean', data_type = 'psc_hpf_data' ):
 		results = []
 		for roi in rois:
 			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'left_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
@@ -334,7 +334,7 @@ class DualRewardSession(SingleRewardSession):
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			self.rewarded_stimulus_run(r)
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type, postFix = ['mcf','tf']))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type, postFix = ['mcf']))
 			
 			if 'residuals' in data_type:
 				print 'deconvolving residuals'
@@ -345,7 +345,7 @@ class DualRewardSession(SingleRewardSession):
 			blink_events.append(this_blink_events)
 			
 			# the times
-			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times', postFix = ['mcf','tf'])
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times', postFix = ['mcf'])
 			experiment_start_time = (trial_times['trial_phase_timestamps'][0,0,0])
 			stim_onsets = (trial_times['trial_phase_timestamps'][:,1,0] - experiment_start_time ) / 1000.0
 			
@@ -369,11 +369,11 @@ class DualRewardSession(SingleRewardSession):
 		
 		# mapping data, r is inherited from earlier for loop
 		if r.rewarded_side == 0:
-			rewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_Z', postFix = ['mcf','tf'])
-			unrewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_Z', postFix = ['mcf','tf'])
+			rewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_Z', postFix = ['mcf'])
+			unrewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_Z', postFix = ['mcf'])
 		else:
-			rewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_Z', postFix = ['mcf','tf'])
-			unrewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_Z', postFix = ['mcf','tf'])
+			rewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_Z', postFix = ['mcf'])
+			unrewarded_mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_Z', postFix = ['mcf'])
 		
 		# thresholding of mapping data stat values
 		rewarded_mapping_mask = rewarded_mapping_data[:,0] > threshold
@@ -483,6 +483,9 @@ class DualRewardSession(SingleRewardSession):
 		"""
 		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
 		"""
+		mask = np.array(NiftiImage(self.runFile(stage = 'processed/mri/reg', base = 'BET_mask', postFix = [self.ID] )).data, dtype = bool)
+		nr_voxels = np.sum(mask)
+		
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
 		tr, nr_trs = niiFile.rtime, niiFile.timepoints
@@ -504,11 +507,11 @@ class DualRewardSession(SingleRewardSession):
 		if deco:
 		
 			event_data = []
-			nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
+			nii_data = np.zeros([nr_reward_runs, nr_trs, nr_voxels] )
 			nr_runs = 0
 			blink_events = []
 			for (j, r) in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
-				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).data
+				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).data[:,mask]
 				this_run_events = []
 				for cond in conds:
 					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -519,7 +522,8 @@ class DualRewardSession(SingleRewardSession):
 				event_data.append(this_run_events)
 				nr_runs += 1
 				
-			nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
+			nii_data = nii_data.reshape((nr_reward_runs * nr_trs, nr_voxels))
+			
 			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 			# shell()
 			# deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
@@ -527,8 +531,12 @@ class DualRewardSession(SingleRewardSession):
 			# nuisance_design.configure(np.array([np.vstack(blink_events)]))
 			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = True)
 			# deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
-			residuals = np.array(deco.residuals(), dtype = np.float32)
-			residuals = residuals.reshape([residuals.shape[0]] + nii_file_shape[1:])[::2]
+			# residuals = np.array(deco.residuals(), dtype = np.float32)
+			# residuals = residuals.reshape([residuals.shape[0]] + nii_file_shape[1:])[::2]
+			residuals = np.zeros((nr_reward_runs * nr_trs * 2, nii_file_shape[1], nii_file_shape[2], nii_file_shape[3]), dtype = np.float32)
+			residual_data = deco.residuals()
+			# shell()
+			residuals[:,mask] = residual_data
 			
 			try:
 				os.system('rm -rf %s' % (os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'deco')))
@@ -550,10 +558,17 @@ class DualRewardSession(SingleRewardSession):
 		for (i, c) in enumerate(conds):
 			if deco:
 				# outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
-				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
+				# unmask the output data using the mask and a pre-created zeros array.
+				outputdata = np.zeros((deco.deconvolvedTimeCoursesPerEventType[i].shape[0], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3]))
+				outputdata[:,mask] = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
 				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz'))
+				
+				# outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
+				# outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
+				# outputFile.header = niiFile.header
+				# outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz'))
 			else:
 				outputdata = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz')).data
 				# average over the interval [5,12] and [2,10] for reward and visual respectively. so, we'll just do [2,12]
@@ -603,7 +618,7 @@ class DualRewardSession(SingleRewardSession):
 		# 				ssO.execute()
 	
 	
-	def project_stats(self, which_file = 'zstat', postFix = ['mcf','tf']):
+	def project_stats(self, which_file = 'zstat', postFix = ['mcf']):
 		
 		for r in [self.runList[i] for i in self.conditionDict['mapper']]:
 			this_location_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['location'], extension = '.feat')
@@ -617,7 +632,7 @@ class DualRewardSession(SingleRewardSession):
 				vsO.configure(frames = {which_file:0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
 				vsO.execute()
 	
-	def rewarded_stimulus_run(self, run, postFix = ['mcf','tf']):
+	def rewarded_stimulus_run(self, run, postFix = ['mcf']):
 		reward_h5file = self.hdf5_file('reward')
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
@@ -671,7 +686,7 @@ class DualRewardSession(SingleRewardSession):
 		# try to make this permanent.
 		self.which_stimulus_rewarded = which_stimulus_rewarded
 	
-	def correlate_patterns_over_time_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
+	def correlate_patterns_over_time_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf']):
 		reward_h5file = self.hdf5_file('reward')
 		mapper_h5file = self.hdf5_file('mapper')
 		
@@ -687,8 +702,8 @@ class DualRewardSession(SingleRewardSession):
 		roi_data = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			this_run_raw_roi_data = self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf'])
-			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters', postFix = ['mcf','tf'])
+			this_run_raw_roi_data = self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf'])
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters', postFix = ['mcf'])
 			
 			left_none_right = np.sign(parameter_data['x_position'])
 			CW_none_CCW = np.sign(parameter_data['orientation'])
@@ -705,12 +720,12 @@ class DualRewardSession(SingleRewardSession):
 		roi_data = np.vstack(np.array(roi_data).transpose(0,3,1,2)).transpose(1,0,2)
 		# shell()
 		# mapping data
-		mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
-		mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
-		# orientation_mapper_data = np.array([self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi_wildcard = roi, data_type = dt, postFix = ['mcf','tf']) for dt in conditions_data_types]).squeeze()
+		mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf'])
+		mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf'])
+		# orientation_mapper_data = np.array([self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi_wildcard = roi, data_type = dt, postFix = ['mcf']) for dt in conditions_data_types]).squeeze()
 		
-		mapper_run_raw_roi_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, classification_data_type, postFix = ['mcf','tf'])
-		parameter_data = self.run_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], 'trial_parameters', postFix = ['mcf','tf'])
+		mapper_run_raw_roi_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, classification_data_type, postFix = ['mcf'])
+		parameter_data = self.run_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], 'trial_parameters', postFix = ['mcf'])
 		left_none_right = np.sign(parameter_data['x_position'])
 		CW_none_CCW = np.sign(parameter_data['orientation'])
 		left_CW_trials = (left_none_right == -1) * (CW_none_CCW == -1)
@@ -738,7 +753,7 @@ class DualRewardSession(SingleRewardSession):
 		
 		return [[left_correlations_mapper, right_correlations_mapper],[left_correlations_ttot, right_correlations_ttot]]
 		
-	def correlate_patterns_over_time(self, rois = ['V1', 'V2', 'V3', 'V3AB'], classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 2.3, mask_direction = 'pos', postFix = ['mcf','tf']):
+	def correlate_patterns_over_time(self, rois = ['V1', 'V2', 'V3', 'V3AB'], classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 2.3, mask_direction = 'pos', postFix = ['mcf']):
 		
 		pattern_corr_mapper_results = []
 		pattern_corr_ttot_results = []
@@ -770,7 +785,7 @@ class DualRewardSession(SingleRewardSession):
 		reward_h5file.close()
 		
 		
-	def decode_patterns_per_trial(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
+	def decode_patterns_per_trial(self, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf']):
 		from matplotlib.backends.backend_pdf import PdfPages
 		pp = PdfPages(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'per_trial_pattern_decoding_' + mask_direction + '_' + classification_data_type + '_' + data_type_mask + '.pdf'))
 		
@@ -782,7 +797,7 @@ class DualRewardSession(SingleRewardSession):
 		pl.show()
 		
 		
-	def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf','tf']):
+	def decode_patterns_per_trial_for_roi(self, roi, classification_data_type = 'per_trial_hpf_data_zscore', data_type_mask = 'Z', mask_threshold = 3.5, mask_direction = 'pos', postFix = ['mcf']):
 		reward_h5file = self.hdf5_file('reward')
 		mapper_h5file = self.hdf5_file('mapper')
 		
@@ -798,7 +813,7 @@ class DualRewardSession(SingleRewardSession):
 		roi_data = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf','tf']))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, classification_data_type, postFix = ['mcf']))
 			this_run_events = []
 			for cond in condition_labels:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -816,8 +831,8 @@ class DualRewardSession(SingleRewardSession):
 		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 		# mapping data
-		mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf','tf'])
-		mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf','tf'])
+		mapping_data_L = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'left_' + data_type_mask, postFix = ['mcf'])
+		mapping_data_R = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, 'right_' + data_type_mask, postFix = ['mcf'])
 		
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
@@ -842,7 +857,7 @@ class DualRewardSession(SingleRewardSession):
 			mapper_condition_order = mapper_condition_order[np.argsort(mapper_condition_order[:,1]), 0]
 			mapper_condition_order_indices = np.array([mapper_condition_order == i for i in range(len(condition_labels))], dtype = bool)
 			mcd.append(mapper_condition_order_indices)
-			orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf','tf'])
+			orientation_mapper_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][mf]], roi_wildcard = roi, data_type = classification_data_type, postFix = ['mcf'])
 			orientation_mapper_data = ((orientation_mapper_data.T - orientation_mapper_data.mean(axis = 1)) / orientation_mapper_data.std(axis = 1)).T
 			orientation_mapper_data = (orientation_mapper_data - orientation_mapper_data.mean(axis = 0)) / orientation_mapper_data.std(axis = 0)
 			ormd.append(orientation_mapper_data)
@@ -968,7 +983,7 @@ class DualRewardSession(SingleRewardSession):
 										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
 				flO.execute()
 
-	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000, postFix = ['mcf','tf'], analysis_duration = 10):
+	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000, postFix = ['mcf'], analysis_duration = 10):
 		# get EL Data
 			
 		h5f = openFile(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
@@ -1166,7 +1181,7 @@ class DualRewardSession(SingleRewardSession):
 		pl.savefig(self.runFile(stage = 'processed/eye', run = run, extension = '.pdf', postFix = ['pupil']))
 		return tr_data
 			
-	def pupil_responses(self, sample_rate = 1000, save_all = True):
+	def pupil_responses(self, sample_rate = 1000, save_all = True, postFix = ['mcf']):
 		"""docstring for pupil_responses"""
 		cond_labels = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
 		colors = ['r','r','g','g','k','k']
@@ -1174,7 +1189,7 @@ class DualRewardSession(SingleRewardSession):
 		
 		all_pupil_responses = []
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			all_pupil_responses.append(self.pupil_responses_one_run(run = r, frequency = 4, sample_rate = sample_rate))
+			all_pupil_responses.append(self.pupil_responses_one_run(run = r, frequency = 4, sample_rate = sample_rate, postFix = postFix))
 		# self.all_pupil_responses_hs = np.array(all_pupil_responses)
 		fig = pl.figure(figsize = (9,4))
 		s = fig.add_subplot(1,1,1)
@@ -1332,7 +1347,7 @@ class DualRewardSession(SingleRewardSession):
 		tr_timings = []
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf','tf']))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf']))
 			this_run_events = []
 			for cond in conds:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -1341,7 +1356,7 @@ class DualRewardSession(SingleRewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','tf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -1367,7 +1382,7 @@ class DualRewardSession(SingleRewardSession):
 		event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 		# mapping data
-		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf','tf'])
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf'])
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold
@@ -1544,13 +1559,13 @@ class DualRewardSession(SingleRewardSession):
 		nr_runs = 0
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			self.rewarded_stimulus_run(r)
-			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf','tf']))
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data', postFix = ['mcf']))
 			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
 			this_blink_events[:,0] += nr_runs * run_duration
 			blink_events.append(this_blink_events)
 			
-			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times', postFix = ['mcf','tf'])
-			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters', postFix = ['mcf','tf'])
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times', postFix = ['mcf'])
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters', postFix = ['mcf'])
 			
 			onsets_fix_reward_trials, raw_itis_of_fix_reward_trials, all_reward_itis_of_fix_reward_trials, fixation_reward_itis_fix_reward_trials = self.calculate_event_history(trial_times, parameter_data)
 			
@@ -1611,7 +1626,7 @@ class DualRewardSession(SingleRewardSession):
 		roi_data = np.hstack(demeaned_roi_data)
 		
 		# mapping data
-		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf','tf'])
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type, postFix = ['mcf'])
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold

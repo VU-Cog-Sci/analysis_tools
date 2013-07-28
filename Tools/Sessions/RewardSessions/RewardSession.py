@@ -49,7 +49,7 @@ class RewardSession(Session):
 		
 		# copy all the project files to the present session's hierarchy
 		self.project_reg_folder = os.path.join(self.project.registration_dir, self.subject.initials)
-		self.project_feat_folder = os.path.join(self.project.registration_dir, self.subject.initials, 'feat')
+		self.project_feat_folder = os.path.join(self.project.registration_dir, self.subject.initials, 'feat/')
 		self.project_masks_folder = os.path.join(self.project.registration_dir, self.subject.initials, 'masks/')
 		self.project_register_file = os.path.join(self.project_reg_folder, 'register.dat')
 		self.project_register_flirt_file = os.path.join(self.project_reg_folder, 'register_flirt_BB.mtx')
@@ -61,19 +61,46 @@ class RewardSession(Session):
 		self.register_flirt_file = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'flirt', 'BB'], extension = '.dat' )
 		self.session_reg_folder = self.stageFolder(stage = 'processed/mri/reg')
 		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] )
+		self.bet_mask_file_name = self.runFile(stage = 'processed/mri/reg', base = 'BET_mask', postFix = [self.ID] )
 		self.masks_folder = self.stageFolder(stage = 'processed/mri/masks/anat')
 		self.feat_folder = self.stageFolder(stage = 'processed/mri/reg/feat')
+		
 		
 		if execute:
 			os.system('cp ' + self.project_register_file + ' ' + self.registerfile)
 			os.system('cp ' + self.project_register_flirt_file + ' ' + self.register_flirt_file)
 			os.system('cp ' + self.reg_to_project_flirt_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project.mtx'))
 			os.system('cp ' + self.reg_to_project_bb_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project.dat'))
-			os.system('cp ' + os.path.join(self.project_reg_folder, 'standard_EPI.nii.gz') + ' ' + self.referenceFunctionalFileName)
+			os.system('cp ' + os.path.join(self.project_reg_folder, 'standard_EPI_BET.nii.gz') + ' ' + self.referenceFunctionalFileName)
+			os.system('cp ' + os.path.join(self.project_reg_folder, 'standard_EPI_BET_mask.nii.gz') + ' ' + self.bet_mask_file_name)
 			os.system('cp ' + os.path.join(self.project_reg_folder, 't2_BET.nii.gz') + ' ' + os.path.join(self.session_reg_folder, 'T2.nii.gz') )
+			try:
+				os.system('mkdir ' + self.feat_folder)
+				os.system('mkdir ' + self.masks_folder)
+			except OSError:
+				pass
 			os.system('cp -rf ' + self.project_feat_folder + ' ' + self.feat_folder)
 			os.system('cp -rf ' + self.project_masks_folder + ' ' + self.masks_folder)
 				
+	
+	def bet_all_nii_files(self):
+		"""bet_all_nii_files does exactly what the name implies. """
+		mask_file = self.runFile(stage = 'processed/mri/reg', base = 'BET_mask', postFix = [self.ID] )
+		for er in self.scanTypeDict['epi_bold']:
+			for postFix in [['reg'], ['mcf'], ['mcf','tf'], ['mcf','tf','psc']]:
+				this_file = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = postFix )
+				mO = FSLMathsOperator(this_file)
+				mO.configureMask(
+					mask_file = mask_file, 
+					outputFileName = this_file)
+				mO.execute()
+		if os.path.isfile(os.path.join(self.stageFolder('/processed/mri/reward/deco'), 'residuals.nii.gz')):
+			mO = FSLMathsOperator(os.path.join(self.stageFolder('/processed/mri/reward/deco'), 'residuals.nii.gz'))
+			mO.configureMask(
+				mask_file = mask_file, 
+				outputFileName = os.path.join(self.stageFolder('/processed/mri/reward/deco'), 'residuals.nii.gz'))
+			mO.execute()
+		
 	
 	def motionCorrectFunctionals(self):
 		"""

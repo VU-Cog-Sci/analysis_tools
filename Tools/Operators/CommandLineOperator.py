@@ -243,9 +243,9 @@ class BETOperator( CommandLineOperator ):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		super(BETOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; bet', **kwargs)
 
-	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0):
+	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0, Z = True):
 		"""
-		configure will run mcflirt motion correction on file in inputObject
+		configure will run BET on file in inputObject
 		as specified by parameters in __init__ arguments and here to run.
 		"""
 		runcmd = self.cmd
@@ -258,7 +258,9 @@ class BETOperator( CommandLineOperator ):
 		# configure parameters - will perhaps make this amenable
 		# runcmd += ' -f 0.4 -g 0 -m '
 		# standard options for limited calcarine FOV:
-		runcmd += ' -Z -f ' + str(f_value) + ' -g ' + str(g_value) + ' -m '
+		if Z:
+			runcmd += ' -Z '
+		runcmd += ' -f ' + str(f_value) + ' -g ' + str(g_value) + ' -m '
 		self.runcmd = runcmd
 
 
@@ -353,6 +355,16 @@ class FSLMathsOperator( CommandLineOperator ):
 
 		meanArgs = {'-bptf ': str(nr_samples_hp) + ' ' + str(nr_samples_lp)}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
+	
+	def configureMask(self, mask_file, outputFileName = None ):
+		if outputFileName == None:
+			self.outputFileName = self.inputFileName
+		else:
+			self.outputFileName = outputFileName
+		maskArgs = {'-mas ': mask_file}
+		self.configure( outputFileName = self.outputFileName, **maskArgs )
+		
+		
 
 
 class retMapRun(object):
@@ -541,7 +553,7 @@ class LabelToVolOperator( CommandLineOperator ):
 		super(LabelToVolOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 
 
-	def configure(self, templateFileName, hemispheres = None, register = None, fsSubject = '', outputFileName = None, threshold = 0.5, surfType = 'label'):
+	def configure(self, templateFileName, hemispheres = None, register = None, fsSubject = '', outputFileName = None, threshold = 0.5, surfType = 'label', proj_frac = '0 1 .1'):
 		"""
 		configure sets up the command line for surf to vol translation.
 		"""
@@ -568,6 +580,7 @@ class LabelToVolOperator( CommandLineOperator ):
 			self.runcmd += ' --temp '+ self.templateFileName
 			self.runcmd += ' --reg '+ self.register
 			self.runcmd += ' --fillthresh ' + str(threshold)
+			self.runcmd += ' --proj frac ' + proj_frac
 			self.runcmd += ' --o ' + self.outputFileName + standardMRIExtension
 			self.runcmd += ' --subject ' + fsSubject
 			self.runcmd += ' --hemi ' + hemi

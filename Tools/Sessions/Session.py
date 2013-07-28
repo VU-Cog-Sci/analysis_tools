@@ -657,7 +657,8 @@ class Session(PathConstructor):
 		for hemi in ['lh','rh']:
 			stvO = SurfToVolOperator(os.path.join(folder, 'phase-' + hemi + '.w'))
 			if template_condition == None:
-				template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'])
+				# template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'])
+				template_file = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
 			else:
 				template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]], postFix = ['mcf','meanvol'])
 			stvO.configure(

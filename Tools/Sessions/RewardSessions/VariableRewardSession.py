@@ -25,6 +25,65 @@ class VariableRewardSession(SingleRewardSession):
 	def __init__(self, ID, date, project, subject, session_label = 'var', parallelize = True, loggingLevel = logging.DEBUG):
 		super(VariableRewardSession, self).__init__(ID, date, project, subject, session_label = session_label, parallelize = parallelize, loggingLevel = loggingLevel)
 	
+	def registerSession(self, execute = True):
+		"""registration based on the standard of the reward sessions. 
+		just involves copying a bunch of standard registration files to the session's folder."""
+		super(VariableRewardSession, self).registerSession(execute = execute)
+		
+		self.registerfile = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' )
+		self.register_flirt_file = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'flirt', 'BB'], extension = '.dat' )
+		self.session_reg_folder = self.stageFolder(stage = 'processed/mri/reg')
+		
+		unique_session_labels = np.unique([r.session_label for r in self.runList])
+		for sl in unique_session_labels:
+			self.reg_to_project_flirt_file = os.path.join(self.project_reg_folder, sl, 'reg_to_project.mtx')
+			self.reg_to_project_bb_file = os.path.join(self.project_reg_folder, sl, 'reg_to_project.dat')
+			if execute:
+				print('cp ' + self.reg_to_project_flirt_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project_' + sl + '.mtx'))
+				print('cp ' + self.reg_to_project_bb_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project_' + sl + '.dat'))
+				
+				os.system('cp ' + self.reg_to_project_flirt_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project_' + sl + '.mtx'))
+				os.system('cp ' + self.reg_to_project_bb_file + ' ' + os.path.join(self.session_reg_folder, 'reg_to_project_' + sl + '.dat'))
+		
+	def motionCorrectFunctionals(self):
+		"""
+		motionCorrectFunctionals corrects all functionals in a given session.
+		how we do this depends on whether we have parallel processing turned on or not
+		"""
+		self.logger.info('run motion correction')
+		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
+		# set up a list of motion correction operator objects for the runs
+		mcOperatorList = [];	
+		for er in self.scanTypeDict['epi_bold']:
+			# run non-moco registration first. 
+			f1 = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = self.runList[er] ), referenceFileName = self.referenceFunctionalFileName)
+			f1.configureApply( transformMatrixFileName = os.path.join(self.stageFolder('processed/mri/reg/'), 'reg_to_project_' + self.runList[er].session_label + '.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['reg'] ) )
+			mcOperatorList.append(f1)
+			
+			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['reg'], extension = '' ), target = self.referenceFunctionalFileName )
+		 	mcf.configure( outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['mcf'] ) )
+			mcOperatorList.append(mcf)
+	
+		if not self.parallelize:
+			# first, code for serial implementation
+			self.logger.info("run serial moco")
+			for mcf in mcOperatorList:
+				mcf.execute()
+	
+		if self.parallelize:
+			# tryout parallel implementation - later, this should be abstracted out of course. 
+			ppservers = ()
+			job_server = pp.Server(ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
+			ppResults = [job_server.submit(ExecCommandLine,(mcf.runcmd,),(),('subprocess','tempfile',)) for mcf in mcOperatorList]
+			for fMcf in ppResults:
+				fMcf()
+		
+			job_server.print_stats()
+	
+			
+	
 	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'reward'):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
@@ -216,7 +275,7 @@ class VariableRewardSession(SingleRewardSession):
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
 		time_signals = []
-		interval = [0.0,16.0]
+		interval = [0.0,12.0]
 		
 		# shell()
 		
@@ -251,8 +310,8 @@ class VariableRewardSession(SingleRewardSession):
 		s = fig.add_subplot(411)
 		s.axhline(0, interval[0]-1.5, interval[1]+1.5, linewidth = 0.25)
 		for i in range(3): # plot stimulus responses
-			pl.bar(i, deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-4:-1][i][0,0], width = 0.25, edgecolor = 'k', color = colors[i][-1], label = ['75%_delay', '50%_delay', '25%_delay'][i])
-			pl.bar(i+0.25, deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-4][i][0,0], width = 0.25, edgecolor = 'w', color = colors[i][-1], alpha = 0.5, label = ['75%_stim', '50%_stim', '25%_stim'][i])
+			pl.bar(i, deco.deconvolvedTimeCoursesPerEventTypeNuisance[-4:-1][i][0,0], width = 0.25, edgecolor = 'k', color = colors[i][-1], label = ['75%_delay', '50%_delay', '25%_delay'][i])
+			pl.bar(i+0.25, deco.deconvolvedTimeCoursesPerEventTypeNuisance[-7:-4][i][0,0], width = 0.25, edgecolor = 'w', color = colors[i][-1], alpha = 0.5, label = ['75%_stim', '50%_stim', '25%_stim'][i])
 		# 	pl.plot(np.linspace(interval[0], interval[1], time_signals.shape[-1]), time_signals[i*2], colors[i][-1], alpha = alphas[i][-1], linewidth = lthns[i][-1], label = self.deconvolution_labels[decon_label_grouping[i][-1]])
 		s.set_title('stimulus response beta' + roi + ' ' + mask_type)		
 		# s.set_xlabel('time [s]')
@@ -295,7 +354,7 @@ class VariableRewardSession(SingleRewardSession):
 		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
 		
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisanceAll[-7:-1]] #, deco_per_run]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisance[-7:-1]] #, deco_per_run]
 	
 	def deconvolve(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
 		results = []
@@ -358,6 +417,8 @@ class VariableRewardSession(SingleRewardSession):
 		"""
 		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
 		"""
+		mask = np.array(NiftiImage(self.runFile(stage = 'processed/mri/reg', base = 'BET_mask', postFix = [self.ID] )).data, dtype = bool)
+		nr_voxels = np.sum(mask)
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
 		tr, nr_trs = niiFile.rtime, niiFile.timepoints
@@ -380,11 +441,11 @@ class VariableRewardSession(SingleRewardSession):
 		if deco:
 		
 			event_data = []
-			nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
+			nii_data = np.zeros([nr_reward_runs, nr_trs, nr_voxels] )
 			nr_runs = 0
 			blink_events = []
 			for (j, r) in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
-				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).data
+				nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).data[:,mask]
 				this_run_events = []
 				for cond in self.deconvolution_labels:
 					this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
@@ -395,7 +456,7 @@ class VariableRewardSession(SingleRewardSession):
 				event_data.append(this_run_events)
 				nr_runs += 1
 				
-			nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
+			nii_data = nii_data.reshape((nr_reward_runs * nr_trs, nr_voxels))
 			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
@@ -408,7 +469,9 @@ class VariableRewardSession(SingleRewardSession):
 				pass
 		for (i, c) in enumerate(self.deconvolution_labels):
 			if deco:
-				outputdata = deco.deconvolvedTimeCoursesPerEventType[i]
+				# unmask the output data using the mask and a pre-created zeros array.
+				outputdata = np.zeros((deco.deconvolvedTimeCoursesPerEventType[i].shape[0], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3]))
+				outputdata[:,mask] = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
 				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz'))
@@ -434,7 +497,7 @@ class VariableRewardSession(SingleRewardSession):
 					for hemi in ['lh','rh']:
 						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
 						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
-						ssO.execute()
+						ssO.execute(wait = False)
 		
 		# now create the necessary difference images:
 		# only possible if deco has already been run...
@@ -458,7 +521,7 @@ class VariableRewardSession(SingleRewardSession):
 					for hemi in ['lh','rh']:
 						ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
 						ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
-						ssO.execute()
+						ssO.execute(wait = False)
 	
 	def whole_brain_deconvolution_plus_glm(self, deco = True, average_intervals = [[2,7]], to_surf = True, postFix = ['mcf', 'tf', 'psc']):
 		"""
@@ -466,7 +529,7 @@ class VariableRewardSession(SingleRewardSession):
 		"""
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-		tr, nr_trs = round(niiFile.rtime*100)/100.0, niiFile.timepoints	# workaround for AV's strange reported TR
+		tr, nr_trs = round(niiFile.rtime*100)/100.0, niiFile.timepoints	# workaround for AV's strange reported TR - this can also be fixed in the nifti header.
 		run_duration = tr * nr_trs
 		nii_file_shape = list(niiFile.data.shape)
 		
@@ -650,8 +713,8 @@ class VariableRewardSession(SingleRewardSession):
 		
 		self.condition_labels = ['75%_yes', '75%_no', '75%_stim', '50%_yes', '50%_no', '50%_stim', '25%_yes', '25%_no', '25%_stim', 'blank_reward', '75%_delay', '50%_delay', '25%_delay']
 		# this will need to be changed for a second run.
-		rewarded_trials = elO.parameter_data['sound'] == self.do_i_play_sound[1]
-		orientation_trials = [elO.parameter_data['stim_orientation'] == ori for ori in self.orientations_in_order]
+		rewarded_trials = elO.parameter_data['sound'] == run.do_i_play_sound[1]
+		orientation_trials = [elO.parameter_data['stim_orientation'] == ori for ori in run.orientations_in_order]
 		
 		# these trials were never rewarded
 		no_stim_plus_trials = orientation_trials[-1]
@@ -805,7 +868,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_design.convolveWithHRF(hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103})
 		
 		# motion parameters are their own design matrix
-		motion_pars = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.par', postFix = ['mcf']))
+		motion_pars = np.loadtxt(self.runFile(stage = 'processed/mri', run = run, extension = '.par', postFix = ['mcf.nii.gz']))
 		
 		motion_names = [str(i) + '_motion' for i in range(motion_pars.shape[1])]
 		
