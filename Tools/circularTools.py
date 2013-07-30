@@ -12,7 +12,7 @@ import numpy as np
 import matplotlib.pylab as pl
 from math import *
 
-from scipy.stats import vonmises
+from scipy.stats import vonmises, norm
 from scipy.optimize import fmin
 
 def positivePhases( phases ):
@@ -90,6 +90,10 @@ def fitVonMisesZeroMean( data, initial = [0.5] ):
 	vmL = lambda v : -np.sum(np.log( vonmises.pdf(0.0 ,v[0] , data) ))
 	return fmin(vmL, initial, xtol=0.000001, ftol=0.000001) # 
 
+def fitGaussian( data, initial = [0,1] ):
+	# negative log likelihood sum is to be minimized, this maximized the likelihood
+	vmL = lambda v : -np.sum(np.log( norm.pdf(data, loc = v[0], scale = v[1]) ))
+	return fmin(vmL, initial, xtol=0.000001, ftol=0.000001) # 
 
 def bootstrapVonMisesFits( data, nrDraws = 100, nrRepetitions = 1000 ):
 	nrSamples = data.shape[0]
