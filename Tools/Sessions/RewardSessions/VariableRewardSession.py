@@ -285,16 +285,21 @@ class VariableRewardSession(SingleRewardSession):
 		# nuisance_design.configure([list(np.vstack(blink_events))], hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})
 		
 		stimulus_design = Design(timeseries.shape[0] * 2, tr/2.0 )
-		stimulus_design.configure(stimulus_event_data)	# standard HRF for stimulus events
-		# stimulus_design.configure(stimulus_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})	# standard HRF for stimulus events
+		# stimulus_design.configure(stimulus_event_data)	# standard HRF for stimulus events
+		stimulus_design.configure(stimulus_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})	# standard HRF for stimulus events
 		
 		# non-standard reward HRF for delay events
-		# delay_design = Design(timeseries.shape[0] * 2, tr/2.0 )
-		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
+		delay_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		# delay_design.configure(delay_event_data, hrfType = 'doubleGamma', hrfParameters = {'a1' : 22.32792026, 'a2' : 18.05752151, 'b1' : 0.30113662, 'b2' : 0.37294047, 'c' : 1.21845208})
+		#, hrfType = 'double_gamma', hrfParameters = {'a1':-1.43231888, 'sh1':9.09749517, 'sc1':0.85289563, 'a2':0.14215637, 'sh2':103.37806306, 'sc2':0.11897103}) 22.32792026  18.05752151   0.30113662   0.37294047   1.21845208 {a1 = 22.32792026, a2 = 18.05752151, b1 = 0.30113662, b2 = 0.37294047, c = 1.21845208}
 		# delay_design.configure(delay_event_data, hrfType = 'singleGamma', hrfParameters = {'a':10.46713698,'b':0.65580082})
-		# delay_design.configure(delay_event_data)
+		delay_design.configure(delay_event_data)
+		
+		
+		
 		# nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix))
-		nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
+		# nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
+		nuisance_design_matrix = nuisance_design.designMatrix
 		
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
 		deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
@@ -352,9 +357,9 @@ class VariableRewardSession(SingleRewardSession):
 						# l.set_linewidth(2.0)  # the legend line width
 		
 		pl.draw()
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_plus_glm.pdf'))
 		
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisance[-7:-1]] #, deco_per_run]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_plus_glm', event_data, timeseries, np.array(time_signals), deco.deconvolvedTimeCoursesPerEventTypeNuisance[-7:-1]] #, deco_per_run]
 	
 	def deconvolve(self, threshold = 3.5, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution'):
 		results = []
@@ -1587,33 +1592,35 @@ class VariableRewardSession(SingleRewardSession):
 		delay_event_data = [event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'delay' in s]
 		
 		# check the rois in the file
-		this_run_group_name = 'deconvolution_results'
-		roi_names = []
-		for roi_name in reward_h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
-			if len(roi_name._v_name.split('_')) > 1:
-				area = roi_name._v_name.split('_')[0]
-				if roi == area:
-					roi_names.append(roi_name._v_name)
-		if len(roi_names) == 0:
-			self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
-			return None
+		# this_run_group_name = 'deconvolution_results'
+		# roi_names = []
+		# for roi_name in reward_h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
+		# 	if len(roi_name._v_name.split('_')) > 1:
+		# 		area = roi_name._v_name.split('_')[0]
+		# 		if roi == area:
+		# 			roi_names.append(roi_name._v_name)
+		# if len(roi_names) == 0:
+		# 	self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
+		# 	return None
+		# roi_names = rois
 		
-		# check for the standard comparison things - standard is the average for the first experiment, but can also be dual
-		if template == 'exp1':
-			c_file_list = ['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward']
-		elif template == 'dual':
-			c_file_list = ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']
-		ard_np = []
-		for i, data_type in enumerate(c_file_list):
-			ard = []
-			for roi_name in roi_names:
-				thisRoi = reward_h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
-				ard.append( eval('thisRoi.' + data_type + '.read()') )
-			ard_np.append(np.hstack(ard).T.squeeze())
-		if template == 'exp1':
-			comparison_array = (ard_np[0] + ard_np[1]) / 2.0
-		elif template == 'dual':
-			comparison_array = ard_np[0] - ard_np[1]
+		if analysis_type != 'amplitude':
+			# check for the standard comparison things - standard is the average for the first experiment, but can also be dual
+			if template == 'exp1':
+				c_file_list = ['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward']
+			elif template == 'dual':
+				c_file_list = ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']
+			ard_np = []
+			for i, data_type in enumerate(c_file_list):
+				ard = []
+				for roi_name in roi_names:
+					thisRoi = reward_h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+					ard.append( eval('thisRoi.' + data_type + '.read()') )
+				ard_np.append(np.hstack(ard).T.squeeze())
+			if template == 'exp1':
+				comparison_array = (ard_np[0] + ard_np[1]) / 2.0
+			elif template == 'dual':
+				comparison_array = ard_np[0] - ard_np[1]
 		
 		# mapping data
 		mapping_data = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi, mask_type, postFix = ['mcf'])
