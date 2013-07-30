@@ -1155,7 +1155,7 @@ class SingleRewardSession(RewardSession):
 		
 		time_signals = []
 		if analysis_type == 'deconvolution':
-			interval = [0.0,16.0]
+			interval = [0.0,15.0]
 			# nuisance version?
 			nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
 			nuisance_design.configure(np.array([np.hstack(blink_events)]))
@@ -1334,7 +1334,7 @@ class SingleRewardSession(RewardSession):
 		results = []
 		# neg_threshold = -1.0 * thres
 		# neg_threshold = -neg_threshold
-		print threshold
+		# print threshold
 		for roi in rois:
 			results.append(self.deconvolve_roi(roi, threshold = 2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
 			results.append(self.deconvolve_roi(roi, threshold = -2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
@@ -3106,4 +3106,199 @@ class SingleRewardSession(RewardSession):
 							}
 			for sf in stat_files.keys():
 				os.system( 'cp ' + stat_files[sf] + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'FSL_' + sf + '_' + str(j) + '.nii.gz'))
+	
+	def SNR_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', signal_type = 'mean', data_type = 'psc_hpf_data'):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		reward_h5file = self.hdf5_file('reward')
+		mapper_h5file = self.hdf5_file('mapper')
+		
+		event_data = []
+		roi_data = []
+		blink_events = []
+		nr_runs = 0
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, data_type))
+			if 'residuals' in data_type:
+				roi_data[-1] = roi_data[-1] ** 2
 			
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			nr_runs += 1
+		
+		reward_h5file.close()
+		
+		demeaned_roi_data = []
+		for rd in roi_data:
+			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
+		
+		event_data_per_run = event_data
+		roi_data_per_run = demeaned_roi_data
+		
+		roi_data = np.hstack(demeaned_roi_data)
+		# event_data = np.hstack(event_data)
+		event_data_all_types = [np.round(np.concatenate([e[i] for e in event_data]) / 0.75) * 0.75 for i in range(len(event_data[0]))]
+		# event_data = [np.round(np.sort(np.concatenate([event_data[0],event_data[1]])) * 4.0)/4.0, np.round(np.sort(np.concatenate([event_data[2],event_data[3]])) * 4.0)/4.0]
+		event_data_grouped = [np.sort(np.concatenate([event_data_all_types[0],event_data_all_types[1]])), np.sort(np.concatenate([event_data_all_types[2],event_data_all_types[3]]))]
+		# mapping data
+		mapping_data = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi, mask_type)
+		mapper_h5file.close()
+		
+		# thresholding of mapping data stat values
+		if mask_direction == 'pos':
+			mapping_mask = mapping_data[:,0] > threshold
+		else:
+			mapping_mask = mapping_data[:,0] < threshold
+				
+		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
+		if signal_type in ['std', 'var']:
+			timeseries = (timeseries - timeseries.mean() ) / timeseries.std()
+		
+		fig = pl.figure(figsize = (9, 7))
+		s = fig.add_subplot(311)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		
+		time_signals = []
+		interval = [0.0,15.0]
+		# nuisance version?
+		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
+		nuisance_design.configure(np.array([np.hstack(blink_events)]))
+		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data_grouped[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
+			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), ['k','k--'][i], alpha = [0.25,1.0][i], label = ['fix', 'visual'][i], linewidth = 3.0)
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		# after deconvolution, correlate with all different event types. 
+		fit_results = [[]]
+		timepoints_of_samples = np.arange(0,deco.workingDataArray.shape[0]*0.75,0.75)
+		projection_data = []
+		s = fig.add_subplot(323)
+		minimal_amount_of_events = 10000
+		for k, event_type in enumerate(event_data_all_types):
+			projection_data.append([])
+			for i, e in enumerate(event_type):
+				which_start_time_index = np.arange(timepoints_of_samples.shape[0])[timepoints_of_samples == e]
+				which_end_time_index = which_start_time_index + time_signals[0].shape[0]
+				this_event_data = deco.workingDataArray[which_start_time_index:which_end_time_index]
+				projection_data[-1].append([spearmanr(time_signals[[0, 0, 1, 1][k]], this_event_data)[0], np.dot(time_signals[[0, 0, 1, 1][k]], this_event_data)/(np.dot(time_signals[[0, 0, 1, 1][k]],time_signals[[0, 0, 1, 1][k]]))])
+			# projection_data[-1] = np.array(projection_data[-1])
+			if minimal_amount_of_events > i:
+				minimal_amount_of_events = i
+			x_values = np.array(projection_data[-1])[:,0]
+			y_values = np.linspace(0,1,x_values.shape[0])
+			order = np.argsort(x_values)
+			fit_results[0].append(fitGaussian(x_values))
+			pl.plot(x_values[order], y_values, color = ['b','b','g','g'][k], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][k], label = str(fit_results[0][-1]) + ' ' + cond_labels[k] )
+		
+		for k, event_type in enumerate(event_data_all_types):
+			 projection_data[k] = projection_data[k][:minimal_amount_of_events]
+		
+		
+		s.set_xlabel('spearman correlation between template and condition')
+		leg = s.legend(fancybox = True, loc = 'upper left')
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		s = fig.add_subplot(324)
+		for k, event_type in enumerate(event_data_all_types):
+			y_values = np.array(projection_data[k])[:,0]
+			pl.plot(np.linspace(0,1,y_values.shape[0]), y_values, ['bo','bo','go','go'][k], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][k], label = cond_labels[k] )
+			
+		
+		fit_results.append([])
+		s = fig.add_subplot(325)
+		for k, event_type in enumerate(event_data_all_types):
+			x_values = np.array(projection_data[k])[:,1]
+			y_values = np.linspace(0,1,x_values.shape[0])
+			order = np.argsort(x_values)
+			fit_results[1].append(fitGaussian(x_values))
+			pl.plot(x_values[order], y_values, color = ['b','b','g','g'][k], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][k], label = str(fit_results[1][-1]) + ' ' + cond_labels[k] )
+			
+		s.set_xlabel('linear projection between template and condition')
+		leg = s.legend(fancybox = True, loc = 'upper left')
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		
+		s = fig.add_subplot(326)
+		for k, event_type in enumerate(event_data_all_types):
+			y_values = np.array(projection_data[k])[:,1]
+			pl.plot(np.linspace(0,1,y_values.shape[0]), y_values, ['bo','bo','go','go'][k], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][k], label = cond_labels[k] )
+		
+		projection_data = np.array(projection_data)
+		fit_results = np.array(fit_results)
+		print fit_results, projection_data.shape
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + signal_type + '_' + data_type + '_SNR.pdf'))
+		return [roi + '_' + mask_type + '_' + mask_direction, fit_results, projection_data]
+		
+		
+	def SNR(self, rois = ['V1', 'V2', 'V3', 'V3AB'], signal_type = 'mean', data_type = 'psc_hpf_data'):
+		"""docstring for SNR"""
+		results = []
+		for roi in rois:
+			results.append(self.SNR_roi(roi, threshold = 2.5, mask_type = 'center_Z', mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
+			results.append(self.SNR_roi(roi, threshold = -2.5, mask_type = 'center_Z', mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
+			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
+			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+		
+		# exit()
+		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
+		reward_h5file = self.hdf5_file('reward', mode = 'r+')
+		this_run_group_name = 'SNR_results' + '_' + signal_type + '_' + data_type
+		try:
+			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
+		except NoSuchNodeError:
+			# import actual data
+			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			thisRunGroup = reward_h5file.createGroup("/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") )
+		
+		for r in results:
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_projection_data_' + signal_type + '_' + data_type)
+			except NoSuchNodeError:
+				pass
+			try:
+				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_fit_results_' + signal_type + '_' + data_type)
+			except NoSuchNodeError:
+				pass
+			
+			reward_h5file.createArray(thisRunGroup, r[0] + '_fit_results_' + signal_type + '_' + data_type, r[1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.createArray(thisRunGroup, r[0] + '_projection_data_' + signal_type + '_' + data_type, r[2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			
+		reward_h5file.close()
+		 
+	

@@ -146,7 +146,7 @@ class VariableRewardSession(SingleRewardSession):
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
 		time_signals = []
-		interval = [0.0,16.0]
+		interval = [0.0,15.0]
 		
 		# nuisance version?
 		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
@@ -413,7 +413,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_h5file.close()
 	
 	
-	def whole_brain_deconvolution(self, deco = True, average_intervals = [[3.5,12],[2,7]], to_surf = True, postFix = ['mcf', 'tf', 'psc']):
+	def whole_brain_deconvolution(self, deco = True, average_intervals = [[3.5,12],[2,7]], to_surf = True, postFix = ['mcf', 'tf', 'psc'], run_residuals = False):
 		"""
 		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
 		"""
@@ -460,13 +460,32 @@ class VariableRewardSession(SingleRewardSession):
 			event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
 		
 			deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
-		
-		if to_surf:
+			if run_residuals:
+				residuals = np.zeros((nr_reward_runs * nr_trs * 2, nii_file_shape[1], nii_file_shape[2], nii_file_shape[3]), dtype = np.float32)
+				residual_data = deco.residuals()
+				residuals[:,mask] = residual_data
+			
 			try:
-				os.system('rm -rf %s' % (os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'surf')))
-				os.mkdir(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'surf'))
+				os.system('rm -rf %s' % (os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'deco')))
+				os.mkdir(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'deco'))
 			except OSError:
 				pass
+			if run_residuals:
+				# save residuals
+				outputFile = NiftiImage(residuals)
+				outputFile.header = niiFile.header
+				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'residuals.nii.gz'))
+				del(residuals)
+				del(residual_data)
+			del(nii_data)
+			
+		if to_surf:
+			try:
+				os.system('rm -rf %s' % (os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'surf')))
+				os.mkdir(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'surf'))
+			except OSError:
+				pass
+		
 		for (i, c) in enumerate(self.deconvolution_labels):
 			if deco:
 				# unmask the output data using the mask and a pre-created zeros array.
@@ -474,16 +493,16 @@ class VariableRewardSession(SingleRewardSession):
 				outputdata[:,mask] = deco.deconvolvedTimeCoursesPerEventType[i]
 				outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
 				outputFile.header = niiFile.header
-				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz'))
+				outputFile.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz'))
 			else:
-				outputdata = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_' + c + '.nii.gz')).data
+				outputdata = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_' + c + '.nii.gz')).data
 				# average over the interval [5,12] and [2,10] for reward and visual respectively. so, we'll just do [2,12]
 			for (j, which_times) in enumerate(['reward', 'visual']):
 				timepoints_for_averaging = (np.linspace(interval[0], interval[1], outputdata.shape[0]) < average_intervals[j][1]) * (np.linspace(interval[0], interval[1], outputdata.shape[0]) > average_intervals[j][0])
 				meaned_data = outputdata[timepoints_for_averaging].mean(axis = 0)
 				outputFile = NiftiImage(meaned_data.reshape(nii_file_shape[1:]))
 				outputFile.header = niiFile.header
-				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + c + '_' + which_times + '.nii.gz')
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_mean_' + c + '_' + which_times + '.nii.gz')
 				outputFile.save(ofn)
 			
 				if to_surf:
@@ -503,10 +522,10 @@ class VariableRewardSession(SingleRewardSession):
 		# only possible if deco has already been run...
 		for i in [0,3,6]:
 			for (j, which_times) in enumerate(['reward', 'visual']):
-				ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + self.deconvolution_labels[i] + '_' + which_times + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward'), 'reward_deconv_mean_' + self.deconvolution_labels[i+1] + '_' + which_times + '.nii.gz'))]
+				ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_mean_' + self.deconvolution_labels[i] + '_' + which_times + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_mean_' + self.deconvolution_labels[i+1] + '_' + which_times + '.nii.gz'))]
 				diff_d = ipfs[0].data - ipfs[1].data
 			
-				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward'), self.deconvolution_labels[i].split('_')[0] + '_reward_diff' + '_' + which_times + '.nii.gz')
+				ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), self.deconvolution_labels[i].split('_')[0] + '_reward_diff' + '_' + which_times + '.nii.gz')
 				outputFile = NiftiImage(diff_d)
 				outputFile.header = ipfs[0].header
 				outputFile.save(ofn)
