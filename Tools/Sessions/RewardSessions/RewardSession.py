@@ -139,3 +139,6 @@ class RewardSession(Session):
 		
 			job_server.print_stats()
 	
+	def add_first_session_reward_responses_to_hdf5(self):
+		"""docstring for add_first_session_reward_responses_to_hdf5"""
+		

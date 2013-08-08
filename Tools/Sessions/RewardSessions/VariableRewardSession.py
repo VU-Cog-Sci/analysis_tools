@@ -1220,9 +1220,9 @@ class VariableRewardSession(SingleRewardSession):
 			# var file names
 			allFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 			# dual file names
-			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/dual/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
+			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/dual/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
 			# first file names
-			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/stats_older_sessions/exp_1/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
+			allFileNames.extend(subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/reward/first/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1])
 			
 			nifti_files_dict = dict(zip(['_'.join(fn.split('/')[-2:]) for fn in allFileNames] , [NiftiImage(fn) for fn in allFileNames]))
 			
@@ -1334,18 +1334,18 @@ class VariableRewardSession(SingleRewardSession):
 		super(VisualRewardSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['reward']], hdf5_file = reward_h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = functionalPostFix, design = design, contrast_matrix = contrasts)
 		reward_h5file.close()
 	
-	def import_deconvolution_responses_from_all_session(self, session_1, session_2):
+	def import_deconvolution_responses_from_all_sessions(self, session_1, session_2):
 		"""
 		"""
 		# concatenate older sessions reg to newer session
-		cfO = ConcatFlirtOperator(os.path.join(session_1.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
-		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
-					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ))
-		cfO.execute()
-		cfO = ConcatFlirtOperator(os.path.join(session_2.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
-		cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
-					outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ))
-		cfO.execute()
+		# cfO = ConcatFlirtOperator(os.path.join(session_1.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
+		# cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+		# 			outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ))
+		# cfO.execute()
+		# cfO = ConcatFlirtOperator(os.path.join(session_2.stageFolder('processed/mri/reg/feat'), 'example_func2highres.mat'))
+		# cfO.configure(secondInputFile = os.path.join(self.stageFolder('processed/mri/reg/feat'), 'highres2example_func.mat'), 
+		# 			outputFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ))
+		# cfO.execute()
 		
 		# add fsl results to deco folder so that they are also aligned across sessions.
 		session_1.fsl_results_to_deco_folder()
@@ -1358,34 +1358,40 @@ class VariableRewardSession(SingleRewardSession):
 		session_2_files = [s for s in session_2_files if os.path.split(s)[1] != 'residuals.nii.gz']
 		
 		try:
-			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions'))
-			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'))
-			os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'))
+			# os.mkdir(self.stageFolder('processed/mri/reward/stats_older_sessions'))
+			os.mkdir(self.stageFolder('processed/mri/reward/first'))
+			os.mkdir(self.stageFolder('processed/mri/reward/dual'))
 		except OSError:
 			pass
 		
-		for stat_file in session_1_files:
-			# apply the transform
-			flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
-			flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ), 
-									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'), os.path.split(stat_file)[1]) )
-			flO.execute()
-		for stat_file in session_2_files:
-			# apply the transform
-			flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
-			flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ), 
-									outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
-			flO.execute()
+		for s in session_1_files:
+			os.system('cp ' + s + ' ' + self.stageFolder('processed/mri/reward/first/'))
+		for s in session_2_files:
+			os.system('cp ' + s + ' ' + self.stageFolder('processed/mri/reward/dual/'))
+		
+		# no need for this registration anymore
+		# for stat_file in session_1_files:
+		# 	# apply the transform
+		# 	flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+		# 	flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_1'], extension = '.mat' ), 
+		# 							outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/exp_1'), os.path.split(stat_file)[1]) )
+		# 	flO.execute()
+		# for stat_file in session_2_files:
+		# 	# apply the transform
+		# 	flO = FlirtOperator(inputObject = stat_file, referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+		# 	flO.configureApply(self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'to_session_2'], extension = '.mat' ), 
+		# 							outputFileName = os.path.join(self.stageFolder('processed/mri/reward/stats_older_sessions/dual'), os.path.split(stat_file)[1]) )
+		# 	flO.execute()
 	
 	def pattern_comparisons(self):
 		return [
 		['dual'],
-		['exp_1_reward_deconv_mean_stimulus_no_reward_visual'],
+		['first_reward_deconv_mean_stimulus_no_reward_visual'],
 		['dual_reward_deconv_mean_blank_rewarded_reward'],
-		['exp_1_stimulus_reward_diff_reward'],
+		['first_stimulus_reward_diff_reward'],
 		['dual_FSL_reward_blank_Z_'+str(c) for c in range(5)],
-		['exp_1_FSL_visual_Z_'+str(c) for c in range(6)],
-		['exp_1_FSL_blank_sound_Z_'+str(c) for c in range(6)],
+		['first_FSL_visual_Z_'+str(c) for c in range(6)],
+		['first_FSL_blank_sound_Z_'+str(c) for c in range(6)],
 		# ['reward_reward_deconv_glm_mean_25_yes_reward','reward_reward_deconv_glm_mean_25_no_reward'],
 		# ['reward_reward_deconv_glm_mean_50_yes_reward','reward_reward_deconv_glm_mean_50_no_reward'],
 		# ['reward_reward_deconv_glm_mean_75_yes_reward','reward_reward_deconv_glm_mean_75_no_reward'],
@@ -1436,11 +1442,11 @@ class VariableRewardSession(SingleRewardSession):
 		
 		# check for the standard comparison things - standard is the average for the first experiment, but can also be dual
 		if template == 'exp1':
-			c_file_list = ['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward']
+			c_file_list = ['first_fix_reward_diff_reward','first_stimulus_reward_diff_reward']
 		elif template == 'dual':
 			c_file_list = ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']
 		elif template == 'FSL':
-			c_file_list = ['exp_1_FSL_reward_Z_'+str(c) for c in range(5)]
+			c_file_list = ['first_FSL_reward_Z_'+str(c) for c in range(5)]
 		else:
 			c_file_list = [template]
 		ard_np = []
@@ -1592,7 +1598,7 @@ class VariableRewardSession(SingleRewardSession):
 		delay_event_data = [event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'delay' in s]
 		
 		# check the rois in the file
-		# this_run_group_name = 'deconvolution_results'
+		this_run_group_name = 'deconv_results'
 		# roi_names = []
 		# for roi_name in reward_h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
 		# 	if len(roi_name._v_name.split('_')) > 1:
@@ -1603,11 +1609,12 @@ class VariableRewardSession(SingleRewardSession):
 		# 	self.logger.info('No rois corresponding to ' + roi + ' in group ' + this_run_group_name)
 		# 	return None
 		# roi_names = rois
+		roi_names = ['lh.'+roi, 'rh.'+roi]
 		
 		if analysis_type != 'amplitude':
 			# check for the standard comparison things - standard is the average for the first experiment, but can also be dual
 			if template == 'exp1':
-				c_file_list = ['exp_1_fix_reward_diff_reward','exp_1_stimulus_reward_diff_reward']
+				c_file_list = ['first_fix_reward_diff_reward','first_stimulus_reward_diff_reward']
 			elif template == 'dual':
 				c_file_list = ['dual_reward_deconv_mean_blank_rewarded_reward','dual_reward_deconv_mean_blank_silence_reward']
 			ard_np = []
@@ -1630,8 +1637,10 @@ class VariableRewardSession(SingleRewardSession):
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold
-		else:
+		elif mask_direction == 'neg':
 			mapping_mask = mapping_data[:,0] < threshold
+		elif mask_direction == 'all':
+			mapping_mask = np.ones(mapping_data[:,0].shape, dtype = bool)
 		
 		# construct time series from signal amplitude in stim and non-stim regions, plus correlation
 		if analysis_type == 'correlation':
@@ -1858,6 +1867,7 @@ class VariableRewardSession(SingleRewardSession):
 		for roi in rois:
 			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 			results.append(self.deconvolve_with_correlation_roi(roi, -threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
+			results.append(self.deconvolve_with_correlation_roi(roi, 0.0, mask_type = 'center_Z', mask_direction = 'all', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'

@@ -1142,9 +1142,11 @@ class SingleRewardSession(RewardSession):
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold
-		else:
+		elif mask_direction == 'all':
+			mapping_mask = np.ones(mapping_data[:,0].shape, dtype = bool)
+		elif mask_direction == 'neg':
 			mapping_mask = mapping_data[:,0] < threshold
-				
+		
 		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
 		if signal_type in ['std', 'var']:
 			timeseries = (timeseries - timeseries.mean() ) / timeseries.std()
@@ -3165,7 +3167,9 @@ class SingleRewardSession(RewardSession):
 		# thresholding of mapping data stat values
 		if mask_direction == 'pos':
 			mapping_mask = mapping_data[:,0] > threshold
-		else:
+		elif mask_direction == 'all':
+			mapping_mask = np.ones(mapping_data[:,0].shape, dtype = bool)
+		elif mask_direction == 'neg':
 			mapping_mask = mapping_data[:,0] < threshold
 				
 		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
@@ -3301,4 +3305,160 @@ class SingleRewardSession(RewardSession):
 			
 		reward_h5file.close()
 		 
+	def whole_brain_SNR(self, deco = True, to_surf = True):
+		"""
+		whole_brain_deconvolution takes all nii files from the reward condition and deconvolves the separate event types
+		"""
+		mask = np.array(NiftiImage(self.runFile(stage = 'processed/mri/reg', base = 'BET_mask', postFix = [self.ID] )).data, dtype = bool)
+		nr_voxels = np.sum(mask)
+		# check out the duration of these runs, assuming they're all the same length.		
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		nii_file_shape = list(niiFile.data.shape)
+		
+		nr_reward_runs = len(self.conditionDict['reward'])
+		
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		time_signals = []
+		interval = [0.0,16.0]
+		
+		event_data = []
+		blink_events = []
+		roi_data = []
+		nr_runs = 0
+		# nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
+		nii_data = np.zeros([nr_reward_runs, nr_trs, nr_voxels] )
+	
+		for (j, r) in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
+			nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','tf','psc'])).data[:,mask]
+			this_run_events = []
+			for cond in conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			event_data.append(this_run_events)
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			nr_runs += 1
+	
+		# nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
+		# event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		nii_data = nii_data.reshape((nr_reward_runs * nr_trs, nr_voxels))
+		
+		event_data_all_types = [np.round(np.concatenate([e[i] for e in event_data]) / 0.75) * 0.75 for i in range(len(event_data[0]))]
+		# event_data = [np.round(np.sort(np.concatenate([event_data[0],event_data[1]])) * 4.0)/4.0, np.round(np.sort(np.concatenate([event_data[2],event_data[3]])) * 4.0)/4.0]
+		event_data_grouped = [np.sort(np.concatenate([event_data_all_types[0],event_data_all_types[1]])), np.sort(np.concatenate([event_data_all_types[2],event_data_all_types[3]]))]
+		
+		nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
+		nuisance_design.configure(np.array([np.hstack(blink_events)]))
+		deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data_grouped[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+		
+		# after deconvolution, correlate with all different event types. 
+		timepoints_of_samples = np.arange(0,deco.workingDataArray.shape[0]*0.75,0.75)
+		minimal_amount_of_events = np.min([len(e) for e in event_data_all_types])
+		
+		projection_data = np.zeros((len(event_data_all_types), nii_data.shape[1], minimal_amount_of_events))
+		for k, event_type in enumerate(event_data_all_types):
+			for j, e in enumerate(event_type[:minimal_amount_of_events]):
+				which_start_time_index = np.arange(timepoints_of_samples.shape[0])[timepoints_of_samples == e]
+				which_end_time_index = which_start_time_index + deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]
+				for i in range(nii_data.shape[1]):
+					projection_data[k,i,j] = spearmanr(deco.deconvolvedTimeCoursesPerEventTypeNuisance[[0, 0, 1, 1][k],:,i].squeeze(), deco.workingDataArray[which_start_time_index:which_end_time_index,i])[0]
+		
+		var_proj_data = projection_data.var(axis = -1)
+		mean_proj_data = projection_data.mean(axis = -1)
+		
+		for (i, d) in enumerate([mean_proj_data, var_proj_data]):
+			# outputdata = deco.deconvolvedTimeCoursesPerEventTypeNuisance[i]
+			outputdata = np.zeros((var_proj_data.shape[0], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3]))
+			outputdata[:,mask] = d
+			outputFile = NiftiImage(outputdata.reshape([outputdata.shape[0]]+nii_file_shape[1:]))
+			outputFile.header = niiFile.header
+			ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_' + ['mean_proj_data', 'var_proj_data'][i] + '.nii.gz')
+			outputFile.save(ofn)
+			# average over the interval [5,12] and [2,10] for reward and visual respectively. so, we'll just do [2,12]
+			
+			if to_surf:
+				# vol to surf?
+				vsO = VolToSurfOperator(inputObject = ofn)
+				sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+				# vsO.configure(frames = dict(zip(cond_labels, range(len(cond_labels)))), hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.configure(frames = dict(zip(cond_labels, range(len(cond_labels)))), hemispheres = None, register = '/Volumes/HDD/research/projects/reward/man/data/first/AV/AV_150312/processed/mri/reg/register_VisRewAV.dat', outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+				vsO.execute(wait = False)
+		
+				for hemi in ['lh','rh']:
+					ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+					# ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+					ssO.configure(fsSourceSubject = 'AV_270411', fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+					ssO.execute(wait = False)
+		
+	def snr_to_surf(self):
+		"""docstring for snr_to_surf"""
+		executable = 'mri_concat %s %s --o %s'
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+		ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_' + 'var_proj_data' + '.nii.gz')
+		proj_data_file = NiftiImage(ofn)
+		proj_data = np.array([proj_data_file.data[0] - proj_data_file.data[1], proj_data_file.data[2] - proj_data_file.data[3]])
+		
+		diff_f = NiftiImage(proj_data)
+		diff_f.header = proj_data_file.header
+		diff_fn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_' + 'proj_diff' + '.nii.gz')
+		diff_f.save(diff_fn)
+		
+		
+		# vol to surf?
+		vsO = VolToSurfOperator(inputObject = ofn)
+		sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+		vsO.configure(frames = dict(zip(cond_labels, range(len(cond_labels)))), hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+		vsO.execute(wait = False)
+
+		for hemi in ['lh','rh']:
+			for c in cond_labels:
+				ssO = SurfToSurfOperator(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco/surf'), 'reward_SNR_' + 'var_proj_data' + c + '.mgh'))
+				ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+				ssO.execute(wait = False)
+		
+		# vol to surf?
+		vsO = VolToSurfOperator(inputObject = diff_fn)
+		sofn = os.path.join(os.path.split(diff_fn)[0], 'surf/', os.path.split(diff_fn)[1])
+		vsO.configure(frames = dict(zip(['fix','stim'], range(2))), hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+		vsO.execute(wait = False)
+
+		for hemi in ['lh','rh']:
+			for c in ['fix','stim']:
+				ssO = SurfToSurfOperator(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco/surf'), 'reward_SNR_' + 'var_proj_data' + c + '.mgh'))
+				ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+				ssO.execute(wait = False)
+		
+		
+		# # now create the necessary difference images:
+		# # only possible if deco has already been run...
+		# for i in [0,2]:
+		# 	for (j, which_times) in enumerate(['reward', 'visual']):
+		# 		ipfs = [NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_mean_' + cond_labels[i] + '_' + which_times + '.nii.gz')), NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_deconv_mean_' + cond_labels[i+1] + '_' + which_times + '.nii.gz'))]
+		# 		diff_d = ipfs[0].data - ipfs[1].data
+		# 	
+		# 		ofn = os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), ['fix','','stimulus'][i] + '_reward_diff' + '_' + which_times + '.nii.gz')
+		# 		outputFile = NiftiImage(diff_d)
+		# 		outputFile.header = ipfs[0].header
+		# 		outputFile.save(ofn)
+		# 	
+		# 	
+		# 		if to_surf:
+		# 			vsO = VolToSurfOperator(inputObject = ofn)
+		# 			sofn = os.path.join(os.path.split(ofn)[0], 'surf/', os.path.split(ofn)[1])
+		# 			vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = sofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+		# 			vsO.execute(wait = False)
+		# 		
+		# 			for hemi in ['lh','rh']:
+		# 				ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+		# 				ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+		# 				ssO.execute(wait = False)
 	
