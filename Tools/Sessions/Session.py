@@ -190,7 +190,7 @@ class Session(PathConstructor):
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 	
-	def setupFiles(self, rawBase):
+	def setupFiles(self, rawBase, process_eyelink_file = True):
 		"""
 		When all runs are listed in the session, 
 		the session will be able to distill what conditions are there 
@@ -224,7 +224,8 @@ class Session(PathConstructor):
 			if hasattr(r, 'eyeLinkFilePath'):
 				elO = EyelinkOperator(r.eyeLinkFilePath)
 				ExecCommandLine('cp ' + os.path.splitext(r.eyeLinkFilePath)[0] + '.* ' + self.runFolder(stage = 'processed/eye', run = r ) )
-				elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
+				if process_eyelink_file:
+					elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 	

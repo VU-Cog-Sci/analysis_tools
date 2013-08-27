@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pylab as pl
 
 from nifti import *
-from ..log import *
+from Tools.log import *
 
 # in os.path, extensions contain leading periods
 standardMRIExtension = '.nii.gz'

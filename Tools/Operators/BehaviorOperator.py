@@ -18,6 +18,9 @@ from nifti import *
 from pypsignifit import *
 from Operator import *
 from ..log import *
+import re
+from IPython import embed as shell
+
 
 def removeRepetitions(array, position = 0):
 	a = array
@@ -455,4 +458,24 @@ class WedgeRemappingOperator(BehaviorOperator):
 			else: # no answer	- correct rejection
 				answers.append([(colorEvent[1]-standardNrSecsBeforeCountingForSelfReqAvgs)/standardPeriodDuration, colorEvent[1], colorEvent[2], 2, 0])
 		self.answerList = np.array(answers, dtype = float)
+	
+class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
+	
+	def __init__(self, inputObject, **kwargs):
+		"""docstring for __init__"""
+		super(PopulationReceptiveFieldBehaviorOperator, self).__init__(inputObject = inputObject, **kwargs)
+		run_start_time_string = [e for e in self.rawEventData[0] if e[:len('trial 0 phase 1')] == 'trial 0 phase 1']
+		self.run_start_time = float(run_start_time_string[0].split(' ')[-1])
+		
+	
+	def raw_button_presses(self):
+		"""docstring for raw_button_presses"""
+		task_button_event_times = []
+		shell()
+		for i in range(len(self.rawEventData)):
+			button_events = re.findall(re.compile('trial ' + str(i) + ' key: (\S+) at time: (-?\d+\.?\d*) for task [\S+]'), '\n'.join([s for s in self.rawEventData[i] if isinstance(s, str)]))
+			task_button_event_times.append(np.array([float(b[1]) for b in button_events if b[0] == 'b' or  b[0] == 'y']))
+		task_button_event_times = np.concatenate(task_button_event_times)
+		task_button_event_times = (task_button_event_times - self.run_start_time)[task_button_event_times > self.run_start_time]
+		np.savetxt(os.path.splitext(self.inputFileName)[0] + '.txt', np.array[task_button_event_times, 0.5 * np.ones(task_button_event_times.shape), np.ones(task_button_event_times.shape)]).T, delimiter = '\t', fmt = '%3.2f')
 	

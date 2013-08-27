@@ -16,10 +16,13 @@ import scipy.fftpack
 import numpy as np
 import matplotlib.pylab as pl
 from math import *
+from IPython import embed as shell
 
 from nifti import *
 from Operator import *
 import nipy.labs.glm
+from Tools.savitzky_golay import *
+
 
 class ImageOperator( Operator ):
 	"""docstring for ImageOperator"""
@@ -225,7 +228,54 @@ class ZScoreOperator(ImageOperator):
 		outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
 
-
+class SavitzkyGolayHighpassFilterOperator(ImageOperator):
+	"""SavitzkyGolayHighpassFilterOperator uses the local regression smoothing savitzky-golay algorithm to smooth the data, which it then subtracts from the data to create a high-pass filtered signal."""
+	def __init__(self, inputObject, outputFileName = None, **kwargs):
+		super(SavitzkyGolayHighpassFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
+		self.outputFileName = outputFileName
+		
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = self.inputObject.filename[:-7] + '_sgtf.nii.gz'
+	
+	def configure(self, mask_file = None, TR = 1.5, width = 240, order = 3):
+		"""mask_file is a BET mask, width is in seconds, as is TR, and the order is the polynomial order of the sg procedure."""
+		self.mask_file = mask_file
+		
+		self.TR = TR
+		self.width = width
+		self.order = order
+	
+	def execute(self):
+		"""execute the filtering operation."""
+		window_size = int(self.width / self.TR)
+		if window_size % 2 == 0:
+			window_size = window_size + 1
+		
+		input_data = self.inputObject.data
+		if self.mask_file != None:
+			input_data = input_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)]
+		else:
+			input_data = input_data.reshape((input_data.shape[0], -1))
+		
+		output_data = np.zeros(input_data.shape)
+		for vox in range(input_data.shape[-1]):
+			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order)
+			if vox % 100 == 0:
+				print 'voxel # ' + str(vox) + ' done'
+		
+		if self.mask_file != None:
+			new_output_data = np.zeros(self.inputObject.data.shape)
+			new_output_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)] = output_data
+			output_data = new_output_data
+		else:
+			output_data.reshape(self.inputObject.data.shape)
+		
+		output_image = NiftiImage(output_data)
+		output_image.header = self.inputObject.header
+		output_image.save(self.outputFileName)
+		
 
 # GLM type code..
 
