@@ -249,22 +249,26 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 	
 	def execute(self):
 		"""execute the filtering operation."""
+		# sg filter needs odd sized window size
 		window_size = int(self.width / self.TR)
 		if window_size % 2 == 0:
 			window_size = window_size + 1
 		
+		# mask or reshape incoming data
 		input_data = self.inputObject.data
 		if self.mask_file != None:
 			input_data = input_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)]
 		else:
 			input_data = input_data.reshape((input_data.shape[0], -1))
 		
+		# per-voxel estimation of sg low-pass and subtract it from the input data
 		output_data = np.zeros(input_data.shape)
 		for vox in range(input_data.shape[-1]):
 			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order)
 			if vox % 100 == 0:
 				print 'voxel # ' + str(vox) + ' done'
 		
+		# reshape filtered data back to original format
 		if self.mask_file != None:
 			new_output_data = np.zeros(self.inputObject.data.shape)
 			new_output_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)] = output_data
@@ -272,7 +276,8 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		else:
 			output_data.reshape(self.inputObject.data.shape)
 		
-		output_image = NiftiImage(output_data)
+		# save output file, as np.float32
+		output_image = NiftiImage(np.array(output_data, dtype = np.float32)
 		output_image.header = self.inputObject.header
 		output_image.save(self.outputFileName)
 		
