@@ -79,15 +79,26 @@ class PhysioOperator( Operator ):
 		heart_beat_diracs = np.array(self.log_data[:,self.columns.index('mark')] == 2.0, dtype = float)
 		self.continuous_ppu_signal = fftconvolve( heart_beat_diracs, kern, 'full' )[kern.shape[0]/2:-kern.shape[0]/2]
 	
-	def convolve_hrf(self, data, filter_length = 20.0):
+	def convolve_hrf(self, data, which_rf = 'gamma', filter_length = 20.0):
 		"""docstring for convolve_hrf"""
 		from ImageOperator import singleGamma
 		
 		padded_data = np.zeros(data.shape[0] + filter_length * self.sample_rate -1 )
 		padded_data[filter_length * self.sample_rate / 2:filter_length * self.sample_rate / 2 + data.shape[0]] = data
 		
-		hrf = singleGamma(np.linspace(0, filter_length, filter_length * self.sample_rate, endpoint = False))
-		return fftconvolve(padded_data, hrf, 'valid')
+		t = np.linspace(0, filter_length, filter_length * self.sample_rate, endpoint = False)
+		if which_rf == 'gamma':
+			hrf = singleGamma(t)
+		elif which_rf == 'rrf':	
+			# respiration response function from 
+			# Birn, R., Smith, M., Jones, T. & Bandettini, P. Neuroimage (2008).
+			hrf = 0.6 * t ** 2.1 * np.exp(-t/1.6) - 0.0023 * t ** 3.54 * np.exp(-t/4.25)
+		elif which_rf == 'crf':
+			# cardiac response function from 
+			# Chang, C., Cunningham, J. P. & Glover, G. H. Neuroimage 44, 857–869 (2009).
+			hrf = (0.6 * t ** 2.7) * np.exp(-t/1.6) - 16.0 * (1.0/np.sqrt(2*pi*9)) * np.exp(-0.5*((t-12.0)*(t-12.0))/9)
+			
+		return fftconvolve(padded_data, hrf, 'full')[filter_length * self.sample_rate / 2:filter_length * self.sample_rate / 2 + data.shape[0]]
 	
 	def find_scan_interval_by_gradients(self, which_gradients = ['x','y','z'], TR = 1.5, nr_TRs = 835):
 		"""find_scan_interval_by_gradients finds the interval of scanning by using the gradient channels. 
@@ -106,8 +117,8 @@ class PhysioOperator( Operator ):
 		self.filter_ppu(filter_width = filter_width, filter_sample_width = filter_sample_width)
 		
 		self.logger.info('convolving ppu and resp data with hrf')
-		self.continuous_bp_resp_norm_hrf = self.convolve_hrf(self.continuous_bp_resp_norm - self.continuous_bp_resp_norm.mean())
-		self.continuous_ppu_signal_hrf = self.convolve_hrf(self.continuous_ppu_signal - self.continuous_ppu_signal.mean())
+		self.continuous_bp_resp_norm_hrf = self.convolve_hrf(self.continuous_bp_resp_norm - self.continuous_bp_resp_norm.mean(), which_rf = 'rrf', filter_length = 40.0)
+		self.continuous_ppu_signal_hrf = self.convolve_hrf(self.continuous_ppu_signal - self.continuous_ppu_signal.mean(), which_rf = 'crf', filter_length = 30.0)
 		
 		self.find_scan_interval_by_gradients()
 		

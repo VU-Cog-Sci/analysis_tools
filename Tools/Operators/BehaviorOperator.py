@@ -477,5 +477,5 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 			task_button_event_times.append(np.array([float(b[1]) for b in button_events if b[0] == 'b' or  b[0] == 'y']))
 		task_button_event_times = np.concatenate(task_button_event_times)
 		task_button_event_times = (task_button_event_times - self.run_start_time)[task_button_event_times > self.run_start_time]
-		np.savetxt(os.path.splitext(self.inputFileName)[0] + '.txt', np.array[task_button_event_times, 0.5 * np.ones(task_button_event_times.shape), np.ones(task_button_event_times.shape)]).T, delimiter = '\t', fmt = '%3.2f')
+		np.savetxt(os.path.splitext(self.inputFileName)[0] + '.txt', np.array([task_button_event_times, 0.5 * np.ones(task_button_event_times.shape), np.ones(task_button_event_times.shape)]).T, delimiter = '\t', fmt = '%3.2f')
 	

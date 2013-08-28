@@ -232,7 +232,6 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 	"""SavitzkyGolayHighpassFilterOperator uses the local regression smoothing savitzky-golay algorithm to smooth the data, which it then subtracts from the data to create a high-pass filtered signal."""
 	def __init__(self, inputObject, outputFileName = None, **kwargs):
 		super(SavitzkyGolayHighpassFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
-		self.outputFileName = outputFileName
 		
 		if outputFileName:
 			self.outputFileName = outputFileName
@@ -257,7 +256,8 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		# mask or reshape incoming data
 		input_data = self.inputObject.data
 		if self.mask_file != None:
-			input_data = input_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)]
+			mask = np.array(NiftiImage(self.mask_file).data, dtype = bool)
+			input_data = input_data[:,mask]
 		else:
 			input_data = input_data.reshape((input_data.shape[0], -1))
 		
@@ -265,19 +265,19 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		output_data = np.zeros(input_data.shape)
 		for vox in range(input_data.shape[-1]):
 			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order)
-			if vox % 100 == 0:
-				print 'voxel # ' + str(vox) + ' done'
+			if vox % 10000 == 0:
+				self.logger.info( 'voxel # ' + str(vox) + ' done' )
 		
 		# reshape filtered data back to original format
 		if self.mask_file != None:
 			new_output_data = np.zeros(self.inputObject.data.shape)
-			new_output_data[:,np.array(NiftiImage(self.mask_file).data, dtype = bool)] = output_data
+			new_output_data[:,mask] = output_data
 			output_data = new_output_data
 		else:
 			output_data.reshape(self.inputObject.data.shape)
 		
 		# save output file, as np.float32
-		output_image = NiftiImage(np.array(output_data, dtype = np.float32)
+		output_image = NiftiImage(np.array(output_data, dtype = np.float32))
 		output_image.header = self.inputObject.header
 		output_image.save(self.outputFileName)
 		
