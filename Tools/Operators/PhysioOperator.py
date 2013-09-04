@@ -28,10 +28,12 @@ from BehaviorOperator import NewBehaviorOperator
 from IPython import embed as shell
 
 class PhysioOperator( Operator ):
-	"""docstring for ImageOperator"""
+	"""PhysioOperator is an operator that takes a log file from the scanphyslog system and preprocesses these data.
+	this includes temporal filtering, kernel convolution and regressor creation.
+	"""
 	def __init__(self, inputObject, **kwargs):
 		"""
-		PhysioOperator operator takes a filename
+		PhysioOperator operator takes a filename for a log file
 		"""
 		super(PhysioOperator, self).__init__(inputObject = inputObject, **kwargs)
 		if self.inputObject.__class__.__name__ == 'str':
@@ -51,7 +53,7 @@ class PhysioOperator( Operator ):
 		self.end_index = np.arange(self.log_data.shape[0])[self.log_data[:,-1] == 20][-1]
 	
 	def filter_resp(self, hp_frequency = 0.05, lp_frequency = 0.5):
-		"""docstring for filter_resp"""
+		"""filter_resp band-pass filters respiration signals, with hp and lp frequencies"""
 		# band-pass filtering of resp signal, high pass first and then low-pass parameters
 		self.logger.info('band-pass filtering resp signals and normalizing them')
 		
@@ -68,7 +70,7 @@ class PhysioOperator( Operator ):
 		self.continuous_bp_resp_norm = self.continuous_bp_resp_norm - self.continuous_bp_resp_norm.mean()
 	
 	def filter_ppu(self, filter_width = 5.0, filter_sample_width = 10000):
-		"""docstring for filter_ppu"""
+		"""filter_ppu filters the ppu signals, since heart beats are faster than respiration, we smooth the signal to take the average hr in a filter_width wide signal period"""
 		self.logger.info('filtering ppu signals')
 		# filter setup
 		smooth_width = filter_width * self.sample_rate
@@ -80,7 +82,7 @@ class PhysioOperator( Operator ):
 		self.continuous_ppu_signal = fftconvolve( heart_beat_diracs, kern, 'full' )[kern.shape[0]/2:-kern.shape[0]/2]
 	
 	def convolve_hrf(self, data, which_rf = 'gamma', filter_length = 20.0):
-		"""docstring for convolve_hrf"""
+		"""convolve_hrf convolves a signal data with a kernel, which can be an hrf, but can also be a respiration or cardiac response function."""
 		from ImageOperator import singleGamma
 		
 		padded_data = np.zeros(data.shape[0] + filter_length * self.sample_rate -1 )
@@ -112,7 +114,10 @@ class PhysioOperator( Operator ):
 		self.start_index = self.end_index - float(TR * nr_TRs * self.sample_rate)
 	
 	def preprocess_to_continuous_signals(self, TR = 1.5, nr_TRs = 834, hp_frequency = 0.01, lp_frequency = 4.0, filter_width = 3.0, filter_sample_width = 10000, sg_width = 241, sg_order = 3):
-		
+		"""preprocess_to_continuous_signals bundles the functions of this class for a full analysis of hr and resp. 
+		This is followed by high-pass filtering that tries to mimic the temporal filtering applied to fMRI signals.
+		it spits out separate txt files for hr and resp, and plots both together in a pdf figure.
+		"""
 		self.filter_resp(hp_frequency = hp_frequency, lp_frequency = lp_frequency)
 		self.filter_ppu(filter_width = filter_width, filter_sample_width = filter_sample_width)
 		
