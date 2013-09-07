@@ -42,8 +42,9 @@ class PhysioOperator( Operator ):
 		self.read_file()
 		
 	def read_file(self, sample_rate = 500.0):
-		"""read_file(self) reads the physio log file and separates the data, finding its beginning and end."""
-		# columns = ['v1raw', 'v2raw',  'v1', 'v2',  'ppu', 'resp',  'gx', 'gy', 'gz', 'mark']
+		"""read_file(self) reads the physio log file and separates the data, finding its beginning and end using messages from the scanner. 
+		the finding of this start and end will also be done using the gradient channel signals, which is more dependable.
+		"""
 		self.logger.info('reading log file for physio data')
 		self.columns = ['v1raw', 'v2raw',  'v1', 'v2',  'ppu', 'resp',  'gx', 'gy', 'gz', 'mark']
 		self.sample_rate = sample_rate

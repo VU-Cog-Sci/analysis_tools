@@ -83,7 +83,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		run.run_start_time = float(expt_start_time_string[0].split(' ')[-1])
 		
 		trials = []
-		for e, p, i in zip(run.parameters, run.events, range(len(run.parameters))):
+		for p, e, i in zip(run.parameters, run.events, range(len(run.parameters))):
 			tes = TrialEventSequence(p, e, i, run.run_start_time)
 			tes.convert_events()
 			# do full psychophysics analysis per trial here.
