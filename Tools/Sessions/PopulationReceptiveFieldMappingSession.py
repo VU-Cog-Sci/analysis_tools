@@ -18,10 +18,10 @@ from tables import *
 import pickle, re
 
 class TrialEventSequence(object):
-	def __init__(self, parameters, events, index = 0, run_start_time = 0.0)
+	def __init__(self, parameters, events, index = 0, run_start_time = 0.0):
 		self.parameters = parameters
 		self.events = events
-		self.reference_time = reference_time
+		self.run_start_time = run_start_time
 		self.index = index
 	
 	def convert_events(self):
@@ -29,19 +29,19 @@ class TrialEventSequence(object):
 		to a set of lists that we can work with 
 		and are easily interpretable."""
 		rec_button = re.compile('trial %i key: (\S+) at time: (-?\d+\.?\d*) for task [\S+]' % self.index)
-		self.button_events = [re.findall(rec_button, e)[0] for e in self.events if e[:13] == 'trial %i key:' % self.index]
+		self.button_events = [re.findall(rec_button, e)[0] for e in self.events if 'trial %i key:' % self.index in e]
 		self.button_events = [[b[0], float(b[1]) - self.run_start_time] for b in self.button_events]
 		
 		rec_phase = re.compile('trial %d phase (\d+) started at (-?\d+\.?\d*)' % self.index)
-		self.phase_events = [re.findall(rec_phase, e)[0] for e in self.events if e[:5] == 'trial']
+		self.phase_events = [re.findall(rec_phase, e)[0] for e in self.events if 'trial %d phase'% self.index in e]
 		self.phase_events = [[p[0], float(p[1]) - self.run_start_time] for p in self.phase_events]
 		
 		self.find_task()	# need to know the task this trial to be able to extract.
 		rec_signal = re.compile('signal in task (\S+) at (-?\d+\.?\d*) value 1.0')
-		self.signal_events = [re.findall(rec_signal, e)[0] for e in self.events if e[:6] == 'signal']
+		self.signal_events = [re.findall(rec_signal, e)[0] for e in self.events if 'signal' in e]
 		self.signal_events = [[s[0], float(s[1]) - self.run_start_time] for s in self.signal_events]
 		self.task_signal_events = np.array([s[0] == self.task for s in self.signal_events])
-		self.task_signal_times = np.array(self.signal_events)[self.task_signal_events,1]
+		self.task_signal_times = np.array(np.array(self.signal_events)[self.task_signal_events,1], dtype = float)
 		
 	
 	def find_task(self):
@@ -50,7 +50,7 @@ class TrialEventSequence(object):
 		this means the fixation task."""
 		self.task = self.parameters['task']
 		
-		if np.array([b[0] == 'y' for b in self.button_events]).sum() > 0
+		if np.array([b[0] == 'y' for b in self.button_events]).sum() > 0:
 			self.task = 'fix'
 			self.task_button_event_times = np.array([b[1] for b in self.button_events if b[0] == 'y'])
 		else:
@@ -61,10 +61,10 @@ class TrialEventSequence(object):
 		and evaluate which signals were responded to and which were not.
 		maximal_reaction_time defines the window in which button presses are counted."""
 		
-		response_delays = np.array([self.task_button_event_times - s for s in self.task_signal_times])
-		response_delays_indices = [rd > 0 for rd in response_delays]
-		[True for rdi in response_delays_indices if rdi.sum() > 0 else 0]
+		all_response_delays = np.array([self.task_button_event_times - s for s in self.task_signal_times])
+		# response_delays = [r[r>0][0] if (r>0).shape[0] > 0 else -1 for r in all_response_delays]
 		
+		self.signal_times_response_times = np.array([[self.task_signal_times[i], r[r>0][0]] if (r>0).shape[0] > 0 else -1 for i, r in enumerate(all_response_delays)])
 		
 		
 

@@ -66,9 +66,9 @@ class PhysioOperator( Operator ):
 		
 		# filter operations and normalization after filtering
 		hp_c_resp = filtfilt(bhp, ahp, self.log_data[:,self.columns.index('resp')])
-		self.bp_resp = filtfilt(blp, alp, hp_c_resp)
-		self.continuous_bp_resp_norm = (self.bp_resp - self.bp_resp.min()) / (self.bp_resp.max() - self.bp_resp.min())
-		self.continuous_bp_resp_norm = self.continuous_bp_resp_norm - self.continuous_bp_resp_norm.mean()
+		self.resp = filtfilt(blp, alp, hp_c_resp)
+		self.continuous_resp_norm = (self.resp - self.resp.min()) / (self.resp.max() - self.resp.min())
+		self.continuous_resp_norm = self.continuous_resp_norm - self.continuous_resp_norm.mean()
 	
 	def filter_ppu(self, filter_width = 5.0, filter_sample_width = 10000):
 		"""filter_ppu filters the ppu signals, since heart beats are faster than respiration, we smooth the signal to take the average hr in a filter_width wide signal period"""
@@ -119,11 +119,11 @@ class PhysioOperator( Operator ):
 		This is followed by high-pass filtering that tries to mimic the temporal filtering applied to fMRI signals.
 		it spits out separate txt files for hr and resp, and plots both together in a pdf figure.
 		"""
-		self.filter_resp(hp_frequency = hp_frequency, lp_frequency = lp_frequency)
+		# self.filter_resp(hp_frequency = hp_frequency, lp_frequency = lp_frequency)
 		self.filter_ppu(filter_width = filter_width, filter_sample_width = filter_sample_width)
 		
 		self.logger.info('convolving ppu and resp data with hrf')
-		self.continuous_bp_resp_norm_hrf = self.convolve_hrf(self.continuous_bp_resp_norm - self.continuous_bp_resp_norm.mean(), which_rf = 'rrf', filter_length = 40.0)
+		self.continuous_resp_norm_hrf = self.convolve_hrf(self.log_data[:,self.columns.index('resp')] - self.log_data[:,self.columns.index('resp')].mean(), which_rf = 'rrf', filter_length = 40.0)
 		self.continuous_ppu_signal_hrf = self.convolve_hrf(self.continuous_ppu_signal - self.continuous_ppu_signal.mean(), which_rf = 'crf', filter_length = 30.0)
 		
 		self.find_scan_interval_by_gradients()
@@ -131,19 +131,19 @@ class PhysioOperator( Operator ):
 		self.logger.info('resampling physio data to TRs')
 		# resampling is okay like this, picking single indices, because it's all very low-pass filtered already
 		self.resamples = np.array(np.round(np.linspace(self.start_index, self.end_index, nr_TRs, endpoint = False)), dtype = int)
-		self.res_continuous_bp_resp_signal_hrf = self.continuous_bp_resp_norm_hrf[self.resamples]
+		self.res_continuous_resp_signal_hrf = self.continuous_resp_norm_hrf[self.resamples]
 		self.res_continuous_ppu_signal_hrf = self.continuous_ppu_signal_hrf[self.resamples]
 		
 		self.logger.info('detrend physio signal with savitzky-golay filter as a high-pass filter')
-		self.detrended_res_continuous_bp_resp_signal_hrf = self.res_continuous_bp_resp_signal_hrf - savitzky_golay(self.res_continuous_bp_resp_signal_hrf, sg_width, sg_order)
+		self.detrended_res_continuous_resp_signal_hrf = self.res_continuous_resp_signal_hrf - savitzky_golay(self.res_continuous_resp_signal_hrf, sg_width, sg_order)
 		self.detrended_res_continuous_ppu_signal_hrf = self.res_continuous_ppu_signal_hrf - savitzky_golay(self.res_continuous_ppu_signal_hrf, sg_width, sg_order)
 		
-		self.detrended_res_continuous_bp_resp_signal_hrf = self.detrended_res_continuous_bp_resp_signal_hrf / self.detrended_res_continuous_bp_resp_signal_hrf.std()
+		self.detrended_res_continuous_resp_signal_hrf = self.detrended_res_continuous_resp_signal_hrf / self.detrended_res_continuous_resp_signal_hrf.std()
 		self.detrended_res_continuous_ppu_signal_hrf = self.detrended_res_continuous_ppu_signal_hrf / self.detrended_res_continuous_ppu_signal_hrf.std()
 	
 		f = pl.figure(figsize = (15,3))
 		s = f.add_subplot(111)
-		pl.plot(self.detrended_res_continuous_bp_resp_signal_hrf, label = 'resp')
+		pl.plot(self.detrended_res_continuous_resp_signal_hrf, label = 'resp')
 		pl.plot(self.detrended_res_continuous_ppu_signal_hrf, label = 'hr')
 		s.set_title('resp and hr signals from file ' + os.path.split(self.inputFileName)[-1])
 		s.set_xlabel('time [TRs]')
@@ -155,7 +155,7 @@ class PhysioOperator( Operator ):
 			for (j, l) in enumerate(leg.get_lines()):
 				l.set_linewidth(3.5)  # the legend line width
 		pl.savefig(os.path.splitext(self.inputFileName)[0] + '.pdf')
-		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_resp.txt', self.detrended_res_continuous_bp_resp_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
+		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_resp.txt', self.detrended_res_continuous_resp_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
 		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_ppu.txt', self.detrended_res_continuous_ppu_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
 
 

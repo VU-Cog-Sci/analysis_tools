@@ -86,9 +86,9 @@ class PRFModelDesign(object):
 		self.padding = padding
 		self.bar_width = bar_width
 	
-	def design_matrix(self, method = 'gamma', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6):
 		"""design_matrix creates a design matrix for the runs
-			method can be gamma or fir. when gamma, we can specify the parameters of gamma and double-gamma, etc.
+			method can be hrf or fir. when gamma, we can specify the parameters of gamma and double-gamma, etc.
 		"""
 		self.stim_matrix_list = []
 		self.design_matrix_list = []
@@ -97,11 +97,11 @@ class PRFModelDesign(object):
 			mr.simulate_run()
 			self.stim_matrix_list.append(mr.run_matrix)
 			
-			if method == 'gamma':
+			if method == 'hrf':
 				run_design = Design(mr.run_matrix.shape[0], self.stim_refresh)
-				run_design.rawDesignMatrix = mr.run_matrix.reshape((mr.run_matrix.shape[0], -1))
+				run_design.rawDesignMatrix = mr.run_matrix.reshape((mr.run_matrix.shape[0], -1)).T
 				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
-				workingDesignMatrix = run_design.designMatrix
+				workingDesignMatrix = run_design.designMatrix.T
 			elif method == 'fir':
 				new_size = list(mr.run_matrix.shape)
 				new_size[0] *= int(fir_ratio)
@@ -111,7 +111,7 @@ class PRFModelDesign(object):
 				workingDesignMatrix = new_array
 			
 			self.design_matrix_list.append(workingDesignMatrix)
-		self.full_design_matrix = np.hstack(design_matrix_list)
+		self.full_design_matrix = np.vstack(self.design_matrix_list)
 		
 		
 		
