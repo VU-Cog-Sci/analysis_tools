@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-EyeOperator.py
+PhysioOperator.py
 
 Created by Tomas Knapen on 2010-12-19.
 Copyright (c) 2010 __MyCompanyName__. All rights reserved.
