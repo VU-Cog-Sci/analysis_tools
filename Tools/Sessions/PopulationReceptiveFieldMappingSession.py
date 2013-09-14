@@ -10,27 +10,12 @@ import datetime
 from ..Sessions import * 
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
-from ..circularTools import *
 from pylab import *
 from nifti import *
-from IPython import embed as shell
-from tables import *
-import pickle, re
-
 
 
 class PopulationReceptiveFieldMappingSession(Session):
 	"""
 	Class for population receptive field mapping sessions analysis.
 	"""
-		
-		
-		
-		
-		
-		
-		
-
-
-
 	pass

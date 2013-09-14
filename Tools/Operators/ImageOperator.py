@@ -265,7 +265,7 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		# per-voxel estimation of sg low-pass and subtract it from the input data
 		output_data = np.zeros(input_data.shape)
 		for vox in range(input_data.shape[-1]):
-			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order)
+			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order) + input_data[:,vox].mean()
 			if vox % 10000 == 0:
 				self.logger.info( 'voxel # ' + str(vox) + ' done' )
 		

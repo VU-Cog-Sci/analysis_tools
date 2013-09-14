@@ -40,24 +40,24 @@ class PathConstructor(object):
 	def __init__(self):
 		self.fileNameBaseString = self.dateCode
 	
-	def baseFolder(self):
+	def base_dir(self):
 		"""docstring for baseFolder"""
-		return os.path.join(self.project.baseFolder, self.subject.initials, self.dateCode)
+		return os.path.join(self.project.base_dir, self.subject.initials, self.dateCode)
 	
-	def makeBaseFolder(self):
-		if not os.path.isdir(self.baseFolder()):
+	def make_base_dir(self):
+		if not os.path.isdir(self.base_dir()):
 			try:
-				os.mkdir(os.path.join(self.project.baseFolder, self.subject.initials))
+				os.mkdir(os.path.join(self.project.base_dir, self.subject.initials))
 			except OSError:
 				pass
 			try:
-				os.mkdir(self.baseFolder())
+				os.mkdir(self.base_dir())
 			except OSError:
 				pass
 	
 	def stageFolder(self, stage):
 		"""folder for a certain stage - such as 'raw/mri' or 'processed/eyelink', or something like that. """
-		return os.path.join(self.baseFolder(), stage)
+		return os.path.join(self.base_dir(), stage)
 	
 	def runFolder(self, stage, run):
 		"""docstring for runFolder"""
@@ -91,17 +91,17 @@ class PathConstructor(object):
 	
 	def createFolderHierarchy(self):
 		"""docstring for fname"""
-		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye']
-		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye']
+		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
+		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
 		conditionFolders = np.concatenate((self.conditionList, ['log','figs','masks','masks/stat','masks/anat','reg','surf','scripts']))
 		
 		
-		self.makeBaseFolder()
+		self.make_base_dir()
 		# assuming baseDir/raw/ exists, we must make processed
-		if not os.path.isdir(os.path.join(self.baseFolder(), 'processed') ):
-			os.mkdir(os.path.join(self.baseFolder(), 'processed'))
-		if not os.path.isdir(os.path.join(self.baseFolder(), 'raw') ):
-			os.mkdir(os.path.join(self.baseFolder(), 'raw'))
+		if not os.path.isdir(os.path.join(self.base_dir(), 'processed') ):
+			os.mkdir(os.path.join(self.base_dir(), 'processed'))
+		if not os.path.isdir(os.path.join(self.base_dir(), 'raw') ):
+			os.mkdir(os.path.join(self.base_dir(), 'raw'))
 		
 		
 		# create folders for processed data
@@ -190,7 +190,7 @@ class Session(PathConstructor):
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 	
-	def setupFiles(self, rawBase, process_eyelink_file = True):
+	def setupFiles(self, rawBase, process_eyelink_file = True, date_format = None):
 		"""
 		When all runs are listed in the session, 
 		the session will be able to distill what conditions are there 
@@ -222,12 +222,14 @@ class Session(PathConstructor):
 				ExecCommandLine('cp ' + r.rawDataFilePath + ' ' + self.runFile(stage = 'processed/mri', run = r ) )
 			# behavioral files will be copied during analysis
 			if hasattr(r, 'eyeLinkFilePath'):
-				elO = EyelinkOperator(r.eyeLinkFilePath)
+				elO = EyelinkOperator(r.eyeLinkFilePath, date_format = date_format)
 				ExecCommandLine('cp ' + os.path.splitext(r.eyeLinkFilePath)[0] + '.* ' + self.runFolder(stage = 'processed/eye', run = r ) )
 				if process_eyelink_file:
 					elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
+			if hasattr(r, 'physiologyFile'):
+				ExecCommandLine('cp ' + r.physiologyFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/hr', run = r, extension = '.log' ) )
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
@@ -411,7 +413,7 @@ class Session(PathConstructor):
 			
 			job_server.print_stats()
 	
-	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf']):#, 'percentsignalchange'
+	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf'], mask_file = None):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data
@@ -439,6 +441,11 @@ class Session(PathConstructor):
 					zscO = ZScoreOperator(funcFile)
 					# zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
+				if op == 'sgtf':
+					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
+					sgtfO.configure(mask_file = mask_file, TR = funcFile.rtime, width = 240, order = 3)
+					sgtfO.execute()
+					
 		if self.parallelize and operations[0][-4:] == 'pass':
 			# tryout parallel implementation - later, this should be abstracted out of course. 
 			ppservers = ()

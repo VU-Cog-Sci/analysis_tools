@@ -75,8 +75,12 @@ class MCFlirtOperator( CommandLineOperator ):
 	"""docstring for MCFlirtOperator"""
 	def __init__(self, inputObject, costFunction = 'normmi', target = None, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
-		super(MCFlirtOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; mcflirt', **kwargs)
-
+		super(MCFlirtOperator, self).__init__(inputObject = inputObject, cmd = 'mcflirt', **kwargs)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; mcflirt'
+		
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		self.costFunction = costFunction
 		self.target = target
@@ -125,12 +129,16 @@ class MRIConvertOperator( CommandLineOperator ):
 
 class FlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, referenceFileName = '$FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ;
+	def __init__(self, inputObject, referenceFileName = '$FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz', cmd = 'flirt', costFunction = 'normmi', **kwargs): # source ~/.bash_profile_fsl ;
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		super(FlirtOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; flirt'
 		self.referenceFileName = referenceFileName
 		self.costFunction = costFunction
 
@@ -211,13 +219,17 @@ class InvertFlirtOperator( CommandLineOperator ):
 
 class ConcatFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
-	def __init__(self, inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; convert_xfm', **kwargs): # source ~/.bash_profile_fsl ;
+	def __init__(self, inputObject, cmd = 'convert_xfm', **kwargs): # source ~/.bash_profile_fsl ;
 		"""
 		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
 		"""
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		super(ConcatFlirtOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
-
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; convert_xfm'
+	
 	def configure(self, secondInputFile, outputFileName = None):
 		"""
 		standard configure is configureRun instead of apply
@@ -241,7 +253,11 @@ class BETOperator( CommandLineOperator ):
 	"""
 	def __init__(self, inputObject, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
-		super(BETOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; bet', **kwargs)
+		super(BETOperator, self).__init__(inputObject = inputObject, cmd = 'bet', **kwargs)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; bet'
 
 	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0, Z = True):
 		"""
@@ -300,8 +316,11 @@ class BBRegisterOperator( CommandLineOperator ):
 
 class FSLMathsOperator( CommandLineOperator ):
 	"""docstring for FSLMathsOperator"""
-	def __init__(self, inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths', outputDataType = 'float', **kwargs):
+	def __init__(self, inputObject, cmd = 'fslmaths', outputDataType = 'float', **kwargs):
 		super(FSLMathsOperator, self).__init__( inputObject = inputObject, cmd = cmd, **kwargs )
+		if not 'sara' or 'aeneas' in os.uname()[1]:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths'
+		
 		self.outputDataType = outputDataType
 		self.outputFileName = None
 
@@ -365,6 +384,40 @@ class FSLMathsOperator( CommandLineOperator ):
 		self.configure( outputFileName = self.outputFileName, **maskArgs )
 		
 		
+class FEATOperator( CommandLineOperator ):
+	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	def __init__(self, inputObject, **kwargs):
+		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'feat ', **kwargs)
+		self.featFile = self.inputObject
+		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
+		if not 'sara' or 'aeneas' in os.uname()[1]:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat '
+		
+
+	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
+		"""
+		configure will run feat on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+
+		self.featFileName = featFileName
+
+		sf = open(self.featFile,'r')
+		workingString = sf.read()
+		sf.close()
+		for e in REDict:
+			rS = re.compile(e)
+			workingString = re.sub(rS, REDict[e], workingString)
+
+		of = open(self.featFileName, 'w')
+		of.write(workingString)
+		of.close()
+
+		runcmd = self.cmd
+		runcmd += self.featFileName
+		if not waitForExecute:
+			runcmd += ' & '
+		self.runcmd = runcmd
 
 
 class retMapRun(object):
@@ -634,41 +687,6 @@ class ParRecConversionOperator( CommandLineOperator ):
 		self.runcmd += ' -v n'
 		self.runcmd += ' -f y'
 		self.runcmd += ' ' + self.inputFileName
-
-
-class FEATOperator( CommandLineOperator ):
-	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
-	def __init__(self, inputObject, **kwargs):
-		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat ', **kwargs)
-		self.featFile = self.inputObject
-		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
-		if 'sara' in os.uname()[1]:
-			self.cmd = self.cmd.split(';')[-1]
-
-	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
-		"""
-		configure will run feat on file in inputObject
-		as specified by parameters in __init__ arguments and here to run.
-		"""
-
-		self.featFileName = featFileName
-
-		sf = open(self.featFile,'r')
-		workingString = sf.read()
-		sf.close()
-		for e in REDict:
-			rS = re.compile(e)
-			workingString = re.sub(rS, REDict[e], workingString)
-
-		of = open(self.featFileName, 'w')
-		of.write(workingString)
-		of.close()
-
-		runcmd = self.cmd
-		runcmd += self.featFileName
-		if not waitForExecute:
-			runcmd += ' & '
-		self.runcmd = runcmd
 
 class RetMapReDrawOperator( CommandLineOperator ):
 	"""docstring for MCFlirtOperator"""
