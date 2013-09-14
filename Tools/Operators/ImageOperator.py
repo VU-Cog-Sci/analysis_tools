@@ -246,6 +246,9 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		self.TR = TR
 		self.width = width
 		self.order = order
+		
+		self.logger.info('configured: inputfile %s with mask %s, TR %s'%(self.inputObject, self.mask_file, self.TR))
+		self.logger.info('SG parameters: width %s order %s' %(str(self.width), str(self.order)))
 	
 	def execute(self):
 		"""execute the filtering operation."""
@@ -264,10 +267,12 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 		
 		# per-voxel estimation of sg low-pass and subtract it from the input data
 		output_data = np.zeros(input_data.shape)
+		percentage_done = 0
 		for vox in range(input_data.shape[-1]):
 			output_data[:,vox] = input_data[:,vox] - savitzky_golay(input_data[:,vox], window_size = window_size, order = self.order) + input_data[:,vox].mean()
-			if vox % 10000 == 0:
-				self.logger.info( 'voxel # ' + str(vox) + ' done' )
+			if percentage_done < ceil(100 * vox / input_data.shape[-1]):
+				percentage_done = percentage_done + 1
+				self.logger.info( 'voxel # ' + str(vox) + ' done ' + str(percentage_done) + ' percent' )
 		
 		# reshape filtered data back to original format
 		if self.mask_file != None:

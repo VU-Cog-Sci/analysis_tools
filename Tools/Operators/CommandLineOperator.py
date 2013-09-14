@@ -318,7 +318,9 @@ class FSLMathsOperator( CommandLineOperator ):
 	"""docstring for FSLMathsOperator"""
 	def __init__(self, inputObject, cmd = 'fslmaths', outputDataType = 'float', **kwargs):
 		super(FSLMathsOperator, self).__init__( inputObject = inputObject, cmd = cmd, **kwargs )
-		if not 'sara' or 'aeneas' in os.uname()[1]:
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
 			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths'
 		
 		self.outputDataType = outputDataType
@@ -374,6 +376,15 @@ class FSLMathsOperator( CommandLineOperator ):
 
 		meanArgs = {'-bptf ': str(nr_samples_hp) + ' ' + str(nr_samples_lp)}
 		self.configure( outputFileName = self.outputFileName, **meanArgs )
+	
+	def configureSmooth(self, outputFileName = None, smoothing_sd = 3.0):
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_smooth' + standardMRIExtension
+			
+		smArgs = {' -s ': str(smoothing_sd), }
+		self.configure( outputFileName = self.outputFileName, **smArgs )
 	
 	def configureMask(self, mask_file, outputFileName = None ):
 		if outputFileName == None:

@@ -529,7 +529,7 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 		self.parameters = file_data['parameterArray']
 		
 		run_start_time_string = [e for e in self.events[0] if e[:len('trial 0 phase 1')] == 'trial 0 phase 1']
-		self.run_start_time = float(expt_start_time_string[0].split(' ')[-1])
+		self.run_start_time = float(run_start_time_string[0].split(' ')[-1])
 	
 	def convert_events(self):
 		self.trials = []
@@ -549,5 +549,17 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 				if t == u:
 					all_responses_per_task[-1].append(self.trials[i].responses) # responses is een lijst van Response objecten.
 		
-		
+	def trial_times(self):
+		if not hasattr(self, 'trials'):
+			self.convert_events()
+		self.trial_times = []
+		self.all_button_times = []
+		for i, t in enumerate(self.trials):
+			stim_on_time = [p[1] for p in t.phase_events if p[0] == '2']
+			stim_off_time = [p[1] for p in t.phase_events if p[0] == '3' ]
+			
+			self.trial_times.append([t.task, stim_on_time[0], stim_off_time[0]])
+			self.all_button_times.append([[t.task, bt[1]] for bt in t.button_events])
+		self.all_button_times = np.concatenate(self.all_button_times)
 	
+			
