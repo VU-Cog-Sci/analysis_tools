@@ -305,7 +305,7 @@ def singleGamma(timepoints, a = 6, b = 0.9):
 
 class Design(object):
 	"""Design represents the design matrix of a given run"""
-	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 100):
+	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 1):
 		self.nrTimePoints = nrTimePoints
 		self.rtime = rtime
 		self.subSamplingRatio = subSamplingRatio

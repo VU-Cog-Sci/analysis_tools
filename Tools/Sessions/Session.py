@@ -458,7 +458,7 @@ class Session(PathConstructor):
 			job_server.print_stats()
 		
 	
-	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2005s', template_condition = None):
+	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
 		"""
@@ -466,7 +466,7 @@ class Session(PathConstructor):
 			labelFolders.append(self.subject.labelFolderOfPreference)
 			
 		if annot:
-			self.logger.info('create masks based on anatomical parcelation as in %s.annot', annotFile)
+			self.logger.info('create labels based on anatomical parcelation as in %s.annot', annotFile)
 			# convert designated annotation to labels in an identically named directory
 			anlo = AnnotationToLabelOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'rh' + '.' + annotFile + '.annot'))
 			anlo.configure(subjectID = self.subject.standardFSID )
@@ -486,9 +486,9 @@ class Session(PathConstructor):
 				lvo = LabelToVolOperator(lf)
 				# we convert the label files to the space of the first EPI run of the session, moving them into masks/anat.
 				if template_condition == None:
-					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf','meanvol'])
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]])
 				else:
-					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]], postFix = ['mcf','meanvol'])
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]])
 				
 				lvo.configure(templateFileName = template_file, hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()

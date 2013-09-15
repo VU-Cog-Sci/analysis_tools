@@ -664,7 +664,9 @@ class AnnotationToLabelOperator( CommandLineOperator ):
 		configure sets up the command line for surf to vol translation.
 		"""
 		# self.inputObject is an annotation file name
-		annotationName = os.path.splitext(os.path.split(self.inputFileName)[1])[0].split('.')[1]
+		annotationName = os.path.splitext(os.path.split(self.inputFileName)[1])[0].split('.')
+		annotationName.pop(0)
+		annotationName = '.'.join(annotationName)
 
 		if hemispheres == None:
 			hemispheres = ['lh','rh']
