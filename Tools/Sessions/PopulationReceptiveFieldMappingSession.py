@@ -15,13 +15,48 @@ from pylab import *
 from nifti import *
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge
+import scipy as sp
+from scipy.stats import spearmanr
 
 def fitBR(design_matrix, timeseries):
-	"""docstring for fitBR"""
+	"""fitBR fits a design matrix to a given timeseries.
+	It computes the coefficients and returns these coefficients
+	plus the correlation between the model fit and timeseries.
+	"""
 	br = BayesianRidge(n_iter = 300, compute_score=True)
 	br.fit(design_matrix, timeseries)
-	return br.coef_
+	predicted_signal = br.coef_ * design_matrix
+	srp = list(spearmanr(timeseries, predicted_signal.sum(axis = 1)))
+	srp = [srp[0], -np.log10(srp[1])]
+	return br.coef_, srp
 
+def normalize_histogram(input_array, mask_array = None):
+	if mask_array == None:
+		mask_array = input_array != 0.0
+	
+	return (input_array - input_array[mask_array].min()) / (input_array[mask_array].max() - input_array[mask_array].min())
+
+# def convert_2d_array_to_points(input_array, mask_array = None, nr_points = 100000):
+# 	if mask_array = None:
+# 		mask_array = input_array != 0.0
+# 	
+# 	indices = np.linspace(0, 1, input_array.shape[0], endpoint = True)
+# 	n_a = normalize_histogram(input_array, mask_array)
+
+	
+
+
+def fit_gaussian(coef_array, method = 'ML'):
+	"""
+	fit_gaussian fits a gaussian distribution to a two-dimensional histogram (coef_array).
+	It uses the argument method to decide what method to use. 
+	"""
+	# normalize histogram
+	n_a = normalize_histogram(coef_array)
+	
+	
+	
+	
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
@@ -118,22 +153,22 @@ class PopulationReceptiveFieldMappingSession(Session):
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
 	
-	def create_dilated_cortical_mask(self, dilation_sd = 3.0):
+	def create_dilated_cortical_mask(self, dilation_sd = 3.0, label = 'cortex'):
 		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
 		it then smoothes this mask with fslmaths, using a gaussian kernel. 
 		This is then thresholded at > 0.0, in order to create an enlarged cortex mask in binary format.
 		"""
 		# take rh and lh files and join them.
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'rh.cortex.nii.gz'))
-		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex.nii.gz'), **{'-add': os.path.join(self.stageFolder('processed/mri/masks/anat'), 'lh.cortex.nii.gz')})
+		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'rh.' + label + '.nii.gz'))
+		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), '' + label + '.nii.gz'), **{'-add': os.path.join(self.stageFolder('processed/mri/masks/anat'), 'lh.' + label + '.nii.gz')})
 		fmO.execute()
 		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex.nii.gz'))
+		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), '' + label + '.nii.gz'))
 		fmO.configureSmooth(smoothing_sd = dilation_sd)
 		fmO.execute()
 		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_smooth.nii.gz'))
-		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz'), **{'-bin': ''})
+		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
+		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 	
 	def stimulus_timings(self):
@@ -198,11 +233,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 	
 	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6):
 		"""design_matrix creates a design matrix for the runs
-			method can be hrf or fir. when gamma, we can specify the parameters of gamma and double-gamma, etc.
+		using the PRFModelRun and PRFTrial classes. The temporal grain
+		of the model is specified by sample_duration. In our case, the 
+		stimulus was refreshed every 600 ms. 
+		method can be hrf or fir. when gamma, we can specify 
+		the parameters of gamma and double-gamma, etc.
+		FIR fitting is still to be implemented, as the shape of
+		the resulting design matrix will differ from the HRF version.
 		"""
 		# self.logger.info('creating design matrix with arguments %s' % str(kwargs))
 		# get orientations and stimulus timings
 		self.stimulus_timings()
+		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
 		self.stim_matrix_list = []
 		self.design_matrix_list = []
@@ -235,47 +277,80 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.full_design_matrix = (self.full_design_matrix - self.full_design_matrix.mean(axis = 0) )# / self.full_design_matrix.std(axis = 0)
 		self.tr_time_list = np.concatenate(self.tr_time_list)
 		self.sample_time_list = np.concatenate(self.sample_time_list)
+		self.logger.info('design_matrix of shape %s created'%(str(self.full_design_matrix.shape)))
+		
 	
-	def whole_brain_fit(self, n_pixel_elements = 50):
-		"""docstring for fname"""
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', n_jobs = 15): # cortex_dilated_mask
+		"""fit_PRF creates a design matrix for the full experiment, 
+		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
+		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
+		http://en.wikipedia.org/wiki/Ridge_regression
+		http://scikit-learn.org/stable/modules/linear_model.html#bayesian-ridge-regression
+		mask_single_file allows the user to set a binary mask to mask the functional data
+		for fitting of individual regions.
+		"""
+		# we need a design matrix.
 		self.design_matrix(n_pixel_elements = n_pixel_elements)
 		
-		# cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
-		# cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'single_voxel.nii.gz')).data, dtype = bool)
-		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'rh.V1.nii.gz')).data, dtype = bool)
+		mask_file = NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '.nii.gz'))
+		cortex_mask = np.array(mask_file.data, dtype = bool)
+		
+		# numbered slices, for sub-TR timing to follow stimulus timing. 
 		slices = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T[cortex_mask]
+		slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
+		
 		data_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			data_list.append(nii_file.data[:,cortex_mask])
-		
 		z_data = np.vstack(data_list)
+		# get rid of the raw data list that will just take up memory
 		del(data_list)
 		
+		# set up empty arrays for saving the data
+		all_coefs = np.zeros([n_pixel_elements**2] + list(cortex_mask.shape))
+		all_corrs = np.zeros([2] + list(cortex_mask.shape))
+		
+		self.logger.info('PRF model fits on %d voxels' % int(cortex_mask.sum()))
 		# run through slices, each slice having a certain timing
 		for sl in np.arange(cortex_mask.shape[0]):
-			voxels_in_this_slice = slices == sl
-			these_tr_times = self.tr_time_list + (nii_file.rtime / float(cortex_mask.shape[1]))
-			# closest sample in designmatrix
-			these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times])
-			these_voxels = z_data[:,voxels_in_this_slice].T
-			self.logger.info('starting fitting of slice %d' % sl)
-			# do the following loop in parallel using joblib
-			
-			coefs = Parallel(n_jobs = -2, verbose = 5)(delayed(fitBR)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels)
-			
-			
-			
-			# shell()
-			# for i, vox_timeseries in enumerate(these_voxels): # loop over timeseries data
-			# 	self.logger.info('starting fitting of voxel %d in slice %d' % (i, sl))
-			# 	
-			# 	clf = BayesianRidge(n_iter = 300, compute_score=True)
-			# 	# clf = Ridge(alpha=1.0)
-			# 	clf.fit(self.full_design_matrix[these_samples,:], vox_timeseries)
-			# 	self.logger.info('done fitting of voxel %d in slice %d' % (i, sl))
-			# 	f = pl.figure(figsize = (6,6))
-			# 	s = f.add_subplot(111, aspect='equal')
-			# 	pl.imshow(clf.coef_.reshape((n_pixel_elements, n_pixel_elements)))
-			# 	s.set_title('%d_%d' % (sl, i))
-			# 	pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'fit_%d_%d.pdf' % (sl, i)))
+			voxels_in_this_slice = (slices == sl)
+			voxels_in_this_slice_in_full = (slices_in_full == sl)
+			if voxels_in_this_slice.sum() > 0:
+				these_tr_times = self.tr_time_list + (nii_file.rtime / float(cortex_mask.shape[1]))
+				these_voxels = z_data[:,voxels_in_this_slice].T
+				# closest sample in designmatrix
+				these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times])
+				
+				# loop across voxels in this slice in parallel using joblib, 
+				# fitBR returns coefficients of results, and spearman correlation R and p as a 2-tuple
+				self.logger.info('starting fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
+				res = Parallel(n_jobs = n_jobs, verbose = 5)(delayed(fitBR)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels)
+				# all_coefs[voxels_in_this_slice], all_corrs[voxels_in_this_slice] = zip(Parallel(n_jobs = 1, verbose = 5)(delayed(fitBR)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels))
+				all_coefs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[0] for r in res]).T
+				all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
+				# all_coefs[:, voxels_in_this_slice], all_corrs[:, voxels_in_this_slice] = zip(res)
+				
+		self.logger.info('saving coefficients and correlations of PRF fits')
+		coef_nii_file = NiftiImage(all_coefs)
+		coef_nii_file.header = mask_file.header
+		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/'), 'coeffs.nii.gz'))
+		
+		# replace infs in correlations with the maximal value of the rest of the array.
+		all_corrs[np.isinf(all_corrs)] = all_corrs[-np.isinf(all_corrs)].max()
+		corr_nii_file = NiftiImage(all_corrs)
+		corr_nii_file.header = mask_file.header
+		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/'), 'corrs.nii.gz'))
+	
+	
+	#
+	#	For fitting of receptive fields; we fit full covariance matrices of at least one Gaussian distribution.
+	#	One gaussian can be fit using least-squares as per scipy example: http://code.google.com/p/agpy/source/browse/trunk/agpy/gaussfitter.py
+	#	Or, conversely, we can use a standard maximum-likelihood fit using our choice of minimization technique
+	#	If mixture model fitting is necessary, we use the sklearn implementation of the DPGMM.
+	#	This will automatically find the number of distributions in the data - instead of us having to specify which. The conservative leaning of this
+	#	technique makes sure that if we have only a single peak, it will find only one single PRF in the histogram.
+	#	Note; for most of this, data have to be resampled to singular data points instead of the histogram shape they have now. 
+	#	
+	
+	
