@@ -153,7 +153,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
 	
-	def create_dilated_cortical_mask(self, dilation_sd = 3.0, label = 'cortex'):
+	def create_dilated_cortical_mask(self, dilation_sd = 0.5, label = 'cortex'):
 		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
 		it then smoothes this mask with fslmaths, using a gaussian kernel. 
 		This is then thresholded at > 0.0, in order to create an enlarged cortex mask in binary format.
@@ -303,6 +303,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			data_list.append(nii_file.data[:,cortex_mask])
+			self.TR = nii_file.rtime
 		z_data = np.vstack(data_list)
 		# get rid of the raw data list that will just take up memory
 		del(data_list)
@@ -317,7 +318,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			voxels_in_this_slice = (slices == sl)
 			voxels_in_this_slice_in_full = (slices_in_full == sl)
 			if voxels_in_this_slice.sum() > 0:
-				these_tr_times = self.tr_time_list + (nii_file.rtime / float(cortex_mask.shape[1]))
+				these_tr_times = self.tr_time_list + sl * (self.TR / float(cortex_mask.shape[1]))
 				these_voxels = z_data[:,voxels_in_this_slice].T
 				# closest sample in designmatrix
 				these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times])
