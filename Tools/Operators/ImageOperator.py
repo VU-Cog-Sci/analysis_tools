@@ -22,6 +22,7 @@ from nifti import *
 from Operator import *
 import nipy.labs.glm
 from Tools.savitzky_golay import *
+from scipy.signal import fftconvolve, resample
 
 
 class ImageOperator( Operator ):
@@ -330,8 +331,17 @@ class Design(object):
 		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
-		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/self.subSamplingRatio), **hrfParameters)')
-		self.designMatrix = np.array([sp.convolve(ds, self.hrfKernel, 'full')[:-(self.hrfKernel.shape[0]-1)][::round(self.subSamplingRatio * self.rtime)] for ds in self.rawDesignMatrix]).T
+		self.hrfKernel = eval(self.hrfType + '(np.arange(0,25,1.0/(self.subSamplingRatio*self.rtime)), **hrfParameters)')
+		self.designMatrix = np.zeros([len(self.rawDesignMatrix), self.nrTimePoints])
+		for i, ds in enumerate(self.rawDesignMatrix):
+			kl = self.hrfKernel.shape[0]
+			self.dpadded = np.zeros(ds.shape[0] + kl*2)
+			self.dpadded[kl:-kl] = ds
+			self.intermediate_signal = fftconvolve( self.dpadded, self.hrfKernel, 'full' )
+			self.designMatrix[i,:] = self.intermediate_signal[np.array(np.linspace(kl, kl + self.nrTimePoints * self.rtime * self.subSamplingRatio, self.nrTimePoints), dtype = int)]
+			
+			# self.designMatrix[i,:] = 
+#		self.designMatrix = np.array([sp.convolve(ds, self.hrfKernel, 'full')[:-(self.hrfKernel.shape[0]-1)][::round(self.subSamplingRatio * self.rtime)] for ds in self.rawDesignMatrix]).T
 			
 	def configure(self, regressors, hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} ):
 		"""
