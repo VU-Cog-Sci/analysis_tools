@@ -11,12 +11,17 @@ from ..Sessions import *
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 from ..Operators.PhysioOperator import *
+
 from pylab import *
-from nifti import *
-from joblib import Parallel, delayed
-from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV
 import scipy as sp
 from scipy.stats import spearmanr
+from scipy import ndimage
+
+from nifti import *
+
+from joblib import Parallel, delayed
+from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV
+from skimage import filter, measure
 
 def fitARDRidge(design_matrix, timeseries, n_iter = 100, compute_score=True):
 	"""fitARDRidge fits a design matrix to a given timeseries.
@@ -88,8 +93,49 @@ def normalize_histogram(input_array, mask_array = None):
 # 	indices = np.linspace(0, 1, input_array.shape[0], endpoint = True)
 # 	n_a = normalize_histogram(input_array, mask_array)
 
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.7):
+	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
+	to the spatial profile of spatial beta values from the ridge regression """
+	n_pixel_elements = sqrt(spatial_profile_array.shape[0])
+	# upsample five-fold and gaussian smooth with upscale factor
+	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
+	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale)
 	
-
+	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
+	canny_edges = filter.canny(us_spatial_profile, sigma=upscale)
+	# find level at which to take contour:
+	contour_threshold = spatial_profile_array[np.argsort(spatial_profile_array)[round(contour_level * spatial_profile_array.shape[0])]]
+	contour_edges = measure.find_contours(uss_spatial_profile, contour_threshold)
+	
+	# shell()
+	
+	if diagnostics_plot:
+		f = pl.figure(figsize = (10, 9))
+		s = f.add_subplot(221)
+		pl.imshow(us_spatial_profile)
+		pl.plot([maximum[1]], [maximum[0]], 'ko')
+		s.set_title('original')
+		s.axis([0,200,0,200])
+		s = f.add_subplot(222)
+		pl.imshow(uss_spatial_profile)
+		pl.plot([maximum[1]], [maximum[0]], 'ko')
+		s.set_title('gaussian smoothed')
+		s.axis([0,200,0,200])
+		s = f.add_subplot(223)
+		pl.imshow(canny_edges, cmap=pl.cm.gray)
+		pl.plot([maximum[1]], [maximum[0]], 'ko')
+		s.set_title('canny edge image')
+		s.axis([0,200,0,200])
+		s = f.add_subplot(224)
+		pl.imshow(us_spatial_profile)
+		pl.plot([maximum[1]], [maximum[0]], 'ko')
+		s.set_title('contour image')
+		for n, contour in enumerate(contour_edges):
+		    pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
+		s.axis([0,200,0,200])
+		# pl.show()
+		
+		
 
 def fit_gaussian(coef_array, method = 'ML'):
 	"""
@@ -280,6 +326,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
 		run_design.configure(trial_times_list)
 		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		# shell()
 		self.logger.info('nuisance and trial_onset design_matrix of dimensions %s'%(str(joined_design_matrix.shape)))
 		# take data
 		data_list = []
@@ -346,7 +393,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = True, ssr = 5):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -365,18 +412,22 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.design_matrix_list = []
 		self.sample_time_list = []
 		self.tr_time_list = []
+		self.trial_start_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = 0.6, bar_width = 0.15)
+			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.15)
 			# mr.simulate_run( save_images_to_file = os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'design_' + str(i) ) )
 			mr.simulate_run( )
 			self.stim_matrix_list.append(mr.run_matrix)
 			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
 			self.tr_time_list.append(np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime) + i * nii_file.timepoints * nii_file.rtime)
+			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * nii_file.rtime)
 			
 			if method == 'hrf':
-				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = 1)
-				run_design.rawDesignMatrix = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
+				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
+				rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
+				run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
+				
 				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
 				workingDesignMatrix = run_design.designMatrix
 				# shell()
@@ -388,12 +439,24 @@ class PopulationReceptiveFieldMappingSession(Session):
 					new_array[i:i+int(fir_ratio)] = mr.run_matrix[int(floor(i/int(fir_ratio)))]
 				workingDesignMatrix = new_array
 			
+			# shell()
 			self.design_matrix_list.append(workingDesignMatrix)
 		self.full_design_matrix = np.hstack(self.design_matrix_list).T
-		self.full_design_matrix = np.array(self.full_design_matrix - self.full_design_matrix.mean(axis = 0), dtype = np.float32 )# / self.full_design_matrix.std(axis = 0)
+		self.full_design_matrix = np.array(self.full_design_matrix - self.full_design_matrix.mean(axis = 0) )# / self.full_design_matrix.std(axis = 0)
 		self.tr_time_list = np.concatenate(self.tr_time_list)
 		self.sample_time_list = np.concatenate(self.sample_time_list)
+		self.trial_start_list = np.concatenate(self.trial_start_list)
 		self.logger.info('design_matrix of shape %s created, of which %d are valid stimulus locations'%(str(self.full_design_matrix.shape), int((self.full_design_matrix.sum(axis = 0) != 0).sum())))
+		
+		# shell()
+		if plot_diagnostics:
+			f = pl.figure(figsize = (10, 3))
+			s = f.add_subplot(111)
+			pl.plot(self.full_design_matrix.sum(axis = 1))
+			pl.plot(self.trial_start_list / sample_duration, np.ones(self.trial_start_list.shape), 'ko')
+			s.set_title('original')
+			s.axis([0,200,0,200])
+			
 		
 	
 	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', n_jobs = 15): # cortex_dilated_mask
@@ -427,7 +490,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		del(data_list)
 		
 		# set up empty arrays for saving the data
-		all_coefs = np.zeros([n_pixel_elements**2] + list(cortex_mask.shape))
+		all_coefs = np.zeros([int(valid_regressors.sum())] + list(cortex_mask.shape))
 		all_corrs = np.zeros([2] + list(cortex_mask.shape))
 		
 		self.logger.info('PRF model fits on %d voxels' % int(cortex_mask.sum()))
@@ -444,24 +507,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
-				res = Parallel(n_jobs = n_jobs, verbose = 10)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels)
+				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels)
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				if mask_file_name == 'single_voxel':
-					all_coefs[valid_regressors, cortex_mask * voxels_in_this_slice_in_full] = np.squeeze(np.array([r[0] for r in res]).T)
-					all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
-					
 					pl.figure()
 					pl.imshow(all_coefs[:, cortex_mask * voxels_in_this_slice_in_full].reshape((n_pixel_elements,n_pixel_elements)))
 					pl.show()
-				else:
-					# shell()
-					
-					all_coefs[valid_regressors][:,(cortex_mask * voxels_in_this_slice_in_full)] = np.array([r[0] for r in res]).T
-					all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
+				all_coefs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[0] for r in res]).T
+				all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
 				
-				
+		
+		output_coefs = np.zeros([n_pixel_elements ** 2] + list(cortex_mask.shape))
+		output_coefs[valid_regressors] = all_coefs
+		
+		shell()
+		
 		self.logger.info('saving coefficients and correlations of PRF fits')
-		coef_nii_file = NiftiImage(all_coefs)
+		coef_nii_file = NiftiImage(output_coefs)
 		coef_nii_file.header = mask_file.header
 		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/'), 'coefs_' + mask_file_name + '.nii.gz'))
 		
@@ -489,4 +551,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 		ofn = os.path.join(self.stageFolder('processed/mri/surf/'), res_name )
 		vsO.configure(frames = {'p':1}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
 		vsO.execute()
+	
+	
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', stat_threshold = 12.0, n_jobs = 1):
+		"""select_voxels_for_RF_fit takes the voxels with high stat values
+		and tries to fit a PRF model to their spatial selectivity profiles.
+		it takes the images from the mask_file result file, and uses stat_threshold
+		to select all voxels crossing a p-value (-log10(p)) threshold.
+		"""
+		stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/'), 'corrs_' + mask_file + '.nii.gz')).data
+		spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/'), 'coefs_' + mask_file + '.nii.gz')).data
 		
+		stat_mask = stats_data[1] > stat_threshold
+		voxel_spatial_data_to_fit = spatial_data[:,stat_mask]
+		
+		res = Parallel(n_jobs = n_jobs, verbose = 10)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data) for vox_spatial_data in voxel_spatial_data_to_fit.T if vox_spatial_data.max()!= 0.0)
