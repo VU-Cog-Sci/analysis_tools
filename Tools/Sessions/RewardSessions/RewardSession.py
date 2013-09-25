@@ -26,17 +26,17 @@ class RewardSession(Session):
 		super(RewardSession, self).__init__(ID, date, project, subject, parallelize = parallelize, loggingLevel = loggingLevel)
 	
 	# these functions here to create the appropriate hierarchy for this project.
-	def baseFolder(self):
+	def base_dir(self):
 		return os.path.join(self.project.base_dir, self.session_label, self.subject.initials, self.dateCode)
 	
 	def makeBaseFolder(self):
-		if not os.path.isdir(self.baseFolder()):
+		if not os.path.isdir(self.base_dir()):
 			try:
 				os.mkdir(os.path.join(self.project.base_dir, self.session_label, self.subject.initials))
 			except OSError:
 				pass
 			try:
-				os.mkdir(self.baseFolder())
+				os.mkdir(self.base_dir())
 			except OSError:
 				pass
 	

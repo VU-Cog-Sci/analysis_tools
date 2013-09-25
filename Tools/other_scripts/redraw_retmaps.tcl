@@ -16,7 +16,8 @@ if {$hemiSphere == "rh"} {
 	set yDirection 1
 }
 
-set polardir [format "%s/surf" $condition]
+#set polardir [format "%s/surf" $condition]
+set polardir $condition
 
 # run the standard script, taken from polar-views.tcl
 # source $env(FREESURFER_HOME)/lib/tcl/polar-views.tcl
@@ -25,9 +26,9 @@ set polardir [format "%s/surf" $condition]
 source $env(FREESURFER_HOME)/lib/tcl/readenv.tcl
 
 ### for backward compatibility (old script-specific mechanism)
-set floatstem sig                   ;# float file stem
-set realname 2                      ;# analyse infix
-set complexname 3                   ;# analyse infix
+set floatstem $condition                   ;# float file stem
+set realname real                      ;# analyse infix
+set complexname imag                   ;# analyse infix
 set rgbname polar                   ;# name of rgbfiles
 
 #### parm defaults: can reset in csh script with setenv
@@ -39,11 +40,14 @@ set complexvalflag 1    ;# two-component data
 set colscale 0          ;# 0=wheel,1=heat,2=BR,3=BGR,4=twocondGR,5=gray
 set angle_offset -.25   ;# phase offset (-0.25 for up semicircle start)
 set angle_cycles 2.0    ;# adjust range
-set fthresh 0.3         ;# val/curv sigmoid zero (neg=>0)
-set fslope 1.5          ;# contast (was fsquash 2.5)
-set fmid   0.8          ;# set linear region
+set fthresh 3.0         ;# val/curv sigmoid zero (neg=>0)
+set fslope 2.5          ;# contast (was fsquash 2.5)
+set fmid   4.8          ;# set linear region
 set smoothsteps 2
 set offset 0.20    ;# default lighting offset
+# smooth the curvature and surface before doing anything else
+set invphaseflag 0
+set revphaseflag 0
 
 if { [info exists revpolarflag] } { 
   set revphaseflag $revpolarflag 
@@ -58,14 +62,16 @@ if [info exists polardir] { set dir $polardir }
 
 #### read and smooth complex component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth complex Fourier comp"
-setfile val */$dir/${floatstem}${complexname}-$hemi.w     ;# polarangle
+setfile val */$dir/surf/${floatstem}_${complexname}-$hemi.mgh     ;# polarangle
+# echo */$dir/surf/${floatstem}_${complexname}-$hemi.mgh
 read_binary_values
 smooth_val $smoothsteps 
 shift_values     ;# shift complex component out of way
 
 #### read and smooth real component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth real Fourier comp"
-setfile val */$dir/${floatstem}${realname}-$hemi.w     ;# polarangle
+setfile val */$dir/surf/${floatstem}_${realname}-$hemi.mgh    ;# polarangle
+#echo */$dir/surf/${floatstem}_${realname}-$hemi.mgh
 read_binary_values
 smooth_val $smoothsteps
 
@@ -77,16 +83,6 @@ do_lighting_model -1 -1 -1 -1 $offset ;# -1 => nochange; diffuse curv (def=0.15)
 
 
 # done with the standard script - here's my coding...
-# smooth the curvature and surface before doing anything else
-set rgbname polar
-set fthresh 2.0
-set fslope 0.5
-set fmid 5
-set angle_offset 0.5
-set angle_cycles 2.0
-set invphaseflag 0
-set revphaseflag 0
-set smoothsteps 1
 
 # setup overlay characteristics
 set gaLinkedVars(fthresh) $fthresh
@@ -97,11 +93,11 @@ set gaLinkedVars(fslope) $fslope
 SendLinkedVarGroup overlay
 
 smooth_curv 40
-shrink 400
+shrink 40
 
 
 scale_brain 1.6
-set nrimages 16
+set nrimages 2
 set rotation_gain 150.0
 set rot [ expr { $rotation_gain / $nrimages } ]
 

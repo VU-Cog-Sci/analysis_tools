@@ -18,6 +18,7 @@ from scipy.stats import spearmanr
 from scipy import ndimage
 
 from nifti import *
+from math import *
 
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV
@@ -93,13 +94,13 @@ def normalize_histogram(input_array, mask_array = None):
 # 	indices = np.linspace(0, 1, input_array.shape[0], endpoint = True)
 # 	n_a = normalize_histogram(input_array, mask_array)
 
-def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.7):
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.8):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	n_pixel_elements = sqrt(spatial_profile_array.shape[0])
 	# upsample five-fold and gaussian smooth with upscale factor
 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
-	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale)
+	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
 	
 	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
 	canny_edges = filter.canny(us_spatial_profile, sigma=upscale)
@@ -108,6 +109,12 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 	contour_edges = measure.find_contours(uss_spatial_profile, contour_threshold)
 	
 	# shell()
+	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
+	max_comp =  np.complex(max_norm[0], max_norm[1])
+	
+	# max_x, max_y = 2.0 * (maximum[0] / (n_pixel_elements*upscale)) - 1.0, (maximum[1] / (n_pixel_elements*upscale)) - 1.0
+	# ecc = sqrt(max_x**2 + max_y**2)
+	# polar = arctan(max_x/(max_y+0.0000001))
 	
 	if diagnostics_plot:
 		f = pl.figure(figsize = (10, 9))
@@ -127,13 +134,15 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		s.set_title('canny edge image')
 		s.axis([0,200,0,200])
 		s = f.add_subplot(224)
-		pl.imshow(us_spatial_profile)
+		pl.imshow(uss_spatial_profile)
 		pl.plot([maximum[1]], [maximum[0]], 'ko')
 		s.set_title('contour image')
 		for n, contour in enumerate(contour_edges):
 		    pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
 		s.axis([0,200,0,200])
-		# pl.show()
+		pl.show()
+	
+	return max_comp
 		
 		
 
@@ -520,18 +529,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_coefs = np.zeros([n_pixel_elements ** 2] + list(cortex_mask.shape))
 		output_coefs[valid_regressors] = all_coefs
 		
-		shell()
+		# shell()
 		
 		self.logger.info('saving coefficients and correlations of PRF fits')
 		coef_nii_file = NiftiImage(output_coefs)
 		coef_nii_file.header = mask_file.header
-		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/'), 'coefs_' + mask_file_name + '.nii.gz'))
+		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file_name + '.nii.gz'))
 		
 		# replace infs in correlations with the maximal value of the rest of the array.
 		all_corrs[np.isinf(all_corrs)] = all_corrs[-np.isinf(all_corrs)].max() + 1.0
 		corr_nii_file = NiftiImage(all_corrs)
 		corr_nii_file.header = mask_file.header
-		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/'), 'corrs_' + mask_file_name + '.nii.gz'))
+		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file_name + '.nii.gz'))
 	
 	
 	#
@@ -545,24 +554,67 @@ class PopulationReceptiveFieldMappingSession(Session):
 	#	
 	
 	
-	def results_to_surface(self, res_name = 'corrs_cortex'):
+	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'f':1}):
 		"""docstring for results_to_surface"""
-		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/'), res_name + '.nii.gz'))
-		ofn = os.path.join(self.stageFolder('processed/mri/surf/'), res_name )
-		vsO.configure(frames = {'p':1}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/PRF/'), file_name + '.nii.gz'))
+		ofn = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), output_file_name )
+		vsO.configure(frames = frames, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
 		vsO.execute()
 	
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', stat_threshold = 12.0, n_jobs = 1):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
 		to select all voxels crossing a p-value (-log10(p)) threshold.
 		"""
-		stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/'), 'corrs_' + mask_file + '.nii.gz')).data
-		spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/'), 'coefs_' + mask_file + '.nii.gz')).data
 		
-		stat_mask = stats_data[1] > stat_threshold
-		voxel_spatial_data_to_fit = spatial_data[:,stat_mask]
+		if run_fits:
+			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).data
+			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file + '.nii.gz')).data
 		
-		res = Parallel(n_jobs = n_jobs, verbose = 10)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data) for vox_spatial_data in voxel_spatial_data_to_fit.T if vox_spatial_data.max()!= 0.0)
+			stat_mask = stats_data[1] > stat_threshold
+			voxel_spatial_data_to_fit = spatial_data[:,stat_mask]
+			self.logger.info('starting fitting of prf shapes')
+			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data, diagnostics_plot = False) for vox_spatial_data in voxel_spatial_data_to_fit.T)
+		
+			max_comp = np.array(res)
+		
+			polar = np.angle(max_comp)
+			ecc = np.abs(max_comp)
+			real = np.real(max_comp)
+			imag = np.imag(max_comp)
+		
+			all_res = np.hstack([polar, ecc, real, imag])
+			all_res = all_res.reshape([4] + list(stats_data.shape[1:]))
+		
+			self.logger.info('saving prf parameters to polar and ecc')
+		
+			all_res_file = NiftiImage(all_res)
+			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).header
+			all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'all_res.nii.gz'))
+		
+		self.logger.info('converting prf values to surfaces')
+		# reproject the original stats
+		self.results_to_surface(file_name = 'corrs_cortex_dilated_mask', output_file_name = 'PRF', frames = {'_f':1})
+		# and the spatial values
+		self.results_to_surface(file_name = 'all_res', output_file_name = 'PRF', frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3})
+	
+	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
+		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )
+		for hemi in ['lh','rh']:
+			REDict = {
+			'---HEMI---': hemi,
+			'---CONDITION---': condition, 
+			'---CONDITIONFILENAME---': condition.replace('/', '_'), 
+			'---FIGPATH---': os.path.join(self.stageFolder(stage = 'processed/mri/'), condition, 'surf'),
+			'---NAME---': self.subject.standardFSID,
+			'---BASE_Y_ROTATION---': str(y_rotation),
+			'---EXIT---': str(exit_when_ready),
+			}
+			rmtOp = RetMapReDrawOperator(inputObject = thisFeatFile)
+			redrawFileName = os.path.join(self.stageFolder(stage = 'processed/mri/scripts'), hemi + '_' + condition.replace('/', '_') + '.tcl')
+			rmtOp.configure( REDict = REDict, redrawFileName = redrawFileName, waitForExecute = False )
+			# run 
+			rmtOp.execute()
+	

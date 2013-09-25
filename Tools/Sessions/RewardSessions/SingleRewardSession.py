@@ -3116,7 +3116,11 @@ class SingleRewardSession(RewardSession):
 		roi argument specifies the region from which to take the data.
 		"""
 		# check out the duration of these runs, assuming they're all the same length.
-		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		print self.base_dir()
+		print self.stageFolder(stage = 'processed/mri')
+		print self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]], postFix = ['mcf'])
+		print self.runFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]])
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]], postFix = ['mcf']))
 		tr, nr_trs = niiFile.rtime, niiFile.timepoints
 		run_duration = tr * nr_trs
 		
@@ -3186,7 +3190,7 @@ class SingleRewardSession(RewardSession):
 		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
 		nuisance_design.configure(np.array([np.hstack(blink_events)]))
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data_grouped[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
 		for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 			time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
 			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), ['k','k--'][i], alpha = [0.25,1.0][i], label = ['fix', 'visual'][i], linewidth = 3.0)
@@ -3396,7 +3400,57 @@ class SingleRewardSession(RewardSession):
 					# ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
 					ssO.configure(fsSourceSubject = 'AV_270411', fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
 					ssO.execute(wait = False)
+	
+	def snr_to_hdf(self, run_type = 'reward'):
+		"""
+		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
+		"""
 		
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		self.logger.info('Taking masks ' + str(anatRoiFileNames))
+		rois, roinames = [], []
+		for roi in anatRoiFileNames:
+			rois.append(NiftiImage(roi))
+			roinames.append(os.path.split(roi)[1][:-7])
+		
+		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
+		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		# else:
+		# 	self.logger.info('opening table file ' + self.hdf5_filename)
+		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		
+		this_run_group_name = 'snr'
+		try:
+			thisRunGroup = h5file.removeNode(where = '/', name = this_run_group_name, recursive = True)
+			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+		except NoSuchNodeError:
+			# import actual data
+			# self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+			pass
+		thisRunGroup = h5file.createGroup("/", this_run_group_name, 'residual variance')
+			
+		"""
+		Now, take different stat masks based on the run_type
+		"""
+		if run_type == 'reward':
+			stat_files = {
+							'snr_mean_corr': os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_mean_proj_data.nii.gz'),
+							'snr_diff': os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_proj_diff.nii.gz'),
+							'snr_var_corr': os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_var_proj_data.nii.gz'),
+							}
+				
+		stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
+			
+		for (roi, roi_name) in zip(rois, roinames):
+			for (i, sf) in enumerate(stat_files.keys()):
+				# loop over stat_files and rois
+				# to mask the stat_files with the rois:
+				imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+				these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+				h5file.createArray(thisRunGroup, roi_name.replace('.','_') + '_' + sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+		h5file.close()
+	
+	
 	def snr_to_surf(self):
 		"""docstring for snr_to_surf"""
 		executable = 'mri_concat %s %s --o %s'
