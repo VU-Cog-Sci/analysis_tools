@@ -221,7 +221,7 @@ class SingleRewardSession(RewardSession):
 			
 					# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 					# the order of the REs here, is the order in which they enter the feat. this can be used as further reference for PEs and the like.
-					if 'sara' in os.uname():
+					if 'sara' in os.uname() or 'aeneas' in os.uname():
 						thisFeatFile = '/home/knapen/projects/reward/man/analysis/reward/first/fsf/' + feat_file
 					else:
 						thisFeatFile = '/Volumes/HDD/research/projects/reward/man/analysis/reward/first/fsf/' + feat_file
@@ -3401,7 +3401,7 @@ class SingleRewardSession(RewardSession):
 					ssO.configure(fsSourceSubject = 'AV_270411', fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
 					ssO.execute(wait = False)
 	
-	def snr_to_hdf(self, run_type = 'reward'):
+	def snr_to_hdf(self, run_type = 'reward', postFix = ['mcf']):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
@@ -3415,23 +3415,7 @@ class SingleRewardSession(RewardSession):
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
-		# else:
-		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
-		
-		this_run_group_name = 'snr'
-		try:
-			thisRunGroup = h5file.removeNode(where = '/', name = this_run_group_name, recursive = True)
-			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
-		except NoSuchNodeError:
-			# import actual data
-			# self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-			pass
-		thisRunGroup = h5file.createGroup("/", this_run_group_name, 'residual variance')
 			
-		"""
-		Now, take different stat masks based on the run_type
-		"""
 		if run_type == 'reward':
 			stat_files = {
 							'snr_mean_corr': os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), 'reward_SNR_mean_proj_data.nii.gz'),
@@ -3441,15 +3425,72 @@ class SingleRewardSession(RewardSession):
 				
 		stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
 			
-		for (roi, roi_name) in zip(rois, roinames):
-			for (i, sf) in enumerate(stat_files.keys()):
-				# loop over stat_files and rois
-				# to mask the stat_files with the rois:
-				imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
-				these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-				h5file.createArray(thisRunGroup, roi_name.replace('.','_') + '_' + sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+		for r in [self.runList[i] for i in self.conditionDict[run_type]]:
+			"""loop over runs, and try to open a group for this run's data"""
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
+			try:
+				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+			except NoSuchNodeError:
+				# import actual data
+				self.logger.info('Adding group ' + this_run_group_name + ' to this file')
+				thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+		
+			for (roi, roi_name) in zip(rois, roinames):
+				try:
+					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				except NoSuchNodeError:
+					# import actual data
+					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
+					thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
+			
+				for (i, sf) in enumerate(stat_files.keys()):
+					# loop over stat_files and rois
+					# to mask the stat_files with the rois:
+					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
+					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
+					try:
+						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+					except NodeError:
+						self.logger.info('Array ' + sf.replace('>', '_') + ' existed in ' + this_run_group_name)
+		
+		try:
+			thisRunGroup = h5file.removeNode(where = '/', name = 'snr', recursive = True)
+			self.logger.info('snr data ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
+		except NoSuchNodeError:
+			# import actual data
+			pass
+		thisRunGroup = h5file.createGroup("/", 'snr', 'SNR results for whole visual areas')
+		self.logger.info('snr data ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' started in ' + self.hdf5_filename)
+		
+		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:
+			for i, dt in enumerate(['snr_diff', 'snr_mean_corr', 'snr_var_corr', 'fis_reward_silence', '']):
+				dd = self.roi_data_from_hdf(h5file, self.runList[self.conditionDict[run_type][0]], roi_wildcard = roi, data_type = dt, postFix = ['mcf'])
+				h5file.createArray(thisRunGroup, roi + '_' + dt, dd.astype(np.float32), roi + ' data from ' + stat_files[dt])
+				
 		h5file.close()
 	
+	def snr_pattern_correlations(self, postFix = ['mcf']):
+		"""docstring for snr_pattern_correlations"""
+		self.reward_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward' + '.hdf5')
+		reward_h5file = openFile(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
+		self.mapper_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][0]]), 'mapper' + '.hdf5')
+		mapper_h5file = openFile(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
+		
+		
+		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:
+			roi_data = {}
+			for i, dt in enumerate(['snr_diff', 'snr_mean_corr', 'snr_var_corr', 'fix_reward_silence', 'blank_sound', 'blank_silence', 'visual_Z', 'reward_Z']):
+				roi_data[dt] = self.roi_data_from_hdf(reward_h5file, self.runList[self.conditionDict['reward'][0]], roi_wildcard = roi, data_type = dt, postFix = ['mcf'])
+			roi_data['center_Z'] = self.roi_data_from_hdf(mapper_h5file, self.runList[self.conditionDict['mapper'][0]], roi_wildcard = roi, data_type = 'center_Z', postFix = ['mcf'])
+			# correlate these with snr_diff
+			
+			these_roi_pattern_corrs = dict([(p, spearmanr(roi_data['snr_diff'][:,1], roi_data[p][:,0])[0]) for i,p in enumerate(['fix_reward_silence', 'blank_sound', 'blank_silence', 'visual_Z', 'reward_Z', 'center_Z'])])
+			print these_roi_pattern_corrs
+		
+		reward_h5file.close()
+		mapper_h5file.close()
+		
 	
 	def snr_to_surf(self):
 		"""docstring for snr_to_surf"""
