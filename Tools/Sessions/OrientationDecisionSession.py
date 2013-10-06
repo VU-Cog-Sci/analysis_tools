@@ -10,7 +10,7 @@ import datetime
 from ..Sessions import * 
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
-from ..circularTools import *
+from ..other_scripts.circularTools import *
 from pylab import *
 from nifti import *
 from IPython import embed as shell

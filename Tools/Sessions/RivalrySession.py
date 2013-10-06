@@ -10,7 +10,7 @@ Copyright (c) 2009 TK. All rights reserved.
 from Session import *
 from scipy.stats import *
 from itertools import *
-from Tools.circularTools import *
+from Tools.other_scripts.circularTools import *
 
 class RivalryReplaySession(Session):
 	def analyzeBehavior(self):

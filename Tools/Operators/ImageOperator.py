@@ -21,7 +21,7 @@ from IPython import embed as shell
 from nifti import *
 from Operator import *
 import nipy.labs.glm
-from Tools.savitzky_golay import *
+from Tools.other_scripts.savitzky_golay import *
 from scipy.signal import fftconvolve, resample
 
 

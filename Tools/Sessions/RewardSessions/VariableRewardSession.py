@@ -10,7 +10,7 @@ import datetime
 from ..Session import * 
 from ...Operators.ArrayOperator import *
 from ...Operators.EyeOperator import *
-from ...circularTools import *
+from ...other_scripts.circularTools import *
 from pylab import *
 from nifti import *
 from IPython import embed as shell
@@ -19,7 +19,7 @@ import pickle
 from scipy.stats import *
 from SingleRewardSession import *
 from RewardSession import * 
-from ...plotting_tools import *
+from ...other_scripts.plotting_tools import *
 
 class VariableRewardSession(SingleRewardSession):
 	def __init__(self, ID, date, project, subject, session_label = 'var', parallelize = True, loggingLevel = logging.DEBUG):

@@ -9,7 +9,7 @@ Copyright (c) 2009 TK. All rights reserved.
 
 from Session import * 
 from RetinotopicMappingSession import *
-from ..circularTools import *
+from ..other_scripts.circularTools import *
 import matplotlib.cm as cm
 from pylab import *
 import pandas as pd

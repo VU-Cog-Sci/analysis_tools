@@ -33,7 +33,7 @@ from ..Operators.ImageOperator import *
 from ..Operators.BehaviorOperator import *
 # from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
-from ..circularTools import *
+from ..other_scripts.circularTools import *
 
 from IPython import embed as shell
 

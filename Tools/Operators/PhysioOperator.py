@@ -22,7 +22,7 @@ from nifti import *
 from Operator import Operator
 from datetime import *
 from tables import *
-from ..savitzky_golay import *
+from ..other_scripts.savitzky_golay import *
 
 from BehaviorOperator import NewBehaviorOperator
 from IPython import embed as shell
