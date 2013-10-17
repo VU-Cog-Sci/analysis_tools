@@ -50,8 +50,8 @@ class PhysioOperator( Operator ):
 		self.sample_rate = sample_rate
 		
 		self.log_data = np.loadtxt(self.inputFileName)
-		self.start_index = np.arange(self.log_data.shape[0])[self.log_data[:,-1] == 10][-1]
-		self.end_index = np.arange(self.log_data.shape[0])[self.log_data[:,-1] == 20][-1]
+		# self.start_index = np.arange(self.log_data.shape[0])[self.log_data[:,-1] == 10][-1]
+		# self.end_index = np.arange(self.log_data.shape[0])[self.log_data[:,-1] == 20][-1]
 	
 	def filter_resp(self, hp_frequency = 0.05, lp_frequency = 0.5):
 		"""filter_resp band-pass filters respiration signals, with hp and lp frequencies"""
@@ -108,10 +108,10 @@ class PhysioOperator( Operator ):
 		which_gradient_channels sums different gradient channels. """
 		self.logger.info('detecting signal period from gradient samples')
 		channel_dict = {'x': -4, 'y': -3, 'z': -2}
-		gradient_signal = np.abs(self.log_data[:,[channel_dict[g] for g in which_gradients]]).sum(axis = 1)
+		self.gradient_signal = np.abs(self.log_data[:,[channel_dict[g] for g in which_gradients]]).sum(axis = 1)
 		# what was the last sample in which there were no gradient pulses? 
 		# That is our last TR end.
-		self.end_index = np.arange(gradient_signal.shape[0])[np.array(np.diff(gradient_signal != 0), dtype = bool)][-1]
+		self.end_index = np.arange(self.gradient_signal.shape[0])[np.array(np.diff(self.gradient_signal != 0), dtype = bool)][-1]
 		self.start_index = self.end_index - float(TR * nr_TRs * self.sample_rate)
 	
 	def preprocess_to_continuous_signals(self, TR = 1.5, nr_TRs = 834, hp_frequency = 0.01, lp_frequency = 4.0, filter_width = 3.0, filter_sample_width = 10000, sg_width = 241, sg_order = 3):
@@ -126,13 +126,17 @@ class PhysioOperator( Operator ):
 		self.continuous_resp_norm_hrf = self.convolve_hrf(self.log_data[:,self.columns.index('resp')] - self.log_data[:,self.columns.index('resp')].mean(), which_rf = 'rrf', filter_length = 40.0)
 		self.continuous_ppu_signal_hrf = self.convolve_hrf(self.continuous_ppu_signal - self.continuous_ppu_signal.mean(), which_rf = 'crf', filter_length = 30.0)
 		
-		self.find_scan_interval_by_gradients()
+		self.find_scan_interval_by_gradients(TR = TR, nr_TRs = nr_TRs)
 		
 		self.logger.info('resampling physio data to TRs')
 		# resampling is okay like this, picking single indices, because it's all very low-pass filtered already
 		self.resamples = np.array(np.round(np.linspace(self.start_index, self.end_index, nr_TRs, endpoint = False)), dtype = int)
+		
 		self.res_continuous_resp_signal_hrf = self.continuous_resp_norm_hrf[self.resamples]
 		self.res_continuous_ppu_signal_hrf = self.continuous_ppu_signal_hrf[self.resamples]
+		
+		self.res_raw_resp_signal_hrf = (self.log_data[:,self.columns.index('resp')] - self.log_data[:,self.columns.index('resp')].mean())[self.resamples]
+		self.res_raw_ppu_signal_hrf = (self.continuous_ppu_signal - self.continuous_ppu_signal.mean())[self.resamples]
 		
 		self.logger.info('detrend physio signal with savitzky-golay filter as a high-pass filter')
 		self.detrended_res_continuous_resp_signal_hrf = self.res_continuous_resp_signal_hrf - savitzky_golay(self.res_continuous_resp_signal_hrf, sg_width, sg_order)
@@ -141,10 +145,19 @@ class PhysioOperator( Operator ):
 		self.detrended_res_continuous_resp_signal_hrf = self.detrended_res_continuous_resp_signal_hrf / self.detrended_res_continuous_resp_signal_hrf.std()
 		self.detrended_res_continuous_ppu_signal_hrf = self.detrended_res_continuous_ppu_signal_hrf / self.detrended_res_continuous_ppu_signal_hrf.std()
 	
+		self.detrended_res_raw_resp_signal_hrf = self.res_raw_resp_signal_hrf - savitzky_golay(self.res_raw_resp_signal_hrf, sg_width, sg_order)
+		self.detrended_res_raw_ppu_signal_hrf = self.res_raw_ppu_signal_hrf - savitzky_golay(self.res_raw_ppu_signal_hrf, sg_width, sg_order)
+		
+		self.detrended_res_raw_resp_signal_hrf = self.detrended_res_raw_resp_signal_hrf / self.detrended_res_raw_resp_signal_hrf.std()
+		self.detrended_res_raw_ppu_signal_hrf = self.detrended_res_raw_ppu_signal_hrf / self.detrended_res_raw_ppu_signal_hrf.std()
+		
+	
 		f = pl.figure(figsize = (15,3))
 		s = f.add_subplot(111)
-		pl.plot(self.detrended_res_continuous_resp_signal_hrf, label = 'resp')
-		pl.plot(self.detrended_res_continuous_ppu_signal_hrf, label = 'hr')
+		pl.plot(self.detrended_res_continuous_resp_signal_hrf, label = 'resp conv')
+		pl.plot(self.detrended_res_continuous_ppu_signal_hrf, label = 'hr conv')
+		pl.plot(self.detrended_res_raw_resp_signal_hrf, label = 'resp raw')
+		pl.plot(self.detrended_res_raw_ppu_signal_hrf, label = 'hr raw')
 		s.set_title('resp and hr signals from file ' + os.path.split(self.inputFileName)[-1])
 		s.set_xlabel('time [TRs]')
 		leg = s.legend(fancybox = True)
@@ -157,6 +170,9 @@ class PhysioOperator( Operator ):
 		pl.savefig(os.path.splitext(self.inputFileName)[0] + '.pdf')
 		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_resp.txt', self.detrended_res_continuous_resp_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
 		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_ppu.txt', self.detrended_res_continuous_ppu_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
+
+		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_resp_raw.txt', self.detrended_res_raw_resp_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
+		np.savetxt(os.path.splitext(self.inputFileName)[0] + '_ppu_raw.txt', self.detrended_res_raw_ppu_signal_hrf.T, delimiter = '\t', fmt = '%3.2f')
 
 
 

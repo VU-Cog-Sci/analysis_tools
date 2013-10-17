@@ -147,9 +147,21 @@ class DeconvolutionOperator(EventDataOperator):
 			design_matrix = self.designMatrix
 		else:
 			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
-		# shell()
-		self.residuals = self.workingDataArray - (np.mat(design_matrix) * np.mat(betas))
+		self.residuals = self.workingDataArray - np.dot(design_matrix, betas).T
 		return np.array(self.residuals)
+	
+	def sse(self):
+		"""use the residuals to create a sum of squared error for each of the event types."""
+		res_sq = np.squeeze(self.residuals() ** 2)
+		# res_sq = res_sq - res_sq.mean(axis = -1)
+		if hasattr(self, 'newDesignMatrix'):	# means we've run this with nuisances
+			design_matrix = self.newDesignMatrix
+		elif hasattr(self, 'designMatrix'):
+			design_matrix = self.designMatrix
+		self.logger.info('mean squared sse over time is %f' % res_sq.mean())
+		self.sse = np.squeeze(np.array(((design_matrix.T * design_matrix).I * design_matrix.T) * np.mat(res_sq.T).T))
+		return self.sse
+		
 	
 	
 

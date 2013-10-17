@@ -210,6 +210,24 @@ class PercentSignalChangeOperator(ImageOperator):
 		outputFile = NiftiImage(pscData.astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
 		
+class MeanBrainSubtractionOperator(ImageOperator):
+	"""
+	MeanBrainSubtractionOperator
+	subtracts the mean brain value at each timepoint from the timeseries.
+	This alleviates temporal oscillations due to for example multiband sequences.
+	"""
+	def __init__(self, inputObject, outputFileName = None, **kwargs):
+		super(MeanBrainSubtractionOperator, self).__init__(inputObject = inputObject, **kwargs)
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = self.inputObject.filename[:-7] + '_mbs.nii.gz'
+	
+	def execute(self):
+		meanBrainTimeseries = self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)).mean(axis = 1)
+		outputFile = NiftiImage((self.inputObject.data.reshape((self.inputObject.data.shape[0], -1)).T - meanBrainTimeseries).astype(np.float32).T.reshape(self.inputObject.data.shape), self.inputObject.header)
+		outputFile.save(self.outputFileName)
+		
 	
 class ZScoreOperator(ImageOperator):
 	"""

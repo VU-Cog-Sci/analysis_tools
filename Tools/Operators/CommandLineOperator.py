@@ -401,8 +401,10 @@ class FEATOperator( CommandLineOperator ):
 		super(FEATOperator, self).__init__(inputObject = inputObject, cmd = 'feat ', **kwargs)
 		self.featFile = self.inputObject
 		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
-		if not 'sara' or 'aeneas' in os.uname()[1]:
-			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat '
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths'
 		
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
