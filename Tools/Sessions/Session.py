@@ -133,15 +133,19 @@ class Session(PathConstructor):
 	such as putting the files in place and setting up the runs. 
 	Often-used analysis steps include registration with an anatomical, and motion correction of the functionals.
 	"""
-	def __init__(self, ID, date, project, subject, parallelize = False, loggingLevel = logging.DEBUG):
+	def __init__(self, ID, date, project, subject, parallelize = False, loggingLevel = logging.DEBUG, name_appendix = '', **kwargs):
 		self.ID = ID
 		self.date = date
 		self.project = project
 		self.subject = subject
 		self.runList = []
-		self.dateCode = subject.initials + '_' + ('0'+str(self.date.day))[-2:] + ('0'+str(self.date.month))[-2:] + str(self.date.year)[-2:]
+		self.name_appendix = name_appendix
+		self.dateCode = subject.initials + '_' + ('0'+str(self.date.day))[-2:] + ('0'+str(self.date.month))[-2:] + str(self.date.year)[-2:] + self.name_appendix
 		self.parallelize = parallelize
 		self.loggingLevel = loggingLevel
+		for k,v in kwargs.items():
+			setattr(self, k, v)
+		
 		super(Session, self).__init__()
 		
 		# add logging for this session
@@ -445,6 +449,11 @@ class Session(PathConstructor):
 					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
 					sgtfO.configure(mask_file = mask_file, TR = funcFile.rtime, width = 240, order = 3)
 					sgtfO.execute()
+				if op =='mbs':
+					mbsO = MeanBrainSubtractionOperator(funcFile)
+					mbsO.execute()
+					funcFile = NiftiImage(mbsO.outputFileName)
+					
 					
 		if self.parallelize and operations[0][-4:] == 'pass':
 			# tryout parallel implementation - later, this should be abstracted out of course. 
