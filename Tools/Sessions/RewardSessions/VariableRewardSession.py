@@ -275,7 +275,7 @@ class VariableRewardSession(SingleRewardSession):
 		timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
 		time_signals = []
-		interval = [0.0,12.0]
+		interval = [0.0,16.0]
 		
 		# shell()
 		
@@ -299,7 +299,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 		# nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix))
 		# nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
-		nuisance_design_matrix = nuisance_design.designMatrix
+		nuisance_design_matrix = nuisance_design.designMatrix.T
 		
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = reward_event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
 		deco.runWithConvolvedNuisanceVectors(nuisance_design_matrix)
@@ -1653,10 +1653,11 @@ class VariableRewardSession(SingleRewardSession):
 		elif analysis_type == 'amplitude':
 			timeseries = roi_data[mapping_mask,:].mean(axis = 0)
 		
+		
 		sample_duration = tr/2.0
 		
 		# nuisance version?
-		nuisance_design = Design(timeseries.shape[0] * 2, sample_duration )
+		nuisance_design = Design(timeseries.shape[0] * round(tr/sample_duration), sample_duration )
 		nuisance_design.configure([list(np.vstack(blink_events))])
 		# nuisance_design.configure([list(np.vstack(blink_events))], hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35})
 		
@@ -1673,7 +1674,7 @@ class VariableRewardSession(SingleRewardSession):
 		if analysis_type == 'correlation':
 			nuisance_design_matrix = nuisance_design.designMatrix#np.hstack((stimulus_design.designMatrix, nuisance_design.designMatrix))
 		elif analysis_type == 'amplitude':
-			nuisance_design_matrix = np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix)) # , delay_design.designMatrix
+			nuisance_design_matrix = nuisance_design.designMatrix # np.hstack((stimulus_design.designMatrix, delay_design.designMatrix, nuisance_design.designMatrix)) # , delay_design.designMatrix
 		
 		time_signals = []
 		
@@ -1747,7 +1748,7 @@ class VariableRewardSession(SingleRewardSession):
 			reward_event_data_separate = [r + offsets['reward'] for r in reward_event_data]
 			stimulus_event_data.extend(reward_event_data_separate)
 			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stimulus_event_data, TR = tr, deconvolutionSampleDuration = sample_duration, deconvolutionInterval = interval[1], run = False)
-			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i])
 			
@@ -1867,7 +1868,7 @@ class VariableRewardSession(SingleRewardSession):
 		for roi in rois:
 			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 			results.append(self.deconvolve_with_correlation_roi(roi, -threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
-			results.append(self.deconvolve_with_correlation_roi(roi, 0.0, mask_type = 'center_Z', mask_direction = 'all', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
+			# results.append(self.deconvolve_with_correlation_roi(roi, 0.0, mask_type = 'center_Z', mask_direction = 'all', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'

@@ -502,6 +502,47 @@ class Session(PathConstructor):
 				lvo.configure(templateFileName = template_file, hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()
 		
+	
+	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
+		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
+		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
+		"""
+		# convert aseg file to nii
+		os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz')) 
+		
+		flO = FlirtOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz'), referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+		flO.configureApply(os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat/'), 'highres2example_func.mat'), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks'), asegFile + '.nii.gz'))
+		if not os.path.isfile(flO.outputFileName):
+			flO.execute()
+		
+		# find the subcortical labels in the converted brain from aseg.auto_noCCseg.label_intensities file
+		with open(os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg.auto_noCCseg.label_intensities.txt')) as f:
+			a = f.readlines()
+		list_of_areas = [[al.split(' ')[0], al.split(' ')[1]] for al in a]
+		
+		# open file
+		aseg_image = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks'), asegFile + '.nii.gz'))
+		for wanted_region in which_regions:
+			for area in list_of_areas:
+				if len(area[1].split('_')) > 1:
+					if area[1].split('_')[1] == wanted_region:
+						prefix = ''
+						if area[1].split('_')[0] == 'Left':
+							prefix = 'lh.'
+						elif area[1].split('_')[0] == 'Right':
+							prefix = 'rh.'
+						# shell()
+						label_opf_name = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '.nii.gz')
+						this_label_data = np.array(aseg_image.data == int(area[0]), dtype = int)
+						# create new image
+						label_opf = NiftiImage(this_label_data)
+						label_opf.header = aseg_image.header
+						label_opf.save(label_opf_name)
+						self.logger.info( area[1] + ' outputted to ' + label_opf_name )
+					
+					
+	
+	
 	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
 		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/' + originalMaskFolder ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
