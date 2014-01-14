@@ -675,7 +675,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	#	
 	
 	
-	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 7.5):
+	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 0.0):
 		"""docstring for results_to_surface"""
 		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/PRF/'), file_name + '.nii.gz'))
 		ofn = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), output_file_name )
@@ -698,7 +698,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.results_to_surface(file_name = value_file + '_%2.2f'%threshold, output_file_name = 'PRF', frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3})
 		
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', anat_mask = 'V1', stat_threshold = -10.0, n_jobs = 28, run_fits = True):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], condition = 'all', anat_mask = 'V1', stat_threshold = -10.0, n_jobs = 28, run_fits = True):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
@@ -706,17 +706,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		
 		anat_mask = os.path.join(self.stageFolder('processed/mri/'), 'masks', 'anat', anat_mask + '.nii.gz')
-		
+		filename = mask_file + '_' + '_'.join(postFix + [condition])
 		if run_fits:
-			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).data
-			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file + '.nii.gz')).data
+			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + filename + '.nii.gz')).data
+			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + filename + '.nii.gz')).data
 			
 			anat_mask_data = NiftiImage(anat_mask).data > 0
 			
 			stat_mask = stats_data[1] > stat_threshold
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask_data]
 			self.logger.info('starting fitting of prf shapes')
-			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data, diagnostics_plot = True, save_file_name = os.path.join(self.stageFolder('processed/mri/figs/'), '%s_%i.pdf'%(mask_file,i))) for (i, vox_spatial_data) in enumerate(voxel_spatial_data_to_fit.T))
+			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data, diagnostics_plot = False, save_file_name = os.path.join(self.stageFolder('processed/mri/figs/'), '%s_%i.pdf'%(mask_file,i))) for (i, vox_spatial_data) in enumerate(voxel_spatial_data_to_fit.T))
 		
 			max_comp = np.array(res)
 		
@@ -724,21 +724,63 @@ class PopulationReceptiveFieldMappingSession(Session):
 			ecc = np.abs(max_comp)
 			real = np.real(max_comp)
 			imag = np.imag(max_comp)
-		
-			all_res = np.hstack([polar, ecc, real, imag])
-			all_res = all_res.reshape([4] + list(stats_data.shape[1:]))
+			
+			# shell()
+			
+			prf_res = np.vstack([polar, ecc, real, imag])
+			
+			empty_res = np.zeros([4] + [np.array(stats_data.shape[1:]).prod()])
+			empty_res[:,(stat_mask * anat_mask_data).ravel()] = prf_res
+			
+			all_res = empty_res.reshape([4] + list(stats_data.shape[1:]))
 		
 			self.logger.info('saving prf parameters to polar and ecc')
 		
 			all_res_file = NiftiImage(all_res)
-			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).header
-			all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'all_res.nii.gz'))
+			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + filename + '.nii.gz')).header
+			all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'results_' + filename + '.nii.gz'))
 		
 		self.logger.info('converting prf values to surfaces')
-		# reproject the original stats
-		self.results_to_surface(file_name = 'corrs_cortex_dilated_mask', output_file_name = 'PRF', frames = {'_f':1})
-		# and the spatial values
-		self.results_to_surface(file_name = 'all_res', output_file_name = 'PRF', frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3})
+		for sm in [0,2,5]: # different smoothing values.
+			# reproject the original stats
+			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm)
+			# and the spatial values
+			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3}, smooth = sm)
+			
+			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), 'results_' + filename + '_' + str(sm) ))
+			
+		
+	
+	def surface_to_polar(self, filename):
+		"""surface_to_polar takes a (smoothed) surface file for both real and imaginary parts and re-converts it to polar and eccentricity angle."""
+		self.logger.info('converting %s from (smoothed) surface to nii back to surface')
+		for hemi in ['lh','rh']:
+			for component in ['real', 'imag']:
+				svO = SurfToVolOperator(inputObject = filename + '_' + component + '-' + hemi + '.mgh' )
+				svO.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['PRF'][0]], postFix = ['mcf']), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = filename + '_' + component + '.nii.gz', threshold = 0.5, surfType = 'paint')
+				print svO.runcmd
+				svO.execute()
+				# shell()
+				
+			# now, there's a pair of imag and real nii files for this hemisphere. Let's open them and make polar and eccen phases before re-transforming to surface. 
+			complex_values = NiftiImage(filename + '_real-' + hemi + '.nii.gz').data + 1j * NiftiImage(filename + '_imag-' + hemi + '.nii.gz').data
+		
+			comp = NiftiImage(np.array([np.angle(complex_values), np.abs(complex_values)]))
+			comp.header = NiftiImage(filename + '_real-' + hemi + '.nii.gz').header
+			comp.save(filename + '_polecc-' + hemi + '.nii.gz')
+		
+		# add the two polecc files together
+		addO = FSLMathsOperator(filename + '_polecc-' + 'lh' + '.nii.gz')
+		addO.configureAdd(add_file = filename + '_polecc-' + 'rh' + '.nii.gz', outputFileName = filename + '_polecc.nii.gz')
+		addO.execute()
+		
+		# self.results_to_surface(file_name = filename + '_polecc.nii.gz', output_file_name = filename, frames = , smooth = 0)
+		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/PRF/'), filename + '_polecc.nii.gz'))
+		# ofn = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), output_file_name )
+		vsO.configure(frames = {'_polar':0, '_ecc':1}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = filename + '_sm', threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+		vsO.execute()
+		
 	
 	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
 		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )

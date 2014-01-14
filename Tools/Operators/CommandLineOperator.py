@@ -394,6 +394,14 @@ class FSLMathsOperator( CommandLineOperator ):
 		maskArgs = {'-mas ': mask_file}
 		self.configure( outputFileName = self.outputFileName, **maskArgs )
 		
+	def configureAdd(self, add_file, outputFileName = None ):
+		if outputFileName == None:
+			self.outputFileName = self.inputFileName
+		else:
+			self.outputFileName = outputFileName
+		addArgs = {'-add ': add_file}
+		self.configure( outputFileName = self.outputFileName, **addArgs )
+		
 		
 class FEATOperator( CommandLineOperator ):
 	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
@@ -404,7 +412,7 @@ class FEATOperator( CommandLineOperator ):
 		if 'sara' or 'aeneas' in os.uname()[1]:
 			pass
 		else:
-			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslmaths'
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; feat'
 		
 
 	def configure(self, REDict = {}, featFileName = '', waitForExecute = False):
@@ -531,7 +539,10 @@ class VolToSurfOperator( CommandLineOperator ):
 				self.runcmd += ' --srcreg ' + self.register
 				self.runcmd += ' --surf smoothwm'
 				self.runcmd += ' --hemi  ' + hemi
-				self.runcmd += " --projfrac " + str(threshold)
+				if type(threshold) == float:
+					self.runcmd += " --projfrac " + str(threshold)
+				else:
+					self.runcmd += "  --projfrac-max %d %d %1.2f" % tuple(threshold)
 				self.runcmd += ' --frame ' + str(frames[frame])
 				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
 				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.mgh'
