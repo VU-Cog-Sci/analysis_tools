@@ -157,20 +157,6 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		pl.savefig(save_file_name)
 	
 	return max_comp
-		
-		
-
-def fit_gaussian(coef_array, method = 'ML'):
-	"""
-	fit_gaussian fits a gaussian distribution to a two-dimensional histogram (coef_array).
-	It uses the argument method to decide what method to use. 
-	"""
-	# normalize histogram
-	n_a = normalize_histogram(coef_array)
-	
-	
-	
-	
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
@@ -336,7 +322,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times])
+			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 1.5, 3.0, 1.0]] for tt in r.trial_times])
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
 			
 			total_trs += nii_file.timepoints
