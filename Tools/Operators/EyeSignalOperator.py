@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from datetime import *
 from tables import *
-from ..savitzky_golay import *
+from ..other_scripts.savitzky_golay import *
 import matplotlib.pylab as pl
 from math import *
 from scipy.io import *
@@ -39,14 +39,14 @@ class EyeSignalOperator(Operator):
 		self.raw_gazeXY = self.inputObject['gazeXY']
 		self.raw_pupil = self.inputObject['pupil']
 		
-		is not hasattr(self, 'sample_rate'): # this should have been set as a kwarg, but if it hasn't we just assume a standard 1000 Hz
+		if not hasattr(self, 'sample_rate'): # this should have been set as a kwarg, but if it hasn't we just assume a standard 1000 Hz
 			self.sample_rate = 1000.0
 	
 	def blink_detection_pupil(self, coalesce_period = 0.25, threshold_level = 0.01):
 		"""blink_detection_pupil detects blinks in the pupil signal depending on when signals go below threshold_level, dilates these intervals by period coalesce_period"""
 		self.blinks_indices = pd.rolling_mean(np.array(self.raw_pupil < threshold_level, dtype = float), int(coalesce_period * self.sample_rate)) > 0
-		self.blink_starts = np.time_points[:-1][np.diff(self.blinks_indices) == 1]
-		self.blink_ends = np.time_points[:-1][np.diff(self.blinks_indices) == -1]
+		self.blink_starts = self.timepoints[:-1][np.diff(self.blinks_indices) == 1]
+		self.blink_ends = self.timepoints[:-1][np.diff(self.blinks_indices) == -1]
 		
 		# now make sure we're only looking at the blnks that fall fully inside the data stream
 		if self.blink_starts[0] > self.blink_ends[0]:
@@ -71,7 +71,7 @@ class EyeSignalOperator(Operator):
 				sample_indices = np.arange(self.raw_pupil.shape)[np.sum(np.array([self.time_points == s for s in samples]), axis = 0)]
 				spline = interpolate.InterpolatedUnivariateSpline(itp,self.raw_pupil[sample_indices])
 				# replace with interpolated data, from the inside points of the interpolation lists. 
-				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(sample_indices[1]:sample_indices[-2])
+				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline[sample_indices[1]:sample_indices[-2]]
 		
 		elif method == 'linear':
 			for bs, be in zip(self.blink_starts, self.blink_ends):
