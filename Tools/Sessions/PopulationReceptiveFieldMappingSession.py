@@ -228,48 +228,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 	"""
 	Class for population receptive field mapping sessions analysis.
 	"""
-	def resample_epis(self):
-		"""resample_epi resamples the mc'd epi files back to their functional space."""
-		# create identity matrix
-		np.savetxt(os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), np.eye(4), fmt = '%1.1f')
-		
-		cmds = []
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
-			fO = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ),  referenceFileName = self.runFile(stage = 'processed/mri', run = r ))
-			fO.configureApply( transformMatrixFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res'] ) ) 
-			cmds.append(fO.runcmd)
-		
-		# run all of these resampling commands in parallel
-		ppservers = ()
-		job_server = pp.Server(ppservers=ppservers)
-		self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
-		ppResults = [job_server.submit(ExecCommandLine,(fo,),(),('subprocess','tempfile',)) for fo in cmds]
-		for fo in ppResults:
-			fo()
-		
-		# now put stuff back in the right places
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
-			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','hr']) )
-			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
-			
-	
-	def create_dilated_cortical_mask(self, dilation_sd = 0.5, label = 'cortex'):
-		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
-		it then smoothes this mask with fslmaths, using a gaussian kernel. 
-		This is then thresholded at > 0.0, in order to create an enlarged cortex mask in binary format.
-		"""
-		# take rh and lh files and join them.
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'rh.' + label + '.nii.gz'))
-		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), '' + label + '.nii.gz'), **{'-add': os.path.join(self.stageFolder('processed/mri/masks/anat'), 'lh.' + label + '.nii.gz')})
-		fmO.execute()
-		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), '' + label + '.nii.gz'))
-		fmO.configureSmooth(smoothing_sd = dilation_sd)
-		fmO.execute()
-		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
-		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
-		fmO.execute()
 	
 	def stimulus_timings(self):
 		"""stimulus_timings uses behavior operators to distil:
