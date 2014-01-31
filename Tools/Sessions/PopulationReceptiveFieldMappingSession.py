@@ -426,7 +426,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = output_postFix ))
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = output_postFix ))
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5): # a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35{'a': 6, 'b': 0.9}
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, save_design_matrix = False): # a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35{'a': 6, 'b': 0.9}
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -493,17 +493,20 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.plot(self.full_design_matrix.sum(axis = 1))
 			pl.plot(self.trial_start_list / sample_duration, np.ones(self.trial_start_list.shape), 'ko')
 			s.set_title('original')
-			s.axis([0,200,0,200])
+			# s.axis([0,200,0,200])
 			f = pl.figure(figsize = (10, 10))
 			s = f.add_subplot(111)
 			pl.imshow(self.full_design_matrix)
 			s.set_title('full design matrix')
 			# s.axis([0,200,0,200])
-			pl.savefig(os.path.join(self.stageFolder('processed/mri/PRF/'), 'prf_design.pdf'))
-			
+			pl.savefig(os.path.join(self.stageFolder('processed/mri/PRF/'), 'prf_design_%1.1f_%ix%i_%s.pdf'%(sample_duration, n_pixel_elements, n_pixel_elements, method)))
+		
+		if save_design_matrix:
+			with open(os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%1.1f_%ix%i_%s.pickle'%(sample_duration, n_pixel_elements, n_pixel_elements, method)), 'w') as f:
+				pickle.dump({'tr_time_list' : self.tr_time_list, 'full_design_matrix' : self.full_design_matrix, 'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
 		
 	
-	def fit_PRF(self, n_pixel_elements = 80, mask_file_name = 'single_voxel', n_jobs = 28, postFix = ['mcf', 'sgtf', 'res', 'prZ'], conditions = ['all']): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 80, mask_file_name = 'single_voxel', n_jobs = 28, postFix = ['mcf', 'sgtf', 'res', 'prZ'], conditions = ['all'], save_all_data = False): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -575,18 +578,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# closest sample in designmatrix
 				these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times]) 
 				this_design_matrix = np.array(self.full_design_matrix[these_samples[selected_tr_times],:], dtype = np.float64, order = 'F')
+				if save_all_data:
+					save_design_matrix = np.zeros((this_design_matrix.shape[0],n_pixel_elements * n_pixel_elements))
+					save_design_matrix[:,valid_regressors] = this_design_matrix
+					np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%ix%i_%s'%(n_pixel_elements, n_pixel_elements, conditions[0])), save_design_matrix)
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels for condition %s' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), str(conditions)))
 				# shell()
 				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(this_design_matrix, vox_timeseries[selected_tr_times]) for vox_timeseries in these_voxels)
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
-				if mask_file_name == 'single_voxel':
-					pl.figure()
-					these_coefs = np.zeros((n_pixel_elements**2))
-					these_coefs[valid_regressors] = all_coefs[:, cortex_mask * voxels_in_this_slice_in_full]
-					pl.imshow(these_coefs.reshape((n_pixel_elements,n_pixel_elements)))
-					pl.show()
 				all_coefs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[0] for r in res]).T
 				all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
 				
@@ -607,7 +608,15 @@ class PopulationReceptiveFieldMappingSession(Session):
 		corr_nii_file.header = mask_file.header
 		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0] + '.nii.gz'))
 	
-	
+		if save_all_data:
+			all_data = np.zeros([selected_tr_times.sum()] + list(cortex_mask.shape))
+			all_data[:,cortex_mask] = z_data[selected_tr_times]
+			
+			data_nii_file = NiftiImage(all_data)
+			data_nii_file.header = mask_file.header
+			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0] + '.nii.gz'))
+			
+			np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0]), z_data[selected_tr_times])
 	#
 	#	For fitting of receptive fields; we fit full covariance matrices of at least one Gaussian distribution.
 	#	One gaussian can be fit using least-squares as per scipy example: http://code.google.com/p/agpy/source/browse/trunk/agpy/gaussfitter.py
