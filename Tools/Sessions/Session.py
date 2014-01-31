@@ -288,15 +288,9 @@ class Session(PathConstructor):
 		if bb:
 			# register to both freesurfer anatomical and fsl MNI template
 			# actual registration - BBRegister to freesurfer subject
-			if prepare_register:
-				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True )
-				bbR.execute()
-				# after registration, see bbregister log file for reg check
-			else:	# we do not prepare, but take the registration from an already created register.dat.
-				bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-				bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True, init_fsl = False )
-				bbR.execute()
+			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
+			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True, init_fsl = prepare_register )
+			bbR.execute()
 				
 			
 		if MNI:
