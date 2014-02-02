@@ -267,7 +267,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# physio regressors
 		physio_list = []
 		mcf_list = []
-		trial_times_list = []
+		event_times_list = []
 		total_trs  = 0
 		for j, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
@@ -280,8 +280,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 1.5, 3.0, 1.0]] for tt in r.trial_times])
+			event_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 1.5, 1.0, 1.0]] for tt in r.trial_times])
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
+			event_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + bt, 0.5, 1.0] for bt in np.array(r.all_button_times[:,1], dtype = float)]])
 			
 			total_trs += nii_file.timepoints
 		
@@ -291,7 +292,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
-		run_design.configure(trial_times_list)
+		run_design.configure(event_times_list)
 		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
 		
 		f = pl.figure(figsize = (10, 10))
