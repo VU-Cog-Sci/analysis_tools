@@ -12,7 +12,6 @@ from subprocess import *
 #from volumesAndSurfaces import *
 
 from Tools.Sessions import *
-from Tools.Trial import *
 from Operators.BehaviorOperator import *
 
 class Run(object):
