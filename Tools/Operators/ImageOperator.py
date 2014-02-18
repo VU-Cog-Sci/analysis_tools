@@ -299,7 +299,7 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 			new_output_data[:,mask] = output_data
 			output_data = new_output_data
 		else:
-			output_data.reshape(self.inputObject.data.shape)
+			output_data = output_data.reshape(self.inputObject.data.shape)
 		
 		# save output file, as np.float32
 		output_image = NiftiImage(np.array(output_data, dtype = np.float32))
