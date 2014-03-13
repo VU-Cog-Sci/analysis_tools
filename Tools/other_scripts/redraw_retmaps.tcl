@@ -26,7 +26,7 @@ set polardir $condition
 source $env(FREESURFER_HOME)/lib/tcl/readenv.tcl
 
 ### for backward compatibility (old script-specific mechanism)
-set floatstem $condition                   ;# float file stem
+set floatstem $conditionfilename                   ;# float file stem
 set realname real                      ;# analyse infix
 set complexname imag                   ;# analyse infix
 set rgbname polar                   ;# name of rgbfiles
@@ -40,10 +40,10 @@ set complexvalflag 1    ;# two-component data
 set colscale 0          ;# 0=wheel,1=heat,2=BR,3=BGR,4=twocondGR,5=gray
 set angle_offset -.25   ;# phase offset (-0.25 for up semicircle start)
 set angle_cycles 2.0    ;# adjust range
-set fthresh 3.0         ;# val/curv sigmoid zero (neg=>0)
-set fslope 2.5          ;# contast (was fsquash 2.5)
-set fmid   4.8          ;# set linear region
-set smoothsteps 2
+set fthresh -1.0         ;# val/curv sigmoid zero (neg=>0)
+set fslope 1          ;# contast (was fsquash 2.5)
+set fmid   0          ;# set linear region
+set smoothsteps 0
 set offset 0.20    ;# default lighting offset
 # smooth the curvature and surface before doing anything else
 set invphaseflag 0
@@ -62,7 +62,7 @@ if [info exists polardir] { set dir $polardir }
 
 #### read and smooth complex component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth complex Fourier comp"
-setfile val */$dir/surf/${floatstem}_${complexname}-$hemi.mgh     ;# polarangle
+setfile val */$dir/surf/${floatstem}${complexname}-$hemi.mgh     ;# polarangle
 # echo */$dir/surf/${floatstem}_${complexname}-$hemi.mgh
 read_binary_values
 smooth_val $smoothsteps 
@@ -70,7 +70,7 @@ shift_values     ;# shift complex component out of way
 
 #### read and smooth real component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth real Fourier comp"
-setfile val */$dir/surf/${floatstem}_${realname}-$hemi.mgh    ;# polarangle
+setfile val */$dir/surf/${floatstem}${realname}-$hemi.mgh    ;# polarangle
 #echo */$dir/surf/${floatstem}_${realname}-$hemi.mgh
 read_binary_values
 smooth_val $smoothsteps

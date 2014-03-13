@@ -736,13 +736,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 		vsO.execute()
 		
 	
-	def makeTiffsFromCondition(self, condition, y_rotation = 90.0, exit_when_ready = 1 ):
+	def makeTiffsFromCondition(self, condition, results_file, y_rotation = 90.0, exit_when_ready = 1 ):
 		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )
 		for hemi in ['lh','rh']:
 			REDict = {
 			'---HEMI---': hemi,
 			'---CONDITION---': condition, 
-			'---CONDITIONFILENAME---': condition.replace('/', '_'), 
+			'---CONDITIONFILENAME---': results_file, 
 			'---FIGPATH---': os.path.join(self.stageFolder(stage = 'processed/mri/'), condition, 'surf'),
 			'---NAME---': self.subject.standardFSID,
 			'---BASE_Y_ROTATION---': str(y_rotation),
