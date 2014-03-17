@@ -13,12 +13,10 @@ import pickle
 import scipy as sp
 import numpy as np
 import pandas as pd
-from datetime import *
-from tables import *
-from ..other_scripts.savitzky_golay import *
+import numpy.linalg as LA
+from Tools.other_scripts.savitzky_golay import *
 import matplotlib.pylab as pl
 from math import *
-from scipy.io import *
 from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.stats as stats
 import mne
@@ -27,6 +25,132 @@ from Operator import Operator
 
 from IPython import embed as shell
 
+def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
+	"""
+	detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
+	L determines the threshold - standard set at 5 median-based standard deviations from the median
+	"""
+	minimum_saccade_duration = 0.012 # in s
+	
+	xy_data = np.array(xy_data)
+	# when are both eyes zeros?
+	xy_data_zeros = (xy_data == 0.0001).sum(axis = 1)
+	
+	# median-based standard deviation, for x and y separately
+	med = np.median(vel_data, axis = 0)
+	scaled_vel_data = vel_data/np.mean(np.array(np.sqrt((vel_data - med)**2)), axis = 0)
+	# normalize and to acceleration and its sign
+	normed_scaled_vel_data = LA.norm(scaled_vel_data, axis = 1)
+	normed_vel_data = LA.norm(vel_data, axis = 1)
+	normed_acc_data = np.r_[0,np.diff(normed_scaled_vel_data)]
+	signed_acc_data = np.sign(normed_acc_data)
+	
+	# when are we above the threshold, and when were the crossings
+	over_threshold = (normed_scaled_vel_data > l)
+	# integers instead of bools preserve the sign of threshold transgression
+	over_threshold_int = np.array(over_threshold, dtype = np.int16)
+	
+	# crossings come in pairs
+	threshold_crossings_int = np.concatenate([[0], np.diff(over_threshold_int)])
+	threshold_crossing_indices = np.arange(threshold_crossings_int.shape[0])[threshold_crossings_int != 0]
+	
+	# if no saccades were found, then we'll just go on and record an empty saccade
+	if threshold_crossing_indices.shape[0] > 1:
+		# the first saccade cannot already have started now
+		if threshold_crossings_int[threshold_crossing_indices[0]] == -1:
+			threshold_crossings_int[threshold_crossing_indices[0]] = 0
+			threshold_crossing_indices = threshold_crossing_indices[1:]
+	
+		# the last saccade cannot be in flight at the end of this data
+		if threshold_crossings_int[threshold_crossing_indices[-1]] == 1:
+			threshold_crossings_int[threshold_crossing_indices[-1]] = 0
+			threshold_crossing_indices = threshold_crossing_indices[:-1]
+	
+		# check the durations of the saccades
+		threshold_crossing_indices_2x2 = threshold_crossing_indices.reshape((-1,2))
+		raw_saccade_durations = np.diff(threshold_crossing_indices_2x2, axis = 1).squeeze()
+	
+		# and check whether these saccades were also blinks...
+		blinks_during_saccades = np.ones(threshold_crossing_indices_2x2.shape[0], dtype = bool)
+		for i in range(blinks_during_saccades.shape[0]):
+			if np.sum(xy_data_zeros[threshold_crossing_indices_2x2[i,0]-20:threshold_crossing_indices_2x2[i,1]+20]) > 0:
+				blinks_during_saccades[i] = False
+	
+		# and are they too close to the end of the interval?
+		right_times = threshold_crossing_indices_2x2[:,1] < xy_data.shape[0]-30
+	
+		valid_saccades_bool = (((raw_saccade_durations / sample_rate) > minimum_saccade_duration) * blinks_during_saccades ) * right_times
+		if type(valid_saccades_bool) != np.ndarray:
+			valid_threshold_crossing_indices = threshold_crossing_indices_2x2
+		else:
+			valid_threshold_crossing_indices = threshold_crossing_indices_2x2[valid_saccades_bool]
+	
+		# print threshold_crossing_indices_2x2, valid_threshold_crossing_indices, blinks_during_saccades, ((raw_saccade_durations / sample_rate) > minimum_saccade_duration), right_times, valid_saccades_bool
+		# print raw_saccade_durations, sample_rate, minimum_saccade_duration
+	
+	else:
+		valid_threshold_crossing_indices = []
+	
+	saccades = []
+	for i, cis in enumerate(valid_threshold_crossing_indices):
+		# find the real start and end of the saccade by looking at when the acceleleration reverses sign before the start and after the end of the saccade:
+		# sometimes the saccade has already started?
+		expanded_saccade_start = np.arange(cis[0])[np.r_[0,np.diff(signed_acc_data[:cis[0]] != 1)] != 0]
+		if expanded_saccade_start.shape[0] > 0:
+			expanded_saccade_start = expanded_saccade_start[-1]
+		else:
+			expanded_saccade_start = 0
+			
+		expanded_saccade_end = np.arange(cis[1],np.min([cis[1]+50, xy_data.shape[0]]))[np.r_[0,np.diff(signed_acc_data[cis[1]:np.min([cis[1]+50, xy_data.shape[0]])] != -1)] != 0]
+		# sometimes the deceleration continues crazily, we'll just have to cut it off then. 
+		if expanded_saccade_end.shape[0] > 0:
+			expanded_saccade_end = expanded_saccade_end[0]
+		else:
+			expanded_saccade_end = np.min([cis[1]+50, xy_data.shape[0]])
+		
+		this_saccade = {
+			'expanded_start_time': expanded_saccade_start,
+			'expanded_end_time': expanded_saccade_end,
+			'expanded_duration': expanded_saccade_end - expanded_saccade_start,
+			'expanded_start_point': xy_data[expanded_saccade_start],
+			'expanded_end_point': xy_data[expanded_saccade_end],
+			'expanded_vector': xy_data[expanded_saccade_end] - xy_data[expanded_saccade_start],
+			'expanded_amplitude': np.sum(normed_vel_data[expanded_saccade_start:expanded_saccade_end]) / sample_rate,
+			'peak_velocity': np.max(normed_vel_data[expanded_saccade_start:expanded_saccade_end]),
+
+			'raw_start_time': cis[0],
+			'raw_end_time': cis[1],
+			'raw_duration': cis[1] - cis[0],
+			'raw_start_point': xy_data[cis[1]],
+			'raw_end_point': xy_data[cis[0]],
+			'raw_vector': xy_data[cis[1]] - xy_data[cis[0]],
+			'raw_amplitude': np.sum(normed_vel_data[cis[0]:cis[1]]) / sample_rate,
+		}
+		saccades.append(this_saccade)
+	
+	# if this fucker was empty
+	if len(valid_threshold_crossing_indices) == 0:
+		this_saccade = {
+			'expanded_start_time': 0,
+			'expanded_end_time': 0,
+			'expanded_duration': 0.0,
+			'expanded_start_point': [0.0,0.0],
+			'expanded_end_point': [0.0,0.0],
+			'expanded_vector': [0.0,0.0],
+			'expanded_amplitude': 0.0,
+			'peak_velocity': 0.0,
+
+			'raw_start_time': 0,
+			'raw_end_time': 0,
+			'raw_duration': 0.0,
+			'raw_start_point': [0.0,0.0],
+			'raw_end_point': [0.0,0.0],
+			'raw_vector': [0.0,0.0],
+			'raw_amplitude': 0.0,
+		}
+		saccades.append(this_saccade)
+	
+	return saccades
 
 class EyeSignalOperator(Operator):
 	"""EyeSignalOperator operates on eye signals, preferably sampled at 1000 Hz. 
@@ -45,8 +169,8 @@ class EyeSignalOperator(Operator):
 	def blink_detection_pupil(self, coalesce_period = 0.25, threshold_level = 0.01):
 		"""blink_detection_pupil detects blinks in the pupil signal depending on when signals go below threshold_level, dilates these intervals by period coalesce_period"""
 		self.blinks_indices = pd.rolling_mean(np.array(self.raw_pupil < threshold_level, dtype = float), int(coalesce_period * self.sample_rate)) > 0
-		self.blink_starts = self.timepoints[:-1][np.diff(self.blinks_indices) == 1]
-		self.blink_ends = self.timepoints[:-1][np.diff(self.blinks_indices) == -1]
+		self.blink_starts = np.time_points[:-1][np.diff(self.blinks_indices) == 1]
+		self.blink_ends = np.time_points[:-1][np.diff(self.blinks_indices) == -1]
 		
 		# now make sure we're only looking at the blnks that fall fully inside the data stream
 		if self.blink_starts[0] > self.blink_ends[0]:
@@ -71,7 +195,7 @@ class EyeSignalOperator(Operator):
 				sample_indices = np.arange(self.raw_pupil.shape)[np.sum(np.array([self.time_points == s for s in samples]), axis = 0)]
 				spline = interpolate.InterpolatedUnivariateSpline(itp,self.raw_pupil[sample_indices])
 				# replace with interpolated data, from the inside points of the interpolation lists. 
-				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline[sample_indices[1]:sample_indices[-2]]
+				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
 		
 		elif method == 'linear':
 			for bs, be in zip(self.blink_starts, self.blink_ends):
