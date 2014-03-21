@@ -591,7 +591,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				all_coefs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[0] for r in res]).T
 				all_corrs[:, cortex_mask * voxels_in_this_slice_in_full] = np.array([r[1] for r in res]).T
-				
 		
 		output_coefs = np.zeros([n_pixel_elements ** 2] + list(cortex_mask.shape))
 		output_coefs[valid_regressors] = all_coefs

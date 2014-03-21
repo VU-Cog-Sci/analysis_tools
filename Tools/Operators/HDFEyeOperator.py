@@ -205,7 +205,10 @@ class HDFEyeOperator(Operator):
 		"""docstring for signal_from_trial"""
 		with pd.get_store(self.inputObject) as h5_file:
 			table = h5_file['%s/trials'%alias]
-			time_period = list(table[table['trial_start_index'] == trial_nr][['trial_start_EL_timestamp', 'trial_end_EL_timestamp']] + np.array(time_extensions))
+			time_period = np.array([
+				table[table['trial_start_index'] == trial_nr]['trial_start_EL_timestamp'] + time_extensions[0],
+				table[table['trial_start_index'] == trial_nr]['trial_end_EL_timestamp'] + time_extensions[1]
+			]).squeeze()
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
 	def signal_from_trial_phases(self, trial_nr, trial_phases, alias, signal, requested_eye = 'L', time_extensions = [0,0]):
