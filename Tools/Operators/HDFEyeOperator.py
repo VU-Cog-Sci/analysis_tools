@@ -197,6 +197,7 @@ class HDFEyeOperator(Operator):
 			return None	# assert something, dammit!
 		return self.data_from_time_period(time_period, alias, columns)
 	
+	
 	#
 	#	second, based also on trials, using the above functionality
 	#
@@ -228,3 +229,24 @@ class HDFEyeOperator(Operator):
 			time_period = np.array([start_time + time_extensions[0], end_time + time_extensions[1]]).squeeze()
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
+	def saccades_from_trial_phases(self, trial_nr, trial_phases, alias, requested_eye = 'L', time_extensions = [0,0]):
+		with pd.get_store(self.inputObject) as h5_file:
+			table = h5_file['%s/trial_phases'%alias]
+			if trial_phases[0] == 0:
+				start_time = table[table['trial_start_index'] == trial_nr]['trial_start_EL_timestamp']
+			else:
+				start_time = table[((table['trial_phase_index'] == trial_phases[0]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
+			if trial_phases[-1] == -1:
+				end_time = table[table['trial_start_index'] == trial_nr]['trial_end_EL_timestamp']
+			else:
+				end_time = table[((table['trial_phase_index'] == trial_phases[1]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
+			time_period = np.array([start_time + time_extensions[0], end_time + time_extensions[1]]).squeeze()
+			
+	#
+	#	read whole dataframes
+	#
+	
+	def read_session_data(self, alias, name):
+		with pd.get_store(self.inputObject) as h5_file:
+			eyelink_blink_data = h5_file['%s/%s'%(alias, name)]
+		return eyelink_blink_data

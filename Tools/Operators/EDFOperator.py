@@ -167,6 +167,9 @@ class EDFOperator( Operator ):
 			self.trial_starts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.start_trial_strings])
 			self.trial_ends = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stop_trial_strings])
 			
+			if len(self.trial_starts) != len(self.trial_ends):
+				self.trial_ends = self.trial_ends[::2]
+			
 			self.nr_trials = len(self.stop_trial_strings)
 			self.trials = np.hstack((self.trial_starts, self.trial_ends))
 			

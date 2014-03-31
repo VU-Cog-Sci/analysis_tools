@@ -16,10 +16,14 @@ import matplotlib.pylab as pl
 import pandas as pd
 import numpy.linalg as LA
 import bottleneck as bn
+from scipy.optimize import curve_fit
+from scipy import stats, polyval, polyfit
+from lmfit import minimize, Parameters, Parameter, report_fit
 
 from joblib import Parallel, delayed
 import itertools
 from itertools import chain
+
 
 import logging, logging.handlers, logging.config
 
@@ -53,6 +57,8 @@ class HexagonalSaccadeAdaptationSession(object):
 		self.nr_trials_per_block = 150
 		self.nr_blocks = 8
 		self.block_trial_indices = np.array([np.arange(0,self.nr_trials_per_block) + (i*self.nr_trials_per_block) for i in range(self.nr_blocks)])
+		
+		self.all_block_colors = ['k', 'r', 'g', 'r', 'g', 'r', 'g', 'k']
 		
 		self.velocity_profile_duration = self.signal_profile_duration = 100
 		# add logging for this session
@@ -312,3 +318,75 @@ class HexagonalSaccadeAdaptationSession(object):
 		print diff_fr
 		print diff_zs_pp
 		print diff_zs_pp[0] - diff_zs_pp[1]
+	
+	def fit_adaptation_timecourse_one_block_powerlaw(self, data, trials_okay):
+		
+		(ar,br)=polyfit(np.log10(np.arange(1,self.nr_trials_per_block+1))[trials_okay],np.log10(data)[trials_okay],1)
+		xr=polyval([ar,br],np.log10(np.arange(1,self.nr_trials_per_block+1)))
+		
+		return (ar, br, xr, 10**ar, 10**br, 10**xr)
+	
+	def fit_adaptation_timecourse_one_block_exponential(self, data, trials_okay):
+		
+		(ar,br)=polyfit(np.log10(np.arange(1,self.nr_trials_per_block+1)[trials_okay]),data[trials_okay],1)
+		xr=polyval([ar,br],np.log10(np.arange(1,self.nr_trials_per_block+1)))
+		
+		return (ar, br, xr, 10**ar, br, xr)
+	
+	def fit_adaptation_timecourse_one_block_exponential_mts(self, data, trials_okay):
+		
+		(ar,br)=polyfit(np.log10(np.arange(1,self.nr_trials_per_block+1))[trials_okay],np.log10(data)[trials_okay],1)
+		xr=polyval([ar,br],np.log10(np.arange(1,self.nr_trials_per_block+1)))
+		
+		return (ar, br, xr, 10**ar, 10**br, 10**xr)
+	
+	def amplitudes_all_adaptation_blocks(self, which_amplitude = 'raw_amplitude', acceptance_amplitude_range = [5.0, 13.0]):
+		""""""
+		alias_amps = []
+		alias_fitted_amps = []
+		for alias in self.conditions.keys():
+			with pd.get_store(self.ho.inputObject) as h5_file:
+				saccade_table = h5_file['%s/saccades_per_trial'%alias]
+				# pixels per degree
+				parameters = h5_file['%s/parameters'%alias]
+				pixels_per_degree = parameters['pixels_per_degree'][0]
+				
+			nr_saccs_in_session = saccade_table.shape[0]
+			
+			ad_bl_tr = []
+			f_ad_bl_tr = []
+			for i in range(self.nr_blocks):
+				if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
+					ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
+				else:
+					ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
+				which_trials_okay = (ad_bl_tr[i] > acceptance_amplitude_range[0]) * (ad_bl_tr[i] < acceptance_amplitude_range[1])
+				# do some fitting of power-law
+				f_ad_bl_tr.append( [self.fit_adaptation_timecourse_one_block_powerlaw(ad_bl_tr[i], which_trials_okay), self.fit_adaptation_timecourse_one_block_exponential(ad_bl_tr[i], which_trials_okay)] )
+				
+			alias_amps.append(ad_bl_tr)
+			alias_fitted_amps.append(f_ad_bl_tr)
+			
+			f = pl.figure(figsize = (12,4))
+			s1 = f.add_subplot(111)
+			for i in range(len(ad_bl_tr)):
+				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block)[which_trials_okay], ad_bl_tr[i][which_trials_okay], self.all_block_colors[i] + 'o', mew = 1.75, alpha = 0.875, mec = 'w', ms = 6  )
+				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][0][-1], self.all_block_colors[i] + '--', alpha = 0.75, linewidth = 4.75 )
+				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][1][-1], self.all_block_colors[i] + ':', alpha = 0.75, linewidth = 4.75 )
+			simpleaxis(s1)
+			spine_shift(s1)
+	
+			s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,acceptance_amplitude_range[0],acceptance_amplitude_range[1]])
+			s1.set_xticks(np.arange(0,self.nr_trials_per_block * self.nr_blocks,self.nr_trials_per_block))
+			s1.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+			s1.axhline(10.0, linewidth = 0.25)
+			
+			s1.set_xlabel('trials within blocks, ' + alias)
+			s1.set_ylabel('saccade gain')
+			s1.set_title(alias + '\nTrials + fit')
+			
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'ad_time_course_%s_%s.pdf'%(alias, which_amplitude)))
+			
+		return alias_amps, alias_fitted_amps
+		
+	
