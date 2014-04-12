@@ -133,7 +133,10 @@ class HexagonalSaccadeAdaptationSession(object):
 			s = s[1] # lose the index
 			if s['raw_start_time'] != 0.0:
 				int_signal = self.ho.signal_from_trial_phases(trial_nr = s['trial'], trial_phases = [1,3], alias = alias, signal = 'vel', requested_eye = s['eye'], time_extensions = [s['raw_start_time']-10,350])
-				signal_profiles[index,:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))] = LA.norm(int_signal, axis = 1)[:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))]
+				if (np.__version__.split('.')[0] == 1) and (np.__version__.split('.')[1] > 6):
+					signal_profiles[index,:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))] = LA.norm(int_signal, axis = 1)[:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))]
+				else:
+					signal_profiles[index,:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))] = np.array([LA.norm(ints) for ints in np.array(int_signal)])[:np.min((self.velocity_profile_duration,int(s['raw_duration'])+20))]
 			else:
 				pass
 		s_name = 'velocity'

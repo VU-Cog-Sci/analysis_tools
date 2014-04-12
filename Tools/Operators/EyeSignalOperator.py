@@ -45,8 +45,8 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		normed_scaled_vel_data = LA.norm(scaled_vel_data, axis = 1)
 		normed_vel_data = LA.norm(vel_data, axis = 1)
 	else:
-		normed_scaled_vel_data = np.array([LA.norm(svd) for svd in scaled_vel_data])
-		normed_vel_data = np.array([LA.norm(vd) for vd in vel_data])
+		normed_scaled_vel_data = np.array([LA.norm(svd) for svd in np.array(scaled_vel_data)])
+		normed_vel_data = np.array([LA.norm(vd) for vd in np.array(vel_data)])
 	normed_acc_data = np.r_[0,np.diff(normed_scaled_vel_data)]
 	signed_acc_data = np.sign(normed_acc_data)
 	

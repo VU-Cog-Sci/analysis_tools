@@ -381,7 +381,7 @@ class FSLMathsOperator( CommandLineOperator ):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_s*%i'%int(round(smoothing_sd)) + standardMRIExtension
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_s%1.2f'%smoothing_sd + standardMRIExtension
 			
 		smArgs = {' -s ': str(smoothing_sd), }
 		self.configure( outputFileName = self.outputFileName, **smArgs )

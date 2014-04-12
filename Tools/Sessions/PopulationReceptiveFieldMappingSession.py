@@ -227,13 +227,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 	"""
 	Class for population receptive field mapping sessions analysis.
 	"""
-	def resample_epis(self):
+	def resample_epis(self, condition = 'PRF'):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
 		# create identity matrix
 		np.savetxt(os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), np.eye(4), fmt = '%1.1f')
-		
+		self.logger.info('resampling epis back to functional space')
 		cmds = []
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			fO = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ),  referenceFileName = self.runFile(stage = 'processed/mri', run = r ))
 			fO.configureApply( transformMatrixFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res'] ) ) 
 			cmds.append(fO.runcmd)
@@ -247,7 +247,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			fo()
 		
 		# now put stuff back in the right places
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','hr']) )
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
@@ -257,6 +257,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		it then smoothes this mask with fslmaths, using a gaussian kernel. 
 		This is then thresholded at > 0.0, in order to create an enlarged cortex mask in binary format.
 		"""
+		self.logger.info('creating dilated %s mask with sd %f'%(label, dilation_sd))
 		# take rh and lh files and join them.
 		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'rh.' + label + '.nii.gz'))
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), '' + label + '.nii.gz'), **{'-add': os.path.join(self.stageFolder('processed/mri/masks/anat'), 'lh.' + label + '.nii.gz')})
@@ -266,16 +267,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 		fmO.configureSmooth(smoothing_sd = dilation_sd)
 		fmO.execute()
 		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
+		fmO = FSLMathsOperator(fmO.outputFileName)
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 	
-	def stimulus_timings(self):
+	def stimulus_timings(self, condition = 'PRF'):
 		"""stimulus_timings uses behavior operators to distil:
 		- the times at which stimulus presentation began and ended per task type
 		- the times at which the task buttons were pressed. 
 		"""
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			bO = PopulationReceptiveFieldBehaviorOperator(self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ))
 			bO.trial_times() # sets up all behavior  
 			r.trial_times = bO.trial_times
@@ -290,14 +291,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 				these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
 	
-	def physio(self):
+	def physio(self, condition = 'PRF'):
 		"""physio loops across runs to analyze their physio data"""
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			pO = PhysioOperator(self.runFile(stage = 'processed/hr', run = r, extension = '.log' ))
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
 	
-	def GLM_for_nuisances(self):
+	def GLM_for_nuisances(self, condition = 'PRF'):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
 		runs a GLM on them in order to run further PRF analysis on the 
 		residuals after GLM. It assumes physio, motion correction and 
@@ -310,7 +311,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		mcf_list = []
 		trial_times_list = []
 		total_trs  = 0
-		for j, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			# moco and physiology regressors are per-TR regressors that need no convolution anymore.
 			physio_list.append(np.array([
@@ -339,7 +340,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# take data
 		data_list = []
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			# self.logger.info('per-condition Z-score of run %s' % r)
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			data_list.append(nii_file.data[:,cortex_mask])
@@ -351,7 +352,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		self.logger.info('GLM finished; outputting data to %s and %s'%(os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ', 'res']))[-1], os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ', 'betas']))[-1]))
 		# and now, back to image files
-		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			output_data_res = np.zeros(nii_file.data.shape, dtype = np.float32)
 			output_data_res[:,cortex_mask] = residuals[i*nii_file.data.shape[0]:(i+1)*nii_file.data.shape[0],:]
 			
@@ -368,7 +369,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 		# shell()
 	
-	def zscore_timecourse_per_condition(self, dilate_width = 2):
+	def zscore_timecourse_per_condition(self, dilate_width = 2, condition = 'PRF'):
 		"""fit_voxel_timecourse loops over runs and for each run:
 		looks when trials of a certain type occurred, 
 		and dilates these times by dilate_width TRs.
@@ -377,7 +378,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
 		# loop over runs
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			self.logger.info('per-condition Z-score of run %s' % r)
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			tr_times = np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime)
@@ -401,7 +402,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = True, ssr = 5):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = True, ssr = 5, condition = 'PRF'):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -412,7 +413,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		the resulting design matrix will differ from the HRF version.
 		"""
 		# get orientations and stimulus timings
-		self.stimulus_timings()
+		self.stimulus_timings(condition = condition)
 		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
 		self.stim_matrix_list = []
@@ -420,7 +421,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.sample_time_list = []
 		self.tr_time_list = []
 		self.trial_start_list = []
-		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.15)
 			mr.simulate_run( )
@@ -465,7 +466,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 		
 	
-	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', n_jobs = 15): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', n_jobs = 15, condition = 'PRF'): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -475,7 +476,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for fitting of individual regions.
 		"""
 		# we need a design matrix.
-		self.design_matrix(n_pixel_elements = n_pixel_elements)
+		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition)
 		valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
 		self.full_design_matrix = self.full_design_matrix[:,valid_regressors]
 		
@@ -487,7 +488,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
 		
 		data_list = []
-		for i, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ', 'res'] ))
 			data_list.append(nii_file.data[:,cortex_mask])
 			self.TR = nii_file.rtime
@@ -551,15 +552,15 @@ class PopulationReceptiveFieldMappingSession(Session):
 	#	
 	
 	
-	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'f':1}):
+	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'f':1}, condition = 'PRF'):
 		"""docstring for results_to_surface"""
-		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/PRF/'), file_name + '.nii.gz'))
-		ofn = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), output_file_name )
+		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/%s/'%condition), file_name + '.nii.gz'))
+		ofn = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), output_file_name )
 		vsO.configure(frames = frames, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
 		vsO.execute()
 	
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF'):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
@@ -567,8 +568,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		
 		if run_fits:
-			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).data
-			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file + '.nii.gz')).data
+			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file + '.nii.gz')).data
+			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + mask_file + '.nii.gz')).data
 		
 			stat_mask = stats_data[1] > stat_threshold
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask]
@@ -588,14 +589,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.logger.info('saving prf parameters to polar and ecc')
 		
 			all_res_file = NiftiImage(all_res)
-			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file + '.nii.gz')).header
-			all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'all_res.nii.gz'))
+			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file + '.nii.gz')).header
+			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'all_res.nii.gz'))
 		
 		self.logger.info('converting prf values to surfaces')
 		# reproject the original stats
-		self.results_to_surface(file_name = 'corrs_cortex_dilated_mask', output_file_name = 'PRF', frames = {'_f':1})
+		self.results_to_surface(file_name = 'corrs_cortex_dilated_mask', output_file_name = condition, frames = {'_f':1}, condition = condition)
 		# and the spatial values
-		self.results_to_surface(file_name = 'all_res', output_file_name = 'PRF', frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3})
+		self.results_to_surface(file_name = 'all_res', output_file_name = condition, frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3}, condition = condition)
 	
 	def makeTiffsFromCondition(self, condition, results_file, y_rotation = 90.0, exit_when_ready = 1 ):
 		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )
