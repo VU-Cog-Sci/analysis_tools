@@ -888,3 +888,37 @@ class Session(PathConstructor):
 		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
+
+	def retroicor_run(self, run, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
+		"""retroicor_run takes a run as input argument and runs its physiology through the retroicor operator"""
+		# find out the parameters of the nifti file
+		run_nii_file = nifti.NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
+		REDict = {
+			'---LOG_FILE---': self.runFile(stage = 'processed/hr', run = r),
+			'---NR_TRS---': run_nii_file.data.shape[0],
+			'---NR_SLICES---': run_nii_file.data.shape[1],
+			'---NR_SLICES_PER_BEAT---':run_nii_file.data.shape[1],
+			'---TR_SECS---': run_nii_file.rtime,
+			'---NR_DUMMIES---': nr_dummies,
+			'---ONSET_SLICE---': onset_slice,
+			'---GRADIENT_DIRECTION---': gradient_direction,
+			'---OUTPUT_FILE_NAME---': self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt'),
+		}
+		
+		# get template script
+		if retroicor_script_file == None:
+			retroicor_script_file = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'RETROICOR_PPU_template.m')
+		# start retroicor operator with said file
+		rO = RETROICOROperator(retroicor_script_file)
+		rO.configure(REDict = REDict, retroicor_m_filename = self.runFile(stage = 'processed/hr', run = r, extension = '.m'), waitForExecute = True)
+		rO.execute()
+		
+		# some diagnostics
+		if not os.path.is_file(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt')):
+			self.logger.error('retroicor did not return regressors')
+		else:
+			regressors = np.loadtxt(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt'))
+			pl.figure()
+			pl.imshow(regressors)
+			pl.savefig(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'pdf'))
+			self.logger.debug('please verify regressors in %s' % self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'pdf'))

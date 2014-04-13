@@ -440,6 +440,37 @@ class FEATOperator( CommandLineOperator ):
 			runcmd += ' & '
 		self.runcmd = runcmd
 
+class RETROICOROperator( CommandLineOperator ):
+	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	def __init__(self, inputObject, **kwargs):
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nojvm -nodesktop < run ', **kwargs)
+		self.m_file = self.inputObject
+
+	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
+		"""
+		configure will run feat on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+
+		self.retroicor_m_filename = retroicor_m_filename
+
+		sf = open(self.m_file,'r')
+		workingString = sf.read()
+		sf.close()
+		for e in REDict:
+			rS = re.compile(e)
+			workingString = re.sub(rS, REDict[e], workingString)
+
+		of = open(self.retroicor_m_filename, 'w')
+		of.write(workingString)
+		of.close()
+
+		runcmd = self.cmd
+		runcmd += self.retroicor_m_filename
+		if not waitForExecute:
+			runcmd += ' & '
+		self.runcmd = runcmd
+
 
 class retMapRun(object):
 	def   __init__(self, ID, stimType, direction, TR, niiFilePath, delay = 4.0, nSkip = 12, nrCycles = 6):
