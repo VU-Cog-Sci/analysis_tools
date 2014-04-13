@@ -102,3 +102,5 @@ physio.verbose      = verbose;
 % physio.thresh.cardiac.posthoc_cpulse_select.method = 'load';
 
 [physio_out, R, ons_secs] = tapas_physio_main_create_regressors(physio);
+
+exit
