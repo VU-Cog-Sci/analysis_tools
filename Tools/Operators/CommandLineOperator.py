@@ -443,7 +443,7 @@ class FEATOperator( CommandLineOperator ):
 class RETROICOROperator( CommandLineOperator ):
 	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -r "%s"', **kwargs)
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -r ', **kwargs)
 		self.m_file = self.inputObject
 
 	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
@@ -466,7 +466,7 @@ class RETROICOROperator( CommandLineOperator ):
 		of.close()
 
 		runcmd = self.cmd
-		runcmd % self.retroicor_m_filename
+		runcmd += '"run ' + self.retroicor_m_filename + '"'
 		if not waitForExecute:
 			runcmd += ' & '
 		self.runcmd = runcmd
@@ -506,8 +506,6 @@ class RetMapOperator( CommandLineOperator ):
 
 	def configure(self, inputFileNames, outputFileName):
 		"""configure runs and the command line command to run the analysis"""
-
-			self.logger.error('different numbers for input file names and runs')
 		self.inputFileNames = inputFileNames
 		if outputFileName[-7:] == standardMRIExtension:
 			self.outputFileName = outputFileName[:-7]

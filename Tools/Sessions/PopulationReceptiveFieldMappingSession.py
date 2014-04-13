@@ -298,6 +298,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
 	
+	def physio_retroicor(self, condition = 'PRF', nr_dummies = 6):
+		"""physio loops across runs to analyze their physio data"""
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
+			self.retroicor_run(r, nr_dummies = nr_dummies)
+
 	def GLM_for_nuisances(self, condition = 'PRF'):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
 		runs a GLM on them in order to run further PRF analysis on the 
@@ -314,16 +319,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			# moco and physiology regressors are per-TR regressors that need no convolution anymore.
-			physio_list.append(np.array([
-				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
-				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ) 
-				]))
+			# physio_list.append(np.array([
+			# 	np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
+			# 	np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ) 
+			# 	]))
+			# new piece of code for retroicor regressors
+			physio_list.append(np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['regressors']) ).T)
 				
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 4.5, 1.5, 1.0]] for tt in r.trial_times]) # changed the occurrence of this event to -4.5 to -1.5...
+			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] -1.5, 0.5, 1.0]] for tt in r.trial_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
+			
 			
 			total_trs += nii_file.timepoints
 		
@@ -334,7 +342,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
 		run_design.configure(trial_times_list)
-		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
+		# only using the mc and physio now
+		joined_design_matrix = np.mat(np.vstack([mcf_list, physio_list]).T)
+		# joined_design_matrix = np.mat(physio_list.T)
 		# shell()
 		self.logger.info('nuisance and trial_onset design_matrix of dimensions %s'%(str(joined_design_matrix.shape)))
 		# take data
@@ -369,7 +381,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 		# shell()
 	
-	def zscore_timecourse_per_condition(self, dilate_width = 2, condition = 'PRF'):
+	def zscore_timecourse_per_condition(self, dilate_width = 2, condition = 'PRF', postFix = ['mcf', 'sgtf']):
 		"""fit_voxel_timecourse loops over runs and for each run:
 		looks when trials of a certain type occurred, 
 		and dilates these times by dilate_width TRs.
@@ -380,7 +392,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# loop over runs
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			self.logger.info('per-condition Z-score of run %s' % r)
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
+			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			tr_times = np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime)
 			masked_input_data = nii_file.data[:,cortex_mask]
 			if not hasattr(r, 'trial_times'):
@@ -399,8 +411,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			file_output_data[:,cortex_mask] = output_data
 			opf = NiftiImage(file_output_data)
 			opf.header = nii_file.header
-			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
-			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
+			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
+			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 	
 	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = True, ssr = 5, condition = 'PRF'):
 		"""design_matrix creates a design matrix for the runs
@@ -413,7 +425,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		the resulting design matrix will differ from the HRF version.
 		"""
 		# get orientations and stimulus timings
-		self.stimulus_timings(condition = condition)
+		self.stimulus_timings()
 		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
 		self.stim_matrix_list = []
@@ -466,7 +478,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 		
 	
-	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', n_jobs = 15, condition = 'PRF'): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.6, save_all_data = True): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -476,7 +488,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for fitting of individual regions.
 		"""
 		# we need a design matrix.
-		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition)
+		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration)
 		valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
 		self.full_design_matrix = self.full_design_matrix[:,valid_regressors]
 		
@@ -489,12 +501,39 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		data_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ', 'res'] ))
+			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			data_list.append(nii_file.data[:,cortex_mask])
 			self.TR = nii_file.rtime
+			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
+			
 		z_data = np.array(np.vstack(data_list), dtype = np.float32)
 		# get rid of the raw data list that will just take up memory
 		del(data_list)
+		
+		# do the separation based on condition
+		# loop over tasks
+		task_tr_times = np.zeros((len(tasks), self.tr_time_list.shape[0]))
+		task_sample_times = np.zeros((len(tasks), self.sample_time_list.shape[0]))
+		dilate_width = 5.0 # in seconds
+		for i, task in enumerate(tasks):
+			add_time_for_previous_runs = 0.0
+			trial_events = []
+			for j, r in enumerate([self.runList[k] for k in self.conditionDict['PRF']]):
+				this_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
+				trial_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))[:,0] + add_time_for_previous_runs)
+				trial_duration = np.median(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))[:,1])
+				add_time_for_previous_runs += this_nii_file.rtime * this_nii_file.timepoints
+			trial_events = np.concatenate(trial_events)
+			task_tr_times[i] = np.array([(self.tr_time_list > (t - dilate_width)) * (self.tr_time_list < (t + dilate_width + trial_duration)) for t in trial_events]).sum(axis = 0, dtype = bool)
+			task_sample_times[i] = np.array([(self.sample_time_list > (t - dilate_width)) * (self.sample_time_list < (t + dilate_width + trial_duration)) for t in trial_events]).sum(axis = 0, dtype = bool)
+		# what conditions are we asking for?
+		if task_conditions == ['all']:
+			selected_tr_times = task_tr_times.sum(axis = 0, dtype = bool)
+			selected_sample_times = task_sample_times.sum(axis = 0, dtype = bool)
+		else: # only one condition is selected, which means we must add fix_no_stim
+			all_conditions = task_conditions + ['fix_no_stim']
+			selected_tr_times = task_tr_times[[tasks.index(c) for c in all_conditions]].sum(axis = 0, dtype = bool)
+			selected_sample_times = task_sample_times[[tasks.index(c) for c in all_conditions]].sum(axis = 0, dtype = bool)
 		
 		# set up empty arrays for saving the data
 		all_coefs = np.zeros([int(valid_regressors.sum())] + list(cortex_mask.shape))
@@ -509,7 +548,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 				these_tr_times = self.tr_time_list + sl * (self.TR / float(cortex_mask.shape[1]))
 				these_voxels = z_data[:,voxels_in_this_slice].T
 				# closest sample in designmatrix
-				these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times])
+				these_samples = np.array([np.argmin(np.abs(self.sample_time_list - t)) for t in these_tr_times]) 
+				this_design_matrix = np.array(self.full_design_matrix[these_samples[selected_tr_times],:], dtype = np.float64, order = 'F')
+				if save_all_data:
+					save_design_matrix = np.zeros((this_design_matrix.shape[0],n_pixel_elements * n_pixel_elements))
+					save_design_matrix[:,valid_regressors] = this_design_matrix
+					np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%ix%i_%s'%(n_pixel_elements, n_pixel_elements, task_conditions[0])), save_design_matrix)
 				
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
@@ -532,13 +576,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.logger.info('saving coefficients and correlations of PRF fits')
 		coef_nii_file = NiftiImage(output_coefs)
 		coef_nii_file.header = mask_file.header
-		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file_name + '.nii.gz'))
+		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'coefs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '.nii.gz'))
 		
 		# replace infs in correlations with the maximal value of the rest of the array.
 		all_corrs[np.isinf(all_corrs)] = all_corrs[-np.isinf(all_corrs)].max() + 1.0
 		corr_nii_file = NiftiImage(all_corrs)
 		corr_nii_file.header = mask_file.header
-		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file_name + '.nii.gz'))
+		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '.nii.gz'))
+	
+		if save_all_data:
+			all_data = np.zeros([selected_tr_times.sum()] + list(cortex_mask.shape))
+			all_data[:,cortex_mask] = z_data[selected_tr_times]
+			
+			data_nii_file = NiftiImage(all_data)
+			data_nii_file.header = mask_file.header
+			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0] + '.nii.gz'))
+			
+			np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0]), z_data[selected_tr_times])
 	
 	
 	#

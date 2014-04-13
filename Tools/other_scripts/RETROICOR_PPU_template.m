@@ -52,7 +52,7 @@ sqpar.onset_slice       = ---ONSET_SLICE---;
 
 
 %% 3. Define Gradient Thresholds to Infer Gradient Timing (Philips only)
-thresh.scan_timing = struct('zero', 700, 'slice', 1800, 'vol', [], ...
+thresh.scan_timing = struct('zero', 700, 'slice', 1600, 'vol', [], ...
  'grad_direction', '---GRADIENT_DIRECTION---');
 thresh.scan_timing.vol = [];
 thresh.scan_timing.vol_spacing = []; % in seconds
@@ -81,7 +81,7 @@ model.output_multiple_regressors = '---OUTPUT_FILE_NAME---';
 
 %% 6. Output Figures to be generated
 
-verbose.level = 3;
+verbose.level = 0;
 % 0 = none; 
 % 1 = main plots (default); 
 % 2 = debugging plots: for missed slice/volume events, missed heartbeats, 1D time series of created regressors

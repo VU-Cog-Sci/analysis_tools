@@ -490,6 +490,8 @@ class TrialEventSequence(object):
 		self.signal_events = [re.findall(rec_signal, e)[0] for e in self.events if 'signal' in e]
 		self.signal_events = [[s[0], float(s[1]) - self.run_start_time] for s in self.signal_events]
 		self.task_signal_events = np.array([s[0] == self.task for s in self.signal_events])
+		shell()
+		
 		self.task_signal_times = np.array(np.array(self.signal_events)[self.task_signal_events,1], dtype = float)
 		
 	

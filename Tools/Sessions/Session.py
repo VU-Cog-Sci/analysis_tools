@@ -30,6 +30,7 @@ from ..Operators.BehaviorOperator import *
 # from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 from IPython import embed as shell
+from joblib import Parallel, delayed
 
 class PathConstructor(object):
 	"""
@@ -889,20 +890,25 @@ class Session(PathConstructor):
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 
-	def retroicor_run(self, run, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
+	def retroicor_run(self, r, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
 		"""retroicor_run takes a run as input argument and runs its physiology through the retroicor operator"""
 		# find out the parameters of the nifti file
-		run_nii_file = nifti.NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
+		run_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r) )
+		# shell()
+		if hasattr(r, 'MB_factor'):
+			slice_count = str(int(run_nii_file.data.shape[1] / r.MB_factor))
+		else:
+			slice_count = str(run_nii_file.data.shape[1])
 		REDict = {
-			'---LOG_FILE---': self.runFile(stage = 'processed/hr', run = r),
-			'---NR_TRS---': run_nii_file.data.shape[0],
-			'---NR_SLICES---': run_nii_file.data.shape[1],
-			'---NR_SLICES_PER_BEAT---':run_nii_file.data.shape[1],
-			'---TR_SECS---': run_nii_file.rtime,
-			'---NR_DUMMIES---': nr_dummies,
-			'---ONSET_SLICE---': onset_slice,
+			'---LOG_FILE---': self.runFile(stage = 'processed/hr', run = r, extension = '.log'),
+			'---NR_TRS---': str(run_nii_file.data.shape[0]),
+			'---NR_SLICES---': slice_count,
+			'---NR_SLICES_PER_BEAT---': slice_count,
+			'---TR_SECS---': str(run_nii_file.rtime),
+			'---NR_DUMMIES---': str(nr_dummies),
+			'---ONSET_SLICE---': str(onset_slice),
 			'---GRADIENT_DIRECTION---': gradient_direction,
-			'---OUTPUT_FILE_NAME---': self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt'),
+			'---OUTPUT_FILE_NAME---': self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt'),
 		}
 		
 		# get template script
@@ -914,11 +920,17 @@ class Session(PathConstructor):
 		rO.execute()
 		
 		# some diagnostics
-		if not os.path.is_file(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt')):
+		if not os.path.isfile(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt')):
 			self.logger.error('retroicor did not return regressors')
 		else:
-			regressors = np.loadtxt(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'txt'))
+			regressors = np.loadtxt(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt'))
 			pl.figure()
 			pl.imshow(regressors)
-			pl.savefig(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'pdf'))
-			self.logger.debug('please verify regressors in %s' % self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = 'pdf'))
+			pl.savefig(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
+			self.logger.debug('please verify regressors in %s' % self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
+		
+	def physio_retroicor(self, condition = ''):
+		"""physio loops across runs to analyze their physio data"""
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
+			self.retroicor_run(r)
+	
