@@ -592,9 +592,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			data_nii_file = NiftiImage(all_data)
 			data_nii_file.header = mask_file.header
-			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0] + '.nii.gz'))
+			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '.nii.gz'))
 			
-			np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + conditions[0]), z_data[selected_tr_times])
+			np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0]), z_data[selected_tr_times])
 	
 	
 	#
