@@ -886,7 +886,7 @@ class Session(PathConstructor):
 		fmO.configureSmooth(smoothing_sd = dilation_sd)
 		fmO.execute()
 		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
+		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_s%.2f.nii.gz'%dilation_sd))
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 
@@ -929,8 +929,8 @@ class Session(PathConstructor):
 			pl.savefig(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
 			self.logger.debug('please verify regressors in %s' % self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
 		
-	def physio_retroicor(self, condition = ''):
+	def physio_retroicor(self, condition = '', retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
 		"""physio loops across runs to analyze their physio data"""
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
-			self.retroicor_run(r)
+			self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction)
 	

@@ -298,10 +298,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
 	
-	def physio_retroicor(self, condition = 'PRF', nr_dummies = 6):
-		"""physio loops across runs to analyze their physio data"""
-		for r in [self.runList[i] for i in self.conditionDict[condition]]:
-			self.retroicor_run(r, nr_dummies = nr_dummies)
+	# def physio_retroicor(self, condition = 'PRF', nr_dummies = 6):
+	# 	"""physio loops across runs to analyze their physio data"""
+	# 	for r in [self.runList[i] for i in self.conditionDict[condition]]:
+	# 		self.retroicor_run(r, nr_dummies = nr_dummies)
 
 	def GLM_for_nuisances(self, condition = 'PRF'):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
