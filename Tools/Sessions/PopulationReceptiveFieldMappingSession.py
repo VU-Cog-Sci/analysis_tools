@@ -207,7 +207,7 @@ class PRFModelRun(object):
 		
 		self.run_matrix = np.zeros((self.sample_times.shape[0], self.n_pixel_elements, self.n_pixel_elements))
 		
-		for i in range(len(self.orientation_list)): # trials
+		for i in range(len(self.run.trial_times)): # trials
 			samples_in_trial = (self.sample_times > (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
 			if self.run.trial_times[i][0] != 'fix_no_stim':
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
@@ -338,6 +338,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# to arrays with these regressors
 		mcf_list = np.vstack(mcf_list).T
 		physio_list = np.hstack(physio_list)
+		
+		# check for weird nans and throw out those columns
+		physio_list = physio_list[-np.array(np.isnan(physio_list).sum(axis = 1), dtype = bool),:]
 		
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
