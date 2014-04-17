@@ -890,7 +890,7 @@ class Session(PathConstructor):
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 
-	def retroicor_run(self, r, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
+	def retroicor_run(self, r, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x', waitForExecute = True, execute = True):
 		"""retroicor_run takes a run as input argument and runs its physiology through the retroicor operator"""
 		# find out the parameters of the nifti file
 		run_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r) )
@@ -916,9 +916,14 @@ class Session(PathConstructor):
 			retroicor_script_file = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'RETROICOR_PPU_template.m')
 		# start retroicor operator with said file
 		rO = RETROICOROperator(retroicor_script_file)
-		rO.configure(REDict = REDict, retroicor_m_filename = self.runFile(stage = 'processed/hr', run = r, extension = '.m'), waitForExecute = True)
-		rO.execute()
-		
+		rO.configure(REDict = REDict, retroicor_m_filename = self.runFile(stage = 'processed/hr', run = r, extension = '.m'), waitForExecute = waitForExecute)
+		if execute:
+			rO.execute()
+			
+		return rO.runcmd
+	
+	def retroicor_check(self, r):
+		"""docstring for retroicor_check"""
 		# some diagnostics
 		if not os.path.isfile(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt')):
 			self.logger.error('retroicor did not return regressors')
@@ -931,6 +936,25 @@ class Session(PathConstructor):
 		
 	def physio_retroicor(self, condition = '', retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
 		"""physio loops across runs to analyze their physio data"""
+		cmd_list = []
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
-			self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction)
+			if not self.parallelize:
+				self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction, waitForExecute = True)
+				self.retroicor_check(r)
+			else:
+				cmd_list.append(self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction, execute = False))
 	
+		if self.parallelize:
+			# tryout parallel implementation - later, this should be abstracted out of course. 
+			ppservers = ()
+			job_server = pp.Server(ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
+			ppResults = [job_server.submit(ExecCommandLine,(cmd,),(),('subprocess','tempfile',)) for cmd in cmd_list]
+			for fRICf in ppResults:
+				fRICf()
+	
+			job_server.print_stats()
+			
+			for r in [self.runList[i] for i in self.conditionDict[condition]]:
+				self.retroicor_check(r)
