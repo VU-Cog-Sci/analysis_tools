@@ -47,7 +47,7 @@ class TrialEventSequence(object):
 		rec_button = re.compile('trial %i event (\S+) at (-?\d+\.?\d*)' % self.index)
 		self.button_events = [re.findall(rec_button, e)[0] for e in self.events if 'trial %i event' % self.index in e]
 		self.button_events = [[b[0], float(b[1]) - self.run_start_time] for b in self.button_events]
-		self.button_events = [be for be in self.button_events if (be[1] > 0) and (be[0] == 'b')]
+		self.button_events = [be for be in self.button_events if (be[1] > 0) and ((be[0] == 'b') or (be[0] == 'y'))]
 		
 		rec_phase = re.compile('trial %d phase (\d+) started at (-?\d+\.?\d*)' % self.index)
 		self.phase_events = [re.findall(rec_phase, e)[0] for e in self.events if 'trial %d phase'% self.index in e]
@@ -117,7 +117,7 @@ class MB_PRFSession(PopulationReceptiveFieldMappingSession):
 		for r in [self.runList[i] for i in self.scanTypeDict['epi_bold']]:
 			bO = MB_PRFOperator(self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ))
 			bO.trial_times() # sets up all behavior  
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
+			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
 			duration = nii_file.rtime * nii_file.timepoints
 			# correct for the scan stopping before the behavior
 			valid_trials = np.arange(len(bO.trial_times))[np.array([bO.trial_times[i][2] for i in range(len(bO.trial_times))]) < duration]
@@ -140,4 +140,19 @@ class MB_PRFSession(PopulationReceptiveFieldMappingSession):
 			all_buttons = np.concatenate([[[float(b[0]), 0.5, 1.0] for b in bt] for j, bt in enumerate(r.all_button_times) if (len(bt) > 0)])
 			np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', 'all']), all_buttons, fmt = '%3.2f', delimiter = '\t')
 	
-	
+	def create_occipital_region_from_aparc_2009(self, 
+			list_of_regions = ['Pole_occipital','S_oc_sup_and_transversal','S_oc_middle_and_Lunatus','S_intrapariet_and_P_trans','G_and_S_occipital_inf', 'G_occipital_middle']):
+		"""docstring for create_occipital_region_from_aparc_2009"""
+		# make a directory for the subject's occipital region label
+		try:
+			os.mkdir(os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'occip'))
+		except OSError:
+			pass
+		
+		for hemi in ['lh', 'rh']:
+			cmd = 'mri_mergelabels '
+			for reg in list_of_regions:
+				cmd += '-i ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'aparc.a2009s', hemi + '.' + reg + '.label ')
+			cmd += '-o ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'occip', '%s.occip.label' % hemi)
+			ExecCommandLine(cmd)
+			
