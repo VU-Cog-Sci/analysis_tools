@@ -358,12 +358,21 @@ class HexagonalSaccadeAdaptationSession(object):
 			
 			ad_bl_tr = []
 			f_ad_bl_tr = []
+			ad_for_trial_sel =[]
 			for i in range(self.nr_blocks):
-				if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
-					ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
+				if which_amplitude == 'peak_velocity':
+					if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
+						ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
+					else:
+						ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
+						ad_for_trial_sel.append(np.array(saccade_table['raw_amplitude'][(saccade_table['block'] == i)]))
+						which_trials_okay = (ad_for_trial_sel[i] > acceptance_amplitude_range[0]) * (ad_for_trial_sel[i] < acceptance_amplitude_range[1])
 				else:
-					ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
-				which_trials_okay = (ad_bl_tr[i] > acceptance_amplitude_range[0]) * (ad_bl_tr[i] < acceptance_amplitude_range[1])
+					if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
+						ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
+					else:
+						ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
+						which_trials_okay = (ad_bl_tr[i] > acceptance_amplitude_range[0]) * (ad_bl_tr[i] < acceptance_amplitude_range[1])
 				# do some fitting of power-law
 				f_ad_bl_tr.append( [self.fit_adaptation_timecourse_one_block_powerlaw(ad_bl_tr[i], which_trials_okay), self.fit_adaptation_timecourse_one_block_exponential(ad_bl_tr[i], which_trials_okay)] )
 				
@@ -379,17 +388,21 @@ class HexagonalSaccadeAdaptationSession(object):
 			simpleaxis(s1)
 			spine_shift(s1)
 	
-			s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,acceptance_amplitude_range[0],acceptance_amplitude_range[1]])
 			s1.set_xticks(np.arange(0,self.nr_trials_per_block * self.nr_blocks,self.nr_trials_per_block))
 			s1.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-			s1.axhline(10.0, linewidth = 0.25)
-			
+			if which_amplitude != 'peak_velocity':
+				s1.axhline(10.0, linewidth = 0.25)
+				s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,acceptance_amplitude_range[0],acceptance_amplitude_range[1]])
+				s1.set_ylabel('saccade gain')
+			else:
+				s1.set_ylabel('peak velocity')
 			s1.set_xlabel('trials within blocks, ' + alias)
-			s1.set_ylabel('saccade gain')
 			s1.set_title(alias + '\nTrials + fit')
 			
-			pl.savefig(os.path.join(self.base_directory, 'figs', 'ad_time_course_%s_%s.pdf'%(alias, which_amplitude)))
+			pl.savefig(os.path.join(self.base_directory, 'figs', 'adap_time_course_%s_%s.pdf'%(alias, which_amplitude)))
 			
 		return alias_amps, alias_fitted_amps
+		
+		
 		
 	
