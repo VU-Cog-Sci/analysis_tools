@@ -59,6 +59,8 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	threshold_crossings_int = np.concatenate([[0], np.diff(over_threshold_int)])
 	threshold_crossing_indices = np.arange(threshold_crossings_int.shape[0])[threshold_crossings_int != 0]
 	
+	valid_threshold_crossing_indices = []
+	
 	# if no saccades were found, then we'll just go on and record an empty saccade
 	if threshold_crossing_indices.shape[0] > 1:
 		# the first saccade cannot already have started now
@@ -70,7 +72,9 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		if threshold_crossings_int[threshold_crossing_indices[-1]] == 1:
 			threshold_crossings_int[threshold_crossing_indices[-1]] = 0
 			threshold_crossing_indices = threshold_crossing_indices[:-1]
-	
+		
+		if threshold_crossing_indices.shape == 0:
+			break
 		# check the durations of the saccades
 		threshold_crossing_indices_2x2 = threshold_crossing_indices.reshape((-1,2))
 		raw_saccade_durations = np.diff(threshold_crossing_indices_2x2, axis = 1).squeeze()
@@ -93,8 +97,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		# print threshold_crossing_indices_2x2, valid_threshold_crossing_indices, blinks_during_saccades, ((raw_saccade_durations / sample_rate) > minimum_saccade_duration), right_times, valid_saccades_bool
 		# print raw_saccade_durations, sample_rate, minimum_saccade_duration
 	
-	else:
-		valid_threshold_crossing_indices = []
+		
 	
 	saccades = []
 	for i, cis in enumerate(valid_threshold_crossing_indices):
