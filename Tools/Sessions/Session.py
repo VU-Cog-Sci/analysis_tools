@@ -32,6 +32,8 @@ from ..Operators.EyeOperator import *
 from IPython import embed as shell
 from joblib import Parallel, delayed
 
+from ..Operators.HDFEyeOperator import HDFEyeOperator
+
 class PathConstructor(object):
 	"""
 	FilePathConstructor is an abstract superclass for sessions.
@@ -186,6 +188,8 @@ class Session(PathConstructor):
 			self.scanTypeDict.update({'dti': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'dti', [r for r in self.runList])]})
 		if 'spectro' in self.scanTypeList:
 			self.scanTypeDict.update({'spectro': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'spectro', [r for r in self.runList])]})
+		if 'field_map' in self.scanTypeList:
+			self.scanTypeDict.update({'field_map': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'field_map', [r for r in self.runList])]})
 		
 #		print self.scanTypeDict
 		
@@ -194,6 +198,17 @@ class Session(PathConstructor):
 		for c in self.conditions:
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
+	
+	def import_all_edf_data(self, aliases):
+		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """
+		for r in self.runList:
+			if r.indexInSession in self.scanTypeDict['epi_bold']:
+				run_name = os.path.split(self.runFile(stage = 'processed/eye', run = r, extension = ''))[-1]
+				ho = HDFEyeOperator(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'))
+				edf_file = subprocess.Popen('ls ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.edf', shell=True, stdout=PIPE).communicate()[0].split('\n')[0]
+				ho.add_edf_file(edf_file)
+				ho.edf_message_data_to_hdf(alias = run_name)
+				ho.edf_gaze_data_to_hdf(alias = run_name)
 	
 	def setupFiles(self, rawBase, process_eyelink_file = True, date_format = None):
 		"""
