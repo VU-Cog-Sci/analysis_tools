@@ -20,7 +20,8 @@ import numpy.linalg as LA
 from Tools.other_scripts.savitzky_golay import *
 import matplotlib.pylab as pl
 from math import *
-from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample, interpolate
+from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
+import scipy.interpolate as interpolate
 import scipy.stats as stats
 import mne
 
@@ -56,7 +57,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	minimum_saccade_duration = 0.012 # in s
 	
 	#If xy_data is given, process it
-	if xy_data:
+	if not xy_data is None:
 		xy_data = np.array(xy_data)
 		# when are both eyes zeros?
 		xy_data_zeros = (xy_data == 0.0001).sum(axis = 1)
@@ -107,8 +108,8 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 			threshold_crossings_int[threshold_crossing_indices[-1]] = 0
 			threshold_crossing_indices = threshold_crossing_indices[:-1]
 		
-		if threshold_crossing_indices.shape == 0:
-			break
+#		if threshold_crossing_indices.shape == 0:
+#			break
 		# check the durations of the saccades
 		threshold_crossing_indices_2x2 = threshold_crossing_indices.reshape((-1,2))
 		raw_saccade_durations = np.diff(threshold_crossing_indices_2x2, axis = 1).squeeze()
