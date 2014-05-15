@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # encoding: utf-8
-"""
-EyeSignalOperator.py
+
+"""@package Operators
+This module offers various methods to process eye movement data
 
 Created by Tomas Knapen on 2010-12-19.
 Copyright (c) 2010 __MyCompanyName__. All rights reserved.
+
+More details.
 """
 
 import os, sys, subprocess, re
@@ -26,17 +29,48 @@ from Operator import Operator
 from IPython import embed as shell
 
 def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
+	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
+	
+	This function expects a sequence (2 x N) of xy gaze position or velocity data. 
+	
+	Arguments:
+		xy_data (numpy.ndarray, optional): a sequence (2 x N) of xy gaze (float/integer) positions. Defaults to None
+		vel_data (numpy.ndarray, optional): a sequence (2 x N) of velocity data (float/integer). Defaults to None.
+		l (float, optional):determines the threshold. Defaults to 5 median-based standard deviations from the median
+		sample_rate (float, optional) - the rate at which eye movements were measured per second). Defaults to 1000.0
+	
+	Returns:
+		list of dictionaries, which each correspond to a saccade.
+		
+		The dictionary contains the following items:
+			
+	Raises:
+		ValueError: If neither xy_data and vel_data were passed to the function.
+	
 	"""
-	detect_saccade_from_data takes a sequence (2 x N) of xy gaze position or velocity data and uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
-	L determines the threshold - standard set at 5 median-based standard deviations from the median
-	"""
+	
+	# If xy_data and vel_data are both None, function can't continue
+	if xy_data is None and vel_data is None:
+		raise ValueError("Supply either xy_data or vel_data")	
 	
 	minimum_saccade_duration = 0.012 # in s
 	
-	xy_data = np.array(xy_data)
-	# when are both eyes zeros?
-	xy_data_zeros = (xy_data == 0.0001).sum(axis = 1)
+	#If xy_data is given, process it
+	if xy_data:
+		xy_data = np.array(xy_data)
+		# when are both eyes zeros?
+		xy_data_zeros = (xy_data == 0.0001).sum(axis = 1)
 	
+	# Calculate velocity data if it has not been given to function
+	if vel_data is None:
+		# Check for shape of xy_data. If x and y are ordered in columns, transpose array.
+		# Should be 2 x N array to use np.diff namely (not Nx2)
+		rows, cols = xy_data.shape
+		if rows == 2:
+			vel_data = np.diff(xy_data)
+		if cols == 2:
+			vel.data = np.diff(xy_data.T)
+				
 	# median-based standard deviation, for x and y separately
 	med = np.median(vel_data, axis = 0)
 	scaled_vel_data = vel_data/np.mean(np.array(np.sqrt((vel_data - med)**2)), axis = 0)
