@@ -29,11 +29,11 @@ from Operator import Operator
 
 from IPython import embed as shell
 
-def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
+def detect_saccade_from_data(xy_data = None, vel_data = None, l = 1, sample_rate = 1000.0):
 	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 	
 	This function expects a sequence (2 x N) of xy gaze position or velocity data. 
-	
+	impor
 	Arguments:
 		xy_data (numpy.ndarray, optional): a sequence (2 x N) of xy gaze (float/integer) positions. Defaults to None
 		vel_data (numpy.ndarray, optional): a sequence (2 x N) of velocity data (float/integer). Defaults to None.
@@ -70,10 +70,12 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		if rows == 2:
 			vel_data = np.diff(xy_data)
 		if cols == 2:
-			vel.data = np.diff(xy_data.T)
+			vel_data = np.diff(xy_data.T)
+		
 				
 	# median-based standard deviation, for x and y separately
 	med = np.median(vel_data, axis = 0)
+	
 	scaled_vel_data = vel_data/np.mean(np.array(np.sqrt((vel_data - med)**2)), axis = 0)
 	# normalize and to acceleration and its sign
 	if (np.__version__.split('.')[0] == 1) and (np.__version__.split('.')[1] > 6):
