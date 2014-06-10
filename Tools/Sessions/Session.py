@@ -854,7 +854,7 @@ class Session(PathConstructor):
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
 						except NoSuchNodeError:
 							pass
-						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						hdf5_file.create_array(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 						stat_matrix = []
 						zscore_matrix = []
 						for i in range(designMatrix.shape[-1]):
@@ -875,8 +875,8 @@ class Session(PathConstructor):
 							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'zscore')
 						except NoSuchNodeError:
 							pass
-						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-						hdf5_file.createArray(roi_name, analysis_type + '_' + data_type + '_' + 'zscore', np.array(zscore_matrix), 'zscores for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						hdf5_file.create_array(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+						hdf5_file.create_array(roi_name, analysis_type + '_' + data_type + '_' + 'zscore', np.array(zscore_matrix), 'zscores for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 						self.logger.info('beta weights and stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted')
 			except NoSuchNodeError:
 				# import actual data
