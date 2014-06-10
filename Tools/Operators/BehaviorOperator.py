@@ -490,6 +490,8 @@ class TrialEventSequence(object):
 		self.signal_events = [re.findall(rec_signal, e)[0] for e in self.events if 'signal' in e]
 		self.signal_events = [[s[0], float(s[1]) - self.run_start_time] for s in self.signal_events]
 		self.task_signal_events = np.array([s[0] == self.task for s in self.signal_events])
+		# shell()
+		
 		self.task_signal_times = np.array(np.array(self.signal_events)[self.task_signal_events,1], dtype = float)
 		
 	
@@ -556,8 +558,9 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 			stim_on_time = [p[1] for p in t.phase_events if p[0] == '2']
 			stim_off_time = [p[1] for p in t.phase_events if p[0] == '3' ]
 			
-			self.trial_times.append([t.task, stim_on_time[0], stim_off_time[0]])
-			self.all_button_times.append([[t.task, bt[1]] for bt in t.button_events])
+			if len(stim_off_time) != 0 and len(stim_on_time) != 0:
+				self.trial_times.append([t.task, stim_on_time[0], stim_off_time[0]])
+				self.all_button_times.append([[t.task, bt[1]] for bt in t.button_events])
 		self.all_button_times = np.concatenate(self.all_button_times)
 	
 			
