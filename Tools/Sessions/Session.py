@@ -31,6 +31,10 @@ from ..Operators.BehaviorOperator import *
 from ..Operators.EyeOperator import *
 from IPython import embed as shell
 
+from joblib import Parallel, delayed
+
+from ..Operators.HDFEyeOperator import HDFEyeOperator
+
 class PathConstructor(object):
 	"""
 	FilePathConstructor is an abstract superclass for sessions.
@@ -461,7 +465,7 @@ class Session(PathConstructor):
 			job_server.print_stats()
 		
 	
-	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None):
+	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None, cortex = True):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
 		"""
@@ -476,6 +480,25 @@ class Session(PathConstructor):
 			anlo.execute()
 			labelFolders.append(annotFile)
 		
+		if cortex:
+			self.logger.info('create rois based on anatomical cortex definition', annotFile)
+			for lf in [os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'lh.cortex.label'),
+				os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'rh.cortex.label')]:
+				lfx = os.path.split(lf)[-1]
+				if 'lh' in lfx:
+					hemi = 'lh'
+				elif 'rh' in lfx:
+					hemi = 'rh'
+				lvo = LabelToVolOperator(lf)
+				# we convert the label files to the space of the first EPI run of the session, moving them into masks/anat.
+				if template_condition == None:
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]])
+				else:
+					template_file = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[template_condition][0]])
+				
+				lvo.configure(templateFileName = template_file, hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
+				lvo.execute()
+
 		# go through the label folders and make some anatomical masks
 		for lf in labelFolders:
 			self.logger.info('creating masks from labels folder %s', os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', lf))
@@ -885,6 +908,75 @@ class Session(PathConstructor):
 		fmO.configureSmooth(smoothing_sd = dilation_sd)
 		fmO.execute()
 		
-		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_smooth.nii.gz'))
+		fmO = FSLMathsOperator(os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_s%.2f.nii.gz'%dilation_sd))
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
+
+	def retroicor_run(self, r, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x', waitForExecute = True, execute = True):
+		"""retroicor_run takes a run as input argument and runs its physiology through the retroicor operator"""
+		# find out the parameters of the nifti file
+		run_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r) )
+		# shell()
+		if hasattr(r, 'MB_factor'):
+			slice_count = str(int(run_nii_file.data.shape[1] / r.MB_factor))
+		else:
+			slice_count = str(run_nii_file.data.shape[1])
+		REDict = {
+			'---LOG_FILE---': self.runFile(stage = 'processed/hr', run = r, extension = '.log'),
+			'---NR_TRS---': str(run_nii_file.data.shape[0]),
+			'---NR_SLICES---': slice_count,
+			'---NR_SLICES_PER_BEAT---': slice_count,
+			'---TR_SECS---': str(run_nii_file.rtime),
+			'---NR_DUMMIES---': str(nr_dummies),
+			'---ONSET_SLICE---': str(onset_slice),
+			'---GRADIENT_DIRECTION---': gradient_direction,
+			'---OUTPUT_FILE_NAME---': self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt'),
+		}
+		
+		# get template script
+		if retroicor_script_file == None:
+			retroicor_script_file = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools', 'other_scripts', 'RETROICOR_PPU_template.m')
+		# start retroicor operator with said file
+		rO = RETROICOROperator(retroicor_script_file)
+		rO.configure(REDict = REDict, retroicor_m_filename = self.runFile(stage = 'processed/hr', run = r, extension = '.m'), waitForExecute = waitForExecute)
+		if execute:
+			rO.execute()
+			
+		return rO.runcmd
+	
+	def retroicor_check(self, r):
+		"""docstring for retroicor_check"""
+		# some diagnostics
+		if not os.path.isfile(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt')):
+			self.logger.error('retroicor did not return regressors')
+		else:
+			regressors = np.loadtxt(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.txt'))
+			pl.figure()
+			pl.imshow(regressors)
+			pl.savefig(self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
+			self.logger.debug('please verify regressors in %s' % self.runFile(stage = 'processed/hr', run = r, postFix = ['regressors'], extension = '.pdf'))
+		
+	def physio_retroicor(self, condition = '', retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x'):
+		"""physio loops across runs to analyze their physio data"""
+		cmd_list = []
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
+			if not self.parallelize:
+				self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction, waitForExecute = True)
+				self.retroicor_check(r)
+			else:
+				cmd_list.append(self.retroicor_run(r, retroicor_script_file = retroicor_script_file, nr_dummies = nr_dummies, onset_slice = onset_slice, gradient_direction = gradient_direction, execute = False))
+	
+		if self.parallelize:
+			# tryout parallel implementation - later, this should be abstracted out of course. 
+			ppservers = ()
+			job_server = pp.Server(ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+#			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
+			ppResults = [job_server.submit(ExecCommandLine,(cmd,),(),('subprocess','tempfile',)) for cmd in cmd_list]
+			for fRICf in ppResults:
+				fRICf()
+	
+			job_server.print_stats()
+			
+			for r in [self.runList[i] for i in self.conditionDict[condition]]:
+				self.retroicor_check(r)
