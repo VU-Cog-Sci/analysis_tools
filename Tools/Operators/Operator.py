@@ -14,7 +14,7 @@ import scipy as sp
 import numpy as np
 import matplotlib.pylab as pl
 
-from nifti import *
+from nibabel import *
 from Tools.log import *
 
 # in os.path, extensions contain leading periods

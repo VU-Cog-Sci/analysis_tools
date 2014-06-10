@@ -381,7 +381,7 @@ class FSLMathsOperator( CommandLineOperator ):
 		if outputFileName:
 			self.outputFileName = outputFileName
 		else:
-			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_s*%i'%int(round(smoothing_sd)) + standardMRIExtension
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_s%1.2f'%smoothing_sd + standardMRIExtension
 			
 		smArgs = {' -s ': str(smoothing_sd), }
 		self.configure( outputFileName = self.outputFileName, **smArgs )
@@ -440,6 +440,37 @@ class FEATOperator( CommandLineOperator ):
 			runcmd += ' & '
 		self.runcmd = runcmd
 
+class RETROICOROperator( CommandLineOperator ):
+	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	def __init__(self, inputObject, **kwargs):
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -r ', **kwargs)
+		self.m_file = self.inputObject
+
+	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
+		"""
+		configure will run retroicor on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+
+		self.retroicor_m_filename = retroicor_m_filename
+
+		sf = open(self.m_file,'r')
+		workingString = sf.read()
+		sf.close()
+		for e in REDict:
+			rS = re.compile(e)
+			workingString = re.sub(rS, REDict[e], workingString)
+
+		of = open(self.retroicor_m_filename, 'w')
+		of.write(workingString)
+		of.close()
+
+		runcmd = self.cmd
+		runcmd += '"run ' + self.retroicor_m_filename + '"'
+		if not waitForExecute:
+			runcmd += ' & '
+		self.runcmd = runcmd
+
 
 class retMapRun(object):
 	def   __init__(self, ID, stimType, direction, TR, niiFilePath, delay = 4.0, nSkip = 12, nrCycles = 6):
@@ -475,8 +506,6 @@ class RetMapOperator( CommandLineOperator ):
 
 	def configure(self, inputFileNames, outputFileName):
 		"""configure runs and the command line command to run the analysis"""
-		if len(inputFileNames) != len(self.inputList):
-			self.logger.error('different numbers for input file names and runs')
 		self.inputFileNames = inputFileNames
 		if outputFileName[-7:] == standardMRIExtension:
 			self.outputFileName = outputFileName[:-7]
