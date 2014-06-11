@@ -773,7 +773,7 @@ class Session(PathConstructor):
 		"""docstring for parameter_data_from_hdf"""
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 		except NoSuchNodeError:
 			# import actual data
 			self.logger.info('No group ' + this_run_group_name + ' in this file')
@@ -783,16 +783,21 @@ class Session(PathConstructor):
 		return this_data_array
 		
 	
-	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):
+	def roi_data_from_hdf(self, h5file, run = '', roi_wildcard = 'v1', data_type = 'tf_psc_data', postFix = ['mcf']):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
-		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
+		if type(run) == str:
+			this_run_group_name = run
+		# elif type(run) == Tools.Run:
+		else:
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
+
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
-			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
+			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
 				if len(roi_name._v_name.split('.')) > 1:
 					hemi, area = roi_name._v_name.split('.')
 					if roi_wildcard == area:
@@ -807,7 +812,7 @@ class Session(PathConstructor):
 		
 		all_roi_data = []
 		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
@@ -844,14 +849,14 @@ class Session(PathConstructor):
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = functionalPostFix))[1]
 			try:
-				thisRunGroup = hdf5_file.getNode(where = '/', name = this_run_group_name, classname='Group')
-				for roi_name in hdf5_file.listNodes(where = '/' + this_run_group_name, classname = 'Group'):
+				thisRunGroup = hdf5_file.get_node(where = '/', name = this_run_group_name, classname='Group')
+				for roi_name in hdf5_file.list_nodes(where = '/' + this_run_group_name, classname = 'Group'):
 					if roi_name._v_name.split('.')[0] in ('rh', 'lh'):
 						roi_data = eval('roi_name.' + data_type + '.read()')
 						roi_data = roi_data.T - roi_data.mean(axis = 1)
 						glm = my_glm.fit(roi_data.T, designMatrix, method="kalman", model="ar1")
 						try: 
-							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
+							hdf5_file.remove_node(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'betas')
 						except NoSuchNodeError:
 							pass
 						hdf5_file.create_array(roi_name, analysis_type + '_' + data_type + '_' + 'betas', my_glm.beta, 'beta weights for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
@@ -871,8 +876,8 @@ class Session(PathConstructor):
 								stat_matrix.append(my_glm.contrast(this_contrast).stat())
 								zscore_matrix.append(my_glm.contrast(this_contrast).zscore())
 						try: 
-							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
-							hdf5_file.removeNode(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'zscore')
+							hdf5_file.remove_node(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'stat')
+							hdf5_file.remove_node(where = roi_name, name = analysis_type + '_' + data_type + '_' + 'zscore')
 						except NoSuchNodeError:
 							pass
 						hdf5_file.create_array(roi_name, analysis_type + '_' + data_type + '_' + 'stat', np.array(stat_matrix), 'stats for per-trial glm analysis on region ' + str(roi_name) + ' conducted at ' + datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))

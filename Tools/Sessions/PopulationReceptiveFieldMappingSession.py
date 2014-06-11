@@ -821,10 +821,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = condition + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = condition + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		this_run_group_name = 'prf'
 		try:
@@ -866,3 +866,69 @@ class PopulationReceptiveFieldMappingSession(Session):
 				h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 		
 		h5file.close()
+
+	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.2):
+
+		results_frames = {'polar':0, 'ecc':1, 'real':2, 'imag':3, 'surf':4}
+		stats_frames = {'corr': 0, '-logp': 1}
+
+		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r", title = condition + " file")
+
+		# data to be correlated
+		base_task_data = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_results')
+		all_comparison_task_data = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_results') for c in comparison_task_conditions]
+
+		# correlations on which to base the tasks
+		base_task_corr = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_corrs')
+		all_comparison_task_corr = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_corrs') for c in comparison_task_conditions]
+
+		# shell()
+		h5file.close()
+
+		# create and apply the mask. 
+		mask = base_task_corr[:,0] > corr_threshold
+		mask = mask * (base_task_data[:,results_frames['ecc']] < 0.6)
+		base_task_data, all_comparison_task_data = base_task_data[mask, :], np.array([ac[mask, :] for ac in all_comparison_task_data])
+		base_task_corr, all_comparison_task_corr = base_task_corr[mask, 0], np.array([ac[mask, 0] for ac in all_comparison_task_corr])
+
+		order = np.argsort(base_task_data[:,results_frames['ecc']])
+		kern =  stats.norm.pdf( np.linspace(-.25,.25,20) )
+  		sm_ecc = np.convolve( base_task_data[:,results_frames['ecc']][order], kern / kern.sum(), 'valid' )  
+		# shell()
+
+		# scatter plots for results frames
+		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,len(comparison_task_conditions))]
+		mcs = ['o', 'v', 's', '>', '<']
+		f = pl.figure(figsize = (16,7))
+		for j, res_type in enumerate(['ecc', 'surf']):
+			s = f.add_subplot(1,2,1+j)
+			for i, tc in enumerate(comparison_task_conditions):
+				pl.plot(base_task_data[:,results_frames['ecc']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', label = comparison_task_conditions[i], linewidth = 0, alpha = 0.3, mec = 'w')
+				sm_signal = np.convolve( all_comparison_task_data[i][:,results_frames[res_type]][order], kern / kern.sum(), 'valid' )
+				pl.plot(sm_ecc, sm_signal, c = colors[i], linewidth = 3.5, alpha = 0.5 )
+			s.set_title(roi + ' ' + res_type)
+			if j == 1:
+				s.set_ylim([0,15])
+			else:
+				s.set_ylim([0,0.8])
+				leg = s.legend(fancybox = True, loc = 'best')
+				leg.get_frame().set_alpha(0.5)
+				if leg:
+					for t in leg.get_texts():
+					    t.set_fontsize('small')    # the legend text fontsize
+					for l in leg.get_lines():
+					    l.set_linewidth(0.0)  # the legend line width
+
+			s.set_xlim([0,0.6])
+			s.set_xlabel('eccentricity of %s condition'%base_task_condition)
+			s.set_ylabel('res_type')
+			simpleaxis(s)
+			spine_shift(s)
+	
+
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '.pdf'))
+		
+
+
+
