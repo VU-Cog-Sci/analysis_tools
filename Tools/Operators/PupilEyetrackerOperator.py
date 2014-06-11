@@ -343,6 +343,7 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 	scalar = size[0]/1000.0		
 	plt.scatter(x=x_coords, y=y_coords, c='r', alpha=0.5, s=scalar*fixations["fixation_duration_ms"], linewidths=1)	
 	
+	# If required, show the saccade indices next to their data points (slightly offset to the top left)
 	if annotated:
 		for i in range(len(x_coords)):
 			plt.annotate(i+1, xy=(x_coords[i], y_coords[i]), xytext=(-10,10), textcoords = 'offset points')
