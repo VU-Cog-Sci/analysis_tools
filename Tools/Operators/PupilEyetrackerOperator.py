@@ -211,22 +211,31 @@ def generate_fixations_list(data, strict=True, keep_fix_index=False):
 	fixation_durations = fixations["timestamp"].diff().shift(-1)	
 	fixations["fixation_duration_ms"] = (fixation_durations*1000).round()
 	
+	# Instead of just taking the first (x,y) of each fixation at its start as the gaze position,
+	# calculate the average (x,y) of the duration of that fixation, as sometimes
+	# there is a small shift in gaze that is not large enough to be counted as a saccade but is
+	# a slight displacement in the fixation.
+	
+	# Use a pivot table to calculate the average per fixation index
+	pt = data.pivot_table(["x","y"],rows='fixation_index',aggfunc='mean')	
+	# Replace the originals with these averaged x,y coords.
+	fixations["x"] = pt["x"].values
+	fixations["y"] = pt["y"].values
+		
 	#The last fixation duration is NaN with this method and needs to be calculated separately
 	fixations["fixation_duration_ms"][fixations.index[-1]] = ((data["timestamp"][data.index[-1]] - fixations["timestamp"][fixations.index[-1]])*1000).round()
-
+		
 	# If strict is true, register only the 'probable' fixations (so no < 2 frames duration)
 	if strict:
 		fixations = fixations[fixations.fixation_duration_ms > 40]
 		# Reindex the remaining saccades		
 		if not keep_fix_index:
 			fixations.fixation_index = np.arange(1,len(fixations)+1)
-	
-	
-	
+			
 	return fixations
 
 
-def generate_heatmap(eye_data, size=(1000,1200), bins=None):
+def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outflow=20):
 	"""Generates heatmap of supplied samples
 	
 	Plots a pyplot.hist2d of the supplied list of samples
@@ -235,45 +244,40 @@ def generate_heatmap(eye_data, size=(1000,1200), bins=None):
 	----------
 	eye_data: pandas.Dataframe
 		With at least the x and y columns of the eye data
+	
 	size: tuple of ints
 		Dimensions of the plot
-	bins: int, default None
-		Number of bins to divide the hist2d in. If default None is given
-		bin size are determined by size of the dataset		
+	
+	surface_image: string, default None:
+		Path to the image to use as the background of the fixation plot
+	
+	gauss_outflow: int, default 20
+		The extent to which the 'heat' of a fixation flows out to the neighboring pixels
+		The lower this number, the more confined the hotspots are to the location of the fixation		
 	"""
-	
-	# IPython uses a different plotting dimension system, which is much smaller
-	# than the normal pixel notation.
-	try:
-		__IPYTHON__ # raises exception if it not exists, otherwise just evaluates to True
-		plt.figure(figsize=(size[0]/200, size[1]/200))
-	except:
-		plt.figure(figsize=size)	
-	
+	plt.figure(figsize=(size[0]/200, size[1]/200))
+
 	plt.xlim(0,size[0])
 	plt.ylim(0,size[1])	
-		
-
-	if bins is None:
-		bins = len(eye_data)/4
 	
 	h, x_edge, y_edge = np.histogram2d(eye_data.x*size[0], eye_data.y*size[1], bins=(range(size[0]+1),range(size[1]+1)))
-	h = ndi.gaussian_filter(h, (15,15))  ## gaussian convolution
-	plt.imshow(h.T)
+	h = ndi.gaussian_filter(h, (30, 30))  ## gaussian convolution
 	
-	
-def plot_samples(eye_data, size=(1000,1200)):
-	# IPython uses a different plotting dimension system, which is much smaller
-	# than the normal pixel notation.
-	try:
-		__IPYTHON__ # raises exception if it not exists, otherwise just evaluates to True
-		plt.figure(figsize=(size[0]/200, size[1]/200))
-	except:
-		plt.figure(figsize=size)	
-	
-	plt.xlim(0,size[0])
-	plt.ylim(0,size[1])	
-	
+	# First check if image location is specified and exists as a file.
+	if not surface_image is None:
+		if not type(surface_image) == str:
+ 			raise TypeError("surface_image must be a path to the image")
+		else:
+			if not (os.path.isfile(surface_image) and os.access(surface_image, os.R_OK)):
+				raise IOError("Image file not found at path or is unreadable (check permissions)")
+			else:
+				# Flip image upside down
+				im = plt.imread(surface_image)
+				plt.imshow(im, aspect='auto', extent=[0,size[0], 0, size[1]])				
+		
+	ax = plt.imshow(h.T)
+	ax.set_alpha(0.6)
+
 	
 	
 def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=True):
@@ -295,6 +299,7 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 		The space to plot the fixations in. The fixation coordinates inside a surface are 
 		normalized by the pupil eye tracker so dimensions need to be specified to be able
 		to plot them.
+	
 	surface_image: string, default None:
 		Path to the image to use as the background of the fixation plot	
 
@@ -303,22 +308,10 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 	TypeError: if surface_image is not a string to an image
 	IOError: if image is not found at specified path	
 	"""
-
-	# IPython uses a different plotting dimension system, which is much smaller
-	# than the normal pixel notation.
-	try:
-		__IPYTHON__ # raises exception if it not exists, otherwise just evaluates to True
-		plt.figure(figsize=(size[0]/200, size[1]/200))
-	except:
-		plt.figure(figsize=size)	
+	plt.figure(figsize=(size[0]/200, size[1]/200))
 	
 	plt.xlim(0,size[0])
 	plt.ylim(0,size[1])	
-	
-	# First saccade somehow is almost always logged outside of the surface
-	# Discard it if so.
-	if (fixations["x"].head(1) < 0)[0] or (fixations["y"].head(1) < 0)[0] or (fixations["x"].head(1) > 1)[0] or (fixations["y"].head(1) > 1)[0]:
-		fixations = fixations[fixations.fixation_index != 1]
 	
 	# First check if image location is specified and exists as a file.
 	if not surface_image is None:
@@ -331,6 +324,13 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 				# Flip image upside down
 				im = plt.imread(surface_image)
 				plt.imshow(im, aspect='auto', extent=[0,size[0], 0, size[1]])
+				
+	# First saccade somehow is almost always logged outside of the surface
+	# Discard it if so.
+	first_x = fixations["x"].head(1).values[0]
+	first_y = fixations["y"].head(1).values[0]
+	if first_x < 0 or first_y < 0 or first_x > 1 or first_y > 1:
+		fixations = fixations[fixations.fixation_index != 1]
 	
 	x_coords = list(fixations["x"]*size[0])
 	y_coords = list(fixations["y"]*size[1])
