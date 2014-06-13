@@ -235,7 +235,7 @@ def generate_fixations_list(data, strict=True, keep_fix_index=False):
 	return fixations
 
 
-def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outflow=20):
+def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outflow=20, title=False):
 	"""Generates heatmap of supplied samples
 	
 	Plots a pyplot.hist2d of the supplied list of samples
@@ -254,13 +254,22 @@ def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outfl
 	gauss_outflow: int, default 20
 		The extent to which the 'heat' of a fixation flows out to the neighboring pixels
 		The lower this number, the more confined the hotspots are to the location of the fixation		
+	
+	title: bool, default False
+		Title to display above graph.
 	"""
-	plt.figure(figsize=(size[0]/200, size[1]/200))
 
+	# Set plot properties	
+	plt.figure(figsize=(size[0]/200, size[1]/200))
 	plt.xlim(0,size[0])
 	plt.ylim(0,size[1])	
+
+	# Somehow the hist2d function crashes if the index of the data array does not start with 0,
+	# which is not always the case if the data is queried from a larger dataset.
+	# Reset the indices of the passed data array just to be sure they always start at 0
+	eye_data.reset_index(inplace=True)
 	
-	h, x_edge, y_edge = np.histogram2d(eye_data.x*size[0], eye_data.y*size[1], bins=(range(size[0]+1),range(size[1]+1)))
+	h, x_edge, y_edge = np.histogram2d(eye_data.x*size[0], eye_data.y*size[1], bins=(range(size[0]+1), range(size[1]+1)))
 	h = ndi.gaussian_filter(h, (30, 30))  ## gaussian convolution
 	
 	# First check if image location is specified and exists as a file.
@@ -277,6 +286,9 @@ def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outfl
 		
 	ax = plt.imshow(h.T)
 	ax.set_alpha(0.6)
+	
+	if title:
+		plt.title(title)
 
 	
 	
