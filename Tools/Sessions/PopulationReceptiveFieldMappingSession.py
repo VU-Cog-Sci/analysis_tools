@@ -356,7 +356,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 100)
 		# run_design.configure(trial_times_list)
 		run_design.configure(button_times_list)
-		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
 		# only using the mc and physio now
 		# joined_design_matrix = np.mat(np.vstack([mcf_list, physio_list]).T)

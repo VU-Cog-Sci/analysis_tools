@@ -24,13 +24,13 @@ from Operator import Operator
 
 from IPython import embed as shell
 
-class EDFOperator( Operator ):
-	"""docstring for EDFOperator"""
-	def __init__(self, inputObject, **kwargs):
-		super(EDFOperator, self).__init__(inputObject = inputObject, **kwargs)
-		if self.inputObject.__class__.__name__ == 'str':
-			self.inputFileName = self.inputObject
-		self.logger.info('started with ' +os.path.split(self.inputFileName)[-1])
+class EDFOperator( Operator ):     
+	"""docstring for EDFOperator"""     
+	def __init__(self, inputObject, **kwargs):         
+		super(EDFOperator, self).__init__(inputObject = inputObject, **kwargs)         
+		if self.inputObject.__class__.__name__ == 'str':             
+			self.inputFileName = self.inputObject         
+			self.logger.info('started with '+os.path.split(self.inputFileName)[-1])
 		
 		# ** DATE: Tue Feb  4 10:19:06 2014
 		if os.path.splitext(self.inputObject)[-1] == '.edf':
@@ -299,8 +299,8 @@ class EDFOperator( Operator ):
 			self.read_trials()
 		sounds = []
 		this_length = 0
-			sound_strings = re.findall(re.compile(this_sound_re), self.message_string)
-			sounds.append([{'EL_timestamp':float(s[0]),'sound_type':int(s[1]), 'exp_timestamp':float(s[2])} for s in sound_strings])
+		sound_strings = re.findall(re.compile(this_sound_re), self.message_string)
+		sounds.append([{'EL_timestamp':float(s[0]),'sound_type':int(s[1]), 'exp_timestamp':float(s[2])} for s in sound_strings])
 		self.sounds = list(chain.from_iterable(sounds))
 		#
 		# add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
