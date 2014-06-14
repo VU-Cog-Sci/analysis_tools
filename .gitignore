@@ -2,5 +2,5 @@
 __pycache__/
 *.py[cod]
 
-.AppleDouble
+*.AppleDouble
 .DS_Store
