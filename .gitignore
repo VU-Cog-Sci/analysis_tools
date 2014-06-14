@@ -3,4 +3,4 @@ __pycache__/
 *.py[cod]
 
 *.AppleDouble
-.DS_Store
+*.DS_Store
