@@ -106,7 +106,8 @@ class EDFOperator( Operator ):
 			pass
 		
 		gaze_times = np.loadtxt(self.gaze_file, usecols = (0,))
-		block_edge_indices = np.array([np.arange(gaze_times.shape[0])[np.roll(np.r_[True,np.diff(gaze_times) > minimal_time_gap], 0)], 										np.arange(gaze_times.shape[0])[np.roll(np.r_[True,np.diff(gaze_times) > minimal_time_gap], -1)]]).T
+		block_edge_indices = np.array([np.arange(gaze_times.shape[0])[np.roll(np.r_[True,np.diff(gaze_times) > minimal_time_gap], 0)], 										
+			np.arange(gaze_times.shape[0])[np.roll(np.r_[True,np.diff(gaze_times) > minimal_time_gap], -1)]]).T
 		block_edge_times = [gaze_times[i] for i in block_edge_indices]
 		
 		self.get_message_string()
@@ -209,8 +210,12 @@ class EDFOperator( Operator ):
 			parameter_strings = re.findall(re.compile(this_re), self.message_string)
 			if len(parameter_strings) > 0:
 				# assuming all these parameters are numeric
-				this_trial_parameters = dict([[s[0], float(s[1])] for s in parameter_strings])
-				this_trial_parameters.update({'trial_nr': float(i)})
+				this_trial_parameters = {'trial_nr': float(i)}
+				for s in parameter_strings:
+					try:
+						this_trial_parameters.update({s[0]: float(s[1])})
+					except ValueError:
+						pass
 				parameters.append(this_trial_parameters)
 		
 		if len(parameters) > 0:		# there were parameters in the edf file
@@ -218,8 +223,7 @@ class EDFOperator( Operator ):
 			
 			ptd = [(k, np.float64) for k in np.unique(np.concatenate([k.keys() for k in self.parameters]))]
 			self.parameter_type_dictionary = np.dtype(ptd)
-			
-		else:		# we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
+		else: # we have to take the parameters from the output_dict pickle file of the same name as the edf file. 
 			self.logger.info('no parameter information in edf file')
 			
 	
@@ -282,7 +286,7 @@ class EDFOperator( Operator ):
 				self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
 	
 	def read_sound_events(self, 
-		sound_re = 'MSG\t([\d\.]+)\tsound (\d+) at (\d+.\d)'):
+		sound_re = 'MSG\t([\d\.]+)\treward (\d+) at (\d+.\d)'):
 		"""
 		read_sound_events reads sounds from the message file.
 		
@@ -295,8 +299,6 @@ class EDFOperator( Operator ):
 			self.read_trials()
 		sounds = []
 		this_length = 0
-		for i in range(self.nr_trials):
-			this_sound_re = sound_re.replace(' X ', ' ' + str(i) + ' ')
 			sound_strings = re.findall(re.compile(this_sound_re), self.message_string)
 			sounds.append([{'EL_timestamp':float(s[0]),'sound_type':int(s[1]), 'exp_timestamp':float(s[2])} for s in sound_strings])
 		self.sounds = list(chain.from_iterable(sounds))

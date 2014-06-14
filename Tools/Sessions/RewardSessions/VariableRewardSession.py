@@ -1868,7 +1868,7 @@ class VariableRewardSession(SingleRewardSession):
 		for roi in rois:
 			results.append(self.deconvolve_with_correlation_roi(roi, threshold, mask_type = 'center_Z', mask_direction = 'pos', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 			results.append(self.deconvolve_with_correlation_roi(roi, -threshold, mask_type = 'center_Z', mask_direction = 'neg', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
-			# results.append(self.deconvolve_with_correlation_roi(roi, 0.0, mask_type = 'center_Z', mask_direction = 'all', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
+			results.append(self.deconvolve_with_correlation_roi(roi, 0.0, mask_type = 'center_Z', mask_direction = 'all', analysis_type = analysis_type, correlation_function = correlation_function, interval = interval, offsets = offsets))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'
