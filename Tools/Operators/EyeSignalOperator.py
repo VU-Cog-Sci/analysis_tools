@@ -207,8 +207,10 @@ class EyeSignalOperator(Operator):
 		self.raw_pupil = np.array(self.inputObject['pupil']).squeeze()
 		
 		if hasattr(self, 'eyelink_blink_data'):
-			self.eyelink_blink_data = np.array(self.eyelink_blink_data)
-		
+			self.blink_dur = np.array(self.eyelink_blink_data['duration']) 
+			self.blink_starts = np.array(self.eyelink_blink_data['start_timestamp'])[self.blink_dur<4000]
+			self.blink_ends = np.array(self.eyelink_blink_data['end_timestamp'])[self.blink_dur<4000]
+			
 		if not hasattr(self, 'sample_rate'): # this should have been set as a kwarg, but if it hasn't we just assume a standard 1000 Hz
 			self.sample_rate = 1000.0
 	
@@ -216,17 +218,19 @@ class EyeSignalOperator(Operator):
 		"""blink_detection_pupil detects blinks in the pupil signal depending on when signals go below threshold_level, dilates these intervals by period coalesce_period"""
 		
 		if hasattr(self, 'eyelink_blink_data'):
+			
 			# set all blinks to 0:
-			for this_blink in range(self.eyelink_blink_data.shape[0]):
-				self.raw_pupil[(self.timepoints>self.eyelink_blink_data[this_blink][1])*(self.timepoints<self.eyelink_blink_data[this_blink][3])] = 0
+			for i in range(len(self.blink_starts)):
+				self.raw_pupil[(self.timepoints>self.blink_starts[i])*(self.timepoints<self.blink_ends[i])] = 0
 		
 			# set all missing data to 0:
 			self.raw_pupil[self.raw_pupil<threshold_level] = 0
 		
 			# we do not want to start or end with a 0:
-			pupil_median = np.median(self.raw_pupil[self.raw_pupil!=0])
-			self.raw_pupil[:coalesce_period+1] = pupil_median
-			self.raw_pupil[-coalesce_period+1:] = pupil_median
+			pupil_median_start = np.median(self.raw_pupil[:self.sample_rate*10][self.raw_pupil[:self.sample_rate*10]!=0])
+			pupil_median_end = np.median(self.raw_pupil[self.sample_rate*10:][self.raw_pupil[self.sample_rate*10:]!=0])
+			self.raw_pupil[:coalesce_period+1] = pupil_median_start
+			self.raw_pupil[-coalesce_period+1:] = pupil_median_end
 		
 			# detect zero edges (we just created from blinks, plus missing data):
 			zero_edges = np.arange(self.raw_pupil.shape[0])[np.diff(( self.raw_pupil < threshold_level ))]

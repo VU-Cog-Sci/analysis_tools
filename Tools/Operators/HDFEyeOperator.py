@@ -140,9 +140,9 @@ class HDFEyeOperator(Operator):
 				# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
 				if hasattr(self.edf_operator, 'blinks_from_message_file'):
 					blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
-					eso = EyeSignalOperator(eye_dict, blink_dict)
+					eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
 				else:
-					eso = EyeSignalOperator(eye_dict)
+					eso = EyeSignalOperator(inputObject=eye_dict)
 				# detect blinks (coalese period in samples):
 				eso.blink_detection_pupil(coalesce_period=250)
 				# interpolate blinks:
