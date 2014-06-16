@@ -13,7 +13,9 @@ import pandas as pd
 
 from EDFOperator import EDFOperator
 from Operator import Operator
+from EyeSignalOperator import EyeSignalOperator
 
+from IPython import embed as shell 
 
 class HDFEyeOperator(Operator):
 	"""docstring for HDFEyeOperator"""
@@ -120,12 +122,41 @@ class HDFEyeOperator(Operator):
 			# recreate the non-gaze data for the block, that is, its sampling rate, eye of origin etc.
 			blocks_data_frame = pd.DataFrame([dict([[i,self.edf_operator.blocks[j][i]] for i in self.edf_operator.blocks[0].keys() if i not in ('block_data', 'data_columns')]) for j in range(len(self.edf_operator.blocks))])
 			h5_file.put("/%s/blocks"%alias, blocks_data_frame)
-		
+			
 			# gaze data per block
 			if not 'block_data' in self.edf_operator.blocks[0].keys():
 				self.edf_operator.take_gaze_data_for_blocks()
 			for i, block in enumerate(self.edf_operator.blocks):
 				bdf = pd.DataFrame(block['block_data'], columns = block['data_columns'])
+				
+				#
+				# preprocess pupil:
+				#
+				
+				# create dictionairy of data per block:
+				gazeXY = bdf[[s%'gaze' for s in [blocks_data_frame.eye_recorded[i]+'_%s_x', blocks_data_frame.eye_recorded[i]+'_%s_y',]]]
+				pupil = bdf[[s%'pupil' for s in [blocks_data_frame.eye_recorded[i]+'_%s']]]
+				eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
+				# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
+				if hasattr(self.edf_operator, 'blinks_from_message_file'):
+					blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
+					eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
+				else:
+					eso = EyeSignalOperator(inputObject=eye_dict)
+				# detect blinks (coalese period in samples):
+				eso.blink_detection_pupil(coalesce_period=250)
+				# interpolate blinks:
+				eso.interpolate_blinks(method='linear')
+				# low-pass and band-pass pupil data:
+				eso.filter_pupil(hp=0.01, lp=6.0)
+				# z-score filtered pupil data:
+				eso.zscore_pupil()
+				# add to existing dataframe:
+				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_int'] = eso.interpolated_pupil
+				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_lp'] = eso.lp_filt_pupil
+				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_bp'] = eso.bp_filt_pupil
+				
+				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	
 	def data_frame_to_hdf(self, alias, name, data_frame):
@@ -140,7 +171,7 @@ class HDFEyeOperator(Operator):
 	
 	def sample_in_block(self, sample, block_table):
 		"""docstring for sample_in_block"""
-		return np.arange(block_table['block_end_timestamp'].shape[0])[block_table['block_end_timestamp'] > sample][0]
+		return np.arange(block_table['block_end_timestamp'].shape[0])[np.array(block_table['block_end_timestamp'] > float(sample), dtype=bool)][0]
 	
 	def data_from_time_period(self, time_period, alias, columns = None):
 		"""data_from_time_period delivers a set of data of type data_type for a given timeperiod"""
@@ -150,7 +181,7 @@ class HDFEyeOperator(Operator):
 			table = h5_file['%s/block_%i'%(alias, period_block_nr)]
 			if columns == None:
 				columns = table.keys()
-		return table[(table['time'] > time_period[0]) * (table['time'] < time_period[1])][columns]
+		return table[(table['time'] > float(time_period[0])) & (table['time'] < float(time_period[1]))][columns]
 	
 	def eye_during_period(self, time_period, alias):
 		"""docstring for eye_during_period"""
@@ -183,14 +214,24 @@ class HDFEyeOperator(Operator):
 			table = h5_file['%s/trials'%alias]
 			time_period = np.array(table[table['trial_start_index'] == trial_nr][['trial_start_EL_timestamp', 'trial_end_EL_timestamp']])
 		return float(self.sample_rate_during_period(time_period[0], alias))
-
+	
 	def signal_during_period(self, time_period, alias, signal, requested_eye = 'L'):
 		"""docstring for gaze_during_period"""
 		recorded_eye = self.eye_during_period(time_period, alias)
 		if requested_eye == 'LR' and recorded_eye == 'LR':
-			columns = [s%signal for s in ['L_%s_x', 'L_%s_y', 'R_%s_x', 'R_%s_y']]
+			if signal == 'gaze':
+				columns = [s%signal for s in ['L_%s_x', 'L_%s_y', 'R_%s_x', 'R_%s_y']]
+			elif signal == 'time':
+				columns = [s%signal for s in ['%s']]
+			else:
+				columns = [s%signal for s in ['L_%s', 'R_%s']]
 		elif requested_eye in recorded_eye:
-			columns = [s%signal for s in [requested_eye + '_%s_x', requested_eye + '_%s_y']]
+			if signal == 'gaze':
+				columns = [s%signal for s in [requested_eye + '_%s_x', requested_eye + '_%s_y']]
+			elif signal == 'time':
+				columns = [s%signal for s in ['%s']]
+			else:
+				columns = [s%signal for s in [requested_eye + '_%s']]
 		else:
 			with pd.get_store(self.inputObject) as h5_file:
 				self.logger.error('requested eye %s not found in block %i' % (requested_eye, self.sample_in_block(time_period[0], block_table = h5_file['%s/blocks'%alias])))
@@ -248,5 +289,5 @@ class HDFEyeOperator(Operator):
 	
 	def read_session_data(self, alias, name):
 		with pd.get_store(self.inputObject) as h5_file:
-			eyelink_blink_data = h5_file['%s/%s'%(alias, name)]
-		return eyelink_blink_data
+			session_data = h5_file['%s/%s'%(alias, name)]
+		return session_data
