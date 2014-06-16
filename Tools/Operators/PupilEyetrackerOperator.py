@@ -24,6 +24,239 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
 
+#------------------------------------------------------------------------------
+# Classes
+#------------------------------------------------------------------------------
+
+class InterestArea(object):
+	"""Creates a rectangular interest area of specifeid dimensions at the indicated position.
+		
+	Parameters
+	----------
+	Specify the dimensions of the interest area here. Specify the topleft corner 
+	in (x,y) and its width and height (w,h) with ints. 
+	You can do this in one of the following formats:
+	
+	- x,y,w,h (4 ints)		
+	- (x,y)(w,h) (2 tuples with each 2 ints)
+	- (x,y,w,h) (1 tuple with 4 ints)
+	
+	You can also optionally specify the label of this interest area by
+	passing the keyword argument 'label' and its value (defaul: Unnamed)
+				
+	Raises
+	-------
+	ValueError: if parameters not supplied in one of the desired formats.
+	"""
+	
+	def __init__(self, *args, **kwargs):
+		"""Constructor"""
+		self.set_dimensions(*args)	
+		
+		# Set default label, to be overwritten by kwarg "label"
+		self.label = "Unnamed"				
+		
+		if kwargs:
+			if "label" in kwargs and type(kwargs["label"]) in [str, unicode]:
+				self.label = kwargs["label"]								
+								
+	def __repr__(self):				
+		return "Interest area \"{4}\": x:{0} y:{1} w:{2} h:{3}".format(self.x, self.y, self.w, self.h, self.label)
+		
+	def get_dimensions(self):
+		""" Returns positions and dimensions of the interest area
+		Returns
+		-------
+		tuple with (x,y,w,h) (ints)
+		"""		
+		
+		return (self.x, self.y, self.w, self.h)
+
+	def get_x(self):
+		"""Returns topleft x-coordinate (int) of interest area."""
+		return self.x
+		
+	def get_y(self):
+		"""Returns topleft y-coordinate (int) of interest area."""
+		return self.y	
+	
+	def get_w(self):
+		"""Returns width in pixels (int) of interest area."""
+		return self.w	
+	
+	def get_h(self):
+		"""Returns height in pixels (int) of interest area."""
+		return self.h
+		
+	def get_label(self):
+		"""Returns interest area name."""
+		return self.label
+		
+	def set_dimensions(self, *args):
+		"""Sets the dimensions and/or position of the interest area.
+		
+		Parameters
+		----------
+		Specify the topleft corner in (x,y) and its width and height (w,h) with ints. 
+		You can do this in one of the following formats:
+		
+		- x,y,w,h (4 ints)		
+		- (x,y)(w,h) (2 tuples with each 2 ints)
+		- (x,y,w,h) (1 tuple with 4 ints)
+					
+		Raises
+		-------
+		ValueError: if parameters not supplied in desired format
+		"""
+		
+		# When passed all dimensions (x,y,w,h) in one iterable, such as
+		# (1,2,3,4) or [1,2,4,5]
+		if len(args) == 1:								
+			if hasattr(args[0], "__iter__") and len(args[0]) == 4:
+				self.x = args[0][0]
+				self.y = args[0][1]
+				self.w = args[0][2]
+				self.h = args[0][3]		
+			else:
+				raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+		# When passed (x,y) and (w,h) as 2 separate iterables	
+		if len(args) == 2:
+			if hasattr(args[0], "__iter__") and hasattr(args[1], "__iter__") and len(args[0]) == 2 and len(args[1]) == 2:
+				self.x = args[0][0]
+				self.y = args[0][1]
+				self.w = args[1][0]
+				self.h = args[1][1]
+			else:
+				raise ValueError("Arguments passed to constructor must separate numbers x,y,w,h or have te format (x,y),(w,h) or (x,y,w,h)")	
+		# When passed x,y,w,h as separate ints
+		if len(args) == 4:
+			for i in args:
+				if not type(i) in [int,float]:
+					raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+			else:
+				self.x = args[0]
+				self.y = args[1]
+				self.w = args[2]
+				self.h = args[3]
+		
+		# Cast to integer, just to be sure
+		self.x = int(self.x)
+		self.y = int(self.y)
+		self.w = int(self.w)
+		self.h = int(self.h)
+		
+				
+	def set_x(self, value):
+		"""
+		Parameters
+		----------
+		value (int/float)
+			the top-left x-coordinate of interest area
+		"""
+		if type(value) in [int,float]:
+			self.x = int(value)
+		else:
+			raise ValueError("Value must be integer or float")
+			
+	def set_y(self, value):
+		"""
+		Parameters
+		----------
+		value (int/float)
+			the top-left y-coordinate of interest area
+		"""
+		if type(value) in [int,float]:	
+			self.y = int(value)
+		else:
+			raise ValueError("Value must be integer or float")
+	
+	def set_w(self, value):
+		"""
+		Parameters
+		----------
+		value (int/float)
+			the width of interest area
+		"""
+		if type(value) in [int,float]:	
+			self.w = int(value)
+		else:
+			raise ValueError("Value must be integer or float")
+	
+	def set_h(self, value):
+		"""
+		Parameters
+		----------
+		value (int/float)
+			height of interest area
+		"""
+		if type(value) in [int,float]:
+			self.h = int(value)
+		else:
+			raise ValueError("Value must be integer or float")
+			
+	def set_label(self, value):
+		"""
+		Parameters
+		----------
+		value (str/unicode)
+			The name of the interest area
+		"""
+		if type(value) in [str,unicode]:
+			self.label = value
+		else:
+			raise ValueError("Value must be string or unicde")
+			
+	def get_corners(self):
+		""" Calculates x,y coordinates of each corner of the interest area
+		
+		Returns
+		-------
+		tuple with (x,y) coordinate of each corner of the interest area						
+		"""
+		
+		top_left = (self.x, self.y)
+		top_right = (self.x+self.w, self.y)
+		bottom_right = (self.x+self.w, self.y+self.h)
+		bottom_left	 = (self.x, self.y+self.h)
+		return (top_left, top_right, bottom_right, bottom_left)
+	
+	def inside(self, (x,y)):
+		""" Checks if specified point falls inside the interest area's boundaries
+		
+		Parameters
+		----------
+		(x,y) (tuple with 2 ints)
+			The point to check for if it falls inside the interest area.		
+
+		Returns
+		-------
+		True if point is located inside interest area
+		
+		False if point is located outside of interest area
+		"""
+		
+		area = self.get_corners()				
+		
+		n = len(area)
+		
+		inside = False
+		p1x,p1y = area[0]
+		for i in range(n+1):
+			p2x,p2y = area[i % n]
+			if y > min(p1y,p2y):
+				if y <= max(p1y,p2y):
+					if x <= max(p1x,p2x):
+						if p1y != p2y:
+							xints = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
+						if p1x == p2x or x <= xints:
+							inside = not inside
+			p1x,p1y = p2x,p2y
+		return inside
+			
+#------------------------------------------------------------------------------
+# Functions
+#------------------------------------------------------------------------------
+
 def analyze_file(datafile, sacc_threshold=0.9):
 	"""Analyze the supplied datafile generated by the pupil eye tracker
 
@@ -463,8 +696,10 @@ def analyze_files_in_folder(folder, sacc_threshold=0.9, _sort_result=True):
 			fixations = fixations.sort_index(by=['subject_file','trial_no','timestamp']).reset_index(drop=True)
 	
 	return data, fixations
-	
 
+#------------------------------------------------------------------------------
+# Main script
+#------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 	if len(sys.argv)	< 2:
