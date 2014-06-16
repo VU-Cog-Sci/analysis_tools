@@ -332,7 +332,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			else:
 				physio_list.append(np.array([
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
-					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ) 
+					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ),
+					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp', 'raw']) ),
+					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu', 'raw']) ) 
 					]))
 				
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
@@ -351,19 +353,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		# check for weird nans and throw out those columns
 		physio_list = physio_list[-np.array(np.isnan(physio_list).sum(axis = 1), dtype = bool),:]
-		
+		# shell()
 		# create a design matrix and convolve 
-		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 100)
+		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
 		# run_design.configure(trial_times_list)
-		run_design.configure(button_times_list)
-		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
-		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
+		run_design.configure([np.array(button_times_list).squeeze()])
+		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
 		# only using the mc and physio now
 		# joined_design_matrix = np.mat(np.vstack([mcf_list, physio_list]).T)
 		# joined_design_matrix = np.mat(physio_list.T)
 		# shell()
-		shell()
+		# shell()
 		self.logger.info('nuisance and trial_onset design_matrix of dimensions %s'%(str(joined_design_matrix.shape)))
 		# take data
 		data_list = []
@@ -488,7 +490,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF'):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
