@@ -299,7 +299,7 @@ class EDFOperator( Operator ):
 			self.read_trials()
 		sounds = []
 		this_length = 0
-		sound_strings = re.findall(re.compile(this_sound_re), self.message_string)
+		sound_strings = re.findall(re.compile(sound_re), self.message_string)
 		sounds.append([{'EL_timestamp':float(s[0]),'sound_type':int(s[1]), 'exp_timestamp':float(s[2])} for s in sound_strings])
 		self.sounds = list(chain.from_iterable(sounds))
 		#
