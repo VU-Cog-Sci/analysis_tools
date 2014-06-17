@@ -29,7 +29,7 @@ import scipy.ndimage as ndi
 #------------------------------------------------------------------------------
 
 class InterestArea(object):
-	"""Creates a rectangular interest area of specifeid dimensions at the indicated position.
+	"""Creates a rectangular interest area of specified dimensions at the indicated position.
 		
 	Parameters
 	----------
@@ -39,7 +39,9 @@ class InterestArea(object):
 	
 	- x,y,w,h (4 ints)		
 	- (x,y)(w,h) (2 tuples with each 2 ints)
-	- (x,y,w,h) (1 tuple with 4 ints)
+	- [(x1,y1),(x2,y2),(x3,y3),(x4,y4)] 
+	  (1 sequence with 4 points designating te corners of the area
+	   starting at the top-left corner and going in clockwise direction.)
 	
 	You can also optionally specify the label of this interest area by
 	passing the keyword argument 'label' and its value (defaul: Unnamed)
@@ -102,7 +104,9 @@ class InterestArea(object):
 		
 		- x,y,w,h (4 ints)		
 		- (x,y)(w,h) (2 tuples with each 2 ints)
-		- (x,y,w,h) (1 tuple with 4 ints)
+		- [(x1,y1),(x2,y2),(x3,y3),(x4,y4)] 
+		  (1 sequence with 4 points designating te corners of the area
+		   starting at the top-left corner and going in clockwise direction.)
 					
 		Raises
 		-------
@@ -112,13 +116,13 @@ class InterestArea(object):
 		# When passed all dimensions (x,y,w,h) in one iterable, such as
 		# (1,2,3,4) or [1,2,4,5]
 		if len(args) == 1:								
-			if hasattr(args[0], "__iter__") and len(args[0]) == 4:
-				self.x = args[0][0]
-				self.y = args[0][1]
-				self.w = args[0][2]
-				self.h = args[0][3]		
+			if hasattr(args[0], "__iter__") and len(args[0]) == 4:								
+				self.x = args[0][0][0]
+				self.y = args[0][0][1]												
+				self.w = args[0][2][0] - self.x
+				self.h = args[0][2][1] - self.y		
 			else:
-				raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+				raise ValueError("Invalid coordinate format supplied for IA")
 		# When passed (x,y) and (w,h) as 2 separate iterables	
 		if len(args) == 2:
 			if hasattr(args[0], "__iter__") and hasattr(args[1], "__iter__") and len(args[0]) == 2 and len(args[1]) == 2:
@@ -127,12 +131,12 @@ class InterestArea(object):
 				self.w = args[1][0]
 				self.h = args[1][1]
 			else:
-				raise ValueError("Arguments passed to constructor must separate numbers x,y,w,h or have te format (x,y),(w,h) or (x,y,w,h)")	
+				raise ValueError("Invalid coordinate format supplied for IA")
 		# When passed x,y,w,h as separate ints
 		if len(args) == 4:
 			for i in args:
 				if not type(i) in [int,float]:
-					raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+					raise ValueError("Invalid coordinate format supplied for IA")
 			else:
 				self.x = args[0]
 				self.y = args[1]
@@ -186,7 +190,7 @@ class InterestArea(object):
 		"""
 		Parameters
 		----------
-		value (int/float)
+		value: int/float)
 			height of interest area
 		"""
 		if type(value) in [int,float]:
@@ -198,7 +202,7 @@ class InterestArea(object):
 		"""
 		Parameters
 		----------
-		value (str/unicode)
+		value: str/unicode)
 			The name of the interest area
 		"""
 		if type(value) in [str,unicode]:
@@ -206,18 +210,19 @@ class InterestArea(object):
 		else:
 			raise ValueError("Value must be string or unicde")
 			
-	def get_corners(self):
+	def get_corners(self, scale=1.0):
 		""" Calculates x,y coordinates of each corner of the interest area
 		
 		Returns
 		-------
 		tuple with (x,y) coordinate of each corner of the interest area						
 		"""
+		x,y,w,h = self.scale(scale)		
 		
-		top_left = (self.x, self.y)
-		top_right = (self.x+self.w, self.y)
-		bottom_right = (self.x+self.w, self.y+self.h)
-		bottom_left	 = (self.x, self.y+self.h)
+		top_left = (x,y)
+		top_right = (x+w, y)
+		bottom_right = (x+w, y+h)
+		bottom_left	 = (x, y+h)
 		return (top_left, top_right, bottom_right, bottom_left)
 	
 	def inside(self, (x,y)):
@@ -225,7 +230,7 @@ class InterestArea(object):
 		
 		Parameters
 		----------
-		(x,y) (tuple with 2 ints)
+		(x,y) : tuple with 2 ints
 			The point to check for if it falls inside the interest area.		
 
 		Returns
@@ -252,6 +257,33 @@ class InterestArea(object):
 							inside = not inside
 			p1x,p1y = p2x,p2y
 		return inside
+		
+	def scale(self, value):
+		"""Increase or decrease interest area value by certain ratio.
+		This is useful if you want to plot the IAs and the image size you plot on
+		is larger or smaller than the image size you specified the IA coords for
+		
+		Parameters
+		----------
+		value: tuple with 2 floats
+			[0] The ratio value to enlarge or shrink the IA coordinates with on x-axis and width
+			[1] The ratio value to enlarge or shrink the IA coordinates with on y-axis and height
+			
+		Raises
+		------
+		ValueError: if value is other thant a float or int
+		"""
+		
+		if type(value) == tuple and len(value) == 2:			
+			x = self.x * value[0]
+			y = self.y * value[1]
+			w = self.w * value[0]
+			h = self.h * value[1]		
+		else:
+			raise ValueError("Scalar value must be tuple with 2 floats")
+		
+		return (x,y,w,h)
+					
 			
 #------------------------------------------------------------------------------
 # Functions
@@ -594,6 +626,34 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 			plt.annotate(i+1, xy=(x_coords[i], y_coords[i]), xytext=(-10,10), textcoords = 'offset points')
 	plt.show()
 	
+	
+def plot_interest_areas(IA_set, size=(1000,1200), surface_image=None, annotated=True):
+	
+	scaler = (size[0]/1000.0, size[1]/1200.0)
+	plt.figure(figsize=(size[0]/200, size[1]/200))
+	
+	plt.xlim(0,size[0])
+	plt.ylim(0,size[1])	
+	
+	# First check if image location is specified and exists as a file.
+	if not surface_image is None:
+		if not type(surface_image) == str:
+ 			raise TypeError("surface_image must be a path to the image")
+		else:
+			if not (os.path.isfile(surface_image) and os.access(surface_image, os.R_OK)):
+				raise IOError("Image file not found at path or is unreadable (check permissions)")
+			else:
+				# Flip image upside down
+				im = plt.imread(surface_image)
+				plt.imshow(im, aspect='auto', extent=[0,size[0], 0, size[1]])
+	
+	for ia in IA_set:			
+		x,y = zip(*ia.get_corners(scaler))
+		# Add first coordinate again to close shape		
+		x = list(x) + [x[0]]
+		y = list(y) + [y[0]]		
+		plt.plot(x,y)		
+	plt.show()
 	
 
 def analyze_files_in_folder(folder, sacc_threshold=0.9, _sort_result=True):
