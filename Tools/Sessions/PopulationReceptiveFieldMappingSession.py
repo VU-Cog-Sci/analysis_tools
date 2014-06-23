@@ -24,6 +24,7 @@ from math import *
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV, ElasticNet, ElasticNetCV
 from skimage import filter, measure
+from skimage.morphology import disk
 
 def fitARDRidge(design_matrix, timeseries, n_iter = 100, compute_score=True):
 	"""fitARDRidge fits a design matrix to a given timeseries.
@@ -109,65 +110,131 @@ def normalize_histogram(input_array, mask_array = None):
 # 	indices = np.linspace(0, 1, input_array.shape[0], endpoint = True)
 # 	n_a = normalize_histogram(input_array, mask_array)
 
+# def analyze_PRF_from_spatial_profile(spatial_profile_array, spatial_profile_array_fix, upscale = 5.0, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, band = 75, cond = cond):
+# 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
+# 	to the spatial profile of spatial beta values from the ridge regression """
+# 	shell()
+# 	n_pixel_elements = int(sqrt(spatial_profile_array.shape[0]))
+# 	# upsample five-fold and gaussian smooth with upscale factor
+# 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
+# 	us_spatial_profile_fix = ndimage.interpolation.zoom(spatial_profile_array_fix.reshape((n_pixel_elements, n_pixel_elements)), upscale)
+# 	us_spatial_profile_banded = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
+# 	us_spatial_profile_banded[(band+1.0)/2:(band+1.0)/2+n_pixel_elements*upscale,(band+1)/2:(band+1)/2+n_pixel_elements*upscale] = us_spatial_profile
+# 	uss_spatial_profile_banded = ndimage.gaussian_filter(us_spatial_profile_banded, upscale*2)
+# 	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
+# 	uss_spatial_profile_fix = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
+# 	
+# 	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
+# 	maximum_fix = ndimage.measurements.maximum_position(uss_spatial_profile_fix)
+# 	maximum_for_select = ndimage.measurements.maximum_position(uss_spatial_profile_banded)
+# 	
+# 	# find level at which to take contour:
+# 	positive = uss_spatial_profile + (np.min(uss_spatial_profile)*-1)
+# 	normalized = positive/np.max(positive)
+# 	for_gradient = (normalized*255).astype(uint8)
+# 	output = rank.gradient(for_gradient, disk(1))
+# 	
+# 	# output_array = output.reshape((50625))
+# 	# contour_threshold = output_array[np.argsort(output_array)[round(0.8 * output_array.size)]]
+# 	# contour = zeros((225,225))
+# 	# contour[output>contour_threshold] =1
+# 	
+# 	# output_array = output.reshape((50625))
+# 	# contour_threshold = output_array[np.argsort(output_array)[round(0.4 * output_array.size)]]
+# 	# contour_edges = measure.find_contours(output, contour_threshold)
+# 	
+# 	f = pl.figure()
+# 	s = f.add_subplot(121)
+# 	pl.imshow(uss_spatial_profile)
+# 	s = f.add_subplot(122)
+# 	pl.imshow(output)
+# 	# for n, contour in enumerate(contour_edges):
+# 		# pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
+# 	pl.show()
+# 
+# 	
+# 	
+# 	
+# 	contour_threshold = spatial_profile_array_fix[np.argsort(spatial_profile_array)[round(contour_level * spatial_profile_array.shape[0])]]
+# 	contour_edges = measure.find_contours(uss_spatial_profile_banded, contour_threshold)
+# 	
+# 	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
+# 	max_comp =  np.complex(max_norm[0], max_norm[1])
+# 	
+# 	# convert contours to image and fill for fix
+# 	contour_array = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
+# 	for contour in contour_edges:
+# 		for i in range(len(contour)):
+# 			contour_array[int(contour[i,0]),int(contour[i,1])] = 1
+# 
+# 	contour_array_filled = ndimage.binary_fill_holes(contour_array)
+# 	# contour_array_filled = fill_contours(contour_array = contour_array, dimension = int(n_pixel_elements*upscale-1), voxel_no = voxel_no, uss_spatial_profile = uss_spatial_profile)
+# 	contour_labels = ndimage.label(contour_array_filled)[0]
+# 	label_index = contour_labels[(maximum_for_select)]
+# 	# implement measure.regionprops.filled_area
+# 	PRF = zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
+# 	PRF[contour_labels==label_index] = 1
+# 	surf = (sum(PRF)/(n_pixel_elements**2*upscale**2))*100
+# 	
+# 	if diagnostics_plot:
+# 		f = pl.figure(figsize = (12,4))
+# 		f.suptitle('voxel no' + str(voxel_no))
+# 		s = f.add_subplot(131)
+# 		pl.imshow(us_spatial_profile)
+# 		pl.plot([maximum[1]], [maximum[0]], 'ko')
+# 		s.set_title('original')
+# 		s.axis([0,n_pixel_elements*upscale,0,n_pixel_elements*upscale])
+# 		s = f.add_subplot(132)
+# 		pl.imshow(uss_spatial_profile_banded)
+# 		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
+# 		s.set_title('gaussian smoothed with contour')
+# 		for n, contour in enumerate(contour_edges):
+# 			pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
+# 		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
+# 		s = f.add_subplot(133)
+# 		pl.imshow(PRF)
+# 		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
+# 		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
+# 		s.set_title('PRF with maximum')
+# 		pl.show()
+# 		# plt.savefig(os.path.join('/home/shared/PRF/data/AS/AS_090414/processed/mri/figs/failed_contours_2/' + cond + '/' + 'failed_contour' + '_' + str(voxel_no) + '.pdf'))
+# 		
+# 	return max_comp, surf
+
 def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5.0, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, band = 75, cond = cond):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
-	# shell()
+	
+	## upsample and smooth PRF
 	n_pixel_elements = int(sqrt(spatial_profile_array.shape[0]))
-	# upsample five-fold and gaussian smooth with upscale factor
 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
-	us_spatial_profile_banded = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-	us_spatial_profile_banded[(band+1.0)/2:(band+1.0)/2+n_pixel_elements*upscale,(band+1)/2:(band+1)/2+n_pixel_elements*upscale] = us_spatial_profile
-	uss_spatial_profile_banded = ndimage.gaussian_filter(us_spatial_profile_banded, upscale*2)
 	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
+	PRF = uss_spatial_profile
 	
-	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
-	maximum_for_select = ndimage.measurements.maximum_position(uss_spatial_profile_banded)
-	# find level at which to take contour:
-	contour_threshold = spatial_profile_array[np.argsort(spatial_profile_array)[round(contour_level * spatial_profile_array.shape[0])]]
-	contour_edges = measure.find_contours(uss_spatial_profile_banded, contour_threshold)
-	
+	## compute maximum
+	maximum = ndimage.measurements.maximum_position(PRF)
 	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
 	max_comp =  np.complex(max_norm[0], max_norm[1])
-	
-	# convert contours to image and fill for fix
-	contour_array = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-	for contour in contour_edges:
-		for i in range(len(contour)):
-			contour_array[int(contour[i,0]),int(contour[i,1])] = 1
 
-	contour_array_filled = ndimage.binary_fill_holes(contour_array)
-	# contour_array_filled = fill_contours(contour_array = contour_array, dimension = int(n_pixel_elements*upscale-1), voxel_no = voxel_no, uss_spatial_profile = uss_spatial_profile)
-	contour_labels = ndimage.label(contour_array_filled)[0]
-	label_index = contour_labels[(maximum_for_select)]
-	# implement measure.regionprops.filled_area
-	PRF = zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-	PRF[contour_labels==label_index] = 1
-	surf = (sum(PRF)/(n_pixel_elements**2*upscale**2))*100
+	## compute surface:
+	# 1. normalize PRF
+	PRF_circle = disk((n_pixel_elements*upscale-1)/2)
+	PRF_n = (PRF-np.mean(PRF[PRF_circle==1]))/np.std(PRF[PRF_circle==1])
 	
-	if surf>100:
-		f = pl.figure(figsize = (12,4))
-		s = f.add_subplot(131)
-		pl.imshow(us_spatial_profile)
-		pl.plot([maximum[1]], [maximum[0]], 'ko')
-		s.set_title('original')
-		s.axis([0,n_pixel_elements*upscale,0,n_pixel_elements*upscale])
-		s = f.add_subplot(132)
-		pl.imshow(uss_spatial_profile_banded)
-		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
-		s.set_title('gaussian smoothed with contour')
-		for n, contour in enumerate(contour_edges):
-			pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
-		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
-		s = f.add_subplot(133)
-		pl.imshow(PRF)
-		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
-		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
-		s.set_title('PRF with maximum')
-		# pl.show()
-		# plt.savefig(os.path.join('/home/shared/PRF/data/AS/AS_090414/processed/mri/figs/failed_contours_2/' + cond + '/' + 'failed_contour' + '_' + str(voxel_no) + '.pdf'))
-		
+	# 2. threshold 	
+	PRF_n_t = zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
+	PRF_n_t[PRF_n>1.5] = 1
+	
+	# 3. pick right PRF
+	labels = ndimage.label(PRF_n_t)[0]
+	label_index = labels[(maximum)]
+	labels[labels!=label_index] = 0
+
+	# 4. compute surface
+	surf = np.sum(labels)
+	
 	return max_comp, surf
+
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
@@ -721,17 +788,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 		if run_fits:
 			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).data
 			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + filename + '.nii.gz')).data
-			
-			anat_mask_data = NiftiImage(anat_mask).data > 0
-			
+
+			anat_mask = NiftiImage(anat_mask).data > 0
 			stat_mask = stats_data[1] > stat_threshold
-			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask_data]
+
+			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask]
 			self.logger.info('starting fitting of prf shapes')
-			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(vox_spatial_data, diagnostics_plot = False, band = 75, voxel_no = i, cond=cond) for i, vox_spatial_data in enumerate(voxel_spatial_data_to_fit.T))
-		
+			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, band = 75, voxel_no = i, cond=cond) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
+			
 			max_comp = np.array(res)[:,0]
 			surf = np.real(res)[:,1]
-		
+ 
 			polar = np.angle(max_comp)
 			ecc = np.abs(max_comp)
 			real = np.real(max_comp)

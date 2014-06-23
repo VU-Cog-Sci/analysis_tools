@@ -121,6 +121,82 @@ class HexagonalSaccadeAdaptationSession(object):
 		all_saccades_pd = pd.DataFrame(list(chain.from_iterable(all_saccades)))
 		self.ho.data_frame_to_hdf(alias = alias, name = 'saccades_per_trial', data_frame = all_saccades_pd)
 		
+	def trial_selection(self, alias, no_std_vel_cutoff = 3, amp_range = [5,15], degree_cutoff = 2):
+		"""
+		select_trials returns a boolean array with 1's for trials to use. Trials are deselected when:
+		1. there was a blink in trialphase 2 of that trial (the phase where the script polls for a saccade)
+		2. the amplitude of the saccade was below or above the 'amp_range' thresholds
+		3. the peak velocity is more than 'no_std_vel_cutoff' std from mean
+		4. the starting gaze position is more than 'degree_cutoff' distance off
+		"""
+		
+		self.logger.info('starting bad trial detection of ' + alias + '...')
+		
+		# import required datafiles
+		with pd.get_store(self.ho.inputObject) as h5_file:
+			saccade_table = h5_file['%s/saccades_per_trial'%alias]
+			trial_phases = h5_file['%s/trial_phases'%alias]
+			blinks = h5_file['%s/blinks_from_message_file'%alias]
+			params = h5_file['%s/parameters'%alias]
+				
+		# initialize outcome array
+		trials2use = np.ones(saccade_table.shape[0])	
+		
+		# 1. deselect trial when the blink onset was within trial phase 2 of that trial:
+		phase_2_start_times = np.array(trial_phases.trial_phase_EL_timestamp[trial_phases.trial_phase_index==2])
+		phase_2_end_times = np.array(trial_phases.trial_phase_EL_timestamp[trial_phases.trial_phase_index==3])
+				
+		for blink_start in blinks.start_timestamp:
+ 			if blink_start < phase_2_end_times[np.argmax(phase_2_start_times > blink_start)]:
+ 				trials2use[np.argmax(phase_2_start_times > blink_start)] = 0
+		c_blink = int(saccade_table.shape[0] - sum(trials2use))
+				
+		# 2. deselect trial when: peak velocity more than no_std_vel_cutoff std off the mean
+		for bi in range(self.nr_blocks):
+			trials_this_block = np.arange(bi*self.nr_trials_per_block, bi*self.nr_trials_per_block+self.nr_trials_per_block)
+			mean_vel = np.median(saccade_table.peak_velocity[trials_this_block])
+			std_vel = no_std_vel_cutoff*np.std(saccade_table.peak_velocity[trials_this_block]) 
+			vel_range = [int(mean_vel-std_vel), int(mean_vel+std_vel)]
+			for ti, vel in enumerate(saccade_table.peak_velocity[trials_this_block]):
+				if np.any([vel < vel_range[0], vel > vel_range[1]]):
+					trials2use[ti] = 0
+		c_vel = int(saccade_table.shape[0] - sum(trials2use) - c_blink)
+		
+		# 3. deselect trial when amplitude falls within the 'amp_range'
+		for i, amp in enumerate(saccade_table.expanded_amplitude):
+			if np.any([amp < amp_range[0], amp > amp_range[1]]):
+				trials2use[i] = 0
+		c_amp = int(saccade_table.shape[0] - sum(trials2use) - c_blink - c_vel)
+		
+		# 4. deselect trials when the gaze starting position is more than 'degree_cutoff' degrees off
+		# because the original dot locations were not saved to the parameters file, I recreate them here:
+		physical_screen_size = (40, 30)
+		physical_screen_distance = 50
+		screen_resolution = (800,600)
+		amplitude = 10
+		n_directions = 6
+		screen_height_degrees = 2.0 * 180.0/np.pi * math.atan((physical_screen_size[1]/2.0)/physical_screen_distance)
+		pixels_per_degree = (screen_resolution[1]) / screen_height_degrees
+		dot_directions = (np.arange(n_directions) * 2.0 * np.pi) / float(n_directions)
+		dot_xy = np.array([[-np.sin(d), -np.cos(d)] for d in dot_directions])
+		dot_xy_screen = amplitude * pixels_per_degree * dot_xy
+		
+		# shell()
+		
+		# now that we know the dot positions, we can compute the actual positions by subtracting the offsets and deselect unwanted trials
+		gaze_offset = np.zeros(saccade_table.shape[0])
+		for ti in range(np.size(saccade_table,0)):
+			actual_dot_position = [dot_xy_screen[params.dot_index[ti]][0] + params.stim_offset_pre_sacc_x[ti], dot_xy_screen[params.dot_index[ti]][1] + params.stim_offset_pre_sacc_y[ti]]
+			gaze_offset[ti] = LA.norm([actual_dot_position[0]-(np.array(saccade_table.expanded_start_point[ti])[0]-400), actual_dot_position[1]-(np.array(saccade_table.expanded_start_point[ti])[1]-300)]) /  params.pixels_per_degree[ti]
+		trials2use[gaze_offset > degree_cutoff] = 0
+		c_gaze = int(saccade_table.shape[0] - sum(trials2use) - c_blink - c_vel - c_amp)
+		
+		# log amount of trials rejected. NOTE: the counters do not include trials that were already rejected by the former step, so reflect only ADDITIONAL AMOUNT OF TRIALS rejected by ... procedure
+		self.logger.info('Trials rejected: total (' + str(c_blink+c_amp+c_vel+c_gaze) + ') blinks(' + str(c_blink) + ') amplitude(' + str(c_amp) + ', range: ' + str(amp_range) + ') velocity(' + str(c_vel) + ', range: ' + str(vel_range) + ') gaze(' + str(c_gaze) + ', offset: ' + str(degree_cutoff) + ' degrees) in  ' + alias)
+		
+		# also return vel_range for plotting purposes, as this is different for every participant (because of std +/- mean computation)
+		return trials2use.astype(bool), vel_range, amp_range
+		
 	def velocity_for_saccades(self, alias):
 		"""
 		velocity_profiles_for_saccades takes the velocity profiles for all saccades that have been detected earlier
