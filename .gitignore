@@ -162,8 +162,4 @@ pip-log.txt
 # Mac crap
 .DS_Store
 .AppleDouble
-#Python bytecode
-*.pyc
-*.pyo
-
 .gitignore
