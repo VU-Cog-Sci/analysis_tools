@@ -633,9 +633,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 				these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
 	
-	def physio(self):
+	def physio(self, condition = 'PRF'):
 		"""physio loops across runs to analyze their physio data"""
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			pO = PhysioOperator(self.runFile(stage = 'processed/hr', run = r, extension = '.log' ))
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
@@ -670,7 +670,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			# trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] -1.5, 0.5, 1.0]] for tt in r.trial_times]) # changed the occurrence of this event to -4.5 to -1.5...
+			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] -1.5, 1.5, 1.0]] for tt in r.trial_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			button_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[1]), 0.5, 1.0]] for tt in r.all_button_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
 			
@@ -686,8 +686,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# shell()
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
-		# run_design.configure(trial_times_list)
-		run_design.configure([np.array(button_times_list).squeeze()])
+		run_design.configure(trial_times_list)
+		# run_design.configure([np.array(button_times_list).squeeze()])
 		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
@@ -1151,6 +1151,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
+
+
 		self.logger.info('Taking masks ' + str(anatRoiFileNames))
 		rois, roinames = [], []
 		for roi in anatRoiFileNames:
@@ -1243,10 +1246,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,len(comparison_task_conditions))]
 		mcs = ['o', 'v', 's', '>', '<']
 		f = pl.figure(figsize = (16,7))
-		for j, res_type in enumerate(['ecc','surf']): # , 'surf'
+		for j, res_type in enumerate(['ecc', 'surf']): # , 'surf'
 			s = f.add_subplot(1,2,1+j)
 			for i, tc in enumerate(comparison_task_conditions):
-				pl.plot(base_task_data[:,results_frames['ecc']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.1, mec = 'w', ms = 1.5)
+				pl.plot(base_task_data[:,results_frames['ecc']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
 				sm_signal = np.convolve( all_comparison_task_data[i][:,results_frames[res_type]][order], kern / kern.sum(), 'valid' )
 				pl.plot(sm_ecc, sm_signal, c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
 			s.set_title(roi + ' ' + res_type)

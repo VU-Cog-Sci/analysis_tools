@@ -23,13 +23,14 @@ import pandas as pd
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
+import math
 
 #------------------------------------------------------------------------------
 # Classes
 #------------------------------------------------------------------------------
 
 class InterestArea(object):
-	"""Creates a rectangular interest area of specifeid dimensions at the indicated position.
+	"""Creates a rectangular interest area of specified dimensions at the indicated position.
 		
 	Parameters
 	----------
@@ -39,7 +40,9 @@ class InterestArea(object):
 	
 	- x,y,w,h (4 ints)		
 	- (x,y)(w,h) (2 tuples with each 2 ints)
-	- (x,y,w,h) (1 tuple with 4 ints)
+	- [(x1,y1),(x2,y2),(x3,y3),(x4,y4)] 
+	  (1 sequence with 4 points designating te corners of the area
+	   starting at the top-left corner and going in clockwise direction.)
 	
 	You can also optionally specify the label of this interest area by
 	passing the keyword argument 'label' and its value (defaul: Unnamed)
@@ -102,7 +105,9 @@ class InterestArea(object):
 		
 		- x,y,w,h (4 ints)		
 		- (x,y)(w,h) (2 tuples with each 2 ints)
-		- (x,y,w,h) (1 tuple with 4 ints)
+		- [(x1,y1),(x2,y2),(x3,y3),(x4,y4)] 
+		  (1 sequence with 4 points designating te corners of the area
+		   starting at the top-left corner and going in clockwise direction.)
 					
 		Raises
 		-------
@@ -112,13 +117,13 @@ class InterestArea(object):
 		# When passed all dimensions (x,y,w,h) in one iterable, such as
 		# (1,2,3,4) or [1,2,4,5]
 		if len(args) == 1:								
-			if hasattr(args[0], "__iter__") and len(args[0]) == 4:
-				self.x = args[0][0]
-				self.y = args[0][1]
-				self.w = args[0][2]
-				self.h = args[0][3]		
+			if hasattr(args[0], "__iter__") and len(args[0]) == 4:								
+				self.x = args[0][0][0]
+				self.y = args[0][0][1]												
+				self.w = args[0][2][0] - self.x
+				self.h = args[0][2][1] - self.y		
 			else:
-				raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+				raise ValueError("Invalid coordinate format supplied for IA")
 		# When passed (x,y) and (w,h) as 2 separate iterables	
 		if len(args) == 2:
 			if hasattr(args[0], "__iter__") and hasattr(args[1], "__iter__") and len(args[0]) == 2 and len(args[1]) == 2:
@@ -127,12 +132,12 @@ class InterestArea(object):
 				self.w = args[1][0]
 				self.h = args[1][1]
 			else:
-				raise ValueError("Arguments passed to constructor must separate numbers x,y,w,h or have te format (x,y),(w,h) or (x,y,w,h)")	
+				raise ValueError("Invalid coordinate format supplied for IA")
 		# When passed x,y,w,h as separate ints
 		if len(args) == 4:
 			for i in args:
 				if not type(i) in [int,float]:
-					raise ValueError("Arguments passed to constructor must be 4 ints or an iterable with 4 ints")
+					raise ValueError("Invalid coordinate format supplied for IA")
 			else:
 				self.x = args[0]
 				self.y = args[1]
@@ -186,7 +191,7 @@ class InterestArea(object):
 		"""
 		Parameters
 		----------
-		value (int/float)
+		value: int/float)
 			height of interest area
 		"""
 		if type(value) in [int,float]:
@@ -198,7 +203,7 @@ class InterestArea(object):
 		"""
 		Parameters
 		----------
-		value (str/unicode)
+		value: str/unicode)
 			The name of the interest area
 		"""
 		if type(value) in [str,unicode]:
@@ -206,18 +211,22 @@ class InterestArea(object):
 		else:
 			raise ValueError("Value must be string or unicde")
 			
-	def get_corners(self):
+	def get_corners(self, scale=None):
 		""" Calculates x,y coordinates of each corner of the interest area
 		
 		Returns
 		-------
 		tuple with (x,y) coordinate of each corner of the interest area						
 		"""
+		if scale:
+			x,y,w,h = self.scale(scale)		
+		else:
+			x,y,w,h = self.x, self.y, self.w, self.h
 		
-		top_left = (self.x, self.y)
-		top_right = (self.x+self.w, self.y)
-		bottom_right = (self.x+self.w, self.y+self.h)
-		bottom_left	 = (self.x, self.y+self.h)
+		top_left = (x,y)
+		top_right = (x+w, y)
+		bottom_right = (x+w, y+h)
+		bottom_left	 = (x, y+h)
 		return (top_left, top_right, bottom_right, bottom_left)
 	
 	def inside(self, (x,y)):
@@ -225,7 +234,7 @@ class InterestArea(object):
 		
 		Parameters
 		----------
-		(x,y) (tuple with 2 ints)
+		(x,y) : tuple with 2 ints
 			The point to check for if it falls inside the interest area.		
 
 		Returns
@@ -252,6 +261,40 @@ class InterestArea(object):
 							inside = not inside
 			p1x,p1y = p2x,p2y
 		return inside
+		
+	def get_center(self):
+		return (self.x+0.5*self.w, self.y+0.5*self.h)
+	
+	def distance_to(self,(x,y)):
+		cx,cy = self.get_center()
+		return math.hypot(x-cx, y-cy)
+		
+	def scale(self, value):
+		"""Increase or decrease interest area value by certain ratio.
+		This is useful if you want to plot the IAs and the image size you plot on
+		is larger or smaller than the image size you specified the IA coords for
+		
+		Parameters
+		----------
+		value: tuple with 2 floats
+			[0] The ratio value to enlarge or shrink the IA coordinates with on x-axis and width
+			[1] The ratio value to enlarge or shrink the IA coordinates with on y-axis and height
+			
+		Raises
+		------
+		ValueError: if value is other thant a float or int
+		"""
+		
+		if type(value) == tuple and len(value) == 2:			
+			x = self.x * value[0]
+			y = self.y * value[1]
+			w = self.w * value[0]
+			h = self.h * value[1]		
+		else:
+			raise ValueError("Scalar value must be tuple with 2 floats")
+		
+		return (x,y,w,h)
+					
 			
 #------------------------------------------------------------------------------
 # Functions
@@ -500,7 +543,7 @@ def generate_heatmap(eye_data, size=(1000,1200), surface_image=None, gauss_outfl
 	# Somehow the hist2d function crashes if the index of the data array does not start with 0,
 	# which is not always the case if the data is queried from a larger dataset.
 	# Reset the indices of the passed data array just to be sure they always start at 0
-	eye_data.reset_index(inplace=True)
+	eye_data = eye_data.copy().reset_index()
 	
 	h, x_edge, y_edge = np.histogram2d(eye_data.x*size[0], eye_data.y*size[1], bins=(range(size[0]+1), range(size[1]+1)))
 	h = ndi.gaussian_filter(h, (30, 30))  ## gaussian convolution
@@ -595,7 +638,153 @@ def plot_fixations(fixations, size=(1000,1200), surface_image=None, annotated=Tr
 	plt.show()
 	
 	
+def plot_interest_areas(IA_set, size=(1000,1200), surface_image=None, annotated=True):
+	"""Plots the interest areas as designated by IA_set, which should be a sequence of
+	pupil.InterestArea objects. It draws them as rectangles in the given size dimensions.
+	Optionally, one can provide a surface_image to draw the IAs on.
+	
+	Parameters
+	----------
+	IA_set : sequence of InterestArea objects
+		The Interest areas to plot.
+			
+	size: tuple, default (1000,1200)
+		The space to plot the fixations in. The fixation coordinates inside a surface are 
+		normalized by the pupil eye tracker so dimensions need to be specified to be able
+		to plot them.
+	
+	surface_image: string, default None:
+		Path to the image to use as the background of the fixation plot	
 
+	Raises
+	------
+	TypeError : if surface_image is not a string to an image
+	
+	IOError : if image is not found at specified path		
+	"""
+	scaler = (size[0]/1000.0, size[1]/1200.0)
+	plt.figure(figsize=(size[0]/200, size[1]/200))
+	
+	plt.xlim(0,size[0])
+	plt.ylim(0,size[1])	
+	
+	# First check if image location is specified and exists as a file.
+	if not surface_image is None:
+		if not type(surface_image) == str:
+ 			raise TypeError("surface_image must be a path to the image")
+		else:
+			if not (os.path.isfile(surface_image) and os.access(surface_image, os.R_OK)):
+				raise IOError("Image file not found at path or is unreadable (check permissions)")
+			else:
+				# Flip image upside down
+				im = plt.imread(surface_image)
+				plt.imshow(im, aspect='auto', extent=[0,size[0], 0, size[1]])
+	
+	for ia in IA_set:			
+		x,y = zip(*ia.get_corners(scaler))
+		# Add first coordinate again to close shape		
+		x = list(x) + [x[0]]
+		y = list(y) + [y[0]]		
+		plt.plot(x,y)		
+
+		if annotated:
+			plt.annotate(ia.get_label(), xy=(x[0],y[0]), xytext=(5,ia.get_h()/4), textcoords = 'offset points')
+		
+	plt.show()
+	
+def assign_fixations_to_IAs(fix_list, IAs, scaler=(1000,1200)):
+	"""Determines if a fixation falls within a certain interest area, and if so
+	assigns this IA to the row of this fixation in the passed fixations dataframe.
+	
+	Parameters
+	----------
+	fix_list : pandas.Dataframe
+          List of fixations. Preferred is the output format of
+	        generate_fixations_list()
+	    but can be any arbitrary dataframe in which a single row corresponds
+	    to a fixation. This dataframe should at least have a "x" and "y" column
+	    representing these coordinates of the fixation.
+	IAs : sequence of InterestArea objects 
+	scaler : 2xint tuple, default (1200,1200)
+		The dimensions with which to scale the normalized x,y coordinates (as pupil
+		stores them in the datafile)
+	
+	Returns
+	-------
+	pandas.Dataframe, which is the passed fix_list with the interest_area column added	
+	
+	Raises
+	------
+	TypeError : if surface_image is not a string to an image
+	
+	IOError : if image is not found at specified path					
+	"""
+			
+	# Initialze
+	fix_list["interest_area"] = "None"
+	for row in fix_list.iterrows():
+		index = row[0]
+		data = row[1]
+				
+		coord = (data["x"]*scaler[0], data["y"]*scaler[1])
+		
+		for ia_candidate in IAs:
+			if ia_candidate.inside(coord):
+				fix_list.loc[index,"interest_area"] = ia_candidate.get_label()
+				break
+	return fix_list
+
+def calculate_distance_to_target(fix_list, IAs, target_col_label, scaler=(1000,1200)):
+	"""Calculates the distance of each fixation to the target item of a trial.
+	
+	Parameters
+	----------
+	fix_list : pandas.Dataframe
+		List of fixations. Preferred is the output format of
+		
+		generate_fixations_list()
+		
+		but can be any arbitrary dataframe in which a single row corresponds
+		to a fixation. This dataframe should at least have a "x" and "y" column
+		representing these coordinates of the fixation.
+	IAs : list or tuple
+		sequence of InterestArea objects 
+	target_col_label : string
+		The name of the colum in which the target item is stored.
+	scaler : 2xint tuple, optional, default (1200,1200)
+		The dimensions with which to scale the normalized x,y coordinates (as pupil
+		stores them in the datafile). The first item scales the x vector, the second
+		the y vector.
+	
+	Returns
+	-------
+	pandas.Dataframe, which is the passed fix_list with the distance column added	
+	
+	Raises
+	------
+	TypeError : if surface_image is not a string to an image
+	"""
+	
+	if not target_col_label in fix_list.columns:
+		raise TypeError("Target label column not found in supplied dataframe")
+		
+	current_trial = None
+	fix_list["distance_to_target"] = None
+	for index, row in fix_list.iterrows():
+		# If new trial starts, the new target IA needs to be determined
+		if row["trial_no"] != current_trial:
+			current_trial = row["trial_no"]
+			# Find the IA corresponding to the target's
+			try:
+				current_target_IA = next(ia for ia in IAs if ia.label == row[target_col_label])
+			except StopIteration:
+				raise LookupError("Could not find the specified interest area {0}".format(row[target_col_label])) 
+						
+		x = row["x"]*scaler[0]
+		y = row["y"]*scaler[1]		
+		fix_list.loc[index,"distance_to_target"] = current_target_IA.distance_to((x,y))
+	return fix_list
+		
 def analyze_files_in_folder(folder, sacc_threshold=0.9, _sort_result=True):
 	"""Travese through folders looking for datafilea generated by the pupil eye tracker
 
