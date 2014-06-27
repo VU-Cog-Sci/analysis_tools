@@ -17,6 +17,7 @@ import numpy as np
 import scipy as sp
 from scipy.stats import spearmanr
 from scipy import ndimage
+import matplotlib.mlab as mlab
 
 from nifti import *
 from math import *
@@ -201,7 +202,7 @@ def normalize_histogram(input_array, mask_array = None):
 # 		
 # 	return max_comp, surf
 
-def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5.0, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, band = 75, cond = cond):
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, cond = cond, z_thresh=1.5, fit_on='smoothed_betas'):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	
@@ -209,31 +210,293 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5.0, diagn
 	n_pixel_elements = int(sqrt(spatial_profile_array.shape[0]))
 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
 	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
-	PRF = uss_spatial_profile
+	
+	if fit_on == 'smoothed_betas':
+		PRF = uss_spatial_profile
+	elif fit_on == 'raw_betas':
+		PRF = spatial_profile_array.reshape(n_pixel_elements, n_pixel_elements)
+		upscale = 1
 	
 	## compute maximum
 	maximum = ndimage.measurements.maximum_position(PRF)
-	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
-	max_comp =  np.complex(max_norm[0], max_norm[1])
 
-	## compute surface:
+	# ## compute surface:
 	# 1. normalize PRF
 	PRF_circle = disk((n_pixel_elements*upscale-1)/2)
 	PRF_n = (PRF-np.mean(PRF[PRF_circle==1]))/np.std(PRF[PRF_circle==1])
-	
-	# 2. threshold 	
-	PRF_n_t = zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
-	PRF_n_t[PRF_n>1.5] = 1
-	
-	# 3. pick right PRF
-	labels = ndimage.label(PRF_n_t)[0]
-	label_index = labels[(maximum)]
-	labels[labels!=label_index] = 0
 
-	# 4. compute surface
-	surf = np.sum(labels)
+	# 2. generate mask
+	PRF_n_m= zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
+	PRF_n_m[PRF_n>z_thresh] = 1
+
+	# 3. pick right PRF then create new windows around it using banded profile
+	labels = ndimage.label(PRF_n_m)[0]
+	label_index = labels[(maximum)]
+	PRF_n_t = copy(PRF_n)
+	PRF_n_t[labels!=label_index] = 0
+
+	# 4. compute surface and volume
+	params, infodict, errmsg, fitimage=gaussfit(PRF_n_t)
+	EV = 1- np.linalg.norm(PRF_n_t.ravel()-fitimage.ravel())**2 / np.linalg.norm(PRF_n_t.ravel())**2
 	
-	return max_comp, surf
+	center = np.array([params[2],params[3]])
+	max_norm = 2.0 * (np.array(center) / (n_pixel_elements*upscale)) - 1.0 
+	max_comp =  np.complex(max_norm[0], max_norm[1])
+	surf = np.pi*params[4]*params[5] / n_pixel_elements*upscale
+	vol = 2*surf*params[1]
+		
+	return max_comp, surf, vol, EV
+	
+""" 
+Note about mpfit/leastsq: 
+I switched everything over to the Markwardt mpfit routine for a few reasons,
+but foremost being the ability to set limits on parameters, not just force them
+to be fixed.  As far as I can tell, leastsq does not have that capability.
+
+The version of mpfit I use can be found here:
+    http://code.google.com/p/agpy/source/browse/trunk/mpfit
+
+Alternative: lmfit
+
+.. todo::
+    -turn into a class instead of a collection of objects
+    -implement WCS-based gaussian fitting with correct coordinates
+"""
+
+def moments(data,circle,rotate,vheight,estimator=median,**kwargs):
+    """Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
+    the gaussian parameters of a 2D distribution by calculating its
+    moments.  Depending on the input parameters, will only output 
+    a subset of the above.
+    
+    If using masked arrays, pass estimator=np.ma.median
+    """
+    total = np.abs(data).sum()
+    Y, X = np.indices(data.shape) # python convention: reverse x,y np.indices
+    y = np.argmax((X*np.abs(data)).sum(axis=1)/total)
+    x = np.argmax((Y*np.abs(data)).sum(axis=0)/total)
+    col = data[int(y),:]
+    # FIRST moment, not second!
+    width_x = np.sqrt(np.abs((np.arange(col.size)-y)*col).sum()/np.abs(col).sum())
+    row = data[:, int(x)]
+    width_y = np.sqrt(np.abs((np.arange(row.size)-x)*row).sum()/np.abs(row).sum())
+    width = ( width_x + width_y ) / 2.
+    height = estimator(data.ravel())
+    amplitude = data.max()-height
+    mylist = [amplitude,x,y]
+    if np.isnan(width_y) or np.isnan(width_x) or np.isnan(height) or np.isnan(amplitude):
+        raise ValueError("something is nan")
+    if vheight==1:
+        mylist = [height] + mylist
+    if circle==0:
+        mylist = mylist + [width_x,width_y]
+        if rotate==1:
+            mylist = mylist + [0.] #rotation "moment" is just zero...
+            # also, circles don't rotate.
+    else:  
+        mylist = mylist + [width]
+    return mylist
+
+def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
+    """Returns a 2d gaussian function of the form:
+        x' = np.cos(rota) * x - np.sin(rota) * y
+        y' = np.sin(rota) * x + np.cos(rota) * y
+        (rota should be in degrees)
+        g = b + a * np.exp ( - ( ((x-center_x)/width_x)**2 +
+        ((y-center_y)/width_y)**2 ) / 2 )
+
+        inpars = [b,a,center_x,center_y,width_x,width_y,rota]
+                 (b is background height, a is peak amplitude)
+
+        where x and y are the input parameters of the returned function,
+        and all other parameters are specified by this function
+
+        However, the above values are passed by list.  The list should be:
+        inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
+
+        You can choose to ignore / neglect some of the above input parameters 
+            unp.sing the following options:
+            circle=0 - default is an elliptical gaussian (different x, y
+                widths), but can reduce the input by one parameter if it's a
+                circular gaussian
+            rotate=1 - default allows rotation of the gaussian ellipse.  Can
+                remove last parameter by setting rotate=0
+            vheight=1 - default allows a variable height-above-zero, i.e. an
+                additive constant for the Gaussian function.  Can remove first
+                parameter by setting this to 0
+            shape=None - if shape is set (to a 2-parameter list) then returns
+                an image with the gaussian defined by inpars
+        """
+    inpars_old = inpars
+    inpars = list(inpars)
+    if vheight == 1:
+        height = inpars.pop(0)
+        height = float(height)
+    else:
+        height = float(0)
+    amplitude, center_y, center_x = inpars.pop(0),inpars.pop(0),inpars.pop(0)
+    amplitude = float(amplitude)
+    center_x = float(center_x)
+    center_y = float(center_y)
+    if circle == 1:
+        width = inpars.pop(0)
+        width_x = float(width)
+        width_y = float(width)
+        rotate = 0
+    else:
+        width_x, width_y = inpars.pop(0),inpars.pop(0)
+        width_x = float(width_x)
+        width_y = float(width_y)
+    if rotate == 1:
+        rota = inpars.pop(0)
+        rota = pi/180. * float(rota)
+        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
+        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
+    else:
+        rcen_x = center_x
+        rcen_y = center_y
+    if len(inpars) > 0:
+        raise ValueError("There are still input parameters:" + str(inpars) + \
+                " and you've input: " + str(inpars_old) + \
+                " circle=%d, rotate=%d, vheight=%d" % (circle,rotate,vheight) )
+            
+    def rotgauss(x,y):
+        if rotate==1:
+            xp = x * np.cos(rota) - y * np.sin(rota)
+            yp = x * np.sin(rota) + y * np.cos(rota)
+        else:
+            xp = x
+            yp = y
+        g = height+amplitude*np.exp(
+            -(((rcen_x-xp)/width_x)**2+
+            ((rcen_y-yp)/width_y)**2)/2.)
+        return g
+    if shape is not None:
+        return rotgauss(*np.indices(shape))
+    else:
+        return rotgauss
+
+def gaussfit(data,err=None,params=(),autoderiv=True,return_all=False,circle=False,
+        fixed=np.repeat(False,7),limitedmin=[False,False,False,False,True,True,True],
+        limitedmax=[False,False,False,False,False,False,True],
+        usemoment=np.array([],dtype='bool'),
+        minpars=np.repeat(0,7),maxpars=[0,0,0,0,0,0,360],
+        rotate=1,vheight=1,quiet=True,returnmp=False,
+        returnfitimage=True,**kwargs):
+    """
+    Gaussian fitter with the ability to fit a variety of different forms of
+    2-dimensional gaussian.
+    
+    Input Parameters:
+        data - 2-dimensional data array
+        err=None - error array with same size as data array
+        params=[] - initial input parameters for Gaussian function.
+            (height, amplitude, x, y, width_x, width_y, rota)
+            if not input, these will be determined from the moments of the system, 
+            assuming no rotation
+        autoderiv=1 - use the autoderiv provided in the lmder.f function (the
+            alternative is to us an analytic derivative with lmdif.f: this method
+            is less robust)
+        return_all=0 - Default is to return only the Gaussian parameters.  
+                   1 - fit params, fit error
+        returnfitimage - returns (best fit params,best fit image)
+        returnmp - returns the full mpfit struct
+        circle=0 - default is an elliptical gaussian (different x, y widths),
+            but can reduce the input by one parameter if it's a circular gaussian
+        rotate=1 - default allows rotation of the gaussian ellipse.  Can remove
+            last parameter by setting rotate=0.  np.expects angle in DEGREES
+        vheight=1 - default allows a variable height-above-zero, i.e. an
+            additive constant for the Gaussian function.  Can remove first
+            parameter by setting this to 0
+        usemoment - can choose which parameters to use a moment estimation for.
+            Other parameters will be taken from params.  Needs to be a boolean
+            array.
+
+    Output:
+        Default output is a set of Gaussian parameters with the same shape as
+            the input parameters
+
+        If returnfitimage=True returns a np array of a gaussian
+            contructed using the best fit parameters.
+
+        If returnmp=True returns a `mpfit` object. This object contains
+            a `covar` attribute which is the 7x7 covariance array
+            generated by the mpfit class in the `mpfit_custom.py`
+            module. It contains a `param` attribute that contains a
+            list of the best fit parameters in the same order as the
+            optional input parameter `params`.
+
+        Warning: Does NOT necessarily output a rotation angle between 0 and 360 degrees.
+    """
+    usemoment=np.array(usemoment,dtype='bool')
+    params=np.array(params,dtype='float')
+    if usemoment.any() and len(params)==len(usemoment):
+        moment = np.array(moments(data,circle,rotate,vheight,**kwargs),dtype='float')
+        params[usemoment] = moment[usemoment]
+    elif params == [] or len(params)==0:
+        params = (moments(data,circle,rotate,vheight,**kwargs))
+    if vheight==0:
+        vheight=1
+        params = np.concatenate([[0],params])
+        fixed[0] = 1
+
+
+    # mpfit will fail if it is given a start parameter outside the allowed range:
+    for i in xrange(len(params)): 
+        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+        if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+
+    if err is None:
+        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
+                (*np.indices(data.shape)) - data))
+    else:
+        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
+                (*np.indices(data.shape)) - data)/err)
+    # def mpfitfun(data,err):
+        # if err is None:
+            # def f(p,fjac=None): return [0,np.ravel(data-twodgaussian(p,circle,rotate,vheight)\
+                    # (*np.indices(data.shape)))]
+        # else:
+            # def f(p,fjac=None): return [0,np.ravel((data-twodgaussian(p,circle,rotate,vheight)\
+                    # (*np.indices(data.shape)))/err)]
+        # return f
+                    
+    parinfo = [ 
+                {'n':1,'value':params[1],'limits':[minpars[1],maxpars[1]],'limited':[limitedmin[1],limitedmax[1]],'fixed':fixed[1],'parname':"AMPLITUDE",'error':0},
+                {'n':2,'value':params[2],'limits':[minpars[2],maxpars[2]],'limited':[limitedmin[2],limitedmax[2]],'fixed':fixed[2],'parname':"XSHIFT",'error':0},
+                {'n':3,'value':params[3],'limits':[minpars[3],maxpars[3]],'limited':[limitedmin[3],limitedmax[3]],'fixed':fixed[3],'parname':"YSHIFT",'error':0},
+                {'n':4,'value':params[4],'limits':[minpars[4],maxpars[4]],'limited':[limitedmin[4],limitedmax[4]],'fixed':fixed[4],'parname':"XWIDTH",'error':0} ]
+    if vheight == 1:
+        parinfo.insert(0,{'n':0,'value':params[0],'limits':[minpars[0],maxpars[0]],'limited':[limitedmin[0],limitedmax[0]],'fixed':fixed[0],'parname':"HEIGHT",'error':0})
+    if circle == 0:
+        parinfo.append({'n':5,'value':params[5],'limits':[minpars[5],maxpars[5]],'limited':[limitedmin[5],limitedmax[5]],'fixed':fixed[5],'parname':"YWIDTH",'error':0})
+        if rotate == 1:
+            parinfo.append({'n':6,'value':params[6],'limits':[minpars[6],maxpars[6]],'limited':[limitedmin[6],limitedmax[6]],'fixed':fixed[6],'parname':"ROTATION",'error':0})
+
+    # shell()
+    if autoderiv == 0:
+        # the analytic derivative, while not terribly difficult, is less
+        # efficient and useful.  I only bothered putting it here because I was
+        # instructed to do so for a class project - please ask if you would
+        # like this feature implemented
+        raise ValueError("I'm sorry, I haven't implemented this feature yet.")
+    else:
+       p, cov, infodict, errmsg, success = scipy.optimize.leastsq(errorfunction, params, full_output=1)
+        # mp = mpfit(mpfitfun(data,err),parinfo=parinfo,quiet=quiet)
+
+
+    # if returnmp:
+#         returns = (mp)
+#     elif return_all == 0:
+#         returns = mp.params
+#     elif return_all == 1:
+#         returns = mp.params,mp.perror
+    if returnfitimage:
+        fitimage = twodgaussian(p)(*np.indices(data.shape))
+        # returns = (returns,fitimage)
+#     return returns
+    # shell()
+    return p, infodict, errmsg, fitimage
 
 
 class PRFModelTrial(object):
@@ -776,7 +1039,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.results_to_surface(file_name = value_file + '_%2.2f'%threshold, output_file_name = condition, frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, 'surf': 4})
 		
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF'):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', z_thresh = 1.5):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
@@ -794,10 +1057,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask]
 			self.logger.info('starting fitting of prf shapes')
-			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, band = 75, voxel_no = i, cond=cond) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
-			
+			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on = fit_on, z_thresh = z_thresh, cond=cond) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
+			# for i in [1,51,65,48,36,56,24,47,84]:
+				# analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, voxel_no = i, cond=cond)
 			max_comp = np.array(res)[:,0]
 			surf = np.real(res)[:,1]
+			vol = np.real(res)[:,2]
+			EV = np.real(res)[:,3]
  
 			polar = np.angle(max_comp)
 			ecc = np.abs(max_comp)
@@ -806,28 +1072,28 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			# shell()
 			
-			prf_res = np.vstack([polar, ecc, real, imag, surf])
+			prf_res = np.vstack([polar, ecc, real, imag, surf, vol, EV])
 			
-			empty_res = np.zeros([5] + [np.array(stats_data.shape[1:]).prod()])
-			empty_res[:,(stat_mask * anat_mask_data).ravel()] = prf_res
+			empty_res = np.zeros([7] + [np.array(stats_data.shape[1:]).prod()])
+			empty_res[:,(stat_mask * anat_mask).ravel()] = prf_res
 			
-			all_res = empty_res.reshape([5] + list(stats_data.shape[1:]))
+			all_res = empty_res.reshape([7] + list(stats_data.shape[1:]))
 		
 			self.logger.info('saving prf parameters to polar and ecc')
 		
 			all_res_file = NiftiImage(all_res)
 			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
-			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + '.nii.gz'))
+			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + fit_on + 'zthres_' + z_thresh + '.nii.gz'))
 		
-		self.logger.info('converting prf values to surfaces')
-		for sm in [0,2,5]: # different smoothing values.
-			# reproject the original stats
-			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
-			# and the spatial values
-			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
-			
-			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
-			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
+		# self.logger.info('converting prf values to surfaces')
+		# for sm in [0,2,5]: # different smoothing values.
+		# 	# reproject the original stats
+		# 	self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
+		# 	# and the spatial values
+		# 	self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
+		#
+		# 	# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+		# 	self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
 
 			
 	def surface_to_polar(self, filename, condition = 'PRF'):
@@ -946,7 +1212,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1):
 		self.logger.info('starting prf data correlations from region %s'%roi)
-		results_frames = {'polar':0, 'ecc':1, 'real':2, 'imag':3, 'surf':4}
+		# shell()
+		results_frames = {'polar':0, 'ecc':1, 'real':2, 'imag':3, 'surf':4,'EV':5}
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
@@ -960,18 +1227,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 		base_task_corr = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_corrs')
 		all_comparison_task_corr = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_corrs') for c in comparison_task_conditions]
 
-		# shell()
 		h5file.close()
 
 		# create and apply the mask. 
 		mask = base_task_corr[:,0] > corr_threshold
 		mask = mask * (base_task_data[:,results_frames['ecc']] < 0.6)
+		mask = mask * (base_task_data[:,results_frames['EV']] > 0.85)
+		mask = mask * (base_task_data[:,results_frames['surf']] > 0.0)
 		base_task_data, all_comparison_task_data = base_task_data[mask, :], np.array([ac[mask, :] for ac in all_comparison_task_data])
 		base_task_corr, all_comparison_task_corr = base_task_corr[mask, 0], np.array([ac[mask, 0] for ac in all_comparison_task_corr])
 
 		order = np.argsort(base_task_data[:,results_frames['ecc']])
 		kern =  stats.norm.pdf( np.linspace(-.25,.25,int(round(base_task_data.shape[0] / 10)) ))
-  		sm_ecc = np.convolve( base_task_data[:,results_frames['ecc']][order], kern / kern.sum(), 'valid' )  
+		sm_ecc = np.convolve( base_task_data[:,results_frames['ecc']][order], kern / kern.sum(), 'valid' )  
 		# shell()
 
 		# scatter plots for results frames
@@ -987,17 +1255,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 			s.set_title(roi + ' ' + res_type)
 
 			if j == 1:
-				# s.set_ylim([0,15])
-				pass
+				s.set_ylim([1000,1500])
 			else:
 				s.set_ylim([0,0.65])
-				leg = s.legend(fancybox = True, loc = 'best')
-				leg.get_frame().set_alpha(0.5)
-				if leg:
-					for t in leg.get_texts():
-					    t.set_fontsize('small')    # the legend text fontsize
-					for l in leg.get_lines():
-					    l.set_linewidth(3.5)  # the legend line width
+			leg = s.legend(fancybox = True, loc = 'best')
+			leg.get_frame().set_alpha(0.5)
+			if leg:
+				for t in leg.get_texts():
+				    t.set_fontsize('small')    # the legend text fontsize
+				for l in leg.get_lines():
+				    l.set_linewidth(3.5)  # the legend line width
 
 			s.set_xlim([0,0.6])
 			simpleaxis(s)
@@ -1006,7 +1273,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			s.set_ylabel(res_type)
 
 
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '.pdf'))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '_EV85.pdf'))
 		
 
 
