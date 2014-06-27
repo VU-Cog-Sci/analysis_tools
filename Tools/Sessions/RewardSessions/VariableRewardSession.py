@@ -372,7 +372,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -398,7 +398,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_glm_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -1141,7 +1141,7 @@ class VariableRewardSession(SingleRewardSession):
 				"""loop over runs, and try to open a group for this run's data"""
 				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 				try:
-					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 				except NoSuchNodeError:
 					# import actual data
@@ -1150,7 +1150,7 @@ class VariableRewardSession(SingleRewardSession):
 			
 				# add parameters, eye data and the like 
 				eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
-				eyeGroup = eye_h5file.getNode(where = '/', name = 'bla', classname='Group')
+				eyeGroup = eye_h5file.get_node(where = '/', name = 'bla', classname='Group')
 				eyeGroup._f_copyChildren(thisRunGroup) 
 				eye_h5file.close()
 				"""
@@ -1197,7 +1197,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 				for (roi, roi_name) in zip(rois, roinames):
 					try:
-						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+						thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 					except NoSuchNodeError:
 						# import actual data
 						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -1229,7 +1229,7 @@ class VariableRewardSession(SingleRewardSession):
 			this_run_group_name = 'deconv_results'
 			# h5file.removeNode(where = '/', name = this_run_group_name, recursive=1)
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('deconvolution results file already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -1239,7 +1239,7 @@ class VariableRewardSession(SingleRewardSession):
 			# add var, dual and first stat files to different folders in there...
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -1453,7 +1453,7 @@ class VariableRewardSession(SingleRewardSession):
 		for i, data_type in enumerate(c_file_list):
 			ard = []
 			for roi_name in roi_names:
-				thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+				thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 				ard.append( eval('thisRoi.' + data_type + '.read()') )
 			ard_np.append(np.hstack(ard).T.squeeze())
 		ard_np = np.array(ard_np)
@@ -1471,7 +1471,7 @@ class VariableRewardSession(SingleRewardSession):
 			for i, data_type in enumerate(c_file_list):
 				ard = []
 				for roi_name in roi_names:
-					thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+					thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 					ard.append( eval('thisRoi.' + data_type + '.read()') )
 				ard_np.append(np.hstack(ard).T.squeeze())
 			all_roi_data.append(ard_np[0] - ard_np[1])
@@ -1481,7 +1481,7 @@ class VariableRewardSession(SingleRewardSession):
 			if data_type != 'dual':
 				ard = []
 				for roi_name in roi_names:
-					thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+					thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 					ard.append( eval('thisRoi.' + data_type + '.read()') )
 				ard_np = np.hstack(ard).T.squeeze()
 				all_roi_data.append(ard_np)
@@ -1540,7 +1540,7 @@ class VariableRewardSession(SingleRewardSession):
 				data.append({})
 				for data_type in self.pattern_comparisons():
 					# shell()
-					thisRoi = reward_h5file.getNode(where = '/' + this_run_group_name, name = r, classname='Group')
+					thisRoi = reward_h5file.get_node(where = '/' + this_run_group_name, name = r, classname='Group')
 					data[-1].update( { 'X'.join(data_type): eval('thisRoi.' + 'X'.join(data_type) + '.read()') } )
 			reward_h5file.close()
 		self.inter_experiment_correlations = data
@@ -1621,7 +1621,7 @@ class VariableRewardSession(SingleRewardSession):
 			for i, data_type in enumerate(c_file_list):
 				ard = []
 				for roi_name in roi_names:
-					thisRoi = reward_h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+					thisRoi = reward_h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 					ard.append( eval('thisRoi.' + data_type + '.read()') )
 				ard_np.append(np.hstack(ard).T.squeeze())
 			if template == 'exp1':
@@ -1873,7 +1873,7 @@ class VariableRewardSession(SingleRewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_' + analysis_type + '_glm_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data

@@ -153,7 +153,7 @@ class RivalrySession7T(RivalryReplaySession):
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -216,7 +216,7 @@ class RivalrySession7T(RivalryReplaySession):
 				
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -238,7 +238,7 @@ class RivalrySession7T(RivalryReplaySession):
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri/', extension = '_combined'))[1]
 		
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + this_run_group_name + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
@@ -293,7 +293,7 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		for (roi, roi_name) in zip(rois, roinames):
 			try:
-				thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -318,7 +318,7 @@ class RivalrySession7T(RivalryReplaySession):
 		"""
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
 			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -336,7 +336,7 @@ class RivalrySession7T(RivalryReplaySession):
 		
 		all_roi_data = []
 		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
@@ -347,7 +347,7 @@ class RivalrySession7T(RivalryReplaySession):
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
 			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -365,7 +365,7 @@ class RivalrySession7T(RivalryReplaySession):
 
 		all_roi_data = []
 		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np
@@ -405,7 +405,7 @@ class RivalrySession7T(RivalryReplaySession):
 		for r in [self.runList[i] for i in self.conditionDict['rivalry']]:
 			nr_runs += 1
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			search_name = 'decoding_indices'
 			for node in h5file.iterNodes(where = thisRunGroup, classname = 'Group'):
 				if search_name == node._v_name:
@@ -1372,13 +1372,13 @@ class RivalrySession7T(RivalryReplaySession):
 			h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			
 			decoding_group_name = 'decoding_indices'
 			
 			try:
-				decodingGroup = h5file.getNode(where = thisRunGroup, name = decoding_group_name, classname='Group')
+				decodingGroup = h5file.get_node(where = thisRunGroup, name = decoding_group_name, classname='Group')
 				self.logger.info('data file ' + decoding_group_name + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -1583,13 +1583,13 @@ class RivalrySession7T(RivalryReplaySession):
 			h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			
 			decoding_group_name = 'decoding_indices'
 			
 			try:
-				decodingGroup = h5file.getNode(where = thisRunGroup, name = decoding_group_name, classname='Group')
+				decodingGroup = h5file.get_node(where = thisRunGroup, name = decoding_group_name, classname='Group')
 				self.logger.info('data file ' + decoding_group_name + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -2196,7 +2196,7 @@ class RivalrySession7T(RivalryReplaySession):
 			nr_runs += 1
 			# get decoding indices: 
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			search_name = 'decoding_indices'
 			for node in h5file.iterNodes(where = thisRunGroup, classname = 'Group'):
 				if search_name == node._v_name:
