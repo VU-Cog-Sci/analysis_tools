@@ -253,7 +253,7 @@ class LatencyRemappingSession(Session):
 			# in the file, create the appropriate group
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -322,7 +322,7 @@ class LatencyRemappingSession(Session):
 			# in the file, create the appropriate group
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -985,7 +985,7 @@ class LatencyRemappingSession(Session):
 		for run in run_array:
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
-				run.trial_parameters_and_saccades = h5file.getNode(where = '/' + this_run_group_name, name = 'trial_parameters_and_saccades').read()
+				run.trial_parameters_and_saccades = h5file.get_node(where = '/' + this_run_group_name, name = 'trial_parameters_and_saccades').read()
 				# not all nifti files are equally long, so we keep track of this.
 				niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = run, postFix = postFix, extension = '.nii.gz'))
 				jsts.append(np.array([(rt['sacc_time_from_firstTR']+prd, rt['sacc_instr_time_from_firstTR']+prd, rt['stim_onset_time_from_firstTR']+prd, rt['stim_offset_time_from_firstTR']+prd) for rt in run.trial_parameters_and_saccades], dtype = timings_dtype))
@@ -1086,7 +1086,7 @@ class LatencyRemappingSession(Session):
 			"""loop over runs, and try to open a group for this run's data"""
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -1162,7 +1162,7 @@ class LatencyRemappingSession(Session):
 			
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -1194,7 +1194,7 @@ class LatencyRemappingSession(Session):
 		"""
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
 			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -1212,7 +1212,7 @@ class LatencyRemappingSession(Session):
 			
 		all_roi_data = []
 		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np

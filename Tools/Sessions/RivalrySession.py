@@ -660,7 +660,7 @@ class SphereSession(Session):
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			this_feat = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat')
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data files from ' + this_feat + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -707,7 +707,7 @@ class SphereSession(Session):
 			
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -737,7 +737,7 @@ class SphereSession(Session):
 		"""
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			roi_names = []
 			for roi_name in h5file.iterNodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -755,7 +755,7 @@ class SphereSession(Session):
 
 		all_roi_data = []
 		for roi_name in roi_names:
-			thisRoi = h5file.getNode(where = '/' + this_run_group_name, name = roi_name, classname='Group')
+			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
 		return all_roi_data_np

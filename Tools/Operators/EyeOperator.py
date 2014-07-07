@@ -520,7 +520,7 @@ class EyelinkOperator( EyeOperator ):
 			self.logger.info('opening table file ' + self.hdf5_filename)
 			h5file = openFile(self.hdf5_filename, mode = "a", title = "Eye file")
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name=self.runName, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name=self.runName, classname='Group')
 			self.logger.info('data file ' + self.inputFileName + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
