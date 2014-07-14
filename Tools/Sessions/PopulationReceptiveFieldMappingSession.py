@@ -23,7 +23,7 @@ from math import *
 
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV, ElasticNet, ElasticNetCV
-from skimage import filter, measure
+# from skimage import filter, measure
 from skimage.morphology import disk
 
 def fitARDRidge(design_matrix, timeseries, n_iter = 100, compute_score=True):
@@ -902,7 +902,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		this_run_group_name = 'prf'
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
@@ -926,7 +926,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		for (roi, roi_name) in zip(rois, roinames):
 			try:
-				thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')

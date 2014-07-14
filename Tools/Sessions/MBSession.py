@@ -147,17 +147,17 @@ class MBSession(Session):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = 'MB.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "w", title = 'MB.hdf5')
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		for cond in self.conditionDict.keys():
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
 				"""loop over runs, and try to open a group for this run's data"""
 				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 				try:
-					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 				except NoSuchNodeError:
 					# import actual data
@@ -213,7 +213,7 @@ class MBSession(Session):
 				for (roi, roi_name) in zip(rois, roinames):
 					if roi.data.sum() > 0:
 						try:
-							thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+							thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 						except NoSuchNodeError:
 							# import actual data
 							self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -241,7 +241,7 @@ class MBSession(Session):
 		run_duration = tr * nr_trs
 		
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri'), 'MB.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
 		
 		event_conds = ['left','right']
 		colors = ['r','g']
@@ -346,10 +346,10 @@ class MBSession(Session):
 				results.append(self.deconvolve_roi(roi, cond, threshold, mask_type = 'RIGHT_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type, sample_duration = sample_duration))
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri'), 'MB.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = 'MB.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = 'MB.hdf5')
 		this_run_group_name = 'deconvolution_results' + '_' + signal_type + '_' + data_type
 		try:
-			thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -367,7 +367,7 @@ class MBSession(Session):
 	def compare_stats(self, roi = 'V1'):
 		"""docstring for compare_stats"""
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri'), 'MB.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
 		
 		conditions = self.conditionDict.keys()
 		
@@ -403,7 +403,7 @@ class MBSession(Session):
 	def compare_tsnr(self, roi = 'V1', data_type = 'hpf_data'):
 		"""docstring for compare_stats"""
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri'), 'MB.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r", title = 'MB.hdf5')
 		
 		conditions = self.conditionDict.keys()
 		# areas = ['V1', 'V2', 'V3', 'V3AB', 'V4']

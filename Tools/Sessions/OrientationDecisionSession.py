@@ -267,16 +267,16 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 			"""loop over runs, and try to open a group for this run's data"""
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -313,7 +313,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 			
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -330,7 +330,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 			# add parameters and behavioral things
 			self.analyze_one_run_behavior(run = r, output_fsl_files = False)
 			try:
-				thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = 'parameters', classname='Group')
+				thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = 'parameters', classname='Group')
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -354,14 +354,14 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 	
 	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all']):
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['decision'][0]]), 'decision.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+")
+		h5file = open_file(self.hdf5_filename, mode = "r+")
 		super(OrientationDecisionSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['decision']], hdf5_file = h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = ['mcf','tf'])
 		h5file.close()
 	
 	def per_trial_data_from_run(self, run, h5file, roi, data_type = 'betas', postFix = ['mcf','tf']):
 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 		try:
-			thisParameterRunGroup = h5file.getNode(where = '/' + this_run_group_name, name = 'parameters', classname='Group')
+			thisParameterRunGroup = h5file.get_node(where = '/' + this_run_group_name, name = 'parameters', classname='Group')
 			self.logger.info(self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' opened for analysis')
 		except NoSuchNodeError:
 			# import actual data

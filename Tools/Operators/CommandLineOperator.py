@@ -84,7 +84,7 @@ class MCFlirtOperator( CommandLineOperator ):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		self.costFunction = costFunction
 		self.target = target
-
+		
 	def configure(self, plot = True, sinc = True, report = True, outputFileName = None, further_args = ''):
 		"""
 		configure will run mcflirt motion correction on file in inputObject
@@ -111,7 +111,10 @@ class MCFlirtOperator( CommandLineOperator ):
 		if sinc:
 			runcmd += ' -stages 4'
 			runcmd += ' -sinc_final'
-
+		
+		if hasattr(self, 'transformMatrixFileName'):
+			runcmd += ' -init ' + self.transformMatrixFileName
+		
 		self.runcmd = runcmd + further_args
 
 class MRIConvertOperator( CommandLineOperator ):
@@ -123,8 +126,6 @@ class MRIConvertOperator( CommandLineOperator ):
 	def configure(self, output_type = '.nii.gz'):
 		self.outputFileName = os.path.splitext(self.inputFileName)[0] + output_type
 		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName
-
-
 
 
 class FlirtOperator( CommandLineOperator ):
@@ -186,12 +187,12 @@ class FlirtOperator( CommandLineOperator ):
 		runcmd += ' -omat ' + self.transformMatrixFileName
 		if not resample:
 			runcmd += ' -noresample'
-
+		
 		if sinc:
 			runcmd += ' -interp sinc -sincwidth 7 -sincwindow hanning '
-
+		
 		runcmd += extra_args
-
+		
 		self.runcmd = runcmd
 
 class InvertFlirtOperator( CommandLineOperator ):
@@ -202,7 +203,7 @@ class InvertFlirtOperator( CommandLineOperator ):
 		"""
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
 		super(InvertFlirtOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
-
+	
 	def configure(self, outputFileName = None):
 		"""
 		standard configure is configureRun instead of apply
@@ -216,7 +217,7 @@ class InvertFlirtOperator( CommandLineOperator ):
 		runcmd += ' -omat ' + self.outputFileName
 		runcmd += ' -inverse ' + self.inputFileName
 		self.runcmd = runcmd
-
+		
 class ConcatFlirtOperator( CommandLineOperator ):
 	"""docstring for FlirtOperator"""
 	def __init__(self, inputObject, cmd = 'convert_xfm', **kwargs): # source ~/.bash_profile_fsl ;
@@ -259,7 +260,7 @@ class BETOperator( CommandLineOperator ):
 		else:
 			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; bet'
 
-	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0, Z = True):
+	def configure(self, outputFileName = None, f_value = 0.5, g_value = 0.0, Z = True, **kwargs):
 		"""
 		configure will run BET on file in inputObject
 		as specified by parameters in __init__ arguments and here to run.
@@ -277,6 +278,12 @@ class BETOperator( CommandLineOperator ):
 		if Z:
 			runcmd += ' -Z '
 		runcmd += ' -f ' + str(f_value) + ' -g ' + str(g_value) + ' -m '
+		
+		for k,v in kwargs.items():
+			runcmd += ' ' + k
+			if v!= '':
+				runcmd += ' ' + v
+		
 		self.runcmd = runcmd
 
 
@@ -349,6 +356,16 @@ class FSLMathsOperator( CommandLineOperator ):
 		mathcmd += ' ' + self.outputFileName
 		mathcmd += ' -odt ' +  self.outputDataType
 		self.runcmd = mathcmd
+
+	def configurePi(self, outputFileName = None, div = 100, mul = 3.141592653589793116):
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.splitext(os.path.splitext(self.inputFileName)[0])[0] + '_rescaled' + standardMRIExtension
+		
+		PiArgs = {' -div ': str(div), ' -mul ': str(mul),}
+		self.configure( outputFileName = self.outputFileName, **PiArgs )
+
 
 	def configureTMean(self, outputFileName = None):
 		if outputFileName:
@@ -806,3 +823,94 @@ class EDF2ASCOperator( CommandLineOperator ):
 		self.msgcmd = self.intermediatecmd + '-y -z -v -e "'+self.inputFileName+'"; mv ' + '"' + standardOutputFileName.replace('|', '\|') + '" "' + self.messageOutputFileName.replace('|', '\|') + '"'
 
 		self.runcmd = self.gazcmd + '; ' + self.msgcmd
+
+class FSLSplitOperator( CommandLineOperator ):
+	"""docstring for FlirtOperator"""
+	def __init__(self, inputObject, cmd = 'fslsplit'): # source ~/.bash_profile_fsl ;
+		"""
+		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+		"""
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(FSLSplitOperator, self).__init__(inputObject = inputObject, cmd = cmd)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslsplit'
+
+	def configure(self, outputFileName = None):
+		"""
+		apply runs flirt's applyxfm argument.
+		It takes an input matrix and a reference file in order to use transformMatrix
+		to perform the transformation - it doesn't calculate the transformation itself.
+		"""
+		
+		if outputFileName:
+			self.outputFileName = outputFileName
+		else:
+			self.outputFileName = os.path.join(os.path.splitext(os.path.splitext(self.inputObject)[0])[0] + '_split')
+		
+		applycmd = self.cmd + ''
+		applycmd += ' ' + self.inputFileName
+		applycmd += ' ' + self.outputFileName
+		
+		self.runcmd = applycmd
+
+class FSLMergeOperator( CommandLineOperator ):
+	"""docstring for FlirtOperator"""
+	def __init__(self, inputObject, cmd = 'fslmerge'): # source ~/.bash_profile_fsl ;
+		"""
+		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+		"""
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(FSLMergeOperator, self).__init__(inputObject = inputObject, cmd = cmd)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fslsplit'
+
+	def configure(self, outputFileName = None, TR=2):
+		"""
+		apply runs flirt's applyxfm argument.
+		It takes an input matrix and a reference file in order to use transformMatrix
+		to perform the transformation - it doesn't calculate the transformation itself.
+		"""
+		
+		applycmd = self.cmd + ' -tr'
+		applycmd += ' ' + outputFileName
+		for s in self.inputObject:
+			applycmd += ' ' + s
+		applycmd += ' ' + str(TR)
+		
+		self.runcmd = applycmd
+	
+class PreludeOperator( CommandLineOperator ):
+	"""docstring for FlirtOperator"""
+	def __init__(self, inputObject, cmd = 'prelude', **kwargs): # source ~/.bash_profile_fsl ;
+		"""
+		other reasonable options for referenceFileName are this subject's freesurfer anatomical or the inplane_anat that is run in the same session
+		"""
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(PreludeOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, outputFileName = None, phasevol = None, mask = None):
+		"""
+		standard configure is configureRun instead of apply
+		"""
+		
+		self.outputFileName = outputFileName
+		runcmd = self.cmd
+		runcmd += ' -p ' + phasevol
+		runcmd += ' -a ' + self.inputFileName
+		runcmd += ' -o ' + self.outputFileName
+		runcmd += ' -m ' + mask
+		self.runcmd = runcmd
+
+class ReorientOperator( CommandLineOperator ):
+	def __init__(self, inputObject, cmd = 'fslreorient2std', **kwargs): # source ~/.bash_profile_fsl ;
+		"""
+		"""
+		super(ReorientOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, outputFileName = None):
+		self.outputFileName = outputFileName
+		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName

@@ -34,7 +34,7 @@ class HDFEyeOperator(Operator):
 	
 	def open_hdf_file(self, mode = "a"):
 		"""docstring for open_hdf_file"""
-		self.h5f = openFile(self.inputObject, mode = mode )
+		self.h5f = open_file(self.inputObject, mode = mode )
 	
 	def close_hdf_file(self):
 		"""docstring for close_hdf_file"""

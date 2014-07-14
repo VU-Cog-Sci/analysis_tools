@@ -467,17 +467,17 @@ class SingleRewardSession(RewardSession):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		if not hasattr(self, 'dual_pilot'):
 			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 				"""loop over runs, and try to open a group for this run's data"""
 				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 				try:
-					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 				except NoSuchNodeError:
 					# import actual data
@@ -551,7 +551,7 @@ class SingleRewardSession(RewardSession):
 			
 				for (roi, roi_name) in zip(rois, roinames):
 					try:
-						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+						thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 					except NoSuchNodeError:
 						# import actual data
 						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -569,7 +569,7 @@ class SingleRewardSession(RewardSession):
 				"""loop over runs, and try to open a group for this run's data"""
 				this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 				try:
-					thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 					self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 				except NoSuchNodeError:
 					# import actual data
@@ -674,7 +674,7 @@ class SingleRewardSession(RewardSession):
 			
 				for (roi, roi_name) in zip(rois, roinames):
 					try:
-						thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+						thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 					except NoSuchNodeError:
 						# import actual data
 						self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -696,7 +696,7 @@ class SingleRewardSession(RewardSession):
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = mode, title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = mode, title = run_type + " file")
 		return h5file
 	
 	
@@ -704,7 +704,7 @@ class SingleRewardSession(RewardSession):
 		if run.condition == 'reward':
 			# get EL Data
 			
-			h5f = openFile(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
+			h5f = open_file(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
 			r = None
 			for item in h5f.iterNodes(where = '/', classname = 'Group'):
 				if item._v_name == 'bla':
@@ -822,7 +822,7 @@ class SingleRewardSession(RewardSession):
 			# in the file, create the appropriate group
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -1267,7 +1267,7 @@ class SingleRewardSession(RewardSession):
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -1349,7 +1349,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_results' + '_' + signal_type + '_' + data_type
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -1505,7 +1505,7 @@ class SingleRewardSession(RewardSession):
 				# this runs through different deconvolution results
 				if deconv._v_name.split('_')[-1] == 'run':	# these are per_run analyses, so we can do the anova on them.
 					#get the data
-					thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+					thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 					# do analysis. 
 					these_data = eval('thisRunGroup.' + deconv._v_name + '.read()').transpose(2,1,0) # after transpose: timepoints by conditions by runs
 					stat_results = np.zeros((these_data.shape[0], 2, 3))	# timepoints, by F/p values by 2 factors plus interaction
@@ -1549,7 +1549,7 @@ class SingleRewardSession(RewardSession):
 					pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), deconv._v_name+'_stats.pdf'))
 		
 		elif data_type == 'pupil':
-			pupil_signals = reward_h5file.getNode(where = '/', name = 'all_pupil_scores', classname = 'Array').read().transpose(2,1,0)[::(sample_rate/comparison_rate)]
+			pupil_signals = reward_h5file.get_node(where = '/', name = 'all_pupil_scores', classname = 'Array').read().transpose(2,1,0)[::(sample_rate/comparison_rate)]
 			# average per run, after which we need to transpose to conform to the bold data format. 
 			pupil_signals = pupil_signals.reshape((pupil_signals.shape[0], 6, pupil_signals.shape[1]/6 , pupil_signals.shape[2])).mean(axis = 2).transpose(0,2,1)
 			stat_results = np.zeros((pupil_signals.shape[0], 2, 3))	# timepoints, by F/p values by 2 factors plus interaction
@@ -1911,7 +1911,7 @@ class SingleRewardSession(RewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -2001,7 +2001,7 @@ class SingleRewardSession(RewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -2101,7 +2101,7 @@ class SingleRewardSession(RewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -2160,7 +2160,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'pupil-BOLD_correlation_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -2188,7 +2188,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'pupil-BOLD_variance_correlation_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -2214,7 +2214,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'BOLD_variance_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -2259,7 +2259,7 @@ class SingleRewardSession(RewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -2359,7 +2359,7 @@ class SingleRewardSession(RewardSession):
 			tr_timings.append(np.arange(0, run_duration, tr) + nr_runs * run_duration)
 			# take pupil data
 			try:
-				thisRunGroup = reward_h5file.getNode(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
+				thisRunGroup = reward_h5file.get_node(where = '/', name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']))[1], classname='Group')
 				# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			except NoSuchNodeError:
 				self.logger.error('no such node.')
@@ -2473,7 +2473,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'pupil-BOLD_cross_correlation_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -2526,7 +2526,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'pupil-BOLD_cross_correlation_results'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 		except NoSuchNodeError:
 			# import actual data
 			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
@@ -2846,7 +2846,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_interval_results' + '_' + signal_type
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -3020,7 +3020,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'deconvolution_discrete_interval_results' + '_' + signal_type
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -3131,10 +3131,10 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		this_run_group_name = 'residuals_variance'
 		try:
@@ -3183,7 +3183,7 @@ class SingleRewardSession(RewardSession):
 			
 		this_run_group_name = 'residuals_variance'
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name)
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name)
 			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			self.logger.info('No group ' + this_run_group_name + ' in this file')
@@ -3444,7 +3444,7 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
 		this_run_group_name = 'SNR_results' + '_' + signal_type + '_' + data_type
 		try:
-			thisRunGroup = reward_h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
 		except NoSuchNodeError:
 			# import actual data
@@ -3571,7 +3571,7 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 			
 		if run_type == 'reward':
 			stat_files = {
@@ -3586,7 +3586,7 @@ class SingleRewardSession(RewardSession):
 			"""loop over runs, and try to open a group for this run's data"""
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			try:
-				thisRunGroup = h5file.getNode(where = '/', name = this_run_group_name, classname='Group')
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 				self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 			except NoSuchNodeError:
 				# import actual data
@@ -3595,7 +3595,7 @@ class SingleRewardSession(RewardSession):
 		
 			for (roi, roi_name) in zip(rois, roinames):
 				try:
-					thisRunGroup = h5file.getNode(where = "/" + this_run_group_name, name = roi_name, classname='Group')
+					thisRunGroup = h5file.get_node(where = "/" + this_run_group_name, name = roi_name, classname='Group')
 				except NoSuchNodeError:
 					# import actual data
 					self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
@@ -3630,9 +3630,9 @@ class SingleRewardSession(RewardSession):
 	def snr_pattern_correlations(self, postFix = ['mcf']):
 		"""docstring for snr_pattern_correlations"""
 		self.reward_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward' + '.hdf5')
-		reward_h5file = openFile(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
+		reward_h5file = open_file(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
 		self.mapper_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][0]]), 'mapper' + '.hdf5')
-		mapper_h5file = openFile(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
+		mapper_h5file = open_file(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
 		
 		
 		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:
