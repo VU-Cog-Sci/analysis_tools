@@ -17,6 +17,7 @@ import numpy as np
 import scipy as sp
 from scipy.stats import spearmanr
 from scipy import ndimage
+import matplotlib.mlab as mlab
 
 from nifti import *
 from math import *
@@ -201,7 +202,7 @@ def normalize_histogram(input_array, mask_array = None):
 # 		
 # 	return max_comp, surf
 
-def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5.0, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, band = 75, cond = cond):
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, cond = cond, z_thresh=1.5, fit_on='smoothed_betas'):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	
@@ -209,32 +210,337 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5.0, diagn
 	n_pixel_elements = int(sqrt(spatial_profile_array.shape[0]))
 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
 	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
-	PRF = uss_spatial_profile
 	
 	## compute maximum
-	maximum = ndimage.measurements.maximum_position(PRF)
-	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
-	max_comp =  np.complex(max_norm[0], max_norm[1])
-
-	## compute surface:
+	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
+	
+	if fit_on == 'smoothed_betas':
+		PRF = uss_spatial_profile
+	elif fit_on == 'raw_betas':
+		PRF = spatial_profile_array.reshape(n_pixel_elements, n_pixel_elements)
+		maximum = tuple((np.array(maximum).astype('float')/5).astype('int'))
+		upscale = 1
+		
+	# ## compute surface:
 	# 1. normalize PRF
 	PRF_circle = disk((n_pixel_elements*upscale-1)/2)
 	PRF_n = (PRF-np.mean(PRF[PRF_circle==1]))/np.std(PRF[PRF_circle==1])
-	
-	# 2. threshold 	
-	PRF_n_t = zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
-	PRF_n_t[PRF_n>1.5] = 1
-	
-	# 3. pick right PRF
-	labels = ndimage.label(PRF_n_t)[0]
+
+	# 2. generate mask
+	PRF_n_m= zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
+	PRF_n_m[PRF_n>z_thresh] = 1
+
+	# 3. pick right PRF then create new windows around it using banded profile
+	labels = ndimage.label(PRF_n_m)[0]
 	label_index = labels[(maximum)]
-	labels[labels!=label_index] = 0
+	label_4_surf = copy(labels)
+	label_4_surf[label_4_surf!=label_index] = 0
+	PRF_n_t = copy(PRF_n)
+	PRF_n_t[labels!=label_index] = 0
+	# shell()
+	# 4. compute surface and volume
 
-	# 4. compute surface
-	surf = np.sum(labels)
+	params, infodict, errmsg, fitimage=gaussfit(PRF_n_t,voxel_no=voxel_no)
+	if params == []:
+		center = [0,0]
+		max_norm = 2.0 * (np.array(center) / (n_pixel_elements*upscale)) - 1.0 
+		max_comp_gauss =  np.complex(max_norm[0], max_norm[1])
+		max_comp_abs = np.complex(max_norm[0], max_norm[1])
+		surf_gauss = 0
+		surf_mask = 0
+		vol = 0
+		EV = 0
+	else:
+		EV = 1- np.linalg.norm(PRF_n_t.ravel()-fitimage.ravel())**2 / np.linalg.norm(PRF_n_t.ravel())**2
+		center_gauss = np.array([params[3],params[2]])
+		center_abs = copy(maximum).astype('float32')
+		max_norm_gauss = 2.0 * (np.array(center_gauss) / (n_pixel_elements*upscale)) - 1.0 
+		max_comp_gauss =  np.complex(max_norm_gauss[0], max_norm_gauss[1])
+		max_norm_abs = 2.0 * (np.array(center_abs) / (n_pixel_elements*upscale)) - 1.0 
+		max_comp_abs =  np.complex(max_norm_abs[0], max_norm_abs[1])
+		ecc_gauss = np.abs(max_comp_gauss)
+		ecc_abs = np.abs(max_comp_abs)
+		# surf_gauss = 2*np.sqrt(2*(math.log(2)))*sd
+		surf_gauss = (np.pi * (params[4]) * (params[5])) / np.size(PRF_n_t) * 30
+		surf_mask = label_4_surf.sum().astype('float32') / np.size(PRF_n_t) * 30
+		vol = 2*surf_gauss*(params[1]-params[0])
+		# shell()
+		# if np.all([ecc_gauss<0.7,ecc_abs<0.7,fitimage != []]):
+		# 	f=pl.figure(figsize = (8,7))
+		# 	ax = f.add_subplot(111, aspect='equal')
+		# 	pl.imshow(PRF)
+		# 	pl.imshow(PRF_n_t,alpha=0.7)
+		# 	c = pl.contour(fitimage)
+		# 	e = matplotlib.patches.Ellipse(tuple([center_gauss[1],center_gauss[0]]),params[5]*3,params[4]*3,angle=params[6],alpha=0.5)
+		# 	ax.add_artist(e)
+		# 	pl.text(int(PRF_n_t.shape[0]/8),int(PRF_n_t.shape[0]/8*6), 'EV: %.2f \nsurf_gauss: %.2f \nsurf_mask: %.2f \necc_gauss: %.2f \necc_abs: %.2f \ncond: %s' %(EV,surf_gauss,surf_mask,ecc_gauss,ecc_abs,cond),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+		# 	pl.axis('off')
+		# 	pl.plot([center_gauss[1]], [center_gauss[0]], 'ko')
+		# 	pl.plot([center_abs[1]], [center_abs[0]], 'wo')
+		# 	# pl.savefig(os.path.join('PopulationReceptiveFieldMappingSession.stageFolder('processed/mri/figs/example_fits/'+ 'vox_'  + str(voxel_no)  + '_' + fit_on + '_z_thresh_' + str(z_thresh) + '.pdf'))
+		# 	pl.savefig(os.path.join('/home/shared/PRF/data/AS/AS_090414/processed/mri/figs/example_fits_condition/'+ '25x25_vox_'  + str(voxel_no)  + '_' + cond + '_' + fit_on + '_z_thresh_' + str(z_thresh) + '.pdf'))
+		# 	pl.show()
+			# pl.close()
+						
+	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV
 	
-	return max_comp, surf
+""" 
+Note about mpfit/leastsq: 
+I switched everything over to the Markwardt mpfit routine for a few reasons,
+but foremost being the ability to set limits on parameters, not just force them
+to be fixed.  As far as I can tell, leastsq does not have that capability.
 
+The version of mpfit I use can be found here:
+    http://code.google.com/p/agpy/source/browse/trunk/mpfit
+
+Alternative: lmfit
+
+.. todo::
+    -turn into a class instead of a collection of objects
+    -implement WCS-based gaussian fitting with correct coordinates
+"""
+
+def moments(data,circle,rotate,vheight,estimator=median,voxel_no=1,**kwargs):
+    """Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
+    the gaussian parameters of a 2D distribution by calculating its
+    moments.  Depending on the input parameters, will only output 
+    a subset of the above.
+    
+    If using masked arrays, pass estimator=np.ma.median
+    """
+    # shell()
+    total = np.abs(data).sum()
+    Y, X = np.indices(data.shape) # python convention: reverse x,y np.indices
+    y = np.argmax((X*np.abs(data)).sum(axis=1)/total)
+    x = np.argmax((Y*np.abs(data)).sum(axis=0)/total)
+    col = data[int(y),:]
+    # FIRST moment, not second!
+    width_x = np.sqrt(np.abs((np.arange(col.size)-y)*col).sum()/np.abs(col).sum())
+    row = data[:, int(x)]
+    width_y = np.sqrt(np.abs((np.arange(row.size)-x)*row).sum()/np.abs(row).sum())
+    width = ( width_x + width_y ) / 2.
+    height = estimator(data.ravel())
+    amplitude = data.max()-height
+    mylist = [amplitude,x,y]
+    if np.isnan(width_y) or np.isnan(width_x) or np.isnan(height) or np.isnan(amplitude):
+        mylist = []
+        # raise ValueError("something is nan in voxel " + str(voxel_no))
+    else:
+        if vheight==1:
+            mylist = [height] + mylist
+        if circle==0:
+            mylist = mylist + [width_x,width_y]
+            if rotate==1:
+                mylist = mylist + [0.] #rotation "moment" is just zero...
+                # also, circles don't rotate.
+        else:  
+            mylist = mylist + [width]
+    return mylist
+
+def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
+    """Returns a 2d gaussian function of the form:
+        x' = np.cos(rota) * x - np.sin(rota) * y
+        y' = np.sin(rota) * x + np.cos(rota) * y
+        (rota should be in degrees)
+        g = b + a * np.exp ( - ( ((x-center_x)/width_x)**2 +
+        ((y-center_y)/width_y)**2 ) / 2 )
+
+        inpars = [b,a,center_x,center_y,width_x,width_y,rota]
+                 (b is background height, a is peak amplitude)
+
+        where x and y are the input parameters of the returned function,
+        and all other parameters are specified by this function
+
+        However, the above values are passed by list.  The list should be:
+        inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
+
+        You can choose to ignore / neglect some of the above input parameters 
+            unp.sing the following options:
+            circle=0 - default is an elliptical gaussian (different x, y
+                widths), but can reduce the input by one parameter if it's a
+                circular gaussian
+            rotate=1 - default allows rotation of the gaussian ellipse.  Can
+                remove last parameter by setting rotate=0
+            vheight=1 - default allows a variable height-above-zero, i.e. an
+                additive constant for the Gaussian function.  Can remove first
+                parameter by setting this to 0
+            shape=None - if shape is set (to a 2-parameter list) then returns
+                an image with the gaussian defined by inpars
+        """
+    inpars_old = inpars
+    inpars = list(inpars)
+    if vheight == 1:
+        height = inpars.pop(0)
+        height = float(height)
+    else:
+        height = float(0)
+    amplitude, center_y, center_x = inpars.pop(0),inpars.pop(0),inpars.pop(0)
+    amplitude = float(amplitude)
+    center_x = float(center_x)
+    center_y = float(center_y)
+    if circle == 1:
+        width = inpars.pop(0)
+        width_x = float(width)
+        width_y = float(width)
+        rotate = 0
+    else:
+        width_x, width_y = inpars.pop(0),inpars.pop(0)
+        width_x = float(width_x)
+        width_y = float(width_y)
+    if rotate == 1:
+        rota = inpars.pop(0)
+        rota = pi/180. * float(rota)
+        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
+        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
+    else:
+        rcen_x = center_x
+        rcen_y = center_y
+    if len(inpars) > 0:
+        raise ValueError("There are still input parameters:" + str(inpars) + \
+                " and you've input: " + str(inpars_old) + \
+                " circle=%d, rotate=%d, vheight=%d" % (circle,rotate,vheight) )
+            
+    def rotgauss(x,y):
+        if rotate==1:
+            xp = x * np.cos(rota) - y * np.sin(rota)
+            yp = x * np.sin(rota) + y * np.cos(rota)
+        else:
+            xp = x
+            yp = y
+        g = height+amplitude*np.exp(
+            -(((rcen_x-xp)/width_x)**2+
+            ((rcen_y-yp)/width_y)**2)/2.)
+        return g
+    if shape is not None:
+        return rotgauss(*np.indices(shape))
+    else:
+        return rotgauss
+
+def gaussfit(data,err=None,params=(),autoderiv=True,return_all=False,circle=False,
+        fixed=np.repeat(False,7),limitedmin=[False,False,False,False,True,True,True],
+        limitedmax=[False,False,False,False,False,False,True],
+        usemoment=np.array([],dtype='bool'),
+        minpars=np.repeat(0,7),maxpars=[0,0,0,0,0,0,360],
+        rotate=1,vheight=1,quiet=True,returnmp=False,
+        returnfitimage=True,voxel_no=1,**kwargs):
+    """
+    Gaussian fitter with the ability to fit a variety of different forms of
+    2-dimensional gaussian.
+    
+    Input Parameters:
+        data - 2-dimensional data array
+        err=None - error array with same size as data array
+        params=[] - initial input parameters for Gaussian function.
+            (height, amplitude, x, y, width_x, width_y, rota)
+            if not input, these will be determined from the moments of the system, 
+            assuming no rotation
+        autoderiv=1 - use the autoderiv provided in the lmder.f function (the
+            alternative is to us an analytic derivative with lmdif.f: this method
+            is less robust)
+        return_all=0 - Default is to return only the Gaussian parameters.  
+                   1 - fit params, fit error
+        returnfitimage - returns (best fit params,best fit image)
+        returnmp - returns the full mpfit struct
+        circle=0 - default is an elliptical gaussian (different x, y widths),
+            but can reduce the input by one parameter if it's a circular gaussian
+        rotate=1 - default allows rotation of the gaussian ellipse.  Can remove
+            last parameter by setting rotate=0.  np.expects angle in DEGREES
+        vheight=1 - default allows a variable height-above-zero, i.e. an
+            additive constant for the Gaussian function.  Can remove first
+            parameter by setting this to 0
+        usemoment - can choose which parameters to use a moment estimation for.
+            Other parameters will be taken from params.  Needs to be a boolean
+            array.
+
+    Output:
+        Default output is a set of Gaussian parameters with the same shape as
+            the input parameters
+
+        If returnfitimage=True returns a np array of a gaussian
+            contructed using the best fit parameters.
+
+        If returnmp=True returns a `mpfit` object. This object contains
+            a `covar` attribute which is the 7x7 covariance array
+            generated by the mpfit class in the `mpfit_custom.py`
+            module. It contains a `param` attribute that contains a
+            list of the best fit parameters in the same order as the
+            optional input parameter `params`.
+
+        Warning: Does NOT necessarily output a rotation angle between 0 and 360 degrees.
+    """
+    # shell()
+    usemoment=np.array(usemoment,dtype='bool')
+    params=np.array(params,dtype='float')
+    if usemoment.any() and len(params)==len(usemoment):
+        moment = np.array(moments(data,circle,rotate,vheight,**kwargs),dtype='float')
+        params[usemoment] = moment[usemoment]
+    elif params == [] or len(params)==0:
+        params = (moments(data,circle,rotate,vheight,voxel_no=voxel_no,**kwargs))
+    if vheight==0:
+        vheight=1
+        params = np.concatenate([[0],params])
+        fixed[0] = 1
+
+    if params == []:
+        p, infodict, errmsg, fitimage = [],[],[],[]
+    else:
+	    # mpfit will fail if it is given a start parameter outside the allowed range:
+	    for i in xrange(len(params)): 
+	        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+	        if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+
+	    if err is None:
+	        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
+	                (*np.indices(data.shape)) - data))
+	    else:
+	        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
+	                (*np.indices(data.shape)) - data)/err)
+	    # def mpfitfun(data,err):
+	        # if err is None:
+	            # def f(p,fjac=None): return [0,np.ravel(data-twodgaussian(p,circle,rotate,vheight)\
+	                    # (*np.indices(data.shape)))]
+	        # else:
+	            # def f(p,fjac=None): return [0,np.ravel((data-twodgaussian(p,circle,rotate,vheight)\
+	                    # (*np.indices(data.shape)))/err)]
+	        # return f
+                    
+	    parinfo = [ 
+	                {'n':1,'value':params[1],'limits':[minpars[1],maxpars[1]],'limited':[limitedmin[1],limitedmax[1]],'fixed':fixed[1],'parname':"AMPLITUDE",'error':0},
+	                {'n':2,'value':params[2],'limits':[minpars[2],maxpars[2]],'limited':[limitedmin[2],limitedmax[2]],'fixed':fixed[2],'parname':"XSHIFT",'error':0},
+	                {'n':3,'value':params[3],'limits':[minpars[3],maxpars[3]],'limited':[limitedmin[3],limitedmax[3]],'fixed':fixed[3],'parname':"YSHIFT",'error':0},
+	                {'n':4,'value':params[4],'limits':[minpars[4],maxpars[4]],'limited':[limitedmin[4],limitedmax[4]],'fixed':fixed[4],'parname':"XWIDTH",'error':0} ]
+	    if vheight == 1:
+	        parinfo.insert(0,{'n':0,'value':params[0],'limits':[minpars[0],maxpars[0]],'limited':[limitedmin[0],limitedmax[0]],'fixed':fixed[0],'parname':"HEIGHT",'error':0})
+	    if circle == 0:
+	        parinfo.append({'n':5,'value':params[5],'limits':[minpars[5],maxpars[5]],'limited':[limitedmin[5],limitedmax[5]],'fixed':fixed[5],'parname':"YWIDTH",'error':0})
+	        if rotate == 1:
+	            parinfo.append({'n':6,'value':params[6],'limits':[minpars[6],maxpars[6]],'limited':[limitedmin[6],limitedmax[6]],'fixed':fixed[6],'parname':"ROTATION",'error':0})
+
+	    # shell()
+	    if autoderiv == 0:
+	        # the analytic derivative, while not terribly difficult, is less
+	        # efficient and useful.  I only bothered putting it here because I was
+	        # instructed to do so for a class project - please ask if you would
+	        # like this feature implemented
+	        raise ValueError("I'm sorry, I haven't implemented this feature yet.")
+	    else:
+	       p, cov, infodict, errmsg, success = scipy.optimize.leastsq(errorfunction, params, full_output=1)
+	        # mp = mpfit(mpfitfun(data,err),parinfo=parinfo,quiet=quiet)
+
+
+	    # if returnmp:
+	#         returns = (mp)
+	#     elif return_all == 0:
+	#         returns = mp.params
+	#     elif return_all == 1:
+	#         returns = mp.params,mp.perror
+	    if returnfitimage:
+	        fitimage = twodgaussian(p)(*np.indices(data.shape))
+	        # returns = (returns,fitimage)
+	#     return returns
+	    # shell()
+    return p, infodict, errmsg, fitimage
+	
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
@@ -331,6 +637,56 @@ class PopulationReceptiveFieldMappingSession(Session):
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','hr']) )
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
+	def eye_informer(self, length_thresh, nr_dummy_scans = 6):
+		"""
+		- the times at which a blink began per run 
+		- duration of blink
+		Timings of the blinks are corrected for the start of the scan by the nr_dummy_scans
+		"""
+
+	
+		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+			# shell()
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
+			tr = round(niiFile.rtime*1)/1000.0
+			with open (self.runFile(stage = 'processed/eye', run = r, extension = '.msg')) as inputFileHandle:
+				msg_file = inputFileHandle.read()
+
+
+			sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)'
+			fix_re = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?'
+			blink_re = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'
+			start_eye = 'START\t(-?\d+\.?\d*)'
+
+			# self.logger.info('reading eyelink events from %s', os.path.split(self.message_file)[-1])
+			saccade_strings = re.findall(re.compile(sacc_re), msg_file)
+			fix_strings = re.findall(re.compile(fix_re), msg_file)
+			blink_strings = re.findall(re.compile(blink_re), msg_file)
+			start_time_scan = float(re.findall(re.compile(start_eye),msg_file)[0])
+			
+			if len(saccade_strings) > 0:
+				self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'length':float(e[8]),'peak_velocity':float(e[9])} for e in saccade_strings]
+				self.fixations_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fix_strings]
+				self.blinks_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blink_strings]
+			
+				self.saccade_type_dictionary = np.dtype([(s , np.array(self.saccades_from_message_file[0][s]).dtype) for s in self.saccades_from_message_file[0].keys()])
+				self.fixation_type_dictionary = np.dtype([(s , np.array(self.fixations_from_message_file[0][s]).dtype) for s in self.fixations_from_message_file[0].keys()])
+				if len(self.blinks_from_message_file) > 0:
+					self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
+			eye_blinks = [[((self.blinks_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.blinks_from_message_file[i]['duration']/1000,1] for i in range(len(self.blinks_from_message_file)) if (self.blinks_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000)]
+			saccades = [[((self.saccades_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.saccades_from_message_file[i]['duration']/1000,1] for i in range(len(self.saccades_from_message_file)) if np.all([(self.saccades_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000), (self.saccades_from_message_file[i]['length'] > length_thresh)]) ]
+		
+			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']), np.array(eye_blinks), fmt = '%3.2f', delimiter = '\t')
+			# np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
+			
+		return saccades
+	
+	# def select_trials(self):
+	#
+	# 	# 1. open condition nifti
+	# 	# 2. check whether
+		
+			
 	def create_dilated_cortical_mask(self, dilation_sd = 0.5, label = 'cortex'):
 		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
 		it then smoothes this mask with fslmaths, using a gaussian kernel. 
@@ -355,24 +711,37 @@ class PopulationReceptiveFieldMappingSession(Session):
 		- the times at which stimulus presentation began and ended per task type
 		- the times at which the task buttons were pressed. 
 		"""
+		
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			bO = PopulationReceptiveFieldBehaviorOperator(self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ))
 			bO.trial_times() # sets up all behavior  
 			r.trial_times = bO.trial_times
+			saccades=self.eye_informer(length_thresh = 5)
+			for ti, tb in enumerate(r.trial_times):
+				# subtract 2.5 seconds from every trial onset:
+				r.trial_times[ti][1] -= 2.5
+				r.trial_times[ti][2] -= 2.5
+				# change trials to fix_no_stim
+				# for s in saccades:
+# 					if np.all([ (s[0] > tb[1]), (s[0] < tb[2]) ]):
+# 						r.trial_times[ti][0] = 'fix_no_stim'
 			r.all_button_times = bO.all_button_times
 			r.parameters = bO.parameters
 			r.tasks = [t.task for t in bO.trials]
 			r.orientations = [t.parameters['orientation'] for t in bO.trials]
 			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
+			# shell()
+			these_trials = np.array([[tt[1], tt[2] - tt[1], 1.0] for tt in r.trial_times])
+			np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['trial_times']), these_trials, fmt = '%3.2f', delimiter = '\t')
 			for task in tasks:
 				these_trials = np.array([[tt[1], tt[2] - tt[1], 1.0] for tt in r.trial_times if tt[0] == task])
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]), these_trials, fmt = '%3.2f', delimiter = '\t')
 				these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
 	
-	def physio(self):
+	def physio(self, condition = 'PRF'):
 		"""physio loops across runs to analyze their physio data"""
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			pO = PhysioOperator(self.runFile(stage = 'processed/hr', run = r, extension = '.log' ))
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
 			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
@@ -384,14 +753,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 		stimulus_timings have been run beforehand, as it uses the output
 		text files of these procedures.
 		"""
+		# shell()
 		self.stimulus_timings()
+		self.eye_informer(length_thresh=5)
 		# physio regressors
 		physio_list = []
 		mcf_list = []
 		trial_times_list = []
 		button_times_list = []
+		blink_times_list = []
 		total_trs  = 0
 		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
+			# shell()
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			# moco and physiology regressors are per-TR regressors that need no convolution anymore.
 			if physiology_type == 'RETROICOR':
@@ -401,19 +774,21 @@ class PopulationReceptiveFieldMappingSession(Session):
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ),
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp', 'raw']) ),
-					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu', 'raw']) ) 
+					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu', 'raw']) )
 					]))
 				
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			# trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] -1.5, 0.5, 1.0]] for tt in r.trial_times]) # changed the occurrence of this event to -4.5 to -1.5...
+			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1], 1.5, 1.0]] for tt in r.trial_times]) 
 			button_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[1]), 0.5, 1.0]] for tt in r.all_button_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
-			
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']))
+			blink_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[0]), tt[1],tt[2]]] for tt in this_blink_events])
 			
 			total_trs += nii_file.timepoints
 		
+		# shell()
 		# to arrays with these regressors
 		mcf_list = np.vstack(mcf_list).T
 		physio_list = np.hstack(physio_list)
@@ -423,8 +798,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# shell()
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
-		# run_design.configure(trial_times_list)
-		run_design.configure([np.array(button_times_list).squeeze()])
+		run_design.configure(trial_times_list)
+		# run_design.configure(blink_times_list)
+		# run_design.configure([np.array(button_times_list).squeeze()])
 		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
@@ -568,6 +944,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		the resulting design matrix will differ from the HRF version.
 		"""
 		# get orientations and stimulus timings
+		# shell()
 		self.stimulus_timings()
 		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
@@ -577,13 +954,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.tr_time_list = []
 		self.trial_start_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
+			# shell()
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.15)
 			mr.simulate_run( )
 			self.stim_matrix_list.append(mr.run_matrix)
 			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
 			self.tr_time_list.append(np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime) + i * nii_file.timepoints * nii_file.rtime)
-			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * nii_file.rtime)
+			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * nii_file.rtime) 		
 			
 			if method == 'hrf':
 				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
@@ -625,7 +1003,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 	def stats_to_mask(self, mask_file_name, postFix = ['mcf', 'sgtf', 'prZ', 'res'], condition = 'PRF', task_condition = ['all'], threshold = 5.0):
 		"""stats_to_mask takes the stats from an initial fitting and converts it to a anatomical mask, and places it in the masks/anat folder"""
-		input_file = os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_condition[0] + '.nii.gz')
+		input_file = os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_condition[0] + '-' + condition + '.nii.gz')
 		p_values = NiftiImage(input_file).data[1] > threshold
 		self.logger.info('statistic mask created for threshold %2.2f, resulting in %i voxels' % (threshold, int(p_values.sum())))
 		output_image = NiftiImage(np.array(p_values, dtype = np.int16))
@@ -643,10 +1021,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		# we need a design matrix.
 		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration)
+		# shell()
 		valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
 		self.full_design_matrix = self.full_design_matrix[:,valid_regressors]
 		
-		mask_file = NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '.nii.gz'))
+		mask_file = NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name +  '.nii.gz'))
 		cortex_mask = np.array(mask_file.data, dtype = bool)
 		
 		# numbered slices, for sub-TR timing to follow stimulus timing. 
@@ -776,7 +1155,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.results_to_surface(file_name = value_file + '_%2.2f'%threshold, output_file_name = condition, frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, 'surf': 4})
 		
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF'):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', z_thresh = 1.5,voxels_to_plot=[]):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
@@ -785,49 +1164,62 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		anat_mask = os.path.join(self.stageFolder('processed/mri/'), 'masks', 'anat', anat_mask + '.nii.gz')
 		filename = mask_file + '_' + '_'.join(postFix + [task_condition]) + '-%s'%condition
+		# shell()
 		if run_fits:
 			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).data
 			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + filename + '.nii.gz')).data
-
+			# shell()
 			anat_mask = NiftiImage(anat_mask).data > 0
 			stat_mask = stats_data[1] > stat_threshold
 
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask]
 			self.logger.info('starting fitting of prf shapes')
-			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, band = 75, voxel_no = i, cond=cond) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
+			# voxels_to_plot = [187,895,546,477,253,162,754,298,175,184,257,948,759,864,253,7789,456,7854,5368,1459,5842,8009,5845,6589,7458,6456,7846,5792,456,2545,784,657,95,4,2,875,98,46,533,6,5]
+			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on = fit_on, z_thresh = z_thresh, cond=cond,voxel_no=i) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
+			# for i in [45,65,87,90,354,765,578]:#voxels_to_plot:#,175,184]:
+				# analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on=fit_on,z_thresh=z_thresh, cond=task_condition,voxel_no=i)
+			# max_comp_gauss, max_com_abs, surf_gauss, surf_mask, vol, EV
+			surf_gauss = np.real(res)[:,2]
+			surf_mask = np.real(res)[:,3]
+			vol = np.real(res)[:,4]
+			EV = np.real(res)[:,5]
+
+			max_comp_gauss = np.array(res)[:,0]
+			polar_gauss = np.angle(max_comp_gauss)
+			ecc_gauss = np.abs(max_comp_gauss)
+			real_gauss = np.real(max_comp_gauss)
+			imag_gauss = np.imag(max_comp_gauss)
 			
-			max_comp = np.array(res)[:,0]
-			surf = np.real(res)[:,1]
- 
-			polar = np.angle(max_comp)
-			ecc = np.abs(max_comp)
-			real = np.real(max_comp)
-			imag = np.imag(max_comp)
-			
+			max_comp_abs = np.array(res)[:,1]
+			polar_abs = np.angle(max_comp_abs)
+			ecc_abs = np.abs(max_comp_abs)
+			real_abs = np.real(max_comp_abs)
+			imag_abs = np.imag(max_comp_abs)
+
 			# shell()
-			
-			prf_res = np.vstack([polar, ecc, real, imag, surf])
-			
-			empty_res = np.zeros([5] + [np.array(stats_data.shape[1:]).prod()])
-			empty_res[:,(stat_mask * anat_mask_data).ravel()] = prf_res
-			
-			all_res = empty_res.reshape([5] + list(stats_data.shape[1:]))
-		
+
+			prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV])
+
+			empty_res = np.zeros([12] + [np.array(stats_data.shape[1:]).prod()])
+			empty_res[:,(stat_mask * anat_mask).ravel()] = prf_res
+
+			all_res = empty_res.reshape([12] + list(stats_data.shape[1:]))
+
 			self.logger.info('saving prf parameters to polar and ecc')
-		
+
 			all_res_file = NiftiImage(all_res)
 			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
 			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + '.nii.gz'))
 		
-		self.logger.info('converting prf values to surfaces')
-		for sm in [0,2,5]: # different smoothing values.
-			# reproject the original stats
-			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
-			# and the spatial values
-			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
-			
-			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
-			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
+		# self.logger.info('converting prf values to surfaces')
+		# for sm in [0,2,5]: # different smoothing values.
+		# 	# reproject the original stats
+		# 	self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
+		# 	# and the spatial values
+		# 	self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
+		#
+		# 	# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+		# 	self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
 
 			
 	def surface_to_polar(self, filename, condition = 'PRF'):
@@ -879,12 +1271,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# run 
 			rmtOp.execute()
 	
-	def mask_stats_to_hdf(self, condition = 'PRF', mask_file = 'cortex_dilated_mask_all', postFix = ['mcf','sgtf','prZ','res']):
+	def mask_stats_to_hdf(self, condition = 'PRF', mask_file = 'cortex_dilated_mask_all', postFix = ['mcf','sgtf','prZ','res'], task_conditions = ['fix','all','color','sf','orient','speed']):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
 		
+		# shell()
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
+		# anatRoiFileNames = ['/home/shared/PRF/data/AS/AS_090414/processed/mri/masks/anat/lh.v1.nii.gz']
+
+
 		self.logger.info('Taking masks ' + str(anatRoiFileNames))
 		rois, roinames = [], []
 		for roi in anatRoiFileNames:
@@ -910,17 +1307,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 			thisRunGroup = h5file.createGroup("/", this_run_group_name, '')
 			
 		stat_files = {}
-		for c in ['fix','all','color','speed','sf','orient']:
-			"""loop over runs, and try to open a group for this run's data"""
-		
-			"""
-			Now, take different stat masks based on the run_type
-			"""
-			
+		for c in task_conditions:
+		# 	"""loop over runs, and try to open a group for this run's data"""
+		#
+		# 	"""
+		# 	Now, take different stat masks based on the run_type
+		# 	"""
+	
 			for res_type in ['results', 'coefs', 'corrs']:
 				filename = mask_file + '_' + '_'.join(postFix + [c]) + '-' + condition
 				stat_files.update({c+'_'+res_type: os.path.join(self.stageFolder('processed/mri/%s'%condition), res_type + '_' + filename + '.nii.gz')})
-			
+		
 		
 		stat_nii_files = [NiftiImage(stat_files[sf]) for sf in stat_files.keys()]
 		
@@ -943,7 +1340,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1):
 		self.logger.info('starting prf data correlations from region %s'%roi)
-		results_frames = {'polar':0, 'ecc':1, 'real':2, 'imag':3, 'surf':4}
+		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11} 
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
@@ -957,36 +1354,36 @@ class PopulationReceptiveFieldMappingSession(Session):
 		base_task_corr = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_corrs')
 		all_comparison_task_corr = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_corrs') for c in comparison_task_conditions]
 
-		# shell()
 		h5file.close()
 
 		# create and apply the mask. 
 		mask = base_task_corr[:,0] > corr_threshold
-		mask = mask * (base_task_data[:,results_frames['ecc']] < 0.6)
+		mask = mask * (base_task_data[:,results_frames['ecc_gauss']] < 0.8) * (base_task_data[:,results_frames['ecc_abs']] < 0.8) * (base_task_data[:,results_frames['surf_gauss']] > 0.0) * (base_task_data[:,results_frames['surf_mask']] > 0.0)
+		# mask = mask * (base_task_data[:,results_frames['ecc_gauss']] - base_task_data[:,results_frames['ecc_abs']] < 0.05)	
 		base_task_data, all_comparison_task_data = base_task_data[mask, :], np.array([ac[mask, :] for ac in all_comparison_task_data])
 		base_task_corr, all_comparison_task_corr = base_task_corr[mask, 0], np.array([ac[mask, 0] for ac in all_comparison_task_corr])
+		
+		if base_task_data[:,results_frames['ecc_gauss']] != []:
+			order = np.argsort(base_task_data[:,results_frames['ecc_gauss']])
+			kern =  stats.norm.pdf( np.linspace(-.25,.25,int(round(base_task_data.shape[0] / 10)) ))
+			sm_ecc = np.convolve( base_task_data[:,results_frames['ecc_gauss']][order], kern / kern.sum(), 'valid' )  
+		
+			# scatter plots for results frames
+			colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,len(comparison_task_conditions))]
+			mcs = ['o', 'v', 's', '>', '<']
+			f = pl.figure(figsize = (16,8))
+			for j, res_type in enumerate(['ecc_gauss','surf_gauss']): # , 'ecc'
+				s = f.add_subplot(1,2,1+j)
+				for i, tc in enumerate(comparison_task_conditions):
+					pl.plot(base_task_data[:,results_frames['ecc_gauss']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+					sm_signal = np.convolve( all_comparison_task_data[i][:,results_frames[res_type]][order], kern / kern.sum(), 'valid' )
+					pl.plot(sm_ecc, sm_signal, c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
+				s.set_title(roi + ' ' + res_type)
 
-		order = np.argsort(base_task_data[:,results_frames['ecc']])
-		kern =  stats.norm.pdf( np.linspace(-.25,.25,int(round(base_task_data.shape[0] / 10)) ))
-  		sm_ecc = np.convolve( base_task_data[:,results_frames['ecc']][order], kern / kern.sum(), 'valid' )  
-		# shell()
-
-		# scatter plots for results frames
-		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,len(comparison_task_conditions))]
-		mcs = ['o', 'v', 's', '>', '<']
-		f = pl.figure(figsize = (8,7))
-		for j, res_type in enumerate(['ecc']): # , 'surf'
-			s = f.add_subplot(1,1,1+j)
-			for i, tc in enumerate(comparison_task_conditions):
-				pl.plot(base_task_data[:,results_frames['ecc']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.1, mec = 'w', ms = 1.5)
-				sm_signal = np.convolve( all_comparison_task_data[i][:,results_frames[res_type]][order], kern / kern.sum(), 'valid' )
-				pl.plot(sm_ecc, sm_signal, c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
-			s.set_title(roi + ' ' + res_type)
-
-			if j == 1:
-				s.set_ylim([0,15])
-			else:
-				s.set_ylim([0,0.65])
+				if  j==1:
+					s.set_ylim([0,3])
+				else:
+					s.set_ylim([0,0.6])
 				leg = s.legend(fancybox = True, loc = 'best')
 				leg.get_frame().set_alpha(0.5)
 				if leg:
@@ -995,14 +1392,142 @@ class PopulationReceptiveFieldMappingSession(Session):
 					for l in leg.get_lines():
 					    l.set_linewidth(3.5)  # the legend line width
 
-			s.set_xlim([0,0.6])
+				s.set_xlim([0,0.6])
+				simpleaxis(s)
+				spine_shift(s)
+				s.set_xlabel('eccentricity of %s condition'%base_task_condition)
+				s.set_ylabel(res_type)
+
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '4_vars_25x25.pdf'))
+			pl.close()
+			
+			# shell()
+			# circular plot
+			colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,2)]
+			mcs = ['o', 'v', 's', '>', '<']
+			f = pl.figure(figsize = (16,8))
+			median_dis = []
+			sd_dis = []
+			median_eccen_dif = []
+			sd_eccen_dif = []
+			
+			for i, tc in enumerate(comparison_task_conditions):
+
+				if i == 0 or i == 1:
+					s=f.add_subplot(2,3,i+1)
+				else:
+					s=f.add_subplot(2,3,i+2)
+				# shell()
+				x_loc = base_task_data[:,results_frames['ecc_gauss']]*np.cos(base_task_data[:,results_frames['polar_gauss']])
+				y_loc = base_task_data[:,results_frames['ecc_gauss']]*np.sin(base_task_data[:,results_frames['polar_gauss']])
+				x_dif = all_comparison_task_data[i][:,results_frames['ecc_gauss']]*np.cos(all_comparison_task_data[i][:,results_frames['polar_gauss']]) - base_task_data[:,results_frames['ecc_gauss']]*np.cos(base_task_data[:,results_frames['polar_gauss']])
+				y_dif = all_comparison_task_data[i][:,results_frames['ecc_gauss']]*np.sin(all_comparison_task_data[i][:,results_frames['polar_gauss']]) - base_task_data[:,results_frames['ecc_gauss']]*np.sin(base_task_data[:,results_frames['polar_gauss']])
+				sd_dis.append(np.std( [np.linalg.norm([x_dif[z], y_dif[z]]) for z in range(len(x_loc))] ))
+				sd_dis[i] = np.std( [np.linalg.norm([x_dif[z], y_dif[z]]) for z in range(len(x_loc)) if np.linalg.norm([x_dif[i], y_dif[i]]) < 3*sd_dis[i] ] )
+				median_dis.append(np.median( [np.linalg.norm([x_dif[z], y_dif[z]]) for z in range(len(x_loc)) if np.linalg.norm([x_dif[i], y_dif[i]]) < 3*sd_dis[i] ] ))
+				
+				# shell()
+				eccen_difference = all_comparison_task_data[i][:,results_frames['ecc_gauss']]/all_comparison_task_data[i][:,results_frames['surf_gauss']] - base_task_data[:,results_frames['ecc_gauss']]/base_task_data[:,results_frames['surf_gauss']]  
+				sd_eccen_dif.append( np.std(eccen_difference))
+				median_eccen_dif.append(np.median(eccen_difference[eccen_difference < sd_eccen_dif[i]*3 ]) )
+				sd_eccen_dif[i] = np.std(eccen_difference[eccen_difference < sd_eccen_dif[i]*3 ])
+				
+				pl.plot(x_loc,y_loc, c = colors[0], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+				pl.plot(x_loc+x_dif,y_loc+y_dif, c = colors[1], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+				for a in range(shape(base_task_data)[0]):
+					if np.linalg.norm([x_dif[a], y_dif[a]]) < 3*sd_dis[i]:
+						pl.arrow(x_loc[a],y_loc[a],x_dif[a],y_dif[a],linewidth = 0.1, head_width = 0.01, color = 'k')
+
+				s.set_xlim([-1,1])
+				s.set_ylim([-1,1])
+				s.set_title(roi + ' ' + tc)
+				s.set_xticks([-1,0,1])
+				s.set_yticks([-1,0,1])
+				# s.set_xticklabels( (comparison_task_conditions) )
+
+			s = f.add_subplot(2,3,3)
+			pl.bar(np.arange(len(median_dis))-0.25,median_dis, yerr = sd_dis, width = 0.5)
+			s.set_ylim([0,np.max(median_dis)+np.max(sd_dis)*1.2])
+			s.set_ylabel('median displacement')
+			s.set_xticks(np.arange(len(median_dis)))
+			s.set_title('Displacement difference with fix')
+			s.set_xticklabels( (comparison_task_conditions) )
+			
+			s = f.add_subplot(2,3,6)
+			pl.bar(np.arange(len(median_eccen_dif))-0.25,median_eccen_dif, yerr = sd_eccen_dif, width = 0.5)
+			s.set_ylim([0,np.max(median_eccen_dif)+np.max(sd_eccen_dif)*1.2])
+			s.set_ylabel('median eccentricity difference / PRF size')
+			s.set_xticks(np.arange(len(median_eccen_dif)))
+			s.set_title('Eccentricity difference with fix')
+			s.set_xticklabels( (comparison_task_conditions) )
+			
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'displacement_' + roi + '.pdf'))
+			pl.close()
+	
+	def ecc_surf_correlations(self, condition = 'PRF', corr_threshold = 0.1, rois = []):
+		
+		self.logger.info('starting eccen-surf correlations')
+		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11} 
+		stats_frames = {'corr': 0, '-logp': 1}
+
+		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
+		h5file = open_file(self.hdf5_filename, mode = "r", title = condition + " file")
+		
+		# combine rois
+		end_rois = {'v1':0,'v2':1,'v3':2,'v4':3,'v7':4,'LO':5,'VO':6,'TO':7,'IPS':8}
+		roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d','v3ab'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
+					
+		results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = 'fix' + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
+		stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = 'fix' + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
+		
+		mask = [(stats[r][:,1] > corr_threshold) * (results[r][:,results_frames['ecc_gauss']] < 0.8) * (results[r][:,results_frames['ecc_abs']] < 0.8) * (results[r][:,results_frames['surf_gauss']] > 0.0) * (results[r][:,results_frames['surf_mask']] > 0.0) for r in range(len(end_rois))]
+		
+		f = pl.figure(figsize = (8,8))
+		s = f.add_subplot(1,1,1)
+		
+		for j, roi in enumerate(end_rois.keys()):
+			
+			colors = [np.random.ranf(1),np.random.ranf(1),np.random.ranf(1)]
+			
+			fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['surf_gauss']], 1)
+			fit_fn = poly1d(fit)
+
+			pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['surf_gauss']], c = colors, marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+			pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors, label=roi)
+
+			s.set_xlim([0,0.8])
+			s.set_ylim([0,3])
+
+			leg = s.legend(fancybox = True, loc = 'best')
+			leg.get_frame().set_alpha(0.5)
+			if leg:
+				for t in leg.get_texts():
+				    t.set_fontsize('small')    # the legend text fontsize
+				for l in leg.get_lines():
+				    l.set_linewidth(3.5)  # the legend line width
+
+
 			simpleaxis(s)
 			spine_shift(s)
-			s.set_xlabel('eccentricity of %s condition'%base_task_condition)
-			s.set_ylabel(res_type)
+			s.set_xlabel('eccentricity')
+			s.set_ylabel('surface')
+		
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'all_rois_eccen_surf_cor'))
+		
 
-
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '.pdf'))
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
 		
 
 

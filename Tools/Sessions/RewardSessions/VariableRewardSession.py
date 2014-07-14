@@ -1149,7 +1149,7 @@ class VariableRewardSession(SingleRewardSession):
 					thisRunGroup = h5file.createGroup("/", this_run_group_name, 'Run ' + str(r.ID) +' imported from ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix))
 			
 				# add parameters, eye data and the like 
-				eye_h5file = open_file(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
+				eye_h5file = openFile(self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), mode = "r")
 				eyeGroup = eye_h5file.get_node(where = '/', name = 'bla', classname='Group')
 				eyeGroup._f_copyChildren(thisRunGroup) 
 				eye_h5file.close()
