@@ -467,10 +467,10 @@ class SingleRewardSession(RewardSession):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		if not hasattr(self, 'dual_pilot'):
 			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
@@ -696,7 +696,7 @@ class SingleRewardSession(RewardSession):
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = mode, title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = mode, title = run_type + " file")
 		return h5file
 	
 	
@@ -704,7 +704,7 @@ class SingleRewardSession(RewardSession):
 		if run.condition == 'reward':
 			# get EL Data
 			
-			h5f = openFile(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
+			h5f = open_file(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
 			r = None
 			for item in h5f.iterNodes(where = '/', classname = 'Group'):
 				if item._v_name == 'bla':
@@ -3131,10 +3131,10 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		this_run_group_name = 'residuals_variance'
 		try:
@@ -3571,7 +3571,7 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 			
 		if run_type == 'reward':
 			stat_files = {
@@ -3630,9 +3630,9 @@ class SingleRewardSession(RewardSession):
 	def snr_pattern_correlations(self, postFix = ['mcf']):
 		"""docstring for snr_pattern_correlations"""
 		self.reward_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward' + '.hdf5')
-		reward_h5file = openFile(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
+		reward_h5file = open_file(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
 		self.mapper_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][0]]), 'mapper' + '.hdf5')
-		mapper_h5file = openFile(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
+		mapper_h5file = open_file(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
 		
 		
 		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:

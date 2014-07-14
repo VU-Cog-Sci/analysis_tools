@@ -1124,14 +1124,14 @@ class VariableRewardSession(SingleRewardSession):
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		if os.path.isfile(self.hdf5_filename) and not secondary_addition:
 			os.system('rm ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 			self.logger.info('deleting and starting table file ' + self.hdf5_filename)
 		elif os.path.isfile(self.hdf5_filename) and secondary_addition:
-			h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 			self.logger.info('adding to table file ' + self.hdf5_filename)
 		elif not os.path.isfile(self.hdf5_filename):
 			self.logger.info('creating table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		
 		if not secondary_addition:
 			# create design matrix names by creating a design matrix for the first reward run
@@ -1263,7 +1263,7 @@ class VariableRewardSession(SingleRewardSession):
 		
 		contrasts = self.contrast_list()
 		contrast_types = ['reward-no_reward', 'stimulus', 'reward']
-		h5file = openFile(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5'))
+		h5file = open_file(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5'))
 		
 		mapper_data = []
 		raw_mapper_data = []

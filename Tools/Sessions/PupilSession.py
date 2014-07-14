@@ -119,7 +119,7 @@ class preprocessing():
 		self.this_run = this_run
 		os.chdir(self.this_dir)
 		
-		h5f = openFile((self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'.
+		h5f = open_file((self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'.
 		search_name = 'run_' + str(self.this_run)
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if search_name == r._v_name:
@@ -640,7 +640,7 @@ class preprocessing():
 		self.this_run = this_run
 		os.chdir(self.this_dir)
 		
-		h5f = openFile((self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'.
+		h5f = open_file((self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'.
 		search_name = 'run_' + str(self.this_run)
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if search_name == r._v_name:
@@ -825,7 +825,7 @@ class make_dataframe():
 		
 		# Set working directory and open hdf5 file
 		os.chdir(self.this_dir)
-		h5f = openFile(( self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'
+		h5f = open_file(( self.subject + '.hdf5'), mode = "r+" ) # mode = "r" means 'read only'
 		
 		run = []
 		for this_run in range(self.number_runs):
@@ -2249,7 +2249,7 @@ class within_subjects_stats():
 		if self.experiment == 2:
 			this_dir = '/Research/PUPIL/PupilExperiment2/data/' + self.subject + '/'
 		os.chdir(this_dir)
-		h5f = openFile(( self.subject + '.hdf5'), mode = "r" ) # mode = "r" means 'read only'
+		h5f = open_file(( self.subject + '.hdf5'), mode = "r" ) # mode = "r" means 'read only'
 		
 		run = []
 		for this_run in range(self.number_runs):
@@ -3597,7 +3597,7 @@ class across_subject_stats():
 			# Set working directory and open hdf5 file
 			this_dir = '/Research/PUPIL/PupilExperiment2/data/' + self.subject[subject] + '/'
 			os.chdir(this_dir)
-			h5f.append( openFile(( self.subject[subject] + '.hdf5'), mode = "r" ) ) # mode = "r" means 'read only'
+			h5f.append( open_file(( self.subject[subject] + '.hdf5'), mode = "r" ) ) # mode = "r" means 'read only'
 		
 			run = []
 			for this_run in range(self.number_runs[subject]):

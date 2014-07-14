@@ -137,7 +137,7 @@ class EyeLinkSession(object):
 	
 	def import_parameters(self, run_name = 'run_'):
 		parameter_data = []
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name in r._v_name:
 				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
@@ -156,7 +156,7 @@ class EyeLinkSession(object):
 	
 	def import_events(self, run_name = 'run_'):
 		event_data = []
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name in r._v_name:
 				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
@@ -174,7 +174,7 @@ class EyeLinkSession(object):
 		return self.event_data
 	
 	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if not isinstance(run_index, str):
@@ -231,7 +231,7 @@ class EyeLinkSession(object):
 		return export_data
 	
 	def get_EL_events_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'saccades'):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if self.wildcard + '_run_' + str(run_index) == r._v_name:
@@ -264,7 +264,7 @@ class EyeLinkSession(object):
 		return export_data
 	
 	# def get_key_events_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1]):
-	# 	h5f = openFile(self.hdf5_filename, mode = "r" )
+	# 	h5f = open_file(self.hdf5_filename, mode = "r" )
 	# 	run = None
 	# 	for r in h5f.iterNodes(where = '/', classname = 'Group'):
 	# 		if self.wildcard + '_run_' + str(run_index) == r._v_name:
@@ -813,7 +813,7 @@ class TAESession(EyeLinkSession):
 		if not len(self.psychometric_data) > 0 or not len(self.confidence_ratings) > 0:
 			self.run_conditions()
 		else:
-			h5f = openFile(self.hdf5_filename, mode = "a" )
+			h5f = open_file(self.hdf5_filename, mode = "a" )
 			if 'results_' + str(self.wildcard) + suffix in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
 				h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard) + suffix, recursive = True)
 				
@@ -828,7 +828,7 @@ class TAESession(EyeLinkSession):
 	
 	def import_distilled_behavioral_data(self, run_name = 'run_', results_name = ''):
 		super(TAESession, self).import_parameters( run_name = run_name )
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		if results_name == None:
 			results_name = 'results_' + self.wildcard
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
@@ -942,7 +942,7 @@ class SB_AMSession(EyeLinkSession):
 			f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '_' + str(run) + '.pickle'), 'w')			
 		pickle.dump([self.cd, self.hvrs, pfs], f)
 		
-		h5f = openFile(self.hdf5_filename, mode = "a" )
+		h5f = open_file(self.hdf5_filename, mode = "a" )
 		if 'results_' + str(self.wildcard) in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
 			h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard), recursive = True)
 			
@@ -1009,7 +1009,7 @@ class SB_AMSession(EyeLinkSession):
 		# 	f = open(os.path.join(self.base_directory, 'figs', 'psychometrics_' + self.subject.initials + '_' + str(run) + '.pickle'), 'w')			
 		# pickle.dump([self.cd, self.hvrs, pfs], f)
 		# 
-		# h5f = openFile(self.hdf5_filename, mode = "a" )
+		# h5f = open_file(self.hdf5_filename, mode = "a" )
 		# if 'results_' + str(self.wildcard) in [g._v_name for g in h5f.listNodes(where = '/', classname = 'Group')]:
 		# 	h5f.removeNode(where = '/', name = 'results_' + str(self.wildcard), recursive = True)
 		# 	
@@ -1041,7 +1041,7 @@ class SB_AMSession(EyeLinkSession):
 		screen_center = np.array(screen_center)
 		all_fixation_deviations = []
 		for run_nr in [0,1,2,3]:
-			h5f = openFile(self.hdf5_filename, mode = "r" )
+			h5f = open_file(self.hdf5_filename, mode = "r" )
 			run = None
 			for r in h5f.iterNodes(where = '/', classname = 'Group'):
 				if self.subject.initials + '_' + str(run_nr) + '_run_0' == r._v_name:
@@ -1602,7 +1602,7 @@ class SASession(EyeLinkSession):
 		return saccades, gaze_data, vel_data
 	
 	def plot_velocity_per_trial_all_runs(self, trial_phase_range = [1,4], trial_ranges = [[25,125],[125,185],[185,245]], colors = ['b','g','r','c','m','y','k'], nr_plot_points = 1000):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		runs = []
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if self.wildcard + '_run_' in r._v_name:
@@ -2012,7 +2012,7 @@ class MIBSession(EyeLinkSession):
 		
 	def get_run_types(self):
 		"""Determines the run in which the edf files were created, and which run was which type of run [3 or 4]."""
-		tf = openFile(self.hdf5_filename)
+		tf = open_file(self.hdf5_filename)
 		run_types = []
 		for r in tf.iterNodes('/'):
 			run_types.append(int(r._v_title.split(' ')[-1].split('_')[1]))
@@ -2045,7 +2045,7 @@ class MIBSession(EyeLinkSession):
 		
 	
 	def preprocess_trial_types(self):
-		tf = openFile(self.hdf5_filename)
+		tf = open_file(self.hdf5_filename)
 		# events 
 		self.events_per_run = [self.get_EL_events_per_trial(run_index = i, trial_ranges = [[0,16]], trial_phase_range = [1,2], data_type = 'events') for i in range(len(list(tf.iterNodes('/'))))]
 		self.times_per_run = [r.trial_times.read() for r in tf.iterNodes('/')]
@@ -2197,7 +2197,7 @@ class PupilSDTEyeLinkSession(EyeLinkSession):
 		self.logger.info('starting analysis of session ' + str(self.ID))
 	
 	def get_EL_samples_per_trial(self, run_index = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'velocity_xy', scaling_factor = 1.0):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if not isinstance(run_index, str):
@@ -2287,7 +2287,7 @@ class PupilSDTEyeLinkSession(EyeLinkSession):
 			pp.close()
 		
 		if save:
-			h5f = openFile(self.hdf5_filename, mode = "r+" )
+			h5f = open_file(self.hdf5_filename, mode = "r+" )
 			run = None
 			for r in h5f.iterNodes(where = '/', classname = 'Group'):
 				if not isinstance(run_index, str):

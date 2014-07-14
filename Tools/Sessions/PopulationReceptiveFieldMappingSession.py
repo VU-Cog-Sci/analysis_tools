@@ -24,7 +24,7 @@ from math import *
 
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV, ElasticNet, ElasticNetCV
-from skimage import filter, measure
+# from skimage import filter, measure
 from skimage.morphology import disk
 
 def fitARDRidge(design_matrix, timeseries, n_iter = 100, compute_score=True):
