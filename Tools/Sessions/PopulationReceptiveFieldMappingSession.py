@@ -261,8 +261,8 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		ecc_gauss = np.abs(max_comp_gauss)
 		ecc_abs = np.abs(max_comp_abs)
 		# surf_gauss = 2*np.sqrt(2*(math.log(2)))*sd
-		surf_gauss = (np.pi * (params[4]) * (params[5])) / np.size(PRF_n_t) * 30
-		surf_mask = label_4_surf.sum().astype('float32') / np.size(PRF_n_t) * 30
+		surf_gauss = (np.pi * (params[4]*2) * (params[5]*2)) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 30
+		surf_mask = label_4_surf.sum().astype('float32') / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 30
 		vol = 2*surf_gauss*(params[1]-params[0])
 		# shell()
 		# if np.all([ecc_gauss<0.7,ecc_abs<0.7,fitimage != []]):
@@ -284,262 +284,216 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 						
 	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV
 	
-""" 
-Note about mpfit/leastsq: 
-I switched everything over to the Markwardt mpfit routine for a few reasons,
-but foremost being the ability to set limits on parameters, not just force them
-to be fixed.  As far as I can tell, leastsq does not have that capability.
-
-The version of mpfit I use can be found here:
-    http://code.google.com/p/agpy/source/browse/trunk/mpfit
-
-Alternative: lmfit
-
-.. todo::
-    -turn into a class instead of a collection of objects
-    -implement WCS-based gaussian fitting with correct coordinates
-"""
-
 def moments(data,circle,rotate,vheight,estimator=median,voxel_no=1,**kwargs):
-    """Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
-    the gaussian parameters of a 2D distribution by calculating its
-    moments.  Depending on the input parameters, will only output 
-    a subset of the above.
-    
-    If using masked arrays, pass estimator=np.ma.median
-    """
-    # shell()
-    total = np.abs(data).sum()
-    Y, X = np.indices(data.shape) # python convention: reverse x,y np.indices
-    y = np.argmax((X*np.abs(data)).sum(axis=1)/total)
-    x = np.argmax((Y*np.abs(data)).sum(axis=0)/total)
-    col = data[int(y),:]
-    # FIRST moment, not second!
-    width_x = np.sqrt(np.abs((np.arange(col.size)-y)*col).sum()/np.abs(col).sum())
-    row = data[:, int(x)]
-    width_y = np.sqrt(np.abs((np.arange(row.size)-x)*row).sum()/np.abs(row).sum())
-    width = ( width_x + width_y ) / 2.
-    height = estimator(data.ravel())
-    amplitude = data.max()-height
-    mylist = [amplitude,x,y]
-    if np.isnan(width_y) or np.isnan(width_x) or np.isnan(height) or np.isnan(amplitude):
-        mylist = []
-        # raise ValueError("something is nan in voxel " + str(voxel_no))
-    else:
-        if vheight==1:
-            mylist = [height] + mylist
-        if circle==0:
-            mylist = mylist + [width_x,width_y]
-            if rotate==1:
-                mylist = mylist + [0.] #rotation "moment" is just zero...
-                # also, circles don't rotate.
-        else:  
-            mylist = mylist + [width]
-    return mylist
+	"""Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
+	the gaussian parameters of a 2D distribution by calculating its
+	moments.  Depending on the input parameters, will only output 
+	a subset of the above.
+
+	If using masked arrays, pass estimator=np.ma.median
+	"""
+	total = np.abs(data).sum()
+	Y, X = np.indices(data.shape) # python convention: reverse x,y np.indices
+	y = np.argmax((X*np.abs(data)).sum(axis=1)/total)
+	x = np.argmax((Y*np.abs(data)).sum(axis=0)/total)
+	col = data[int(y),:]
+	# FIRST moment, not second!
+	width_x = np.sqrt(np.abs((np.arange(col.size)-y)*col).sum()/np.abs(col).sum())
+	row = data[:, int(x)]
+	width_y = np.sqrt(np.abs((np.arange(row.size)-x)*row).sum()/np.abs(row).sum())
+	width = ( width_x + width_y ) / 2.
+	height = estimator(data.ravel())
+	amplitude = data.max()-height
+	mylist = [amplitude,x,y]
+	if np.isnan(width_y) or np.isnan(width_x) or np.isnan(height) or np.isnan(amplitude):
+		mylist = []
+	else:
+		if vheight==1:
+			mylist = [height] + mylist
+		if circle==0:
+			mylist = mylist + [width_x,width_y]
+		if rotate==1:
+			mylist = mylist + [0.] 
+		else:  
+			mylist = mylist + [width]
+	return mylist
 
 def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
-    """Returns a 2d gaussian function of the form:
-        x' = np.cos(rota) * x - np.sin(rota) * y
-        y' = np.sin(rota) * x + np.cos(rota) * y
-        (rota should be in degrees)
-        g = b + a * np.exp ( - ( ((x-center_x)/width_x)**2 +
-        ((y-center_y)/width_y)**2 ) / 2 )
+	"""Returns a 2d gaussian function of the form:
+	x' = np.cos(rota) * x - np.sin(rota) * y
+	y' = np.sin(rota) * x + np.cos(rota) * y
+	(rota should be in degrees)
+	g = b + a * np.exp ( - ( ((x-center_x)/width_x)**2 +
+	((y-center_y)/width_y)**2 ) / 2 )
 
-        inpars = [b,a,center_x,center_y,width_x,width_y,rota]
-                 (b is background height, a is peak amplitude)
+	inpars = [b,a,center_x,center_y,width_x,width_y,rota]
+	(b is background height, a is peak amplitude)
 
-        where x and y are the input parameters of the returned function,
-        and all other parameters are specified by this function
+	where x and y are the input parameters of the returned function,
+	and all other parameters are specified by this function
 
-        However, the above values are passed by list.  The list should be:
-        inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
+	However, the above values are passed by list.  The list should be:
+	inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
 
-        You can choose to ignore / neglect some of the above input parameters 
-            unp.sing the following options:
-            circle=0 - default is an elliptical gaussian (different x, y
-                widths), but can reduce the input by one parameter if it's a
-                circular gaussian
-            rotate=1 - default allows rotation of the gaussian ellipse.  Can
-                remove last parameter by setting rotate=0
-            vheight=1 - default allows a variable height-above-zero, i.e. an
-                additive constant for the Gaussian function.  Can remove first
-                parameter by setting this to 0
-            shape=None - if shape is set (to a 2-parameter list) then returns
-                an image with the gaussian defined by inpars
-        """
-    inpars_old = inpars
-    inpars = list(inpars)
-    if vheight == 1:
-        height = inpars.pop(0)
-        height = float(height)
-    else:
-        height = float(0)
-    amplitude, center_y, center_x = inpars.pop(0),inpars.pop(0),inpars.pop(0)
-    amplitude = float(amplitude)
-    center_x = float(center_x)
-    center_y = float(center_y)
-    if circle == 1:
-        width = inpars.pop(0)
-        width_x = float(width)
-        width_y = float(width)
-        rotate = 0
-    else:
-        width_x, width_y = inpars.pop(0),inpars.pop(0)
-        width_x = float(width_x)
-        width_y = float(width_y)
-    if rotate == 1:
-        rota = inpars.pop(0)
-        rota = pi/180. * float(rota)
-        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
-        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
-    else:
-        rcen_x = center_x
-        rcen_y = center_y
-    if len(inpars) > 0:
-        raise ValueError("There are still input parameters:" + str(inpars) + \
-                " and you've input: " + str(inpars_old) + \
-                " circle=%d, rotate=%d, vheight=%d" % (circle,rotate,vheight) )
-            
-    def rotgauss(x,y):
-        if rotate==1:
-            xp = x * np.cos(rota) - y * np.sin(rota)
-            yp = x * np.sin(rota) + y * np.cos(rota)
-        else:
-            xp = x
-            yp = y
-        g = height+amplitude*np.exp(
-            -(((rcen_x-xp)/width_x)**2+
-            ((rcen_y-yp)/width_y)**2)/2.)
-        return g
-    if shape is not None:
-        return rotgauss(*np.indices(shape))
-    else:
-        return rotgauss
+	You can choose to ignore / neglect some of the above input parameters 
+	unp.sing the following options:
+	circle=0 - default is an elliptical gaussian (different x, y
+	widths), but can reduce the input by one parameter if it's a
+	circular gaussian
+	rotate=1 - default allows rotation of the gaussian ellipse.  Can
+	remove last parameter by setting rotate=0
+	vheight=1 - default allows a variable height-above-zero, i.e. an
+	additive constant for the Gaussian function.  Can remove first
+	parameter by setting this to 0
+	shape=None - if shape is set (to a 2-parameter list) then returns
+	an image with the gaussian defined by inpars
+	    """
+	inpars_old = inpars
+	inpars = list(inpars)
+	if vheight == 1:
+		height = inpars.pop(0)
+		height = float(height)
+	else:
+		height = float(0)
+	amplitude, center_y, center_x = inpars.pop(0),inpars.pop(0),inpars.pop(0)
+	amplitude = float(amplitude)
+	center_x = float(center_x)
+	center_y = float(center_y)
+	if circle == 1:
+		width = inpars.pop(0)
+		width_x = float(width)
+		width_y = float(width)
+		rotate = 0
+	else:
+		width_x, width_y = inpars.pop(0),inpars.pop(0)
+		width_x = float(width_x)
+		width_y = float(width_y)
+	if rotate == 1:
+		rota = inpars.pop(0)
+		rota = pi/180. * float(rota)
+		rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
+		rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
+	else:
+		rcen_x = center_x
+		rcen_y = center_y
+	if len(inpars) > 0:
+		raise ValueError("There are still input parameters:" + str(inpars) + \
+			" and you've input: " + str(inpars_old) + \
+			" circle=%d, rotate=%d, vheight=%d" % (circle,rotate,vheight) )
+        
+	def rotgauss(x,y):
+		if rotate==1:
+			xp = x * np.cos(rota) - y * np.sin(rota)
+			yp = x * np.sin(rota) + y * np.cos(rota)
+		else:
+			xp = x
+			yp = y
+		g = height+amplitude*np.exp(
+		-(((rcen_x-xp)/width_x)**2+
+		((rcen_y-yp)/width_y)**2)/2.)
+		return g
+	if shape is not None:
+		return rotgauss(*np.indices(shape))
+	else:
+		return rotgauss
 
-def gaussfit(data,err=None,params=(),autoderiv=True,return_all=False,circle=False,
-        fixed=np.repeat(False,7),limitedmin=[False,False,False,False,True,True,True],
-        limitedmax=[False,False,False,False,False,False,True],
-        usemoment=np.array([],dtype='bool'),
-        minpars=np.repeat(0,7),maxpars=[0,0,0,0,0,0,360],
-        rotate=1,vheight=1,quiet=True,returnmp=False,
-        returnfitimage=True,voxel_no=1,**kwargs):
-    """
-    Gaussian fitter with the ability to fit a variety of different forms of
-    2-dimensional gaussian.
-    
-    Input Parameters:
-        data - 2-dimensional data array
-        err=None - error array with same size as data array
-        params=[] - initial input parameters for Gaussian function.
-            (height, amplitude, x, y, width_x, width_y, rota)
-            if not input, these will be determined from the moments of the system, 
-            assuming no rotation
-        autoderiv=1 - use the autoderiv provided in the lmder.f function (the
-            alternative is to us an analytic derivative with lmdif.f: this method
-            is less robust)
-        return_all=0 - Default is to return only the Gaussian parameters.  
-                   1 - fit params, fit error
-        returnfitimage - returns (best fit params,best fit image)
-        returnmp - returns the full mpfit struct
-        circle=0 - default is an elliptical gaussian (different x, y widths),
-            but can reduce the input by one parameter if it's a circular gaussian
-        rotate=1 - default allows rotation of the gaussian ellipse.  Can remove
-            last parameter by setting rotate=0.  np.expects angle in DEGREES
-        vheight=1 - default allows a variable height-above-zero, i.e. an
-            additive constant for the Gaussian function.  Can remove first
-            parameter by setting this to 0
-        usemoment - can choose which parameters to use a moment estimation for.
-            Other parameters will be taken from params.  Needs to be a boolean
-            array.
+def gaussfit(data,err=None,params=(),return_all=False,circle=False,
+	fixed=np.repeat(False,7),limitedmin=[False,False,False,False,True,True,True],
+	limitedmax=[False,False,False,False,False,False,True],
+	usemoment=np.array([],dtype='bool'),
+	minpars=np.repeat(0,7),maxpars=[0,0,0,0,0,0,360],
+	rotate=1,vheight=1,quiet=True,returnmp=False,
+	returnfitimage=True,voxel_no=1,**kwargs):
+	"""
+	Gaussian fitter with the ability to fit a variety of different forms of
+	2-dimensional gaussian.
 
-    Output:
-        Default output is a set of Gaussian parameters with the same shape as
-            the input parameters
+	Input Parameters:
+	data - 2-dimensional data array
+	err=None - error array with same size as data array
+	params=[] - initial input parameters for Gaussian function.
+	(height, amplitude, x, y, width_x, width_y, rota)
+	if not input, these will be determined from the moments of the system, 
+	assuming no rotation
+	autoderiv=1 - use the autoderiv provided in the lmder.f function (the
+	alternative is to us an analytic derivative with lmdif.f: this method
+	is less robust)
+	return_all=0 - Default is to return only the Gaussian parameters.  
+	1 - fit params, fit error
+	returnfitimage - returns (best fit params,best fit image)
+	returnmp - returns the full mpfit struct
+	circle=0 - default is an elliptical gaussian (different x, y widths),
+	but can reduce the input by one parameter if it's a circular gaussian
+	rotate=1 - default allows rotation of the gaussian ellipse.  Can remove
+	last parameter by setting rotate=0.  np.expects angle in DEGREES
+	vheight=1 - default allows a variable height-above-zero, i.e. an
+	additive constant for the Gaussian function.  Can remove first
+	parameter by setting this to 0
+	usemoment - can choose which parameters to use a moment estimation for.
+	Other parameters will be taken from params.  Needs to be a boolean
+	array.
 
-        If returnfitimage=True returns a np array of a gaussian
-            contructed using the best fit parameters.
+	Output:
+	Default output is a set of Gaussian parameters with the same shape as
+	the input parameters
 
-        If returnmp=True returns a `mpfit` object. This object contains
-            a `covar` attribute which is the 7x7 covariance array
-            generated by the mpfit class in the `mpfit_custom.py`
-            module. It contains a `param` attribute that contains a
-            list of the best fit parameters in the same order as the
-            optional input parameter `params`.
+	If returnfitimage=True returns a np array of a gaussian
+	contructed using the best fit parameters.
 
-        Warning: Does NOT necessarily output a rotation angle between 0 and 360 degrees.
-    """
-    # shell()
-    usemoment=np.array(usemoment,dtype='bool')
-    params=np.array(params,dtype='float')
-    if usemoment.any() and len(params)==len(usemoment):
-        moment = np.array(moments(data,circle,rotate,vheight,**kwargs),dtype='float')
-        params[usemoment] = moment[usemoment]
-    elif params == [] or len(params)==0:
-        params = (moments(data,circle,rotate,vheight,voxel_no=voxel_no,**kwargs))
-    if vheight==0:
-        vheight=1
-        params = np.concatenate([[0],params])
-        fixed[0] = 1
+	If returnmp=True returns a `mpfit` object. This object contains
+	a `covar` attribute which is the 7x7 covariance array
+	generated by the mpfit class in the `mpfit_custom.py`
+	module. It contains a `param` attribute that contains a
+	list of the best fit parameters in the same order as the
+	optional input parameter `params`.
 
-    if params == []:
-        p, infodict, errmsg, fitimage = [],[],[],[]
-    else:
-	    # mpfit will fail if it is given a start parameter outside the allowed range:
-	    for i in xrange(len(params)): 
-	        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
-	        if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+	Warning: Does NOT necessarily output a rotation angle between 0 and 360 degrees.
+"""
+	usemoment=np.array(usemoment,dtype='bool')
+	params=np.array(params,dtype='float')
+	if usemoment.any() and len(params)==len(usemoment):
+		moment = np.array(moments(data,circle,rotate,vheight,**kwargs),dtype='float')
+		params[usemoment] = moment[usemoment]
+	elif params == [] or len(params)==0:
+		params = (moments(data,circle,rotate,vheight,voxel_no=voxel_no,**kwargs))
+	if vheight==0:
+		vheight=1
+		params = np.concatenate([[0],params])
+		fixed[0] = 1
 
-	    if err is None:
-	        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
-	                (*np.indices(data.shape)) - data))
-	    else:
-	        errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)\
-	                (*np.indices(data.shape)) - data)/err)
-	    # def mpfitfun(data,err):
-	        # if err is None:
-	            # def f(p,fjac=None): return [0,np.ravel(data-twodgaussian(p,circle,rotate,vheight)\
-	                    # (*np.indices(data.shape)))]
-	        # else:
-	            # def f(p,fjac=None): return [0,np.ravel((data-twodgaussian(p,circle,rotate,vheight)\
-	                    # (*np.indices(data.shape)))/err)]
-	        # return f
+	if params == []:
+		p, infodict, errmsg, fitimage = [],[],[],[]
+	else:
+		# mpfit will fail if it is given a start parameter outside the allowed range:
+		for i in xrange(len(params)): 
+			if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+			if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+
+	if err is None:
+		errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)(*np.indices(data.shape)) - data))
+	else:
+		errorfunction = lambda p: np.ravel((twodgaussian(p,circle,rotate,vheight)(*np.indices(data.shape)) - data)/err)
                     
-	    parinfo = [ 
-	                {'n':1,'value':params[1],'limits':[minpars[1],maxpars[1]],'limited':[limitedmin[1],limitedmax[1]],'fixed':fixed[1],'parname':"AMPLITUDE",'error':0},
-	                {'n':2,'value':params[2],'limits':[minpars[2],maxpars[2]],'limited':[limitedmin[2],limitedmax[2]],'fixed':fixed[2],'parname':"XSHIFT",'error':0},
-	                {'n':3,'value':params[3],'limits':[minpars[3],maxpars[3]],'limited':[limitedmin[3],limitedmax[3]],'fixed':fixed[3],'parname':"YSHIFT",'error':0},
-	                {'n':4,'value':params[4],'limits':[minpars[4],maxpars[4]],'limited':[limitedmin[4],limitedmax[4]],'fixed':fixed[4],'parname':"XWIDTH",'error':0} ]
-	    if vheight == 1:
-	        parinfo.insert(0,{'n':0,'value':params[0],'limits':[minpars[0],maxpars[0]],'limited':[limitedmin[0],limitedmax[0]],'fixed':fixed[0],'parname':"HEIGHT",'error':0})
-	    if circle == 0:
-	        parinfo.append({'n':5,'value':params[5],'limits':[minpars[5],maxpars[5]],'limited':[limitedmin[5],limitedmax[5]],'fixed':fixed[5],'parname':"YWIDTH",'error':0})
-	        if rotate == 1:
-	            parinfo.append({'n':6,'value':params[6],'limits':[minpars[6],maxpars[6]],'limited':[limitedmin[6],limitedmax[6]],'fixed':fixed[6],'parname':"ROTATION",'error':0})
+	parinfo = [ 
+		{'n':1,'value':params[1],'limits':[minpars[1],maxpars[1]],'limited':[limitedmin[1],limitedmax[1]],'fixed':fixed[1],'parname':"AMPLITUDE",'error':0},
+		{'n':2,'value':params[2],'limits':[minpars[2],maxpars[2]],'limited':[limitedmin[2],limitedmax[2]],'fixed':fixed[2],'parname':"XSHIFT",'error':0},
+		{'n':3,'value':params[3],'limits':[minpars[3],maxpars[3]],'limited':[limitedmin[3],limitedmax[3]],'fixed':fixed[3],'parname':"YSHIFT",'error':0},
+		{'n':4,'value':params[4],'limits':[minpars[4],maxpars[4]],'limited':[limitedmin[4],limitedmax[4]],'fixed':fixed[4],'parname':"XWIDTH",'error':0} 
+		]
+	    
+	if vheight == 1:
+		parinfo.insert(0,{'n':0,'value':params[0],'limits':[minpars[0],maxpars[0]],'limited':[limitedmin[0],limitedmax[0]],'fixed':fixed[0],'parname':"HEIGHT",'error':0})
+	if circle == 0:
+		parinfo.append({'n':5,'value':params[5],'limits':[minpars[5],maxpars[5]],'limited':[limitedmin[5],limitedmax[5]],'fixed':fixed[5],'parname':"YWIDTH",'error':0})
+	if rotate == 1:
+		parinfo.append({'n':6,'value':params[6],'limits':[minpars[6],maxpars[6]],'limited':[limitedmin[6],limitedmax[6]],'fixed':fixed[6],'parname':"ROTATION",'error':0})
 
-	    # shell()
-	    if autoderiv == 0:
-	        # the analytic derivative, while not terribly difficult, is less
-	        # efficient and useful.  I only bothered putting it here because I was
-	        # instructed to do so for a class project - please ask if you would
-	        # like this feature implemented
-	        raise ValueError("I'm sorry, I haven't implemented this feature yet.")
-	    else:
-	       p, cov, infodict, errmsg, success = scipy.optimize.leastsq(errorfunction, params, full_output=1)
-	        # mp = mpfit(mpfitfun(data,err),parinfo=parinfo,quiet=quiet)
+	p, cov, infodict, errmsg, success = scipy.optimize.leastsq(errorfunction, params, full_output=1)
+	
+	if returnfitimage:
+		fitimage = twodgaussian(p)(*np.indices(data.shape))
 
-
-	    # if returnmp:
-	#         returns = (mp)
-	#     elif return_all == 0:
-	#         returns = mp.params
-	#     elif return_all == 1:
-	#         returns = mp.params,mp.perror
-	    if returnfitimage:
-	        fitimage = twodgaussian(p)(*np.indices(data.shape))
-	        # returns = (returns,fitimage)
-	#     return returns
-	    # shell()
-    return p, infodict, errmsg, fitimage
+	return p, infodict, errmsg, fitimage
 	
 
 class PRFModelTrial(object):
@@ -587,7 +541,6 @@ class PRFModelRun(object):
 	
 	def simulate_run(self, save_images_to_file = None):
 		"""docstring for simulate_run"""
-		
 		self.sample_times = np.arange(0, self.n_TRs * self.TR, self.sample_duration)
 		
 		self.run_matrix = np.zeros((self.sample_times.shape[0], self.n_pixel_elements, self.n_pixel_elements))
@@ -1205,7 +1158,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			all_res = empty_res.reshape([12] + list(stats_data.shape[1:]))
 
-			self.logger.info('saving prf parameters to polar and ecc')
+			self.logger.info('saving prf parameters')
 
 			all_res_file = NiftiImage(all_res)
 			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
@@ -1381,7 +1334,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				s.set_title(roi + ' ' + res_type)
 
 				if  j==1:
-					s.set_ylim([0,3])
+					s.set_ylim([0,15])
 				else:
 					s.set_ylim([0,0.6])
 				leg = s.legend(fancybox = True, loc = 'best')
@@ -1411,7 +1364,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			median_eccen_dif = []
 			sd_eccen_dif = []
 			
-			for i, tc in enumerate(comparison_task_conditions):
+			for i, tc in enumerate(['color','orient','sf','speed']):
 
 				if i == 0 or i == 1:
 					s=f.add_subplot(2,3,i+1)
@@ -1484,19 +1437,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		f = pl.figure(figsize = (8,8))
 		s = f.add_subplot(1,1,1)
+		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1,10)]
 		
-		for j, roi in enumerate(end_rois.keys()):
-			
-			colors = [np.random.ranf(1),np.random.ranf(1),np.random.ranf(1)]
+		for j, roi in enumerate(end_rois.keys()):			
 			
 			fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['surf_gauss']], 1)
 			fit_fn = poly1d(fit)
 
-			pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['surf_gauss']], c = colors, marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
-			pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors, label=roi)
+			pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['surf_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+			pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
 
 			s.set_xlim([0,0.8])
-			s.set_ylim([0,3])
+			s.set_ylim([0,15])
 
 			leg = s.legend(fancybox = True, loc = 'best')
 			leg.get_frame().set_alpha(0.5)

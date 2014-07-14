@@ -181,6 +181,8 @@ class HDFEyeOperator(Operator):
 			table = h5_file['%s/block_%i'%(alias, period_block_nr)]
 			if columns == None:
 				columns = table.keys()
+		if 'L_vel' in columns:
+			columns = table.keys()
 		return table[(table['time'] > float(time_period[0])) & (table['time'] < float(time_period[1]))][columns]
 	
 	def eye_during_period(self, time_period, alias):
@@ -267,7 +269,7 @@ class HDFEyeOperator(Operator):
 				end_time = table[table['trial_start_index'] == trial_nr]['trial_end_EL_timestamp']
 			else:
 				end_time = table[((table['trial_phase_index'] == trial_phases[1]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
-			time_period = np.array([start_time + time_extensions[0], end_time + time_extensions[1]]).squeeze()
+			time_period = np.array([np.array(start_time) + np.array(time_extensions)[0], np.array(end_time) + np.array(time_extensions)[1]]).squeeze()
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
 	def saccades_from_trial_phases(self, trial_nr, trial_phases, alias, requested_eye = 'L', time_extensions = [0,0]):
