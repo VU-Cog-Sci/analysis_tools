@@ -246,10 +246,10 @@ class LatencyRemappingSession(Session):
 			self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = run), run.condition + '.hdf5')
 			if not os.path.isfile(self.hdf5_filename):
 				self.logger.info('starting table file ' + self.hdf5_filename)
-				h5file = openFile(self.hdf5_filename, mode = "w", title = run.condition + " file")
+				h5file = open_file(self.hdf5_filename, mode = "w", title = run.condition + " file")
 			else:
 				self.logger.info('opening table file ' + self.hdf5_filename)
-				h5file = openFile(self.hdf5_filename, mode = "a", title = run.condition + " file")
+				h5file = open_file(self.hdf5_filename, mode = "a", title = run.condition + " file")
 			# in the file, create the appropriate group
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
@@ -315,10 +315,10 @@ class LatencyRemappingSession(Session):
 			self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = run), run.condition + '.hdf5')
 			if not os.path.isfile(self.hdf5_filename):
 				self.logger.info('starting table file ' + self.hdf5_filename)
-				h5file = openFile(self.hdf5_filename, mode = "w", title = run.condition + " file")
+				h5file = open_file(self.hdf5_filename, mode = "w", title = run.condition + " file")
 			else:
 				self.logger.info('opening table file ' + self.hdf5_filename)
-				h5file = openFile(self.hdf5_filename, mode = "a", title = run.condition + " file")
+				h5file = open_file(self.hdf5_filename, mode = "a", title = run.condition + " file")
 			# in the file, create the appropriate group
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
 			try:
@@ -1077,10 +1077,10 @@ class LatencyRemappingSession(Session):
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
 		if not os.path.isfile(self.hdf5_filename):
 			self.logger.info('starting table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		else:
 			self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 			
 		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 			"""loop over runs, and try to open a group for this run's data"""
@@ -1184,7 +1184,7 @@ class LatencyRemappingSession(Session):
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "r", title = run_type + " file")
 		return h5file
 	
 

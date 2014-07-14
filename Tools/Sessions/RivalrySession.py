@@ -650,10 +650,10 @@ class SphereSession(Session):
 		
 		if not os.path.isfile(self.hdf5_filename):
 			self.logger.info('starting table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		else:
 			self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 			
 		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 			"""loop over runs, and try to open a group for this run's data"""
@@ -728,7 +728,7 @@ class SphereSession(Session):
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "r", title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = "r", title = run_type + " file")
 		return h5file
 	
 	def roi_data_from_hdf(self, h5file, run, roi_wildcard, data_type, postFix = ['mcf']):

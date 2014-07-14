@@ -58,8 +58,8 @@ class SingleRewardSession(RewardSession):
 				# shell()
 				a = np.ones((run.blink_times.shape[0], 3))
 				a[:,0] = run.blink_times; a[:,1] = run.blink_durations;
-				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']), a.T, fmt = '%3.2f', delimiter = '\t')
-			
+				np.savetxt(self.runFile(stage = 'processed/mri', run = run, extension = '.txt', postFix = ['blinks']), a, fmt = '%3.2f', delimiter = '\t')
+				
 				# stimulus onset thingies
 				run.stimulus_onset_times = (elO.timings['trial_phase_timestamps'][:,1,0] / 1000) - experiment_start_time
 				# save stimulus_onset_times to separate text file to be used for per-trial glm analyses
@@ -210,8 +210,8 @@ class SingleRewardSession(RewardSession):
 		"""
 		if not hasattr(self, 'dual_pilot'):
 			for r in [self.runList[i] for i in self.conditionDict['reward']]:
-				self.create_feat_event_files_one_run(r)
-			
+				# self.create_feat_event_files_one_run(r)
+				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks','T']), np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks'])).T, fmt = '%3.2f', delimiter = '\t')
 				if run_feat:
 					try:
 						self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
@@ -230,7 +230,7 @@ class SingleRewardSession(RewardSession):
 					REDict = {
 					'---NII_FILE---': 			self.runFile(stage = 'processed/mri', run = r, postFix = postFix), 
 					'---NR_TRS---':				str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).timepoints),
-					'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']), 	
+					'---BLINK_FILE---': 		self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks','T']), 	
 					'---BLANK_SILENCE_FILE---': self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_silence']), 	
 					'---BLANK_SOUND_FILE---': 	self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blank_sound']), 
 					'---VISUAL_SILENCE_FILE---':self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['visual_silence']), 	
@@ -467,10 +467,10 @@ class SingleRewardSession(RewardSession):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		if not hasattr(self, 'dual_pilot'):
 			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
@@ -562,7 +562,7 @@ class SingleRewardSession(RewardSession):
 						# to mask the stat_files with the rois:
 						imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 						these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+						h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 		else:
 			version_postFix = postFix + ['orientation']
 			for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
@@ -685,7 +685,7 @@ class SingleRewardSession(RewardSession):
 						# to mask the stat_files with the rois:
 						imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 						these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+						h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 			
 		h5file.close()
 	
@@ -696,7 +696,7 @@ class SingleRewardSession(RewardSession):
 			return None
 		else:
 			# self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = mode, title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = mode, title = run_type + " file")
 		return h5file
 	
 	
@@ -704,7 +704,7 @@ class SingleRewardSession(RewardSession):
 		if run.condition == 'reward':
 			# get EL Data
 			
-			h5f = openFile(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
+			h5f = open_file(self.runFile(stage = 'processed/eye', run = run, extension = '.hdf5'), mode = "r" )
 			r = None
 			for item in h5f.iterNodes(where = '/', classname = 'Group'):
 				if item._v_name == 'bla':
@@ -832,7 +832,7 @@ class SingleRewardSession(RewardSession):
 			# save parameter data to joint file
 			import numpy.lib.recfunctions as rfn
 			try: 
-				h5file.removeNode(where = thisRunGroup, name = 'trial_parameters')
+				h5file.remove_node(where = thisRunGroup, name = 'trial_parameters')
 			except NoSuchNodeError:
 				pass
 			parTable = h5file.createTable(thisRunGroup, 'trial_parameters', trial_parameters.dtype, 'Parameters for trials in run ' + str(run.ID))
@@ -844,7 +844,7 @@ class SingleRewardSession(RewardSession):
 				trial.append()
 			parTable.flush()
 			try: 
-				h5file.removeNode(where = thisRunGroup, name = 'trial_times')
+				h5file.remove_node(where = thisRunGroup, name = 'trial_times')
 			except NoSuchNodeError:
 				pass
 			timeTable = h5file.createTable(thisRunGroup, 'trial_times', trial_times.dtype, 'Timings for trials in run ' + str(run.ID))
@@ -858,14 +858,14 @@ class SingleRewardSession(RewardSession):
 			
 			# save pupil data to joint file
 			try: 
-				h5file.removeNode(where = thisRunGroup, name = 'filtered_pupil_zscore')
-				h5file.removeNode(where = thisRunGroup, name = 'per_trial_filtered_pupil_zscore')
-				h5file.removeNode(where = thisRunGroup, name = 'per_condition_filtered_pupil_zscore')
+				h5file.remove_node(where = thisRunGroup, name = 'filtered_pupil_zscore')
+				h5file.remove_node(where = thisRunGroup, name = 'per_trial_filtered_pupil_zscore')
+				h5file.remove_node(where = thisRunGroup, name = 'per_condition_filtered_pupil_zscore')
 			except NoSuchNodeError:
 				pass
-			h5file.createArray(thisRunGroup, 'filtered_pupil_zscore', np.vstack((gaze_timestamps, pupil_zscore)).T, 'filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			h5file.createArray(thisRunGroup, 'per_trial_filtered_pupil_zscore', np.array(tr_data_timed), 'per_trial_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			h5file.createArray(thisRunGroup, 'per_condition_filtered_pupil_zscore', np.array([np.array(tr).mean(axis = 0) for tr in tr_data]), 'per_condition_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.create_array(thisRunGroup, 'filtered_pupil_zscore', np.vstack((gaze_timestamps, pupil_zscore)).T, 'filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.create_array(thisRunGroup, 'per_trial_filtered_pupil_zscore', np.array(tr_data_timed), 'per_trial_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.create_array(thisRunGroup, 'per_condition_filtered_pupil_zscore', np.array([np.array(tr).mean(axis = 0) for tr in tr_data]), 'per_condition_filtered_pupil_zscore conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			h5file.close()
 			
 			# shell()
@@ -933,10 +933,10 @@ class SingleRewardSession(RewardSession):
 			# save all these data to the hdf5 file
 			h5file = self.hdf5_file(run_type = 'reward', mode = 'a')
 			try: 
-				h5file.removeNode(where = '/', name = 'all_pupil_scores')
+				h5file.remove_node(where = '/', name = 'all_pupil_scores')
 			except NoSuchNodeError:
 				pass
-			h5file.createArray('/', 'all_pupil_scores', np.array(all_data), '_'.join(cond_labels) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.create_array('/', 'all_pupil_scores', np.array(all_data), '_'.join(cond_labels) + ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			h5file.close()
 			# shell()
 	
@@ -980,10 +980,10 @@ class SingleRewardSession(RewardSession):
 			# save all these data to the hdf5 file
 			h5file = self.hdf5_file(run_type = 'reward', mode = 'a')
 			try: 
-				h5file.removeNode(where = '/', name = 'all_pupil_interval_scores')
+				h5file.remove_node(where = '/', name = 'all_pupil_interval_scores')
 			except NoSuchNodeError:
 				pass
-			h5file.createArray('/', 'all_pupil_interval_scores', np.array([spm, lpm]), ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			h5file.create_array('/', 'all_pupil_interval_scores', np.array([spm, lpm]), ' conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			h5file.close()
 			# shell()
 		
@@ -1358,13 +1358,13 @@ class SingleRewardSession(RewardSession):
 		
 		for r in results:
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_' + data_type)
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
-				# reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_' + data_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
+				# reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def whole_brain_deconvolution(self, deco = True, average_intervals = [[3.5,12],[2,7]], to_surf = True):
@@ -1524,10 +1524,10 @@ class SingleRewardSession(RewardSession):
 						stat_results[i,1,:] = np.array([fvals[j] for j in range(3)])
 						
 					try:
-						reward_h5file.removeNode(where = thisRunGroup, name = deconv._v_name + '_stats')
+						reward_h5file.remove_node(where = thisRunGroup, name = deconv._v_name + '_stats')
 					except NoSuchNodeError:
 						pass
-					reward_h5file.createArray(thisRunGroup, deconv._v_name + '_stats', stat_results, 'ANOVA timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+					reward_h5file.create_array(thisRunGroup, deconv._v_name + '_stats', stat_results, 'ANOVA timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 					
 					fig = pl.figure(figsize = (9, 4))
 					s = fig.add_subplot(111)
@@ -1603,10 +1603,10 @@ class SingleRewardSession(RewardSession):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_stats.pdf'))
 			
 			try:
-				reward_h5file.removeNode(where = '/', name = 'all_pupil_stats')
+				reward_h5file.remove_node(where = '/', name = 'all_pupil_stats')
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray('/', 'all_pupil_stats', stat_results, 'ANOVA timecourses on pupil data conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array('/', 'all_pupil_stats', stat_results, 'ANOVA timecourses on pupil data conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			
 		
 		reward_h5file.close()
@@ -2169,10 +2169,10 @@ class SingleRewardSession(RewardSession):
 		
 		for (i, c) in enumerate(corrs):
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = areas[i])
+				reward_h5file.remove_node(where = thisRunGroup, name = areas[i])
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, areas[i], np.array(corrs[i]), 'pupil-bold correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, areas[i], np.array(corrs[i]), 'pupil-bold correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 		
 		# pl.show()
@@ -2197,10 +2197,10 @@ class SingleRewardSession(RewardSession):
 		
 		for (i, c) in enumerate(corrs):
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' +  mask_type + '_' + mask_direction)
+				reward_h5file.remove_node(where = thisRunGroup, name = areas[i] + '_' +  mask_type + '_' + mask_direction)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def calculate_BOLD_variance(self, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, data_type = 'psc_hpf_data'):
@@ -2224,10 +2224,10 @@ class SingleRewardSession(RewardSession):
 		for (i, c) in enumerate(corrs):
 			for j in range(len(cond_labels)):
 				try:
-					reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j])
+					reward_h5file.remove_node(where = thisRunGroup, name = areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j])
 				except NoSuchNodeError:
 					pass
-				reward_h5file.createArray(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j], np.array(corrs[i][j]), 'bold signal level and variability conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+				reward_h5file.create_array(thisRunGroup, areas[i] + '_' +  mask_type + '_' + mask_direction + '_' + cond_labels[j], np.array(corrs[i][j]), 'bold signal level and variability conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def cross_correlate_pupil_and_BOLD_for_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', sample_rate = 2000, time_range_BOLD = [5.0, 10.0], time_range_pupil = [0.5, 2.0], stepsize = 0.25, area = '', color = 1.0):
@@ -2482,17 +2482,17 @@ class SingleRewardSession(RewardSession):
 		
 		for (i, c) in enumerate(corrs):
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction)
+				reward_h5file.remove_node(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold cross correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction, np.array(corrs[i]), 'pupil-bold cross correlation timecourses conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		
 		for (i, c) in enumerate(spearman_corrs):
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range)
+				reward_h5file.remove_node(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range, np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_spearman' + '_' + time_range, np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 		
 		# pl.show()
@@ -2534,10 +2534,10 @@ class SingleRewardSession(RewardSession):
 		
 		for (i, c) in enumerate(spearman_corrs):
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman')
+				reward_h5file.remove_node(where = thisRunGroup, name = areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman')
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman', np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, areas[i] + '_' + mask_type + '_' + mask_direction + '_' + time_range + '_spearman', np.array(c), 'pupil-bold spearman correlation results conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 		
 	def blinks_per_trial(self, blink_detection_range = [0,16], granularity = 0.01, smoothing_kernel_width = 0.5):
@@ -2856,12 +2856,12 @@ class SingleRewardSession(RewardSession):
 		for res in results:
 			for r in res:
 				try:
-					reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type)
-					# reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
+					reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type)
+					# reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
 				except NoSuchNodeError:
 					pass
-				reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type, r[-1], 'interval deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-				# reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+				reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type, r[-1], 'interval deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+				# reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def calculate_discrete_event_history(self, times, parameters):
@@ -3029,11 +3029,11 @@ class SingleRewardSession(RewardSession):
 		
 		for r in results:
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type, r[-1], 'discrete interval deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			# reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type, r[-1], 'discrete interval deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			# reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def correlate_patterns(self, template, test):
@@ -3131,14 +3131,14 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		this_run_group_name = 'residuals_variance'
 		try:
-			thisRunGroup = h5file.removeNode(where = '/', name = this_run_group_name, recursive = True)
+			thisRunGroup = h5file.remove_node(where = '/', name = this_run_group_name, recursive = True)
 			# self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
@@ -3162,7 +3162,7 @@ class SingleRewardSession(RewardSession):
 				# to mask the stat_files with the rois:
 				imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 				these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-				h5file.createArray(thisRunGroup, roi_name.replace('.','_') + '_' + sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+				h5file.create_array(thisRunGroup, roi_name.replace('.','_') + '_' + sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 		h5file.close()
 		
 	
@@ -3453,16 +3453,16 @@ class SingleRewardSession(RewardSession):
 		
 		for r in results:
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_projection_data_' + signal_type + '_' + data_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_projection_data_' + signal_type + '_' + data_type)
 			except NoSuchNodeError:
 				pass
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_fit_results_' + signal_type + '_' + data_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_fit_results_' + signal_type + '_' + data_type)
 			except NoSuchNodeError:
 				pass
 			
-			reward_h5file.createArray(thisRunGroup, r[0] + '_fit_results_' + signal_type + '_' + data_type, r[1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			reward_h5file.createArray(thisRunGroup, r[0] + '_projection_data_' + signal_type + '_' + data_type, r[2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_fit_results_' + signal_type + '_' + data_type, r[1], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_projection_data_' + signal_type + '_' + data_type, r[2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 			
 		reward_h5file.close()
 		 
@@ -3571,7 +3571,7 @@ class SingleRewardSession(RewardSession):
 			roinames.append(os.path.split(roi)[1][:-7])
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "r+", title = run_type + " file")
 			
 		if run_type == 'reward':
 			stat_files = {
@@ -3607,12 +3607,12 @@ class SingleRewardSession(RewardSession):
 					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
 					try:
-						h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+						h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 					except NodeError:
 						self.logger.info('Array ' + sf.replace('>', '_') + ' existed in ' + this_run_group_name)
 		
 		try:
-			thisRunGroup = h5file.removeNode(where = '/', name = 'snr', recursive = True)
+			thisRunGroup = h5file.remove_node(where = '/', name = 'snr', recursive = True)
 			self.logger.info('snr data ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
 		except NoSuchNodeError:
 			# import actual data
@@ -3623,16 +3623,16 @@ class SingleRewardSession(RewardSession):
 		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:
 			for i, dt in enumerate(['snr_diff', 'snr_mean_corr', 'snr_var_corr', 'fis_reward_silence', '']):
 				dd = self.roi_data_from_hdf(h5file, self.runList[self.conditionDict[run_type][0]], roi_wildcard = roi, data_type = dt, postFix = ['mcf'])
-				h5file.createArray(thisRunGroup, roi + '_' + dt, dd.astype(np.float32), roi + ' data from ' + stat_files[dt])
+				h5file.create_array(thisRunGroup, roi + '_' + dt, dd.astype(np.float32), roi + ' data from ' + stat_files[dt])
 				
 		h5file.close()
 	
 	def snr_pattern_correlations(self, postFix = ['mcf']):
 		"""docstring for snr_pattern_correlations"""
 		self.reward_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward' + '.hdf5')
-		reward_h5file = openFile(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
+		reward_h5file = open_file(self.reward_hdf5_filename, mode = "r", title = 'reward' + " file")
 		self.mapper_hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['mapper'][0]]), 'mapper' + '.hdf5')
-		mapper_h5file = openFile(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
+		mapper_h5file = open_file(self.mapper_hdf5_filename, mode = "r", title = 'mapper' + " file")
 		
 		
 		for roi in ['V1', 'V2', 'V3', 'V4', 'LO1']:

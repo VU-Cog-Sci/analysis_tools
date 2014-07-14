@@ -141,10 +141,10 @@ class RivalrySession7T(RivalryReplaySession):
 		# if os.path.isfile(self.hdf5_filename):
 		# 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = 'a', title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = 'a', title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 
 		######################################################################################################
 		# ADD STATS PER RUN:
@@ -377,7 +377,7 @@ class RivalrySession7T(RivalryReplaySession):
 	def setup_all_data_for_decoding(self, runArray, decoding, roi, input_data='tf_psc_data', run_type='rivalry', postFix=['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=None, number_voxels=None, split_by_relative_time=None, polar_eccen=False):
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = 'r+', title = run_type + " file")
 		
 		# Load all functional data (per run):
 		roi_data_per_roi = []
@@ -1369,7 +1369,7 @@ class RivalrySession7T(RivalryReplaySession):
 			
 			# add to HDF5:
 			self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-			h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = 'r+', title = run_type + " file")
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
@@ -1580,7 +1580,7 @@ class RivalrySession7T(RivalryReplaySession):
 						pass
 			
 			self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-			h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")
+			h5file = open_file(self.hdf5_filename, mode = 'r+', title = run_type + " file")
 			
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
@@ -2176,7 +2176,7 @@ class RivalrySession7T(RivalryReplaySession):
 	def old_decoding(self, runArray, run_type='rivalry', subSamplingRatio=100.0, postFix=['mcf'], mask_type='STIM_Z', mask_direction='pos', threshold=4, number_voxels = 200):
 		
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict[run_type][0]]), run_type + '.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = 'r+', title = run_type + " file")	
+		h5file = open_file(self.hdf5_filename, mode = 'r+', title = run_type + " file")	
 		
 		# roi = ['V3']
 		roi = ['V1']

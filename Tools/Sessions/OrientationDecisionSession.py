@@ -267,10 +267,10 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
-		h5file = openFile(self.hdf5_filename, mode = "w", title = run_type + " file")
+		h5file = open_file(self.hdf5_filename, mode = "w", title = run_type + " file")
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
-		# 	h5file = openFile(self.hdf5_filename, mode = "a", title = run_type + " file")
+		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
 		
 		for  r in [self.runList[i] for i in self.conditionDict[run_type]]:
 			"""loop over runs, and try to open a group for this run's data"""
@@ -354,7 +354,7 @@ class OrientationDecisionSession(RetinotopicMappingSession):
 	
 	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all']):
 		self.hdf5_filename = os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['decision'][0]]), 'decision.hdf5')
-		h5file = openFile(self.hdf5_filename, mode = "r+")
+		h5file = open_file(self.hdf5_filename, mode = "r+")
 		super(OrientationDecisionSession, self).run_glm_on_hdf5(run_list = [self.runList[i] for i in self.conditionDict['decision']], hdf5_file = h5file, data_type = data_type, analysis_type = analysis_type, post_fix_for_text_file = post_fix_for_text_file, functionalPostFix = ['mcf','tf'])
 		h5file.close()
 	
