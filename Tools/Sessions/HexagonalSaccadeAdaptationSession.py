@@ -102,6 +102,7 @@ class HexagonalSaccadeAdaptationSession(object):
 	
 	def detect_all_saccades(self, alias, n_jobs = -1, threshold = 5.0):
 		"""docstring for detect_all_saccades"""
+		shell()
 		self.logger.info('starting saccade detection of ' + alias)
 		all_saccades = []
 		for bi, tb in enumerate(self.block_trial_indices):
@@ -197,6 +198,10 @@ class HexagonalSaccadeAdaptationSession(object):
 		# also return vel_range for plotting purposes, as this is different for every participant (because of std +/- mean computation)
 		return trials2use.astype(bool), vel_range, amp_range
 		
+	# def analyze_first_block(self, alias):
+		
+		
+				
 	def velocity_for_saccades(self, alias):
 		"""
 		velocity_profiles_for_saccades takes the velocity profiles for all saccades that have been detected earlier

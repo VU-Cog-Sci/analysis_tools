@@ -228,8 +228,8 @@ class EyeSignalOperator(Operator):
 			self.raw_pupil[self.raw_pupil<threshold_level] = 0
 		
 			# we do not want to start or end with a 0:
-			pupil_median_start = np.median(self.raw_pupil[:self.sample_rate*10][self.raw_pupil[:self.sample_rate*10]!=0])
-			pupil_median_end = np.median(self.raw_pupil[self.sample_rate*10:][self.raw_pupil[self.sample_rate*10:]!=0])
+			pupil_median_start = np.median(self.raw_pupil[:int(self.sample_rate*10)][self.raw_pupil[:int(self.sample_rate*10)]!=0])
+			pupil_median_end = np.median(self.raw_pupil[int(self.sample_rate*10):][self.raw_pupil[int(self.sample_rate*10):]!=0])
 			self.raw_pupil[:coalesce_period+1] = pupil_median_start
 			self.raw_pupil[-coalesce_period+1:] = pupil_median_end
 		

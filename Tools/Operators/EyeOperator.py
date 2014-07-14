@@ -515,10 +515,10 @@ class EyelinkOperator( EyeOperator ):
 		self.runName = name
 		if not os.path.isfile(self.hdf5_filename):
 			self.logger.info('starting table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "w", title = "Eye file")
+			h5file = open_file(self.hdf5_filename, mode = "w", title = "Eye file")
 		else:
 			self.logger.info('opening table file ' + self.hdf5_filename)
-			h5file = openFile(self.hdf5_filename, mode = "a", title = "Eye file")
+			h5file = open_file(self.hdf5_filename, mode = "a", title = "Eye file")
 		try:
 			thisRunGroup = h5file.get_node(where = '/', name=self.runName, classname='Group')
 			self.logger.info('data file ' + self.inputFileName + ' already in ' + self.hdf5_filename)
@@ -637,7 +637,7 @@ class EyelinkOperator( EyeOperator ):
 	
 	def import_parameters(self, run_name = 'run_'):
 		parameter_data = []
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name in r._v_name:
 				# try to take care of the problem that parameter composition of runs may change over time - we choose the common denominator for now.
@@ -656,7 +656,7 @@ class EyelinkOperator( EyeOperator ):
 		h5f.close()
 	
 	def get_EL_samples_per_trial(self, run_name = 0, trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'smoothed_velocity'):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name == r._v_name:
@@ -717,7 +717,7 @@ class EyelinkOperator( EyeOperator ):
 		return export_data
 	
 	def get_EL_events_per_trial(self, run_name = '', trial_ranges = [[0,-1]], trial_phase_range = [0,-1], data_type = 'saccades'):
-		h5f = openFile(self.hdf5_filename, mode = "r" )
+		h5f = open_file(self.hdf5_filename, mode = "r" )
 		run = None
 		for r in h5f.iterNodes(where = '/', classname = 'Group'):
 			if run_name == r._v_name:
