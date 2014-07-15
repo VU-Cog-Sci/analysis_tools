@@ -910,7 +910,7 @@ class ReorientOperator( CommandLineOperator ):
 		"""
 		"""
 		super(ReorientOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
-
+	
 	def configure(self, outputFileName = None):
 		self.outputFileName = outputFileName
 		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName

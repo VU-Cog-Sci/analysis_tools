@@ -367,7 +367,8 @@ class Session(PathConstructor):
 			subprocess.Popen('cp ' + flRT1.referenceFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 			
 			# now take the firstFunc and create an example_func for it. 
-			subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf','meanvol'], base = 'firstFunc' ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			if not 'inplane_anat' in self.scanTypeList:
+				subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf','meanvol'], base = 'firstFunc' ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
