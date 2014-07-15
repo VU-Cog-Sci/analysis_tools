@@ -76,7 +76,7 @@ class DeconvolutionOperator(EventDataOperator):
 		self.createDesignMatrix()
 		if run:
 			self.rawDeconvolvedTimeCourse = self.h()
-			self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval,self.nrSamplesInInterval,-1))
+			self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((int(self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval),int(self.nrSamplesInInterval),-1))
 			# shell()
 		
 	def upsampleDataTimeSeries(self):
@@ -100,7 +100,7 @@ class DeconvolutionOperator(EventDataOperator):
 		deconvolutionSampleDuration interval and thus discretizes them. 
 		Afterwards, it creates a matrix by shifting the discretized array
 		nrSamplesInInterval times. """
-		allArray = np.zeros((self.nrSamplesInInterval,self.workingDataArray.shape[0]))
+		allArray = np.zeros((int(self.nrSamplesInInterval),self.workingDataArray.shape[0]))
 		for i in range(0,int(self.nrSamplesInInterval)):
 			which_further_time_points = ((eventTimesVector / self.deconvolutionSampleDuration) + i).round()
 			which_further_time_points = np.array(which_further_time_points[which_further_time_points < self.workingDataArray.shape[0]], dtype = int)
@@ -133,7 +133,7 @@ class DeconvolutionOperator(EventDataOperator):
 			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment
 			self.deconvolvedTimeCoursesNuisanceAll = ((self.newDesignMatrix.T * self.newDesignMatrix).I * self.newDesignMatrix.T) * np.mat(self.workingDataArray.T).T
-			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((designShape[1]/self.nrSamplesInInterval,self.nrSamplesInInterval,self.deconvolvedTimeCoursesNuisanceAll.shape[1]))
+			self.deconvolvedTimeCoursesPerEventTypeNuisance = np.zeros((int(designShape[1]/self.nrSamplesInInterval),int(self.nrSamplesInInterval),self.deconvolvedTimeCoursesNuisanceAll.shape[1]))
 			for i in range(int(round(designShape[1]/self.nrSamplesInInterval))):
 				self.deconvolvedTimeCoursesPerEventTypeNuisance[i] = self.deconvolvedTimeCoursesNuisanceAll[i*self.nrSamplesInInterval:(i+1)*self.nrSamplesInInterval]
 			self.deconvolvedNuisanceBetas = self.deconvolvedTimeCoursesNuisanceAll[(i+1)*self.nrSamplesInInterval:]
