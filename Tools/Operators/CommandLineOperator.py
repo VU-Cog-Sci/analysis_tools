@@ -458,9 +458,9 @@ class FEATOperator( CommandLineOperator ):
 		self.runcmd = runcmd
 
 class RETROICOROperator( CommandLineOperator ):
-	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	"""MatlabOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -r ', **kwargs)
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c /home/shared/Niels_UvA/FMRIquality/license.dat -r ', **kwargs)
 		self.m_file = self.inputObject
 
 	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
