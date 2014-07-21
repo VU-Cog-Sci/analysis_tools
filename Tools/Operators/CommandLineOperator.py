@@ -143,7 +143,7 @@ class FlirtOperator( CommandLineOperator ):
 		self.referenceFileName = referenceFileName
 		self.costFunction = costFunction
 
-	def configureApply(self, transformMatrixFileName, outputFileName = None, sinc = True):
+	def configureApply(self, transformMatrixFileName = None, outputFileName = None, sinc = True):
 		"""
 		apply runs flirt's applyxfm argument.
 		It takes an input matrix and a reference file in order to use transformMatrix
@@ -158,7 +158,8 @@ class FlirtOperator( CommandLineOperator ):
 		applycmd = self.cmd + ' -applyxfm'
 		applycmd += ' -in ' + self.inputFileName
 		applycmd += ' -ref ' + self.referenceFileName
-		applycmd += ' -init ' + self.transformMatrixFileName
+		if transformMatrixFileName != None:
+			applycmd += ' -init ' + self.transformMatrixFileName
 		applycmd += ' -o ' + self.outputFileName
 
 		if sinc:
