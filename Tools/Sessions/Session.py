@@ -432,7 +432,7 @@ class Session(PathConstructor):
 		if self.parallelize:
 			# tryout parallel implementation - later, this should be abstracted out of course. 
 			ppservers = ()
-			job_server = pp.Server(ppservers=ppservers)
+			job_server = pp.Server(ppservers=ppservers, secret='mc')
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 #			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
 			ppResults = [job_server.submit(ExecCommandLine,(mcf.runcmd,),(),('subprocess','tempfile',)) for mcf in mcOperatorList]

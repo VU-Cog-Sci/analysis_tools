@@ -481,13 +481,12 @@ def pupil_scalar_mean(data, time_start, time_end):
 	
 	return pupil_scalars
 	
-def pupil_scalar_lin_projection(data, time_start, time_end):
+def pupil_scalar_lin_projection(data, time_start, time_end, template):
 	
-	template = np.mean(data[:,time_start:time_end], axis=0)
-	sign_template = np.sign(sum(template))
 	pupil_scalars = np.array([ np.dot(template, data[i,time_start:time_end])/np.dot(template,template) for i in range(data.shape[0])])
 	
-	return pupil_scalars, sign_template
+	return pupil_scalars
+	
 ####################
 ##### PLOTTING #####
 ####################

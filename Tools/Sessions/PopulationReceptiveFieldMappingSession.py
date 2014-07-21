@@ -596,21 +596,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 		- duration of blink
 		Timings of the blinks are corrected for the start of the scan by the nr_dummy_scans
 		"""
-
-	
+		
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			# shell()
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			tr = round(niiFile.rtime*1)/1000.0
 			with open (self.runFile(stage = 'processed/eye', run = r, extension = '.msg')) as inputFileHandle:
 				msg_file = inputFileHandle.read()
-
-
+			
 			sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)'
 			fix_re = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?'
 			blink_re = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'
 			start_eye = 'START\t(-?\d+\.?\d*)'
-
+			
 			# self.logger.info('reading eyelink events from %s', os.path.split(self.message_file)[-1])
 			saccade_strings = re.findall(re.compile(sacc_re), msg_file)
 			fix_strings = re.findall(re.compile(fix_re), msg_file)
@@ -628,7 +626,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
 			eye_blinks = [[((self.blinks_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.blinks_from_message_file[i]['duration']/1000,1] for i in range(len(self.blinks_from_message_file)) if (self.blinks_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000)]
 			saccades = [[((self.saccades_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.saccades_from_message_file[i]['duration']/1000,1] for i in range(len(self.saccades_from_message_file)) if np.all([(self.saccades_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000), (self.saccades_from_message_file[i]['length'] > length_thresh)]) ]
-		
+			
 			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']), np.array(eye_blinks), fmt = '%3.2f', delimiter = '\t')
 			# np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
 			

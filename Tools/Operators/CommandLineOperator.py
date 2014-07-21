@@ -19,6 +19,8 @@ from nifti import *
 from Operator import *
 from ..log import *
 
+from IPython import embed as shell
+
 
 ### Execute program in shell:
 def ExecCommandLine(cmdline):
@@ -460,7 +462,7 @@ class FEATOperator( CommandLineOperator ):
 class RETROICOROperator( CommandLineOperator ):
 	"""MatlabOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c /home/shared/Niels_UvA/FMRIquality/license.dat -r ', **kwargs)
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c /home/shared/Niels_UvA/matlab_scripts/license.dat -r ', **kwargs)
 		self.m_file = self.inputObject
 
 	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
@@ -487,7 +489,6 @@ class RETROICOROperator( CommandLineOperator ):
 		if not waitForExecute:
 			runcmd += ' & '
 		self.runcmd = runcmd
-
 
 class retMapRun(object):
 	def   __init__(self, ID, stimType, direction, TR, niiFilePath, delay = 4.0, nSkip = 12, nrCycles = 6):
