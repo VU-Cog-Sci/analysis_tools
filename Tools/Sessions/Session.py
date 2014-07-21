@@ -202,15 +202,6 @@ class Session(PathConstructor):
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 		
-		# session dictionary:
-		try:
-			self.sessions = np.unique(np.array([r.session for r in self.runList]))
-			self.sessionDict = {}
-			for s in self.sessions:
-				if s != '':
-					self.sessionDict.update({s: [hit.indexInSession for hit in filter(lambda x: x.session == s, [r for r in self.runList])]})
-		except KeyError:
-			pass
 			
 	def import_all_edf_data(self, aliases):
 		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """

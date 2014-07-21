@@ -672,12 +672,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 			saccades=self.eye_informer(length_thresh = 5)
 			for ti, tb in enumerate(r.trial_times):
 				# subtract 2.5 seconds from every trial onset:
-				r.trial_times[ti][1] -= 2.5
-				r.trial_times[ti][2] -= 2.5
+				# r.trial_times[ti][1] -= 2.5
+				# r.trial_times[ti][2] -= 2.5
 				# change trials to fix_no_stim
 				# for s in saccades:
 # 					if np.all([ (s[0] > tb[1]), (s[0] < tb[2]) ]):
 # 						r.trial_times[ti][0] = 'fix_no_stim'
+			pass
 			r.all_button_times = bO.all_button_times
 			r.parameters = bO.parameters
 			r.tasks = [t.task for t in bO.trials]
