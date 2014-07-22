@@ -811,6 +811,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			physio = np.array([
 				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
 				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ) 
+				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp', 'raw']) ),
+				np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu', 'raw']) )
 				])
 				
 			mcf = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' ))
@@ -819,10 +821,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 			instruct_times = [[[tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]
 			trial_onset_times = [[[tt[1], 0.0, 1.0]] for tt in r.trial_times]
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
-			
+			blink_times_list = [[[float(tt[0]), tt[1],tt[2]]] for tt in this_blink_events]
+
 			run_design = Design(nii_file.timepoints, nii_file.rtime, subSamplingRatio = 10)
-			# run_design.configure(np.vstack([instruct_times, trial_onset_times]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
-			run_design.configure(instruct_times, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
+			run_design.configure(np.vstack([instruct_times, blink_times_list]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
+			# run_design.configure(instruct_times, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
 			joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf.T, physio]).T)
 			
 			f = pl.figure(figsize = (10, 10))
@@ -870,14 +873,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 			if not hasattr(r, 'trial_times'):
 				self.stimulus_timings()
 			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
+			tasks.pop(tasks.index('fix_no_stim'))
 			output_data = np.zeros(list(masked_input_data.shape) + [len(tasks)])
+			fix_no_stim_TRs = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['fix_no_stim']))
+			which_trs_fix_no_stim = np.array([(tr_times > (t[0] - (dilate_width * nii_file.rtime))) * (tr_times < (t[1] + (dilate_width * nii_file.rtime))) for t in np.array([fix_no_stim_TRs[:,0] , fix_no_stim_TRs[:,0] + fix_no_stim_TRs[:,1]]).T]).sum(axis = 0, dtype = bool)
 			# loop over tasks
 			for i, task in enumerate(tasks):
 				self.logger.info('Z-scoring of task %s' % task)
 				trial_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))
 				which_trs_this_task = np.array([(tr_times > (t[0] - (dilate_width * nii_file.rtime))) * (tr_times < (t[1] + (dilate_width * nii_file.rtime))) for t in np.array([trial_events[:,0] , trial_events[:,0] + trial_events[:,1]]).T]).sum(axis = 0, dtype = bool)
-				output_data[which_trs_this_task,:,i] = (masked_input_data[which_trs_this_task] - masked_input_data[which_trs_this_task].mean(axis = 0)) / masked_input_data[which_trs_this_task].std(axis = 0)
-			
+				output_data[which_trs_this_task,:,i] = (masked_input_data[which_trs_this_task + which_trs_fix_no_stim] - masked_input_data[which_trs_this_task + which_trs_fix_no_stim].mean(axis = 0)) / masked_input_data[which_trs_this_task + which_trs_fix_no_stim].std(axis = 0)
+			output_data[which_trs_fix_no_stim,:,i] = (masked_input_data - masked_input_data.mean(axis = 0)) / masked_input_data.std(axis = 0)
+
+
 			output_data = output_data.mean(axis = -1) * len(tasks)
 			file_output_data = np.zeros(nii_file.data.shape, dtype = np.float32)
 			file_output_data[:,cortex_mask] = output_data
