@@ -549,7 +549,7 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 				if t == u:
 					all_responses_per_task[-1].append(self.trials[i].responses) # responses is een lijst van Response objecten.
 		
-	def trial_times(self, stim_offsets = [1.0, 0.0]):
+	def trial_times(self, stim_offsets = [0.0, 0.0]):
 		if not hasattr(self, 'trials'):
 			self.convert_events()
 		self.trial_times = []

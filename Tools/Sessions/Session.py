@@ -202,15 +202,6 @@ class Session(PathConstructor):
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
 		
-		# session dictionary:
-		try:
-			self.sessions = np.unique(np.array([r.session for r in self.runList]))
-			self.sessionDict = {}
-			for s in self.sessions:
-				if s != '':
-					self.sessionDict.update({s: [hit.indexInSession for hit in filter(lambda x: x.session == s, [r for r in self.runList])]})
-		except KeyError:
-			pass
 			
 	def import_all_edf_data(self, aliases):
 		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """
@@ -367,7 +358,8 @@ class Session(PathConstructor):
 			subprocess.Popen('cp ' + flRT1.referenceFileName + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 			
 			# now take the firstFunc and create an example_func for it. 
-			subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf','meanvol'], base = 'firstFunc' ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
+			if not 'inplane_anat' in self.scanTypeList:
+				subprocess.Popen('cp ' + self.runFile(stage = 'processed/mri/reg', postFix = ['mcf','meanvol'], base = 'firstFunc' ) + ' ' + os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'example_func.nii.gz' ), shell=True, stdout=PIPE).communicate()[0]
 		
 		# having registered everything (AND ONLY AFTER MOTION CORRECTION....) we now construct masks in the functional volume
 		if makeMasks:
@@ -431,7 +423,7 @@ class Session(PathConstructor):
 		if self.parallelize:
 			# tryout parallel implementation - later, this should be abstracted out of course. 
 			ppservers = ()
-			job_server = pp.Server(ppservers=ppservers)
+			job_server = pp.Server(ppservers=ppservers, secret='mc')
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
 #			ppResults = [job_server.submit(mcf.execute,(), (), ("Tools","Tools.Operators","Tools.Sessions.MCFlirtOperator","subprocess",)) for mcf in mcOperatorList]
 			ppResults = [job_server.submit(ExecCommandLine,(mcf.runcmd,),(),('subprocess','tempfile',)) for mcf in mcOperatorList]
@@ -906,7 +898,8 @@ class Session(PathConstructor):
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
 				fO = FlirtOperator(inputObject = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ),  referenceFileName = self.runFile(stage = 'processed/mri', run = r ))
-				fO.configureApply( transformMatrixFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res'] ) ) 
+				# fO.configureApply( transformMatrixFileName = os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res'] ) ) 
+				fO.configureApply( transformMatrixFileName = None, outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res'] ) ) 
 				cmds.append(fO.runcmd)
 		
 		# run all of these resampling commands in parallel

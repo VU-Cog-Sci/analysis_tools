@@ -19,6 +19,8 @@ from nifti import *
 from Operator import *
 from ..log import *
 
+from IPython import embed as shell
+
 
 ### Execute program in shell:
 def ExecCommandLine(cmdline):
@@ -143,7 +145,7 @@ class FlirtOperator( CommandLineOperator ):
 		self.referenceFileName = referenceFileName
 		self.costFunction = costFunction
 
-	def configureApply(self, transformMatrixFileName, outputFileName = None, sinc = True):
+	def configureApply(self, transformMatrixFileName = None, outputFileName = None, sinc = True):
 		"""
 		apply runs flirt's applyxfm argument.
 		It takes an input matrix and a reference file in order to use transformMatrix
@@ -158,7 +160,8 @@ class FlirtOperator( CommandLineOperator ):
 		applycmd = self.cmd + ' -applyxfm'
 		applycmd += ' -in ' + self.inputFileName
 		applycmd += ' -ref ' + self.referenceFileName
-		applycmd += ' -init ' + self.transformMatrixFileName
+		if transformMatrixFileName != None:
+			applycmd += ' -init ' + self.transformMatrixFileName
 		applycmd += ' -o ' + self.outputFileName
 
 		if sinc:
@@ -458,9 +461,9 @@ class FEATOperator( CommandLineOperator ):
 		self.runcmd = runcmd
 
 class RETROICOROperator( CommandLineOperator ):
-	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	"""MatlabOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -r ', **kwargs)
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c /home/shared/Niels_UvA/matlab_scripts/license.dat -r ', **kwargs)
 		self.m_file = self.inputObject
 
 	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):
@@ -487,7 +490,6 @@ class RETROICOROperator( CommandLineOperator ):
 		if not waitForExecute:
 			runcmd += ' & '
 		self.runcmd = runcmd
-
 
 class retMapRun(object):
 	def   __init__(self, ID, stimType, direction, TR, niiFilePath, delay = 4.0, nSkip = 12, nrCycles = 6):
@@ -910,7 +912,7 @@ class ReorientOperator( CommandLineOperator ):
 		"""
 		"""
 		super(ReorientOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
-
+	
 	def configure(self, outputFileName = None):
 		self.outputFileName = outputFileName
 		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName

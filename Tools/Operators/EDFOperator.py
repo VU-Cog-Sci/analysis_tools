@@ -165,10 +165,11 @@ class EDFOperator( Operator ):
 		self.stop_trial_strings = re.findall(re.compile(stop_re), self.message_string)
 		
 		if len(self.start_trial_strings) > 0:	# check whether there are any trials here. 
+			
 			self.trial_starts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.start_trial_strings])
 			self.trial_ends = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stop_trial_strings])
 			
-			if len(self.trial_starts) != len(self.trial_ends):
+			if 2 * len(self.trial_starts) == len(self.trial_ends):
 				self.trial_ends = self.trial_ends[::2]
 			
 			self.nr_trials = len(self.stop_trial_strings)

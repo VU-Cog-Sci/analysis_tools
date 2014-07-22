@@ -133,7 +133,7 @@ class SingleBBRewardSession(SingleRewardSession):
 		nifti_files_dict = dict(zip(['_'.join(fn.split('/')[-2:]) for fn in allFileNames] , [NiftiImage(fn) for fn in allFileNames]))
 			
 		this_run_group_name = 'deconv_results'
-		# h5file.removeNode(where = '/', name = this_run_group_name, recursive=1)
+		# h5file.remove_node(where = '/', name = this_run_group_name, recursive=1)
 		try:
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			self.logger.info('deconvolution results file already in ' + self.hdf5_filename)
@@ -153,14 +153,14 @@ class SingleBBRewardSession(SingleRewardSession):
 				
 			for (i, sf) in enumerate(nifti_files_dict.keys()):
 				try:
-					h5file.removeNode(where = thisRunGroup, name = sf[:-7].replace('%',''))
+					h5file.remove_node(where = thisRunGroup, name = sf[:-7].replace('%',''))
 				except NoSuchNodeError:
 					pass
 				# loop over stat_files and rois
 				# to mask the stat_files with the rois:
 				imO = ImageMaskingOperator( inputObject = nifti_files_dict[sf], maskObject = roi, thresholds = [0.0] )
 				these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-				h5file.createArray(thisRunGroup, sf[:-7].replace('%',''), these_roi_data.astype(np.float32), roi_name + ' data from ' + nifti_files_dict[sf].filename)
+				h5file.create_array(thisRunGroup, sf[:-7].replace('%',''), these_roi_data.astype(np.float32), roi_name + ' data from ' + nifti_files_dict[sf].filename)
 			
 		h5file.close()
 	
@@ -266,7 +266,7 @@ class SingleBBRewardSession(SingleRewardSession):
 					# to mask the stat_files with the rois:
 					imO = ImageMaskingOperator( inputObject = stat_nii_files[i], maskObject = roi, thresholds = [0.0] )
 					these_roi_data = imO.applySingleMask(whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = True)
-					h5file.createArray(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
+					h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 		h5file.close()
 	
 	def deconvolve_roi(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'mean'):
@@ -336,7 +336,7 @@ class SingleBBRewardSession(SingleRewardSession):
 			nuisance_design.configure(np.array([np.hstack(blink_events)]))
 			# shell()
 			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix)
+			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
 			# shell()
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
@@ -426,9 +426,11 @@ class SingleBBRewardSession(SingleRewardSession):
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean'):
 		results = []
 		for roi in rois:
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type))
-			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type))
+			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'fix_silence', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
+			results.append(self.deconvolve_roi(roi, threshold, mask_type = 'fix_reward', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 		
@@ -445,11 +447,12 @@ class SingleBBRewardSession(SingleRewardSession):
 		
 		for r in results:
 			try:
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type)
-				reward_h5file.removeNode(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run')
+				# pass
 			except NoSuchNodeError:
 				pass
-			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			reward_h5file.createArray(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
