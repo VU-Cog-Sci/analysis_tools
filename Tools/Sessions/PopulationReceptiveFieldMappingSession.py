@@ -1351,7 +1351,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				s.set_xlabel('eccentricity of %s condition'%base_task_condition)
 				s.set_ylabel(res_type)
 
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '4_vars_25x25.pdf'))
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM' + roi + '.pdf'))
 			pl.close()
 			
 			# shell()
@@ -1414,7 +1414,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			s.set_title('Eccentricity difference with fix')
 			s.set_xticklabels( (comparison_task_conditions) )
 			
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'displacement_' + roi + '.pdf'))
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', '/v1_45*45_noGLM_displacement' + roi + '.pdf'))
 			pl.close()
 	
 	def ecc_surf_correlations(self, condition = 'PRF', corr_threshold = 0.1, rois = []):
