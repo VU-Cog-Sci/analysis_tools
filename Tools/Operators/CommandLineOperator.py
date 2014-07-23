@@ -463,7 +463,7 @@ class FEATOperator( CommandLineOperator ):
 class RETROICOROperator( CommandLineOperator ):
 	"""MatlabOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
 	def __init__(self, inputObject, **kwargs):
-		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c /home/shared/Niels_UvA/matlab_scripts/license.dat -r ', **kwargs)
+		super(RETROICOROperator, self).__init__(inputObject = inputObject, cmd = 'matlab -nodesktop -nosplash -c ' + os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/matlab_license.dat') + ' -r ', **kwargs)
 		self.m_file = self.inputObject
 
 	def configure(self, REDict = {}, retroicor_m_filename = '', waitForExecute = False):

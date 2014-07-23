@@ -1003,3 +1003,48 @@ class Session(PathConstructor):
 			
 			for r in [self.runList[i] for i in self.conditionDict[condition]]:
 				self.retroicor_check(r)
+		
+		
+	def fRMI_quality(self):
+		
+		# ----------------------------------------
+		# Run fMRI data quality check:           -
+		# ----------------------------------------
+
+		matlab_script = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/fMRI_quality/fMRI_quality_template.m')
+		for er in self.scanTypeDict['epi_bold']:
+			REDict = {
+			'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = self.runList[er]),
+			'---FUNC_FILE_DIR---':os.path.split(self.runFile(stage = 'processed/mri', run = self.runList[er]))[0],
+			}
+			qcheck = RETROICOROperator(inputObject = matlab_script)
+			if self.runList[er] == [self.runList[i] for i in self.scanTypeDict['epi_bold']][-1]:
+				qcheck.configure(REDict = REDict, retroicor_m_filename = os.path.split(self.runFile(stage = 'processed/mri', run = self.runList[er]))[0] + '/fMRI_quality_filled_in.m', waitForExecute = True)
+			else:
+				qcheck.configure(REDict = REDict, retroicor_m_filename = os.path.split(self.runFile(stage = 'processed/mri', run = self.runList[er]))[0] + '/fMRI_quality_filled_in.m', waitForExecute = False)
+			qcheck.execute()
+		
+		# ----------------------------------------
+		# Move into figures folder:              -
+		# ----------------------------------------
+		
+		import time as time
+		time.sleep(10)
+		
+		# makedir:
+		fig_dir = self.stageFolder(stage = 'processed/mri/figs/') + 'quality_check/'
+		try:
+			os.system('rm -rf ' + fig_dir)
+		except OSError:
+			pass
+		subprocess.Popen('mkdir ' +  fig_dir, shell=True, stdout=PIPE).communicate()[0]
+		
+		# copy
+		files = ['h_m_bkg', 'h_m_gho', 'h_m_obj_gho', 'h_m_obj', 'h_roi_loc', 'h_spikes']
+		for er in self.scanTypeDict['epi_bold']:
+			for file in files:
+				paths = os.path.split(self.runFile(stage = 'processed/mri', run = self.runList[er]))
+				copy_in = paths[0] + '/qReport_' + paths[1].split('.')[0] + '/figures/' + file + '.png'
+				copy_out = fig_dir + '/' + file + str(self.runList[er].ID) + '.png'
+				subprocess.Popen('cp ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
+	

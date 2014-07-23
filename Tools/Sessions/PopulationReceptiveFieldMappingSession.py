@@ -1084,8 +1084,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			np.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition), z_data[selected_tr_times])
 	
-	
-	
 	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 0.0, condition = 'PRF'):
 		"""docstring for results_to_surface"""
 		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/%s/'%condition), file_name + '.nii.gz'))
@@ -1131,7 +1129,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# voxels_to_plot = [187,895,546,477,253,162,754,298,175,184,257,948,759,864,253,7789,456,7854,5368,1459,5842,8009,5845,6589,7458,6456,7846,5792,456,2545,784,657,95,4,2,875,98,46,533,6,5]
 			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on = fit_on, z_thresh = z_thresh, cond=cond,voxel_no=i) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
 			# for i in [45,65,87,90,354,765,578]:#voxels_to_plot:#,175,184]:
-				# analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on=fit_on,z_thresh=z_thresh, cond=task_condition,voxel_no=i)
+			# 	analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on=fit_on,z_thresh=z_thresh, cond=task_condition,voxel_no=i)
 			# max_comp_gauss, max_com_abs, surf_gauss, surf_mask, vol, EV
 			surf_gauss = np.real(res)[:,2]
 			surf_mask = np.real(res)[:,3]
@@ -1165,15 +1163,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
 			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + '.nii.gz'))
 		
-		# self.logger.info('converting prf values to surfaces')
-		# for sm in [0,2,5]: # different smoothing values.
-		# 	# reproject the original stats
-		# 	self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
-		# 	# and the spatial values
-		# 	self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
-		#
-		# 	# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
-		# 	self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
+		
+		
+		self.logger.info('converting prf values to surfaces')
+		for sm in [0,2,5]: # different smoothing values.
+			# reproject the original stats
+			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
+			# and the spatial values
+			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
+
+			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
 
 			
 	def surface_to_polar(self, filename, condition = 'PRF'):
