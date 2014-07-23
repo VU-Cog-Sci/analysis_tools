@@ -917,6 +917,53 @@ class Session(PathConstructor):
 				os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
 	
+	def resample_epis2(self, conditions=['PRF'], postFix=['mcf']):
+		"""resample_epi resamples the mc'd epi files back to their functional space."""
+		
+		postFix_hr = postFix.append('hr')
+		postFix_lr = postFix.append('lr')
+		
+		# rename motion corrected nifti to nifti_hr (for high res):
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
+				os.system('mv ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix) + ' ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_hr) )
+		
+		# resample:
+		cmds = []
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
+				inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_hr)
+				outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_lr)
+				fmO = FSLMathsOperator(inputObject=inputObject)
+				fmO.configure(outputFileName=outputObject, **{'-subsamp2offc': ''})
+				cmds.append(fmO.runcmd)
+		
+		# run all of these commands in parallel
+		ppservers = ()
+		job_server = pp.Server(ppservers=ppservers)
+		self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+		ppResults = [job_server.submit(ExecCommandLine,(fo,),(),('subprocess','tempfile',)) for fo in cmds]
+		for fo in ppResults:
+			fo()
+			
+		# fix the 4th dimension, that is TR:
+		cmds = []
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
+				pixdim1 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[0])
+				pixdim2 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[1])
+				pixdim3 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[2])
+				pixdim4 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[3])
+				cmds.append('fslchpixdim ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_lr) + ' ' + pixdim1 + ' ' + pixdim2 + ' ' + pixdim3 + ' ' + pixdim4)
+			
+		# run all of these commands in parallel
+		ppservers = ()
+		job_server = pp.Server(ppservers=ppservers)
+		self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+		ppResults = [job_server.submit(ExecCommandLine,(fo,),(),('subprocess','tempfile',)) for fo in cmds]
+		for fo in ppResults:
+			fo()
+	
 	def create_dilated_cortical_mask(self, dilation_sd = 0.5, label = 'cortex'):
 		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
 		it then smoothes this mask with fslmaths, using a gaussian kernel. 
