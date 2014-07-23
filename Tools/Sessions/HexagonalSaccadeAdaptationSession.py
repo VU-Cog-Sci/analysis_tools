@@ -424,8 +424,9 @@ class HexagonalSaccadeAdaptationSession(object):
 		
 		return (ar, br, xr, 10**ar, 10**br, 10**xr)
 	
-	def amplitudes_all_adaptation_blocks(self, which_amplitude = 'raw_amplitude', acceptance_amplitude_range = [5.0, 13.0]):
+	def amplitudes_all_adaptation_blocks(self, measures):
 		""""""
+
 		alias_amps = []
 		alias_fitted_amps = []
 		for alias in self.conditions.keys():
@@ -434,53 +435,50 @@ class HexagonalSaccadeAdaptationSession(object):
 				# pixels per degree
 				parameters = h5_file['%s/parameters'%alias]
 				pixels_per_degree = parameters['pixels_per_degree'][0]
-				
+			
 			nr_saccs_in_session = saccade_table.shape[0]
-			
-			ad_bl_tr = []
-			f_ad_bl_tr = []
-			ad_for_trial_sel =[]
-			for i in range(self.nr_blocks):
-				if which_amplitude == 'peak_velocity':
+			which_trials_okay, vel_range, amp_range = self.trial_selection(alias = alias)
+			# self.trial_selection(alias = alias, amplitude_range = acceptance_amplitude_range, vel_range = [100,600],no_std_vel_cutoff = 3, no_std_gaze_offset = 3)
+			# shell()
+		
+			for which_amplitude in measures:
+				ad_bl_tr = []
+				f_ad_bl_tr = []
+				ad_for_trial_sel =[]
+				for i in range(self.nr_blocks):
+					# if which_amplitude == 'peak_velocity':
 					if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
 						ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
 					else:
 						ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
-						ad_for_trial_sel.append(np.array(saccade_table['raw_amplitude'][(saccade_table['block'] == i)]))
-						which_trials_okay = (ad_for_trial_sel[i] > acceptance_amplitude_range[0]) * (ad_for_trial_sel[i] < acceptance_amplitude_range[1])
+					# do some fitting of power-law
+					f_ad_bl_tr.append( [self.fit_adaptation_timecourse_one_block_powerlaw(np.array(ad_bl_tr[i]), which_trials_okay[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block]), self.fit_adaptation_timecourse_one_block_exponential(np.array(ad_bl_tr[i])	, which_trials_okay[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block])] )
+		
+				alias_amps.append(ad_bl_tr)
+				alias_fitted_amps.append(f_ad_bl_tr)
+		
+				f = pl.figure(figsize = (12,4))
+				s1 = f.add_subplot(111)
+				for i in range(len(ad_bl_tr)):
+					s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block)[which_trials_okay[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block]], ad_bl_tr[i][which_trials_okay[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block]], self.all_block_colors[i] + 'o', mew = 1.75, alpha = 0.875, mec = 'w', ms = 6  )
+					s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][0][-1], self.all_block_colors[i] + '--', alpha = 0.75, linewidth = 4.75 )
+					s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][1][-1], self.all_block_colors[i] + ':', alpha = 0.75, linewidth = 4.75 )
+				simpleaxis(s1)
+				spine_shift(s1)
+
+				s1.set_xticks(np.arange(0,self.nr_trials_per_block * self.nr_blocks,self.nr_trials_per_block))
+				s1.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+				if which_amplitude != 'peak_velocity':
+					s1.axhline(10.0, linewidth = 0.25)
+					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,amp_range[0],amp_range[1]])
+					s1.set_ylabel('saccade gain')
 				else:
-					if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
-						ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))
-					else:
-						ad_bl_tr.append(np.array(saccade_table[which_amplitude][(saccade_table['block'] == i)]))
-						which_trials_okay = (ad_bl_tr[i] > acceptance_amplitude_range[0]) * (ad_bl_tr[i] < acceptance_amplitude_range[1])
-				# do some fitting of power-law
-				f_ad_bl_tr.append( [self.fit_adaptation_timecourse_one_block_powerlaw(ad_bl_tr[i], which_trials_okay), self.fit_adaptation_timecourse_one_block_exponential(ad_bl_tr[i], which_trials_okay)] )
-				
-			alias_amps.append(ad_bl_tr)
-			alias_fitted_amps.append(f_ad_bl_tr)
-			
-			f = pl.figure(figsize = (12,4))
-			s1 = f.add_subplot(111)
-			for i in range(len(ad_bl_tr)):
-				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block)[which_trials_okay], ad_bl_tr[i][which_trials_okay], self.all_block_colors[i] + 'o', mew = 1.75, alpha = 0.875, mec = 'w', ms = 6  )
-				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][0][-1], self.all_block_colors[i] + '--', alpha = 0.75, linewidth = 4.75 )
-				s1.plot(self.nr_trials_per_block * i + np.arange(self.nr_trials_per_block), f_ad_bl_tr[i][1][-1], self.all_block_colors[i] + ':', alpha = 0.75, linewidth = 4.75 )
-			simpleaxis(s1)
-			spine_shift(s1)
-	
-			s1.set_xticks(np.arange(0,self.nr_trials_per_block * self.nr_blocks,self.nr_trials_per_block))
-			s1.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-			if which_amplitude != 'peak_velocity':
-				s1.axhline(10.0, linewidth = 0.25)
-				s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,acceptance_amplitude_range[0],acceptance_amplitude_range[1]])
-				s1.set_ylabel('saccade gain')
-			else:
-				s1.set_ylabel('peak velocity')
-			s1.set_xlabel('trials within blocks, ' + alias)
-			s1.set_title(alias + '\nTrials + fit')
-			
-			pl.savefig(os.path.join(self.base_directory, 'figs', 'adap_time_course_%s_%s.pdf'%(alias, which_amplitude)))
+					s1.set_ylabel('peak velocity')
+					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,vel_range[0],vel_range[1]])
+				s1.set_xlabel('trials within blocks, ' + alias)
+				s1.set_title(alias + '\nTrials + fit')
+		
+				pl.savefig(os.path.join(self.base_directory, 'figs', 'adap_time_course_%s_%s.pdf'%(alias, which_amplitude)))
 			
 		return alias_amps, alias_fitted_amps
 		
