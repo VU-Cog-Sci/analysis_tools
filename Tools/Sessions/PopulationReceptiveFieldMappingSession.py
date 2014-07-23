@@ -202,7 +202,7 @@ def normalize_histogram(input_array, mask_array = None):
 # 		
 # 	return max_comp, surf
 
-def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, cond = cond, z_thresh=1.5, fit_on='smoothed_betas', stimulus_area_in_degrees = 27):
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, cond = cond, z_thresh=1.5, fit_on='smoothed_betas'):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	
@@ -261,9 +261,11 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		ecc_gauss = np.abs(max_comp_gauss)
 		ecc_abs = np.abs(max_comp_abs)
 		# surf_gauss = 2*np.sqrt(2*(math.log(2)))*sd
-		surf_gauss = (np.pi * (params[4]*2) * (params[5]*2)) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * stimulus_area_in_degrees
-		surf_mask = label_4_surf.sum().astype('float32') / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * stimulus_area_in_degrees
-
+		surf_gauss = (np.pi * (params[4]*2) * (params[5]*2)) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
+		sd_gauss = np.sqrt(surf_gauss / np.pi)
+		fwhm = 2.0*np.sqrt(2.0*np.log(2))*sd_gauss
+		surf_mask = label_4_surf.sum().astype('float32') / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
+		sd_mask = np.sqrt(surf_mask / np.pi)
 		vol = 2*surf_gauss*(params[1]-params[0])
 		# shell()
 		# if np.all([ecc_gauss<0.7,ecc_abs<0.7,fitimage != []]):
@@ -283,7 +285,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		# 	pl.show()
 			# pl.close()
 						
-	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV
+	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_mask
 	
 def moments(data,circle,rotate,vheight,estimator=median,voxel_no=1,**kwargs):
 	"""Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
@@ -597,19 +599,21 @@ class PopulationReceptiveFieldMappingSession(Session):
 		- duration of blink
 		Timings of the blinks are corrected for the start of the scan by the nr_dummy_scans
 		"""
-		
+
+	
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			# shell()
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			tr = round(niiFile.rtime*1)/1000.0
 			with open (self.runFile(stage = 'processed/eye', run = r, extension = '.msg')) as inputFileHandle:
 				msg_file = inputFileHandle.read()
-			
+
+
 			sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)'
 			fix_re = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?'
 			blink_re = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'
 			start_eye = 'START\t(-?\d+\.?\d*)'
-			
+
 			# self.logger.info('reading eyelink events from %s', os.path.split(self.message_file)[-1])
 			saccade_strings = re.findall(re.compile(sacc_re), msg_file)
 			fix_strings = re.findall(re.compile(fix_re), msg_file)
@@ -627,7 +631,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
 			eye_blinks = [[((self.blinks_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.blinks_from_message_file[i]['duration']/1000,1] for i in range(len(self.blinks_from_message_file)) if (self.blinks_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000)]
 			saccades = [[((self.saccades_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.saccades_from_message_file[i]['duration']/1000,1] for i in range(len(self.saccades_from_message_file)) if np.all([(self.saccades_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000), (self.saccades_from_message_file[i]['length'] > length_thresh)]) ]
-			
+		
 			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']), np.array(eye_blinks), fmt = '%3.2f', delimiter = '\t')
 			# np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
 			
@@ -733,7 +737,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]) 
+			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1], 1.5, 1.0]] for tt in r.trial_times]) 
 			button_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[1]), 0.5, 1.0]] for tt in r.all_button_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
 			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']))
@@ -816,13 +820,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' ))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			instruct_times = [[[tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]
-			trial_onset_times = [[[tt[1], 0.0, 1.0]] for tt in r.trial_times]
+			instruct_times = [[[tt[1] - 3.0, 3.0, 1.0]] for tt in r.trial_times]
+			trial_onset_times = [[[tt[1], 0.5, 1.0]] for tt in r.trial_times]
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
 			
 			run_design = Design(nii_file.timepoints, nii_file.rtime, subSamplingRatio = 10)
-			# run_design.configure(np.vstack([instruct_times, trial_onset_times]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
-			run_design.configure(instruct_times, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
+			run_design.configure(np.vstack([instruct_times, trial_onset_times]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
 			joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf.T, physio]).T)
 			
 			f = pl.figure(figsize = (10, 10))
@@ -910,7 +913,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			# shell()
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.1)
+			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.15)
 			mr.simulate_run( )
 			self.stim_matrix_list.append(mr.run_matrix)
 			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
@@ -1137,6 +1140,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			surf_mask = np.real(res)[:,3]
 			vol = np.real(res)[:,4]
 			EV = np.real(res)[:,5]
+			sd_gauss = np.real(res)[:,6]
+			sd_surf = np.real(res)[:,7]
+			fwhm = np.real(res)[:,8]
 
 			max_comp_gauss = np.array(res)[:,0]
 			polar_gauss = np.angle(max_comp_gauss)
@@ -1152,12 +1158,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			# shell()
 
-			prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV])
+			prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_surf, fwhm])
 
-			empty_res = np.zeros([12] + [np.array(stats_data.shape[1:]).prod()])
+			empty_res = np.zeros([len(prf_res)] + [np.array(stats_data.shape[1:]).prod()])
 			empty_res[:,(stat_mask * anat_mask).ravel()] = prf_res
 
-			all_res = empty_res.reshape([12] + list(stats_data.shape[1:]))
+			all_res = empty_res.reshape([len(prf_res)] + list(stats_data.shape[1:]))
 
 			self.logger.info('saving prf parameters')
 
@@ -1294,7 +1300,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1):
 		self.logger.info('starting prf data correlations from region %s'%roi)
-		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11} 
+		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11, 'sd_gauss':12,'sd_surf':13} 
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
@@ -1326,7 +1332,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,len(comparison_task_conditions))]
 			mcs = ['o', 'v', 's', '>', '<']
 			f = pl.figure(figsize = (16,8))
-			for j, res_type in enumerate(['ecc_gauss','surf_gauss']): # , 'ecc'
+			for j, res_type in enumerate(['ecc_gauss','sd_gauss']): # , 'ecc'
 				s = f.add_subplot(1,2,1+j)
 				for i, tc in enumerate(comparison_task_conditions):
 					pl.plot(base_task_data[:,results_frames['ecc_gauss']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
@@ -1335,7 +1341,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				s.set_title(roi + ' ' + res_type)
 
 				if  j==1:
-					s.set_ylim([0,15])
+					s.set_ylim([1.2,1.6])
 				else:
 					s.set_ylim([0,0.6])
 				leg = s.legend(fancybox = True, loc = 'best')
@@ -1352,7 +1358,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				s.set_xlabel('eccentricity of %s condition'%base_task_condition)
 				s.set_ylabel(res_type)
 
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM' + roi + '.pdf'))
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '_45*45_noGLM.pdf'))
 			pl.close()
 			
 			# shell()
@@ -1365,7 +1371,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			median_eccen_dif = []
 			sd_eccen_dif = []
 			
-			for i, tc in enumerate(['color','orient','sf','speed']):
+			for i, tc in enumerate(['fix']):#'color','orient','sf','speed']):
 
 				if i == 0 or i == 1:
 					s=f.add_subplot(2,3,i+1)
@@ -1415,7 +1421,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			s.set_title('Eccentricity difference with fix')
 			s.set_xticklabels( (comparison_task_conditions) )
 			
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', '/v1_45*45_noGLM_displacement' + roi + '.pdf'))
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM_displacement' + roi + '.pdf'))
 			pl.close()
 	
 	def ecc_surf_correlations(self, condition = 'PRF', corr_threshold = 0.1, rois = []):
