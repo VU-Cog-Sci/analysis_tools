@@ -1,0 +1,91 @@
+NIfTImatlab
+===========
+
+Classes and functions to read and  write NIfTI image files using Matlab (Version
+7, R14, or later). 
+
+The NIfTI header is handled by  the class "niftiheader". The file I/O is handled
+by the  class "niftifile", which contains  an object of  type "niftiheader". All
+operations should be performed via the "niftifile" object. 
+
+On-line help on the class can be obtained with "help niftifile".
+
+Constructors
+------------
+
+nfd = niftifile()	      Create object with default values for header. File
+			      name will have to be set with "name" assignment. 
+
+nfd = niftifile(NAME)	      Create object with default values  and set file to
+			      NAME. If extension is  present, nifti type will be
+			      inferred with precedence  given to NIfTI dual file
+			      over ANALYZE 7.5. If no extension given, type will
+			      have to be set with "type" assignment. 
+
+nfd = niftifile(NAME,INIOB)   Create object using  values from INIOB object, set
+			      file to NAME. If  name contains extension which is
+			      not compatible  with type  in INIOB, new type will
+			      be inferred  with  precedence given  to NIfTI dual
+			      file over ANALYZE 7.5.  
+
+Constructors return a niftifile object to be used for all I/O operations.
+
+
+File Open and Close
+-------------------
+
+The functions  overload the built-in  matlab "fopen" and "fclose"  functions and
+will be invoked when using a niftifile object as their first argument. 
+
+nfd = fopen(nfd, mode)	      - nfd : the niftifile object
+			      - mode: "read", "write"
+
+nfd = fclose(nfd)             - nfd : the niftifile object
+
+The functions returns the modified niftifile object.
+
+Before using the function, the niftifile object needs to be created using of the
+constructors.  
+
+In read mode, the  function will open the file and read  the header. To read the
+data use "fread()" ("help niftifile/fread"). 
+        
+In write mode, the  function will create the file and write  the header that was
+created in memory. The header must be properly filled with the necessary values,
+some basic checking  for a properly formed header is performed,  but it will not
+be able to detect if some fields do not have the right values. To write data use
+"fwrite()" ("help niftifile/write"). 
+
+
+Read/Write
+----------  
+
+The functions overload  the built-in matlab "fread"  and  "fwrite" functions and
+will be invoked when using a niftifile object as their first argument. 
+
+[nfd, data, size] = fread(nfd, numpix) - nfd   : the niftifile object
+				       - numpix: number of pixels to read 
+
+The function returns  the modified niftifile object (nfd),  the data read (data)
+and the number of pixels read (size).
+
+
+[nfd, size] = fwrite(nfd, data, numpix) - nfd   : the niftifile object
+                                        - data  : the data to be written
+				        - numpix: number of pixels to read 
+
+The  function returns the  modified  niftifile  object (nfd)  and the  number of
+pixels written (size).
+
+
+Display and Assignment of members
+---------------------------------
+
+The standard  matlab display  command applied to  niftifile object  will display
+the value  of the  members of the  niftiheader object  that is contained  in the
+niftifile object.
+
+The values of  the niftiheader object can be modified  using the standard matlab
+assignment operator  ("=") applied  to niftifile object  followed by  the period
+(".") and the  name of the niftiheader member. Changing  the "nifti_type" or the
+"compression" values will change the name of the file to reflect the new type.
