@@ -922,8 +922,6 @@ class Session(PathConstructor):
 		
 		postFix_hr = [pf for pf in postFix]
 		postFix_hr.append('hr')
-		postFix_lr = [pf for pf in postFix]
-		postFix_lr.append('lr')
 		
 		# rename motion corrected nifti to nifti_hr (for high res):
 		for cond in conditions:
@@ -935,7 +933,7 @@ class Session(PathConstructor):
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
 				inputObject = self.runFile(stage = 'processed/mri', run = r, postFix = postFix_hr)
-				outputObject = self.runFile(stage = 'processed/mri', run = r, postFix = postFix_lr)
+				outputObject = self.runFile(stage = 'processed/mri', run = r, postFix = postFix)
 				fmO = FSLMathsOperator(inputObject=inputObject)
 				fmO.configure(outputFileName=outputObject, **{'-subsamp2offc': ''})
 				cmds.append(fmO.runcmd)
@@ -956,7 +954,7 @@ class Session(PathConstructor):
 				pixdim2 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[1])
 				pixdim3 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[2])
 				pixdim4 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[3])
-				cmds.append('fslchpixdim ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix_lr) + ' ' + pixdim1 + ' ' + pixdim2 + ' ' + pixdim3 + ' ' + pixdim4)
+				cmds.append('fslchpixdim ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' ' + pixdim1 + ' ' + pixdim2 + ' ' + pixdim3 + ' ' + pixdim4)
 			
 		# run all of these commands in parallel
 		ppservers = ()
