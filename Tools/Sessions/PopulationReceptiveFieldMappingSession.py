@@ -261,7 +261,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		ecc_gauss = np.abs(max_comp_gauss)
 		ecc_abs = np.abs(max_comp_abs)
 		# surf_gauss = 2*np.sqrt(2*(math.log(2)))*sd
-		surf_gauss = (np.pi * (params[4]*2) * (params[5]*2)) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
+		surf_gauss = (np.pi * (params[4]) * (params[5])) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
 		sd_gauss = np.sqrt(surf_gauss / np.pi)
 		fwhm = 2.0*np.sqrt(2.0*np.log(2))*sd_gauss
 		surf_mask = label_4_surf.sum().astype('float32') / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
@@ -286,7 +286,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 				# pl.show()
 				pl.close()
 						
-	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_mask
+	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_mask, fwhm
 	
 def moments(data,circle,rotate,vheight,estimator=median,voxel_no=1,**kwargs):
 	"""Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
@@ -551,6 +551,7 @@ class PRFModelRun(object):
 		
 		for i in range(len(self.orientation_list)): # trials
 			samples_in_trial = (self.sample_times > (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
+			print samples_in_trial.sum()
 			if self.run.trial_times[i][0] != 'fix_no_stim':
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
 				pt.pass_through()
@@ -876,9 +877,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
 		# loop over runs
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
-			self.logger.info('per-condition Z-score of run %s' % r)
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			tr_times = np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime)
+			self.logger.info('per-condition Z-score of run %s, with %i trs' % (r, nii_file.timepoints))
 			masked_input_data = nii_file.data[:,cortex_mask]
 			if not hasattr(r, 'trial_times'):
 				self.stimulus_timings()
@@ -892,8 +893,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 				self.logger.info('Z-scoring of task %s' % task)
 				trial_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))
 				which_trs_this_task = np.array([(tr_times > (t[0] - (dilate_width * nii_file.rtime))) * (tr_times < (t[1] + (dilate_width * nii_file.rtime))) for t in np.array([trial_events[:,0] , trial_events[:,0] + trial_events[:,1]]).T]).sum(axis = 0, dtype = bool)
-				output_data[which_trs_this_task,:,i] = (masked_input_data[which_trs_this_task + which_trs_fix_no_stim] - masked_input_data[which_trs_this_task + which_trs_fix_no_stim].mean(axis = 0)) / masked_input_data[which_trs_this_task + which_trs_fix_no_stim].std(axis = 0)
-			output_data[which_trs_fix_no_stim,:,i] = (masked_input_data - masked_input_data.mean(axis = 0)) / masked_input_data.std(axis = 0)
+				output_data[which_trs_this_task,:,i] = (masked_input_data[which_trs_this_task] - masked_input_data[which_trs_this_task + which_trs_fix_no_stim].mean(axis = 0)) / masked_input_data[which_trs_this_task + which_trs_fix_no_stim].std(axis = 0)
+			output_data[which_trs_fix_no_stim,:,i] = (masked_input_data[which_trs_fix_no_stim] - masked_input_data.mean(axis = 0)) / masked_input_data.std(axis = 0)
 
 
 			output_data = output_data.mean(axis = -1) * len(tasks)
@@ -1314,7 +1315,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		h5file.close()
 
-	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.6]):
+	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.9]):
 		self.logger.info('starting prf data correlations from region %s'%roi)
 		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11, 'sd_gauss':12,'sd_surf':13} 
 		stats_frames = {'corr': 0, '-logp': 1}
@@ -1356,10 +1357,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 					pl.plot(sm_ecc, np.sqrt(sm_signal/pi), c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
 				s.set_title(roi + ' ' + res_type)
 
-				if  j==1:
-					s.set_ylim([0.85,1.25])
-				else:
-					s.set_ylim([0,0.6])
+				# if  j==1:
+				# 	s.set_ylim([0.85,1.25])
+				# else:
+				# 	s.set_ylim([0,0.6])
 				leg = s.legend(fancybox = True, loc = 'best')
 				leg.get_frame().set_alpha(0.5)
 				if leg:
