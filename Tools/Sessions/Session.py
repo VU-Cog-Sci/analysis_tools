@@ -920,20 +920,20 @@ class Session(PathConstructor):
 	def resample_epis2(self, conditions=['PRF'], postFix=['mcf']):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
 		
-		postFix_hr = postFix.append('hr')
-		postFix_lr = postFix.append('lr')
+		postFix_hr = [pf for pf in postFix]
+		postFix_hr.append('hr')
 		
 		# rename motion corrected nifti to nifti_hr (for high res):
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
-				os.system('mv ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix) + ' ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_hr) )
+				os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix_hr) )
 		
 		# resample:
 		cmds = []
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
-				inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_hr)
-				outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_lr)
+				inputObject = self.runFile(stage = 'processed/mri', run = r, postFix = postFix_hr)
+				outputObject = self.runFile(stage = 'processed/mri', run = r, postFix = postFix)
 				fmO = FSLMathsOperator(inputObject=inputObject)
 				fmO.configure(outputFileName=outputObject, **{'-subsamp2offc': ''})
 				cmds.append(fmO.runcmd)
@@ -950,11 +950,11 @@ class Session(PathConstructor):
 		cmds = []
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
-				pixdim1 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[0])
-				pixdim2 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[1])
-				pixdim3 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[2])
-				pixdim4 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r])).pixdim[3])
-				cmds.append('fslchpixdim ' + self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = postFix_lr) + ' ' + pixdim1 + ' ' + pixdim2 + ' ' + pixdim3 + ' ' + pixdim4)
+				pixdim1 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[0])
+				pixdim2 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[1])
+				pixdim3 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[2])
+				pixdim4 = str(NiftiImage(self.runFile(stage = 'processed/mri', run = r)).pixdim[3])
+				cmds.append('fslchpixdim ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' ' + pixdim1 + ' ' + pixdim2 + ' ' + pixdim3 + ' ' + pixdim4)
 			
 		# run all of these commands in parallel
 		ppservers = ()
