@@ -1094,4 +1094,128 @@ class Session(PathConstructor):
 				copy_in = paths[0] + '/qReport_' + paths[1].split('.')[0] + '/figures/' + file + '.png'
 				copy_out = fig_dir + '/' + file + str(self.runList[er].ID) + '.png'
 				subprocess.Popen('cp ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
+				
+	def B0_unwarping(self, conditions, wfs, etl, acceleration):
+	
+		# ----------------------------------------
+		# Set-up everything for BO unwarping:    -
+		# ----------------------------------------
+
+		# Rescale the values in the nii file to -pi and pi. Use the -odt option of fslmaths to ensure you have floats:
+		# fslmaths $FUNCDIR/"$SUB"_B0_phase -div 100 -mul 3.141592653589793116 -odt float $FUNCDIR/"$SUB"_B0_phase_rescaled
+		for r in self.conditionDict['B0_anat_phs']:
+			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r])
+			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['rescaled'])
+			fmO = FSLMathsOperator(inputObject=inputObject)
+			fmO.configurePi(outputFileName=outputObject, div=100, mul=3.141592653589793116)
+			fmO.execute()
+
+		# Bet:
+		# bet $FUNCDIR/"$SUB"_B0_magnitude $FUNCDIR/"$SUB"_B0_magnitude_brain -m
+		# fslmaths $FUNCDIR/"$SUB"_B0_magnitude_brain_mask -dilM $FUNCDIR/"$SUB"_B0_magnitude_brain_mask
+		for r in self.conditionDict['B0_anat_mag']:
+			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r])
+			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['NB'])
+			better = BETOperator( inputObject = inputObject )
+			better.configure( outputFileName = outputObject )
+			better.execute()
+
+			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['NB', 'mask'])
+			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['NB', 'mask'])
+			fmO = FSLMathsOperator(inputObject=inputObject)
+			fmO.configure(outputFileName=outputObject, **{'-dilM': ''})
+			fmO.execute()
+
+		# Unwrap the data using prelude:
+		# prelude -p $FUNCDIR/"$SUB"_B0_phase_rescaled -a $FUNCDIR/"$SUB"_B0_magnitude -o $FUNCDIR/"$SUB"_fmri_B0_phase_rescaled_unwrapped -m $FUNCDIR/"$SUB"_B0_magnitude_brain_mask
+		for i in range(len(self.conditionDict['B0_anat_mag'])):
+			phasevol = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][i]], postFix=['rescaled'])
+			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][i]])
+			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][i]], postFix=['rescaled', 'unwrapped'])
+			mask = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][i]], postFix=['NB', 'mask'])
+
+			po = PreludeOperator(inputObject=inputObject)
+			po.configure(phasevol=phasevol, outputFileName=outputObject, mask=mask)
+			po.execute()
+
+		# Convert to radials-per-second by multiplying with 200 (because time difference between the two scans is 5 msec):
+		# fslmaths $FUNCDIR/"$SUB"_B0_phase_rescaled_unwrapped -mul 200 $FUNCDIR/"$SUB"_B0_phase_rescaled_unwrapped
+		for r in self.conditionDict['B0_anat_phs']:
+			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['rescaled', 'unwrapped'])
+			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['rescaled', 'unwrapped'])
+			fmO = FSLMathsOperator(inputObject=inputObject)
+			fmO.configure(outputFileName=outputObject, **{'-mul': str(200)})
+			fmO.execute()
+
+		# Reorient high res T1:
+		inputObject = os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' )
+		ro = ReorientOperator(inputObject = inputObject)
+		ro.configure(outputFileName = inputObject)
+		ro.execute()
+
+		# Bet al epi's:
+		for er in self.scanTypeDict['epi_bold']:
+			better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = self.runList[er]) )
+			better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['NB']), **{'-F': ''} )
+			better.execute()
+
+		# ----------------------------------------
+		# Formula:                               -
+		# ----------------------------------------
+
+		effective_echo_spacing = ((1000.0 * wfs)/(434.215 * (etl+1))/acceleration)
+
+		# ----------------------------------------
+		# Do actual B0 unwarping:                -
+		# ----------------------------------------
+	
+		# parameters:
+		effective_echo_spacing = str(effective_echo_spacing)
+		EPI_TE = str(27.63) # where does this comes from?
+		unwarp_direction = 'y'
+		signal_loss_threshold = str(10)
+	
+		# for er in self.scanTypeDict['epi_bold']:
+		for condition in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[condition]]:
+				
+				# remove previous feat directories
+				try:
+					self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
+					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.fsf'))
+				except OSError:
+					pass
+					
+				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_B0/design.fsf'
+				REDict = {
+				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), 
+				# '---MC_REF---':self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] ),
+	
+				'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']), 
+				'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['NB']), 
+				'---HIGHRES_FILES---':os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), 
+	
+				'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
+				'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
+				'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
+				'---EFFECTIVE_ECHO_SPACING---':effective_echo_spacing,
+				'---EPI_TE---':EPI_TE,
+				'---UNWARP_DIREC---':unwarp_direction,
+				'---SIGNAL_LOSS_THRESHOLD---':signal_loss_threshold,
+				}
+	
+				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+				featOp = FEATOperator(inputObject = thisFeatFile)
+				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
+				if r == [self.runList[i] for i in self.scanTypeDict['epi_bold']][-1]:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+				else:
+					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+				# run feat
+				featOp.execute()
+
+				
 	
