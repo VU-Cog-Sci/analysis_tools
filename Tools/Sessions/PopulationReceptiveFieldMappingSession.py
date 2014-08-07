@@ -799,7 +799,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			betas_nii_file.header = nii_file.header
 			betas_nii_file.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['betas']))
 			
-		# shell()	
+		# shell()
 
 	def GLM_for_nuisances_per_run(self, condition = 'PRF', postFix = ['mcf', 'sgtf']):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,

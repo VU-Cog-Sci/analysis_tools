@@ -244,8 +244,10 @@ class ZScoreOperator(ImageOperator):
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
 		stdImage = self.inputObject.data.std(axis = 0)
-		outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
+		# outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
+		outputFile = NiftiImage(((self.inputObject.data) / stdImage).astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
+		
 
 class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 	"""SavitzkyGolayHighpassFilterOperator uses the local regression smoothing savitzky-golay algorithm to smooth the data, which it then subtracts from the data to create a high-pass filtered signal.
