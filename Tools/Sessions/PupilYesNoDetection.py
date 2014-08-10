@@ -37,9 +37,11 @@ from IPython import embed as shell
 
 class pupilPreprocessSession(object):
 	"""pupilPreprocessing"""
-	def __init__(self, subject, experiment_name, project_directory, loggingLevel = logging.DEBUG, sample_rate_new = 50):
+	def __init__(self, subject, experiment_name, experiment_nr, version, project_directory, loggingLevel = logging.DEBUG, sample_rate_new = 50):
 		self.subject = subject
 		self.experiment_name = experiment_name
+		self.experiment = experiment_nr
+		self.version = version
 		try:
 			os.mkdir(os.path.join(project_directory, experiment_name))
 			os.mkdir(os.path.join(project_directory, experiment_name, self.subject.initials))
@@ -62,16 +64,6 @@ class pupilPreprocessSession(object):
 		self.logger.info('starting analysis in ' + self.base_directory)
 		self.sample_rate_new = int(sample_rate_new)
 		self.downsample_rate = int(1000 / sample_rate_new)
-		
-		if self.subject.initials in ('jwg', 'rn', 'dh', 'ab', 'dl'):
-			self.experiment = 1
-		else:
-			self.experiment = 2
-		
-		if self.subject.initials in ('jwg', 'rn', 'dh', 'ab', 'ch', 'dli', 'jw', 'ln', 'td', 'te', 'lm', 'fg', 'tk', 'lms', 'sp', 'so'):
-			self.version = 1
-		else:
-			self.version = 2
 		
 	def create_folder_hierarchy(self):
 		"""createFolderHierarchy does... guess what."""
@@ -123,7 +115,8 @@ class pupilPreprocessSession(object):
 		(v) indicated by subject (only in exp 1)
 		"""
 		
-		self.omission_indices_answer = (self.rt > 4000.0) * (np.array(self.parameters.answer == 0))
+		self.omission_indices_answer = (self.rt > 4000.0)
+		# self.omission_indices_answer = (self.rt > 4000.0) * (np.array(self.parameters.answer == 0))
 		
 		self.omission_indices_sac = np.zeros(self.nr_trials, dtype=bool)
 		middle_x = 0
@@ -180,8 +173,10 @@ class pupilPreprocessSession(object):
 			sacs_dur[t] = sum(self.saccade_durs[saccades_in_trial_indices])
 			if sacs_nr[t] != 0:
 				sacs_vel[t] = max(self.saccade_peak_velocities[saccades_in_trial_indices])
-		
-		present = np.array(self.parameters['target_present_in_stimulus'] == 1)
+		if self.version == 3:
+			present = np.array(self.parameters['signal_present'] == 1)
+		else:
+			present = np.array(self.parameters['target_present_in_stimulus'] == 1)
 		correct = np.array(self.parameters['correct'] == 1)
 		yes = present * correct + -present * -correct
 		hit = present * yes
@@ -274,13 +269,18 @@ class pupilPreprocessSession(object):
 		
 		# problem trials:
 		answers = np.array(self.parameters.answer)
-		problem_trials = np.where(answers == 0)[0]
+		if self.version == 3:
+			problem_trials = np.where(answers == -1)[0]
+		else:
+			problem_trials = np.where(answers == 0)[0]
 		
-		# shell()
+		print
+		print answers
+		print
 		
 		# fix:
 		for i in problem_trials:
-				
+			
 			events = self.events[(self.events.EL_timestamp > self.trial_starts[i]) * (self.events.EL_timestamp < self.trial_ends[i])]
 			response_times = np.array(events[((events.key == 275) + (events.key == 276)) * (events.up_down == 'Down')].EL_timestamp)
 			
@@ -498,9 +498,10 @@ class pupilPreprocessSession(object):
 		
 class pupilAnalyses(object):
 	"""pupilAnalyses"""
-	def __init__(self, subject, experiment_name, project_directory, aliases, sample_rate_new=50):
+	def __init__(self, subject, experiment_name, experiment_nr, project_directory, aliases, sample_rate_new=50):
 		self.subject = subject
 		self.experiment_name = experiment_name
+		self.experiment = experiment_nr
 		self.project_directory = project_directory
 		self.base_directory = os.path.join(self.project_directory, self.experiment_name, self.subject.initials)
 		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
@@ -793,7 +794,7 @@ class pupilAnalyses(object):
 		
 		
 class pupilAnalysesAcross(object):
-	def __init__(self, subjects, experiment_name, project_directory, sample_rate_new=50):
+	def __init__(self, subjects, experiment_name, experiment_nr, project_directory, sample_rate_new=50):
 		
 		self.subjects = subjects
 		self.nr_subjects = len(self.subjects)

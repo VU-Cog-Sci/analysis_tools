@@ -273,7 +273,10 @@ class EyeSignalOperator(Operator):
 		spline_interpolation_points is an 2 by X list detailing the data points around the blinks (in s offset from blink start and end) that should be used for fitting the interpolation spline.
 		"""
 		import copy
+		
 		self.interpolated_pupil = copy.copy(self.raw_pupil[:])
+		self.interpolated_x = copy.copy(self.raw_gazeXY[:,0])
+		self.interpolated_y = copy.copy(self.raw_gazeXY[:,1])
 		
 		if method == 'spline':
 			points_for_interpolation = np.array(np.array(spline_interpolation_points) * self.sample_rate, dtype = int)
@@ -289,6 +292,8 @@ class EyeSignalOperator(Operator):
 			points_for_interpolation = np.array([self.blink_starts, self.blink_ends], dtype=int).T + np.array(lin_interpolation_points).T
 			for itp in points_for_interpolation:
 				self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
+				self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
+				self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 		
 	def filter_pupil(self, hp = 0.01, lp = 4.0):
 		"""band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. after interpolation."""
