@@ -252,8 +252,12 @@ class EyeSignalOperator(Operator):
 					pass
 		
 			# these are the blink start and end samples to work with:
-			self.blink_starts = zero_edges[start_indices,0]
-			self.blink_ends = zero_edges[end_indices,1]
+			if sum(start_indices) > 0:
+				self.blink_starts = zero_edges[start_indices,0]
+				self.blink_ends = zero_edges[end_indices,1]
+			else:
+				self.blink_starts = None
+				self.blink_ends = None
 		
 		else:
 			self.blinks_indices = pd.rolling_mean(np.array(self.raw_pupil < threshold_level, dtype = float), int(coalesce_period)) > 0
@@ -289,11 +293,13 @@ class EyeSignalOperator(Operator):
 				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
 		
 		elif method == 'linear':
-			points_for_interpolation = np.array([self.blink_starts, self.blink_ends], dtype=int).T + np.array(lin_interpolation_points).T
-			for itp in points_for_interpolation:
-				self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
-				self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
-				self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
+			
+			if self.blink_starts != None:
+				points_for_interpolation = np.array([self.blink_starts, self.blink_ends], dtype=int).T + np.array(lin_interpolation_points).T
+				for itp in points_for_interpolation:
+					self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
+					self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
+					self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 		
 	def filter_pupil(self, hp = 0.01, lp = 4.0):
 		"""band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. after interpolation."""
