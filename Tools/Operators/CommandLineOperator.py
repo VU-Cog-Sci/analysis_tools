@@ -459,6 +459,40 @@ class FEATOperator( CommandLineOperator ):
 		if not waitForExecute:
 			runcmd += ' & '
 		self.runcmd = runcmd
+	
+class FSLRETROICOROperator (CommandLineOperator):
+	"""FEATOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""
+	def __init__(self, inputObject, cmd = 'pnm_stage1', **kwargs):
+		super(FSLRETROICOROperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+		self.featFile = self.inputObject
+		# on lisa it doesn't pay to include fsl paths like that. only necessary after things have been mucked up by macports on the mac.
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; pnm_stage1'
+	
+	def configure(self, outputFileName = None, **kwargs):
+		"""
+		configure takes a dict of arguments
+		they are all represented as key-values in the command line
+		except when value is empty, then only key is printed on the command line
+		"""
+		
+		self.outputFileName = outputFileName
+
+		pnm_cmd = self.cmd
+
+		pnm_cmd += ' -i ' + self.inputFileName
+		pnm_cmd += ' -o ' + self.outputFileName
+
+		for k,v in kwargs.items():
+			pnm_cmd += ' ' + k
+			if v!= '':
+				pnm_cmd += ' ' + v
+		
+		# run command:
+		self.runcmd = pnm_cmd
+
 
 class RETROICOROperator( CommandLineOperator ):
 	"""MatlabOperator assumes bash is the shell used, and that fsl binaries are located in /usr/local/fsl/bin/"""

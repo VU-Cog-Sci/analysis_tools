@@ -17,6 +17,7 @@ import sympy
 import math
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
+import matplotlib.patches as patches
 from sklearn import preprocessing
 import statsmodels.formula.api as sm
 
@@ -490,6 +491,32 @@ def pupil_scalar_lin_projection(data, time_start, time_end, template):
 ####################
 ##### PLOTTING #####
 ####################
+def hist_q(rt, bins=10, quantiles=[10,30,50,70,90], ax=None, xlim=None, ylim=None, quantiles_color='k', alpha=1):
+	
+	nr_observations = len(rt) / 100.0 * np.diff(quantiles)
+	break_points = np.percentile(rt, quantiles)
+	widths = np.diff(break_points)
+	total_width = max(rt) - min(rt)
+	heights = nr_observations/(widths/total_width*bins)
+	
+	if ax is None:
+		ax = plt.gca()
+	quantile_hist = ax.hist(rt, bins=bins, color='k', alpha=0.25, lw=0)
+	for i in range(heights.shape[0]):
+		rect = patches.Rectangle((break_points[i], 0), widths[i], heights[i], fill=False, color=quantiles_color, linewidth=2, alpha=alpha)
+		ax.add_patch(rect)
+	if xlim:
+		ax.set_xlim(xlim)
+	if ylim:
+		ax.set_ylim(ylim)
+	ax2 = ax.twiny()
+	ax2.set_xlim(ax.get_xlim())
+	ax2.set_xticks([round(bp, 2) for bp in break_points])
+	ax2.set_xticklabels([round(bp, 2) for bp in break_points], rotation=45)
+	# ax2.set_xlabel('{} quantiles'.format(quantiles))
+	return quantile_hist
+
+
 def correlation_plot(X,Y):
 
 	slope, intercept, r_value, p_value, std_err = stats.linregress(X,Y)

@@ -74,6 +74,9 @@ class GeneralLinearModel(object):
 		# predicted signal:
 		self.predicted = GLM_results.predict()
 		
+		# residuals:
+		self.residuals = self.working_data_array - self.predicted
+		
 	# --------------------------------------
 	# A variety of regressor shapes:       -
 	# --------------------------------------

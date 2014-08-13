@@ -173,6 +173,7 @@ class EDFOperator( Operator ):
 				self.trial_ends = self.trial_ends[::2]
 			
 			self.nr_trials = len(self.stop_trial_strings)
+			
 			self.trials = np.hstack((self.trial_starts, self.trial_ends))
 			
 			# create a dictionary for the types of timing informations we'd like to look at
