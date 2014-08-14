@@ -394,7 +394,7 @@ class Session(PathConstructor):
 		else:
 			os.system('featregapply ' + feat_directory + ' & ' )
 			
-	def motionCorrectFunctionals(self, registerNoMC = False):
+	def motionCorrectFunctionals(self, registerNoMC = False, init_transform_file = None):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		how we do this depends on whether we have parallel processing turned on or not
@@ -405,6 +405,8 @@ class Session(PathConstructor):
 		mcOperatorList = [];	stdOperatorList = [];
 		for er in self.scanTypeDict['epi_bold']:
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er] ), target = self.referenceFunctionalFileName )
+			if init_transform_file != None:
+				mcf.transformMatrixFileName = init_transform_file
 		 	mcf.configure()
 			mcOperatorList.append(mcf)
 			# add registration of non-motion corrected functionals to the forRegistration file
