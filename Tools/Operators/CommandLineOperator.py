@@ -446,6 +446,7 @@ class FEATOperator( CommandLineOperator ):
 		sf = open(self.featFile,'r')
 		workingString = sf.read()
 		sf.close()
+		
 		for e in REDict:
 			rS = re.compile(e)
 			workingString = re.sub(rS, REDict[e], workingString)
