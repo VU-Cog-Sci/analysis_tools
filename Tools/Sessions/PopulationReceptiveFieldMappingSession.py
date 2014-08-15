@@ -551,7 +551,7 @@ class PRFModelRun(object):
 		
 		for i in range(len(self.orientation_list)): # trials
 			samples_in_trial = (self.sample_times > (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
-			print samples_in_trial.sum()
+			# print samples_in_trial.sum()
 			if self.run.trial_times[i][0] != 'fix_no_stim':
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
 				pt.pass_through()
@@ -664,7 +664,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 
-	def stimulus_timings(self):
+	def stimulus_timings(self, stim_offsets = [0.0, 0.0]):
 		"""stimulus_timings uses behavior operators to distil:
 		- the times at which stimulus presentation began and ended per task type
 		- the times at which the task buttons were pressed. 
@@ -672,7 +672,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			bO = PopulationReceptiveFieldBehaviorOperator(self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ))
-			bO.trial_times() # sets up all behavior  
+			bO.trial_times(stim_offsets = stim_offsets) # sets up all behavior  
 			r.trial_times = bO.trial_times
 			saccades=self.eye_informer(length_thresh = 5)
 			for ti, tb in enumerate(r.trial_times):
@@ -906,7 +906,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -916,9 +916,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 		FIR fitting is still to be implemented, as the shape of
 		the resulting design matrix will differ from the HRF version.
 		"""
+		# other options: 
+		# gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}
+
 		# get orientations and stimulus timings
 		# shell()
-		self.stimulus_timings()
+		self.stimulus_timings(stim_offsets = [-1.5, -0.5])
 		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
 		self.stim_matrix_list = []
@@ -929,7 +932,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			# shell()
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.15)
+			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.05)
 			mr.simulate_run( )
 			self.stim_matrix_list.append(mr.run_matrix)
 			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
@@ -1281,7 +1284,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		except NoSuchNodeError:
 			# import actual data
 			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
-			thisRunGroup = h5file.createGroup("/", this_run_group_name, '')
+			thisRunGroup = h5file.create_group("/", this_run_group_name, '')
 			
 		stat_files = {}
 		for c in task_conditions:
@@ -1304,7 +1307,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			except NoSuchNodeError:
 				# import actual data
 				self.logger.info('Adding group ' + this_run_group_name + '_' + roi_name + ' to this file')
-				thisRunGroup = h5file.createGroup("/" + this_run_group_name, roi_name, 'ROI ' + roi_name +' imported' )
+				thisRunGroup = h5file.create_group("/" + this_run_group_name, roi_name, 'ROI ' + roi_name +' imported' )
 		
 			for (i, sf) in enumerate(stat_files.keys()):
 				# loop over stat_files and rois
