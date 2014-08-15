@@ -1112,7 +1112,7 @@ class Session(PathConstructor):
 				# ----------------------------------------
 				# Create retroicor slise-wise regressors:-
 				# ----------------------------------------
-
+				
 				# retroicor folder:
 				folder = os.path.join(self.runFolder(stage = 'processed/mri', run = r), 'retroicor')
 				try:
@@ -1121,13 +1121,13 @@ class Session(PathConstructor):
 					pass
 				subprocess.Popen('mkdir ' + folder, shell=True, stdout=PIPE).communicate()[0]
 				base = os.path.join(folder, 'retroicor')
-
+				
 				# FSL fix text:
 				copy_in = self.runFile(stage = 'processed/hr', run = r, postFix=['new'], extension='.log')
 				copy_out = base + '_input.txt'
 				subprocess.call('cp ' + copy_in + ' ' + copy_out, shell=True)
 				# subprocess.call('fslFixText ' + copy_in + ' ' + copy_out, shell=True)
-
+				
 				# run two commands
 				inputObject = base + '_input.txt'
 				outputObject = base
@@ -1137,7 +1137,7 @@ class Session(PathConstructor):
 				retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
 				retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
 				retroO.execute()
-
+				
 				# run final command:
 				inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
 				outputObject = base
@@ -1154,12 +1154,10 @@ class Session(PathConstructor):
 					text_file.write('{}\n'.format(reg))
 				text_file.close()
 				
-				
-				
 				# ----------------------------------------
 				# Run GLM and de-noise!!:                -
 				# ----------------------------------------
-
+				
 				# remove previous feat directories
 				try:
 					# self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf', 'sgtf'], extension = '.feat'))
@@ -1167,12 +1165,13 @@ class Session(PathConstructor):
 					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
 				except OSError:
 					pass
-
+					
 				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_retro/retroicor_design.fsf'
-
+				
 				REDict = {
 				'---NR_TRS---':str(nr_TRs),
 				'---TR---':str(TR),
+				'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix)).getExtent()))),
 				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = postFix),
 				}
 				for i, reg in enumerate(regressors):
@@ -1189,12 +1188,12 @@ class Session(PathConstructor):
 				# run feat
 				featOp.execute()
 				
-		# # copy:
-		# for cond in conditions:
-		# 	for r in [self.runList[i] for i in self.conditionDict[cond]]:
-		# 		copy_in = self.runFile(stage = 'processed/mri', run = r, postFix = ['B0', 'mcf', 'sgtf']).split('.')[0] + '.feat/stats/res4d.nii.gz'
-		# 		copy_out = self.runFile(stage = 'processed/mri', run = r, postFix = ['B0', 'mcf', 'sgtf', 'phys'])
-		# 		subprocess.Popen('mv ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
+		# copy:
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
+				copy_in = self.runFile(stage = 'processed/mri', run = r, postFix = postFix).split('.')[0] + '.feat/stats/res4d.nii.gz'
+				copy_out = self.runFile(stage = 'processed/mri', run = r, postFix = postFix.append('phys'))
+				subprocess.Popen('mv ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
 	
 	def retroicor_run(self, r, retroicor_script_file = None, nr_dummies = 6, onset_slice = 1, gradient_direction = 'x', waitForExecute = True, execute = True):
 		"""retroicor_run takes a run as input argument and runs its physiology through the retroicor operator"""
