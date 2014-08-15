@@ -1023,6 +1023,8 @@ class Session(PathConstructor):
 				# Prepare scanphyslogfile:               -
 				# ----------------------------------------
 				
+				# shell()
+				
 				# load nifti:
 				TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
 				nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
@@ -1031,11 +1033,15 @@ class Session(PathConstructor):
 				# load physio data:
 				physio = np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension='.log'), skiprows=5)
 				gradients = [6,7,8]
-				gradient_signal = np.array([physio[:,g] for g in gradients]).sum(axis = 0)
-			
+				gradient_signal = abs(np.array([physio[:,g] for g in gradients]).sum(axis = 0))
+				
 				# slice time indexes:
 				x = np.arange(gradient_signal.shape[0])
 				slice_times = x[np.array(np.diff(np.array(gradient_signal>threshold, dtype=int))==1, dtype=bool)]
+				
+				# check if we had a double (due to shape gradient signal):
+				if slice_times.shape[0] > (nr_TRs*nr_slices*2):
+					slice_times = slice_times[1::2]
 			
 				# shim slices and volumes:
 				max_time_between_slices = max(np.diff(slice_times))
@@ -1071,20 +1077,24 @@ class Session(PathConstructor):
 				# np.savetxt(self.runFile(stage = 'processed/hr', run = r, postFix=['new2'], extension='.log'), physio_new, fmt = '%i', delimiter = '\t')
 			
 				# plot:
-				plot_timewindow = [	np.arange(slice_times[dummy_volumes[0]]-(4*sample_rate), slice_times[dummy_volumes[-1]]+(4*sample_rate)),
+				plot_timewindow = [	np.arange(0, slice_times[dummy_volumes[-1]]+(4*sample_rate)),
 									np.arange(slice_times[scan_volumes[-1]]-(8*sample_rate), x.shape[0]),
+									np.arange(slice_times[scan_slices[-10]], slice_times[scan_slices[-5]]),
 									]
 				
 				for i, times in enumerate(plot_timewindow):
 					f = pl.figure(figsize = (15,3))
 					s = f.add_subplot(111)
-					plt.plot(x[times], gradient_signal[times], label='summed gradient signal (x, y, z)')
-					plt.plot(x[times], dummies_volumes_timecourse[times]*threshold*1.5, 'k', lw=3, label='dummies')
-					plt.plot(x[times], scan_volumes_timecourse[times]*threshold*1.5, 'g', lw=3, label='triggers')
-					plt.axhline(threshold, color='r', ls='--', label='threshold')
+					pl.plot(x[times], gradient_signal[times], label='summed gradient signal (x, y, z)')
+					if i in (0,1):
+						pl.plot(x[times], dummies_volumes_timecourse[times]*threshold*1.5, 'k', lw=3, label='dummies')
+						pl.plot(x[times], scan_volumes_timecourse[times]*threshold*1.5, 'g', lw=3, label='triggers')
+					if i == 2:
+						pl.plot(x[times], scan_slices_timecourse[times]*threshold*1.5, 'g', lw=1, label='slices')
+					pl.axhline(threshold, color='r', ls='--', label='threshold')
 					s.set_title('summed gradient signal (x, y, z) -- nr volumes = {}'.format(sum(scan_volumes_timecourse)))
 					s.set_xlabel('samples, {}Hz'.format(sample_rate))
-					plt.ylim((0,threshold*1.5))
+					pl.ylim((0,threshold*1.5))
 					leg = s.legend(fancybox = True)
 					leg.get_frame().set_alpha(0.5)
 					if leg:
@@ -1093,87 +1103,87 @@ class Session(PathConstructor):
 						for (j, l) in enumerate(leg.get_lines()):
 							l.set_linewidth(3.5)  # the legend line width
 					
-					plt.tight_layout()
-					f.savefig(os.path.join(self.stageFolder(stage = 'processed/hr/figs'), str(r.ID) + '_gradient_signal_' + ['start', 'end'][i] + '.jpg'))
-				plt.close('all')
+					pl.tight_layout()
+					f.savefig(os.path.join(self.stageFolder(stage = 'processed/hr/figs'), str(r.ID) + '_gradient_signal_{}_'.format(i+1) + ['start', 'end', 'slice'][i] + '.jpg'))
+				pl.close('all')
 				
-				# ----------------------------------------
-				# Create retroicor slise-wise regressors:-
-				# ----------------------------------------
-				
-				# retroicor folder:
-				folder = os.path.join(self.runFolder(stage = 'processed/mri', run = r), 'retroicor')
-				try:
-					os.system('rm -rf ' + folder)
-				except OSError:
-					pass
-				subprocess.Popen('mkdir ' + folder, shell=True, stdout=PIPE).communicate()[0]
-				base = os.path.join(folder, 'retroicor')
-				
-				# FSL fix text:
-				copy_in = self.runFile(stage = 'processed/hr', run = r, postFix=['new'], extension='.log')
-				copy_out = base + '_input.txt'
-				subprocess.call('cp ' + copy_in + ' ' + copy_out, shell=True)
-				# subprocess.call('fslFixText ' + copy_in + ' ' + copy_out, shell=True)
-				
-				# run two commands 
-				inputObject = base + '_input.txt'
-				outputObject = base
-				retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_stage1')
-				retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
-				retroO.execute()
-				retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
-				retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
-				retroO.execute()
-				
-				# run final command:
-				inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
-				outputObject = base
-				card = base + '_card.txt'
-				resp = base + '_resp.txt'
-				retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_evs')
-				retroO.configure(outputFileName=outputObject, **{'--tr='+str(TR):' ', '-c':card, '-r':resp, '--oc='+str(card_order):' ', '--or='+str(resp_order):' ', '--multc='+str(card_resp_order):' ', '--multr='+str(resp_card_order):' ', '--slicedir='+slicedir:' ', '--sliceorder='+sliceorder:' ', '-v':''})
-				retroO.execute()
-				
-				# grab regressors:
-				regressors = [reg for reg in sort(glob.glob(base + 'ev*.nii*'))]
-				text_file = open(base+'_evs_list.txt', 'w')
-				for reg in regressors:
-					text_file.write('{}\n'.format(reg))
-				text_file.close()
-				
-				# ----------------------------------------
-				# Run GLM and de-noise!!:                -
-				# ----------------------------------------
-				
-				# remove previous feat directories
-				try:
-					# self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf', 'sgtf'], extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
-					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
-				except OSError:
-					pass
-				
-				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_retro/retroicor_design.fsf'
-			
-				REDict = {
-				'---NR_TRS---':nr_TRs,
-				'---TR---':TR,
-				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = postFix),
-				}
-				for i, reg in enumerate(regressors):
-					REDict.update({'---EV{}---'.format(i+1):reg})
-				
-				featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf')
-				featOp = FEATOperator(inputObject = thisFeatFile)
-				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
-				if r == [self.runList[i] for i in self.conditionDict[cond]][-1]:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-				else:
-					featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-				self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
-				# run feat
-				featOp.execute()
+				# # ----------------------------------------
+				# # Create retroicor slise-wise regressors:-
+				# # ----------------------------------------
+				#
+				# # retroicor folder:
+				# folder = os.path.join(self.runFolder(stage = 'processed/mri', run = r), 'retroicor')
+				# try:
+				# 	os.system('rm -rf ' + folder)
+				# except OSError:
+				# 	pass
+				# subprocess.Popen('mkdir ' + folder, shell=True, stdout=PIPE).communicate()[0]
+				# base = os.path.join(folder, 'retroicor')
+				#
+				# # FSL fix text:
+				# copy_in = self.runFile(stage = 'processed/hr', run = r, postFix=['new'], extension='.log')
+				# copy_out = base + '_input.txt'
+				# subprocess.call('cp ' + copy_in + ' ' + copy_out, shell=True)
+				# # subprocess.call('fslFixText ' + copy_in + ' ' + copy_out, shell=True)
+				#
+				# # run two commands
+				# inputObject = base + '_input.txt'
+				# outputObject = base
+				# retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_stage1')
+				# retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
+				# retroO.execute()
+				# retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
+				# retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
+				# retroO.execute()
+				#
+				# # run final command:
+				# inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
+				# outputObject = base
+				# card = base + '_card.txt'
+				# resp = base + '_resp.txt'
+				# retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_evs')
+				# retroO.configure(outputFileName=outputObject, **{'--tr='+str(TR):' ', '-c':card, '-r':resp, '--oc='+str(card_order):' ', '--or='+str(resp_order):' ', '--multc='+str(card_resp_order):' ', '--multr='+str(resp_card_order):' ', '--slicedir='+slicedir:' ', '--sliceorder='+sliceorder:' ', '-v':''})
+				# retroO.execute()
+				#
+				# # grab regressors:
+				# regressors = [reg for reg in sort(glob.glob(base + 'ev*.nii*'))]
+				# text_file = open(base+'_evs_list.txt', 'w')
+				# for reg in regressors:
+				# 	text_file.write('{}\n'.format(reg))
+				# text_file.close()
+				#
+				# # ----------------------------------------
+				# # Run GLM and de-noise!!:                -
+				# # ----------------------------------------
+				#
+				# # remove previous feat directories
+				# try:
+				# 	# self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = self.runList[run], postFix = ['mcf', 'sgtf'], extension = '.feat'))
+				# 	os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.feat'))
+				# 	os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf'))
+				# except OSError:
+				# 	pass
+				#
+				# thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_retro/retroicor_design.fsf'
+				#
+				# REDict = {
+				# '---NR_TRS---':nr_TRs,
+				# '---TR---':TR,
+				# '---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = postFix),
+				# }
+				# for i, reg in enumerate(regressors):
+				# 	REDict.update({'---EV{}---'.format(i+1):reg})
+				#
+				# featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf')
+				# featOp = FEATOperator(inputObject = thisFeatFile)
+				# # no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
+				# if r == [self.runList[i] for i in self.conditionDict[cond]][-1]:
+				# 	featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+				# else:
+				# 	featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+				# self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+				# # run feat
+				# featOp.execute()
 				
 		# # copy:
 		# for cond in conditions:
