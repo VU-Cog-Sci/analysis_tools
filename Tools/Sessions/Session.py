@@ -1165,6 +1165,13 @@ class Session(PathConstructor):
 					retroO.configure(outputFileName=outputObject, **{'--tr='+str(TR):' ', '-c':card, '-r':resp, '--oc='+str(card_order):' ', '--or='+str(resp_order):' ', '--multc='+str(card_resp_order):' ', '--multr='+str(resp_card_order):' ', '--slicedir='+slicedir:' ', '--sliceorder='+sliceorder:' ', '-v':''})
 					retroO.execute()
 					
+					# grab regressors:
+					regressors = [reg for reg in np.sort(glob.glob(base + 'ev*.nii*'))]
+					text_file = open(base+'_evs_list.txt', 'w')
+					for reg in regressors:
+						text_file.write('{}\n'.format(reg))
+					text_file.close()
+					
 				# ----------------------------------------
 				# Run GLM and de-noise!!:                -
 				# ----------------------------------------
