@@ -207,7 +207,7 @@ class EyeSignalOperator(Operator):
 		self.raw_gazeXY = np.array(self.inputObject['gazeXY']).squeeze()
 		self.raw_pupil = np.array(self.inputObject['pupil']).squeeze()
 		
-		shell()
+		# shell()
 		if hasattr(self, 'eyelink_blink_data'):
 			self.blink_dur = np.array(self.eyelink_blink_data['duration']) 
 			self.blink_starts = np.array(self.eyelink_blink_data['start_timestamp'])[self.blink_dur<4000]
