@@ -137,6 +137,7 @@ class HDFEyeOperator(Operator):
 				gazeXY = bdf[[s%'gaze' for s in [blocks_data_frame.eye_recorded[i]+'_%s_x', blocks_data_frame.eye_recorded[i]+'_%s_y',]]]
 				pupil = bdf[[s%'pupil' for s in [blocks_data_frame.eye_recorded[i]+'_%s']]]
 				eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
+				
 				# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
 				if hasattr(self.edf_operator, 'blinks_from_message_file'):
 					blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
