@@ -62,7 +62,7 @@ class HDFEyeOperator(Operator):
 			alias = os.path.split(self.edf_operator.inputFileName)[-1]
 		self.open_hdf_file( mode = mode )
 		self.logger.info('Adding message data from %s to group  %s to %s' % (os.path.split(self.edf_operator.inputFileName)[-1], alias, self.inputObject))
-		thisRunGroup = self.h5f.createGroup("/", alias, 'Run ' + alias +' imported from ' + self.edf_operator.inputFileName)
+		thisRunGroup = self.h5f.create_group("/", alias, 'Run ' + alias +' imported from ' + self.edf_operator.inputFileName)
 		
 		#
 		#	trials and trial phases
@@ -105,7 +105,7 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None):
+	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0):
 		"""docstring for edf_gaze_data_to_hdf"""
 		
 		if not hasattr(self, 'edf_operator'):
@@ -132,35 +132,37 @@ class HDFEyeOperator(Operator):
 				#
 				# preprocess pupil:
 				#
-				
+
+				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
 				# create dictionairy of data per block:
-				gazeXY = bdf[[s%'gaze' for s in [blocks_data_frame.eye_recorded[i]+'_%s_x', blocks_data_frame.eye_recorded[i]+'_%s_y',]]]
-				pupil = bdf[[s%'pupil' for s in [blocks_data_frame.eye_recorded[i]+'_%s']]]
-				eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
-				
-				# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
-				if hasattr(self.edf_operator, 'blinks_from_message_file'):
-					blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
-					eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
-				else:
-					eso = EyeSignalOperator(inputObject=eye_dict)
-				# detect blinks (coalese period in samples):
-				eso.blink_detection_pupil(coalesce_period=250)
-				# interpolate blinks:
-				eso.interpolate_blinks(method='linear')
-				# low-pass and band-pass pupil data:
-				eso.filter_pupil(hp=0.01, lp=6.0)
-				# z-score filtered pupil data:
-				eso.zscore_pupil()
-				# add to existing dataframe:
-				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_int'] = eso.interpolated_pupil
-				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_lp'] = eso.lp_filt_pupil
-				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_bp'] = eso.bp_filt_pupil
-				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_hp'] = eso.hp_filt_pupil
-				
-				bdf[blocks_data_frame.eye_recorded[i]+'_gaze_x_int'] = eso.interpolated_x
-				bdf[blocks_data_frame.eye_recorded[i]+'_gaze_y_int'] = eso.interpolated_y
-				
+					gazeXY = bdf[[s%'gaze' for s in [eye+'_%s_x', eye+'_%s_y',]]]
+					pupil = bdf[[s%'pupil' for s in [eye+'_%s']]]
+					eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
+					
+					# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
+					if hasattr(self.edf_operator, 'blinks_from_message_file'):
+						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
+						blink_dict[blink_dict['eye'] == eye]
+						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
+					else:
+						eso = EyeSignalOperator(inputObject=eye_dict)
+					# detect blinks (coalese period in samples):
+					eso.blink_detection_pupil(coalesce_period=250)
+					# interpolate blinks:
+					eso.interpolate_blinks(method='linear')
+					# low-pass and band-pass pupil data:
+					eso.filter_pupil(hp=0.01, lp=6.0)
+					# z-score filtered pupil data:
+					eso.zscore_pupil()
+					# add to existing dataframe:
+					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
+					bdf[eye+'_pupil_lp'] = eso.lp_filt_pupil
+					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
+					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
+					
+					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
+					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
+					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	
