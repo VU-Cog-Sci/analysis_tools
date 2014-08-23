@@ -156,6 +156,7 @@ class HDFEyeOperator(Operator):
 				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_int'] = eso.interpolated_pupil
 				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_lp'] = eso.lp_filt_pupil
 				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_bp'] = eso.bp_filt_pupil
+				bdf[blocks_data_frame.eye_recorded[i]+'_pupil_hp'] = eso.hp_filt_pupil
 				
 				bdf[blocks_data_frame.eye_recorded[i]+'_gaze_x_int'] = eso.interpolated_x
 				bdf[blocks_data_frame.eye_recorded[i]+'_gaze_y_int'] = eso.interpolated_y
