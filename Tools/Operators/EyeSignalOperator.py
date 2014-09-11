@@ -291,9 +291,14 @@ class EyeSignalOperator(Operator):
 				# interpolate
 				samples = np.ravel(np.array([bs + points_for_interpolation[0], be + points_for_interpolation[1]]))
 				sample_indices = np.arange(self.raw_pupil.shape[0])[np.sum(np.array([self.timepoints == s for s in samples]), axis = 0)]
-				spline = interpolate.InterpolatedUnivariateSpline(itp,self.raw_pupil[sample_indices])
+				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_pupil[sample_indices])
 				# replace with interpolated data, from the inside points of the interpolation lists. 
 				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
+				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gazeXY[sample_indices,0])
+				self.interpolated_x[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
+				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gazeXY[sample_indices,1])
+				self.interpolated_y[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
+
 		
 		elif method == 'linear':
 			
