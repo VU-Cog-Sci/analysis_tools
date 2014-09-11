@@ -9,10 +9,15 @@ Copyright (c) 2012 Jan Willem de Gee. All rights reserved.
 
 """
 
+import os, sys, datetime, pickle
+import subprocess, logging, time
+
 import numpy as np
+import numpy.random as random
 import pandas as pd
 import scipy as sp
 import scipy.stats as stats
+import bottleneck as bn
 import sympy
 import math
 import matplotlib.pyplot as plt
@@ -20,109 +25,16 @@ from matplotlib.ticker import MultipleLocator
 import matplotlib.patches as patches
 from sklearn import preprocessing
 import statsmodels.formula.api as sm
+import mne
+import hddm
+import kabuki
 
+import pp
 from IPython import embed as shell
 
-
-####################
-##### GENERAL ######
-####################
-# def pupil_IRF(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
-#
-# 	"""
-# 	Default settings (above): canocial pupil impulse fucntion [ref].
-#
-# 	"""
-#
-# 	y = ( (s) * (timepoints**n) * (math.e**((-n*timepoints)/tmax)) )
-#
-# 	return y / np.std(y)
-	
-def pupil_IRF(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
-	
-	"""
-	Default settings (above): canocial pupil impulse fucntion [ref].
-	
-	"""
-	
-	# sympy variable:
-	t = sympy.Symbol('t')
-	
-	# function:
-	y = ( (s) * (t**n) * (math.e**((-n*t)/tmax)) )
-	
-	# derivative:
-	y_dt = y.diff(t)
-	
-	# lambdify:
-	y = sympy.lambdify(t, y, "numpy")
-	y_dt = sympy.lambdify(t, y_dt, "numpy")
-	
-	# evaluate:
-	y = y(timepoints)
-	y_dt = y_dt(timepoints)
-	
-	return (y / np.std(y), y_dt / np.std(y_dt))
-	
-	
-	
-def pupil_IRF_dn(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
-	
-	"""
-	Default settings (above): canocial pupil impulse fucntion [ref].
-	
-	"""
-	
-	y = ( (s) * (timepoints**n) * (math.e**((-n*timepoints)/tmax)) )
-	y = y / np.std(y)
-	
-	y2 = ( (s) * (timepoints**(n-0.1)) * (math.e**((-(n-0.1)*timepoints)/tmax)) )
-	y2 = y2 / np.std(y2)
-	
-	y3 = y - y2
-	
-	return y3 / np.std(y3)
-
-def create_box_regressors(times, durs, len_run, IRF, normalize=True):
-	times = np.array(times, dtype=int)
-	durs = np.array(durs, dtype=int)
-	len_run = int(len_run)
-	regr = np.zeros(len_run)
-	try:
-		for i in range(len(times)):
-			if normalize == True:
-				regr[times[i]:times[i]+durs[i]] = np.linspace(1.0/durs[i],1.0/durs[i],durs[i])
-			else:
-				regr[times[i]:times[i]+durs[i]] = np.linspace(1.0,1.0,durs[i])
-	except TypeError:
-		if normalize == True:
-			regr[times:times+durs] = np.linspace(1.0/durs,1.0/durs,durs)
-		else:
-			regr[times:times+durs] = np.linspace(1.0,1.0,durs)
-	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
-	return(regr, regr_convolved)
-def create_ramp_regressors(times_start, times_end, len_run, IRF, shape):
-	
-	len_run = int(len_run)
-	regr = np.zeros(len_run)
-	for i in range(times_start.shape[0]):
-		dur = times_end[i] - times_start[i]
-		if shape == 'up':
-			regr[times_start[i]:times_end[i]] = np.linspace(0,(2/float(dur)),dur)
-		if shape == 'down':
-			regr[times_start[i]:times_end[i]] = np.linspace((2/float(dur)),0,dur)
-	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
-	
-	return(regr_convolved)
-
-def create_stick_regressors(times, len_run, IRF):
-	times = np.array(times, dtype=int)
-	len_run = (len_run)
-	regr = np.zeros(len_run)
-	regr[times] = 1
-	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
-	return(regr_convolved)
-
+# -----------------
+# general         -
+# -----------------
 def chunks(l, n):
 	return [l[i:i+n] for i in range(0, len(l), n)]
 def chunks_mean(l, n):
@@ -135,15 +47,6 @@ def number_chunks(data, n_chuncks):
 def number_chunks_mean(data, n_chuncks):
 	m = float(len(data))/n_chuncks
 	return [sp.mean(data[int(m*i):int(m*(i+1))]) for i in range(n_chuncks)]
-	
-	
-
-
-
-
-
-
-
 def movingaverage(interval, window_size):
 	
 	window = np.ones(int(window_size))/float(window_size)
@@ -153,7 +56,6 @@ def movingaverage(interval, window_size):
 	return(moving_average)
 
 def smooth(x,window_len=11,window='hanning'):
-	import numpy
 	if x.ndim != 1:
 		raise ValueError, "smooth only accepts 1 dimension arrays."
 	if x.size < window_len:
@@ -162,12 +64,12 @@ def smooth(x,window_len=11,window='hanning'):
 		return x
 	if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
 		raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
-	s=numpy.r_[2*x[0]-x[window_len-1::-1],x,2*x[-1]-x[-1:-window_len:-1]]
+	s=np.r_[2*x[0]-x[window_len-1::-1],x,2*x[-1]-x[-1:-window_len:-1]]
 	if window == 'flat': #moving average
-		w=numpy.ones(window_len,'d')
+		w=np.ones(window_len,'d')
 	else:  
 		w=eval('numpy.'+window+'(window_len)')
-	y=numpy.convolve(w/w.sum(),s,mode='same')
+	y=np.convolve(w/w.sum(),s,mode='same')
 	return y[window_len:-window_len+1]
 
 def zscore_2d(array, rep):
@@ -177,9 +79,9 @@ def zscore_2d(array, rep):
 	return array
 		
 		
-####################
-###### STATS #######
-####################
+# -----------------
+# stats           -
+# -----------------
 def permutationTest(group1, group2, nrand=5000, tail=0):
 	
 	"""
@@ -188,9 +90,6 @@ def permutationTest(group1, group2, nrand=5000, tail=0):
 	tail = 0 (test A~=B), 1 (test A>B), -1 (test A<B)
 	
 	"""
-	
-	import numpy as np
-	import numpy.random as random
 	
 	a = group1
 	b = group2
@@ -217,44 +116,7 @@ def permutationTest(group1, group2, nrand=5000, tail=0):
 	
 	return(meana-meanb, p_value)
 
-def permutationTest_median(group1, group2, nrand=5000, tail=0):
-	
-	"""
-	non-parametric permutation test (Efron & Tibshirani, 1998)
-	
-	tail = 0 (test A~=B), 1 (test A>B), -1 (test A<B)
-	
-	"""
-	
-	import numpy as np
-	import numpy.random as random
-	
-	a = group1
-	b = group2
-	ntra = len(a)
-	ntrb = len(b) 
-	meana = np.median(a)
-	meanb = np.median(b)
-	alldat = np.concatenate((a,b))
-	
-	triala = np.zeros(nrand)
-	trialb = np.zeros(nrand)
-	
-	indices = np.arange(alldat.shape[0])
-	
-	for i in range(nrand):
-		random.shuffle(indices)
-		triala[i] = np.median(alldat[indices[:ntra]])
-		trialb[i] = np.median(alldat[indices[ntra:]])
-	
-	if tail == 0:
-		p_value = sum(abs(triala-trialb)>=abs(meana-meanb)) / float(nrand)
-	else:
-		p_value = sum((tail*(triala-trialb))>=(tail*(meana-meanb))) / float(nrand)
-	
-	return(p_value)
-
-def permutationTestSDT(target_indices, hit_indices, fa_indices, group_indices, nrand=5000, tail=0):
+def permutationTest_SDT(target_indices, hit_indices, fa_indices, group_indices, nrand=5000, tail=0):
 	
 	"""
 	non-parametric permutation test (Efron & Tibshirani, 1998)
@@ -393,6 +255,8 @@ def roc_analysis(group1, group2, nrand=1000, tail=1):
 
 
 
+
+
 def SDT_measures(target, hit, fa):
 	
 	"""
@@ -449,9 +313,57 @@ def pcf3(X,Y,Z):
 	rxz_y = rxz -rxy*rzy/sqrt((1-rxy**2) *(1-rzy**2))
 	ryz_x = ryz -rxy*rxz/sqrt((1-rxy**2) *(1-rxz**2))
 	return [(rxy_z, rxz_y, ryz_x)]
-######################
-###### LIN ALG #######
-######################
+# -----------------
+# IRFs            -
+# -----------------
+def pupil_IRF(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
+	
+	"""
+	Default settings (above): canocial pupil impulse fucntion [ref].
+	
+	"""
+	
+	# sympy variable:
+	t = sympy.Symbol('t')
+	
+	# function:
+	y = ( (s) * (t**n) * (math.e**((-n*t)/tmax)) )
+	
+	# derivative:
+	y_dt = y.diff(t)
+	
+	# lambdify:
+	y = sympy.lambdify(t, y, "numpy")
+	y_dt = sympy.lambdify(t, y_dt, "numpy")
+	
+	# evaluate:
+	y = y(timepoints)
+	y_dt = y_dt(timepoints)
+	
+	return (y / np.std(y), y_dt / np.std(y_dt))
+	
+	
+	
+def pupil_IRF_dn(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
+	
+	"""
+	Default settings (above): canocial pupil impulse fucntion [ref].
+	
+	"""
+	
+	y = ( (s) * (timepoints**n) * (math.e**((-n*timepoints)/tmax)) )
+	y = y / np.std(y)
+	
+	y2 = ( (s) * (timepoints**(n-0.1)) * (math.e**((-(n-0.1)*timepoints)/tmax)) )
+	y2 = y2 / np.std(y2)
+	
+	y3 = y - y2
+	
+	return y3 / np.std(y3)
+
+# -----------------
+# linear algebra  -
+# -----------------
 def magnitude(v):
 	return math.sqrt(sum(v[i]*v[i] for i in range(len(v))))
 
@@ -467,30 +379,34 @@ def dot(u, v):
 def normalize(v):
 	vmag = magnitude(v)
 	return [ v[i]/vmag  for i in range(len(v)) ]
-####################
-#####   PUPIL  #####
-####################
+
+
+
+
+# -----------------
+# pupil measures  -
+# -----------------
 def pupil_scalar_peak(data, time_start, time_end):
-	
 	pupil_scalars = np.array([ max(data[i,time_start:time_end]) for i in range(data.shape[0])])
-	
 	return pupil_scalars
 	
 def pupil_scalar_mean(data, time_start, time_end):
-	
 	pupil_scalars = np.array([ np.mean(data[i,time_start:time_end]) for i in range(data.shape[0])])
-	
 	return pupil_scalars
 	
 def pupil_scalar_lin_projection(data, time_start, time_end, template):
-	
 	pupil_scalars = np.array([ np.dot(template, data[i,time_start:time_end])/np.dot(template,template) for i in range(data.shape[0])])
-	
 	return pupil_scalars
-	
-####################
-##### PLOTTING #####
-####################
+
+
+
+
+
+
+
+# -----------------
+# plotting        -
+# -----------------
 def hist_q(rt, bins=10, quantiles=[10,30,50,70,90], ax=None, xlim=None, ylim=None, quantiles_color='k', alpha=1):
 	
 	nr_observations = len(rt) / 100.0 * np.diff(quantiles)
@@ -1053,9 +969,159 @@ def label_diff(ax,i,j,text,X,Y,Z, values = False):
 		kwargs = {'zorder':10, 'size':12, 'ha':'center'}
 		ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
 
-####################
-####### OLD: #######
-####################
+
+
+
+# -----------------
+# drift diffusion -
+# -----------------
+def run_model(trace_id, data, model_dir, samples=10000):
+	
+	import hddm
+	
+	# m = hddm.HDDM(data, bias=True, include='all', p_outlier=.05)
+	m = hddm.HDDM(data, bias=True, include=('sv', 'st'), p_outlier=.025)
+	m.find_starting_values()
+	m.sample(samples, burn=samples/10, thin=3, dbname=os.path.join(model_dir, 'db%i'%trace_id), db='pickle')
+	return m
+	
+def drift_diffusion_hddm(data, samples=10000, n_jobs=10, run=True, model_name='model', model_dir='.',):
+	
+	# nr of subjects:
+	nr_subjects = len(np.unique(data['subj_idx']))
+	
+	# run the model:
+	if run:
+		job_server = pp.Server(ppservers=(), ncpus=n_jobs)
+		start_time = time.time()
+		jobs = [(trace_id, job_server.submit(run_model,(trace_id, data, model_dir, int(samples/n_jobs)), (), ('functions_jw',))) for trace_id in range(n_jobs)]
+		results = []
+		for s, job in jobs:
+			results.append(job())
+		print "Time elapsed: ", time.time() - start_time, "s"
+		job_server.print_stats()
+		model = kabuki.utils.concat_models(results)
+		model.save(os.path.join(model_dir, model_name))
+	# load the models:
+	else:
+		print 'loading existing model'
+		results = []
+		for i in range(n_jobs):
+			m = hddm.load(os.path.join(model_dir, model_name))
+			m.load_db(os.path.join(model_dir, 'db{}'.format(i)), db='pickle')
+			results.append(m)
+		model = kabuki.utils.concat_models(results)
+	
+	t = np.array([model.values.get('t_subj.' + str(i)) for i in range(nr_subjects)])
+	v = np.array([model.values.get('v_subj.' + str(i)) for i in range(nr_subjects)])
+	a = np.array([model.values.get('a_subj.' + str(i)) for i in range(nr_subjects)])
+	# z = np.array([model.values.get('z_subj.' + str(i)) for i in range(nr_subjects)])
+	
+	return model, t, v, a
+	
+	
+	# # Read parameter estimates:
+
+	#
+	# ########## OLD::
+	# #### ACCURACY CODING ####
+	# # Here we're going to run most standard model. The 'response' column now codes for accuracy (0=error, 1=correct)
+	# print 'running model accuracy coding'
+	# model_a = hddm.HDDMTruncated(RT_data_accuracy, include=['sv'])
+	# model_a.find_starting_values()
+	# model_a.sample(100, burn=50, thin=2, dbname='model_a_traces.db', db='pickle')
+	# model_a.save('model_a')
+	# # Here we're going to estimate two drift rates for yes-choices (1), and no-choices (2), and non-decision time. The 'response' column now codes for accuracy (0=error, 1=correct)
+	# print 'running model accuracy coding'
+	# model_a_v = hddm.HDDMTruncated(RT_data_accuracy, depends_on={'v': 'choice'}, include=['sv'])
+	# model_a_v.find_starting_values()
+	# model_a_v.sample(100, burn=50, thin=2, dbname='model_a_v_traces.db', db='pickle')
+	# model_a_v.save('model_a_v')
+	# #### Stimulus CODING ####
+	# # Here we're going to estimate the starting points and thresholds. The 'response' column now codes for choice (0=no, 1=yes)
+	# # We need stimulus coding because now the boundaries reflect the actual choices (yes and no, rather than correct and error), and hence a shift in starting point actually makes sense.
+	# print 'running model stimulus coding'
+	# model_s = hddm.HDDMStimCoding(RT_data_stimulus, include='z', stim_col='stimulus', split_param='v')
+	# model_s.find_starting_values()
+	# model_s.sample(100, burn=50, thin=2, dbname='model_b_traces.db', db='pickle')
+	# model_s.save('model_s')
+	
+	return model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################################################################################################################################################################################################
+def create_box_regressors(times, durs, len_run, IRF, normalize=True):
+	times = np.array(times, dtype=int)
+	durs = np.array(durs, dtype=int)
+	len_run = int(len_run)
+	regr = np.zeros(len_run)
+	try:
+		for i in range(len(times)):
+			if normalize == True:
+				regr[times[i]:times[i]+durs[i]] = np.linspace(1.0/durs[i],1.0/durs[i],durs[i])
+			else:
+				regr[times[i]:times[i]+durs[i]] = np.linspace(1.0,1.0,durs[i])
+	except TypeError:
+		if normalize == True:
+			regr[times:times+durs] = np.linspace(1.0/durs,1.0/durs,durs)
+		else:
+			regr[times:times+durs] = np.linspace(1.0,1.0,durs)
+	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
+	return(regr, regr_convolved)
+def create_ramp_regressors(times_start, times_end, len_run, IRF, shape):
+	
+	len_run = int(len_run)
+	regr = np.zeros(len_run)
+	for i in range(times_start.shape[0]):
+		dur = times_end[i] - times_start[i]
+		if shape == 'up':
+			regr[times_start[i]:times_end[i]] = np.linspace(0,(2/float(dur)),dur)
+		if shape == 'down':
+			regr[times_start[i]:times_end[i]] = np.linspace((2/float(dur)),0,dur)
+	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
+	
+	return(regr_convolved)
+
+def create_stick_regressors(times, len_run, IRF):
+	times = np.array(times, dtype=int)
+	len_run = (len_run)
+	regr = np.zeros(len_run)
+	regr[times] = 1
+	regr_convolved = (sp.convolve(regr, IRF, 'full'))[:-(IRF.shape[0]-1)]
+	return(regr_convolved)
+
+
 def plot_resp_confidence(subject, response_locked_array_joined, x, xx, confidence_0, confidence_1, confidence_2, confidence_3, decision_time_joined):
 	" plot stimulus locked and response locked mean pupil time series"
 	
