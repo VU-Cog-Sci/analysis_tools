@@ -138,21 +138,8 @@ class HDFEyeOperator(Operator):
 				#
 				# preprocess pupil:
 				#
-<<<<<<< HEAD
-<<<<<<< HEAD
-				# create dictionairy of data per block:
 				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
 				# create dictionairy of data per block:
-=======
-
-				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
-				# create dictionairy of data per block:
->>>>>>> FETCH_HEAD
-=======
-
-				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
-				# create dictionairy of data per block:
->>>>>>> FETCH_HEAD
 					gazeXY = bdf[[s%'gaze' for s in [eye+'_%s_x', eye+'_%s_y',]]]
 					pupil = bdf[[s%'pupil' for s in [eye+'_%s']]]
 					eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
