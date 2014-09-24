@@ -23,7 +23,7 @@ class GeneralLinearModel(object):
 		self.timepoints = np.arange(0, input_object.shape[0]*sample_dur, new_sample_dur)
 		self.raw_design_matrix = []
 		
-	def configure(self, IRF_type, IRF_params, regressor_types):
+	def configure(self, IRF, IRF_params, regressor_types):
 		
 		# resample input_object:
 		self.resample_input_object()
@@ -40,8 +40,10 @@ class GeneralLinearModel(object):
 				self.add_downramp_regressor(reg)
 		
 		# create IRF:
-		if IRF_type == 'pupil':
+		if IRF == 'pupil':
 			self.IRF = self.IRF_pupil(dur=IRF_params['dur'], s=IRF_params['s'], n=IRF_params['n'], tmax=IRF_params['tmax'])
+		else:
+			self.IRF = IRF
 		
 		# convolve raw regressors with IRF to obtain the full design matrix:
 		self.convolve_with_IRF()
