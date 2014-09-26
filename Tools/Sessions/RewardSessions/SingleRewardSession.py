@@ -1158,7 +1158,7 @@ class SingleRewardSession(RewardSession):
 		
 		time_signals = []
 		if analysis_type == 'deconvolution':
-			interval = [0.0,15.0]
+			interval = [0.0,16.0]
 			# nuisance version?
 			nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
 			nuisance_design.configure(np.array([np.hstack(blink_events)]))
@@ -1248,7 +1248,7 @@ class SingleRewardSession(RewardSession):
 		
 		pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + data_type + '.pdf'))
-		
+		shell()
 		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), np.array(deco_per_run)]
 	
 	def deconvolve_pupil(self, sample_rate = 2000, postFix = ['mcf'], subsampled_sample_frequency = 5):
@@ -1339,8 +1339,8 @@ class SingleRewardSession(RewardSession):
 		# neg_threshold = -neg_threshold
 		# print threshold
 		for roi in rois:
-			results.append(self.deconvolve_roi(roi, threshold = 2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
-			results.append(self.deconvolve_roi(roi, threshold = -2.5, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
+			results.append(self.deconvolve_roi(roi, threshold = threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
+			results.append(self.deconvolve_roi(roi, threshold = -threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type, data_type = data_type))
 			# results.append(self.deconvolve_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type, data_type = data_type))
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
 			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')

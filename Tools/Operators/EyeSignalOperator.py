@@ -309,7 +309,7 @@ class EyeSignalOperator(Operator):
 					self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
 					self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 		
-	def filter_pupil(self, hp = 0.01, lp = 4.0):
+	def filter_pupil(self, hp = 0.05, lp = 4.0):
 		"""band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. after interpolation."""
 		# band-pass filtering of signal, high pass first and then low-pass
 		# High pass:

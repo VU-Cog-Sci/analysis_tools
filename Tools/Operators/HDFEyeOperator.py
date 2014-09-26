@@ -105,7 +105,7 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0):
+	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6):
 		"""docstring for edf_gaze_data_to_hdf"""
 		
 		if not hasattr(self, 'edf_operator'):
@@ -151,7 +151,7 @@ class HDFEyeOperator(Operator):
 					# interpolate blinks:
 					eso.interpolate_blinks(method='linear')
 					# low-pass and band-pass pupil data:
-					eso.filter_pupil(hp=0.01, lp=6.0)
+					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
 					# add to existing dataframe:
