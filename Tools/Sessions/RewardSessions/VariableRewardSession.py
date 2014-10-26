@@ -17,6 +17,8 @@ from IPython import embed as shell
 from tables import *
 import pickle
 from scipy.stats import *
+from sklearn.linear_model import Ridge, RidgeCV
+
 from SingleRewardSession import *
 from RewardSession import * 
 from ...other_scripts.plotting_tools import *
@@ -1892,3 +1894,421 @@ class VariableRewardSession(SingleRewardSession):
 			# reward_h5file.createArray(thisRunGroup, r[0]+'_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
+
+	def prepare_for_pupil(self):
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.msg', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.gaz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.gaz.gz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			edf_file = subprocess.Popen('ls ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.edf', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			self.ho.add_edf_file(edf_file)
+			self.ho.edf_message_data_to_hdf(alias = str(r.indexInSession))
+			self.ho.edf_gaze_data_to_hdf(alias = str(r.indexInSession), pupil_hp = 0.04, pupil_lp = 4)		
+
+	def events_and_signals_in_time(self, data_type = 'pupil_bp'):
+		"""events_and_signals_in_time takes all aliases' data from the hdf5 file.
+		This results in variables that designate occurrences in seconds time, 
+		in the time as useful for the variable self.pupil_data, which contains z-scored data_type type data and
+		is still sampled at the original sample_rate. Note: the assumption is that all aliases are sampled at the same frequency. 
+		events_and_signals_in_time further creates self.colour_indices and self.sound_indices variables that 
+		index which trials (corresponding to _times indices) correspond to which sounds and which reward probabilities.
+		"""
+		event_data = []
+		pupil_data = []
+		blink_times = []
+
+		session_time = 0
+
+		# conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		# conds = ['left_CW', 'left_CCW', 'right_CW', 'right_CCW', 'blank_silence', 'blank_rewarded']
+		self.deconvolution_labels  = ['75%_yes', '75%_no', '75%_stim', '50%_yes', '50%_no', '50%_stim', '25%_yes', '25%_no', '25%_stim', '75%_delay', '50%_delay', '25%_delay', 'blank_reward' ]
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+
+			alias = r.indexInSession
+			trial_times = self.ho.read_session_data(alias, 'trials')
+			trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
+			session_start_EL_time = np.array(trial_phase_times[trial_phase_times['trial_phase_index'] == 1]['trial_phase_EL_timestamp'])[0] # np.array(trial_times['trial_start_EL_timestamp'])[0]#
+			session_stop_EL_time = np.array(trial_times['trial_end_EL_timestamp'])[-1]
+
+			trial_parameters = self.ho.read_session_data(alias, 'parameters')
+
+			self.sample_rate = self.ho.sample_rate_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			self.sampled_eye = self.ho.eye_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			#load in blink data
+			eyelink_blink_data = self.ho.read_session_data(alias, 'blinks_from_message_file')
+			eyelink_blink_data_L = eyelink_blink_data[eyelink_blink_data['eye'] == self.sampled_eye] #only select data from left eye
+			b_start_times = np.array(eyelink_blink_data_L.start_timestamp)
+			b_end_times = np.array(eyelink_blink_data_L.end_timestamp)
+
+			#evaluate only blinks that occur after start and before end experiment
+			b_indices = (b_start_times>session_start_EL_time)*(b_end_times<session_stop_EL_time) 
+			b_start_times_t = (b_start_times[b_indices] - session_start_EL_time) #valid blinks (start times) 
+			b_end_times_t = (b_end_times[b_indices] - session_start_EL_time) 
+			blinks = np.array(b_start_times_t)
+			blink_times.append(blinks / self.sample_rate + session_time )
+
+			pupil = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = data_type, requested_eye = self.sampled_eye))
+			pupil_data.append((pupil - pupil.mean()) / pupil.std())
+
+			this_run_events = []
+			for cond in self.deconvolution_labels :
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0] + session_time)	# toss out last trial of each type to make sure there are no strange spill-over effects
+			# this_run_events = np.array(this_run_events) + session_time
+			event_data.append(this_run_events)
+			session_time += session_stop_EL_time / self.sample_rate - session_start_EL_time / self.sample_rate
+			
+
+		self.blink_times = np.concatenate(blink_times)
+		self.pupil_data = np.concatenate(pupil_data)
+		self.event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+		# print self.deconvolution_labels, self.event_data
+		self.reward_event_data = [self.event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'yes' in s or 'no' in s or 'reward' in s]
+		self.stimulus_event_data = [self.event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'stim' in s]
+		self.delay_event_data = [self.event_data[i] for (i,s) in enumerate(self.deconvolution_labels) if 'delay' in s]
+
+		#shell()
+
+	def prepocessing_report(self, downsample_rate =20 ):
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			self.logger.info('starting preprocessing report of pupil data for run %i'% r.indexInSession)
+			alias = str(r.indexInSession)
+			# load times per session:
+			trial_times = self.ho.read_session_data(alias, 'trials')
+			trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
+			session_start_EL_time = np.array(trial_times['trial_start_EL_timestamp'])[0]
+			session_stop_EL_time = np.array(trial_times['trial_end_EL_timestamp'])[-1]
+
+			sample_rate = self.ho.sample_rate_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			eye = self.ho.eye_during_period([session_start_EL_time, session_stop_EL_time], alias)
+
+			pupil_raw = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil', requested_eye = eye))
+			pupil_int = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_int', requested_eye = eye))
+
+			pupil_bp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_bp', requested_eye = eye))
+			pupil_lp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_lp', requested_eye = eye))
+			pupil_hp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_hp', requested_eye = eye))
+
+			x = sp.signal.decimate(np.arange(len(pupil_raw)) / float(sample_rate), downsample_rate, 1)
+			pup_raw_dec = sp.signal.decimate(pupil_raw, downsample_rate, 1)
+			pup_int_dec = sp.signal.decimate(pupil_int, downsample_rate, 1)
+
+			pupil_bp_dec = sp.signal.decimate(pupil_bp, downsample_rate, 1)
+			pupil_lp_dec = sp.signal.decimate(pupil_lp, downsample_rate, 1)
+			pupil_hp_dec = sp.signal.decimate(pupil_hp, downsample_rate, 1)
+
+			# plot interpolated pupil:
+			fig = pl.figure(figsize = (24,9))
+			s = fig.add_subplot(311)
+			pl.plot(x, pup_raw_dec, 'b'); pl.plot(x, pup_int_dec, 'g')
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['raw pupil', 'blink interpolated pupil'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			s = fig.add_subplot(312)
+			pl.plot(x, pupil_bp_dec, 'b'); pl.plot(x, pupil_lp_dec, 'g');
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['band_passed', 'lowpass'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			# s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			s = fig.add_subplot(313)
+			pl.plot(x, pupil_bp_dec, 'b'); pl.plot(x, pupil_hp_dec, 'b');
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['band_passed', 'highpass'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			# s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/eye/'), 'figs', alias + '.pdf'))
+
+	def deconvolve_pupil(self, analysis_sample_rate = 25, interval_duration = 5.0, data_type = 'pupil_bp'):
+		"""raw deconvolution, to see what happens when the fixation colour changes, 
+		and when the sound chimes."""
+
+		self.events_and_signals_in_time(data_type = data_type)
+
+		cond_labels = ['75%_yes', '75%_no', '75%_stim', '50%_yes', '50%_no', '50%_stim', '25%_yes', '25%_no', '25%_stim', '75%_delay', '50%_delay', '25%_delay', 'blank_reward', 'blinks',  ]
+		decon_label_grouping = [[0,1,2],[3,4,5],[6,7,8],[-1]]
+		colors = [['b--','b','b'],['g--','g','g'],['r--','r','r'], ['k--']]
+		alphas = [[1.0, 0.75, 1.0], [1.0, 0.75, 1.0], [1.0, 0.75, 1.0], [1.0]]
+		lthns = [[2.0, 2.0, 2.0],[2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0]]
+		alphas = [[1.0, 0.75, 1.0], [1.0, 0.75, 1.0], [1.0, 0.75, 1.0], [1.0]]
+
+		stim_sound_interval0 = -0.5
+		delay_interval0 = -(interval_duration+stim_sound_interval0)
+
+		interval = [0, interval_duration]
+
+		input_signal = sp.signal.decimate(self.pupil_data, int(self.sample_rate / analysis_sample_rate))
+		events = [np.array(self.stimulus_event_data[i]) + stim_sound_interval0 for i in range(len(self.stimulus_event_data))] 
+		events.extend( [np.array(self.delay_event_data[i]) + delay_interval0 for i in range(len(self.delay_event_data))] )
+		events.extend( [np.array(self.reward_event_data[i]) + stim_sound_interval0 for i in range(len(self.reward_event_data))] )
+		events.extend( [np.array(self.blink_times) + stim_sound_interval0] )
+
+		print input_signal.shape[0] / analysis_sample_rate
+		f = pl.figure()
+		for i, e in enumerate(events):
+			# print i, e
+			pl.plot(e)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution_events.pdf'))
+
+		do = ArrayOperator.DeconvolutionOperator( inputObject = input_signal,
+					eventObject = events, TR = 1.0/analysis_sample_rate, deconvolutionSampleDuration = 1.0/analysis_sample_rate, deconvolutionInterval = interval_duration, run = False )
+		print do.designMatrix.shape
+		f = pl.figure(figsize = (30,40))
+		pl.imshow(do.designMatrix[:2500], aspect = 'equal', cmap = 'gray')
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution_dm.pdf'))
+
+		f = pl.figure(figsize = (12,7))
+		s = f.add_subplot(211)
+		pl.plot(do.designMatrix.sum(axis = 0))
+		s = f.add_subplot(212)
+		pl.plot(do.designMatrix.mean(axis = 1))
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution_tc_dm.pdf'))
+
+		# shell()
+
+		r = RidgeCV(np.linspace(0.01,10, 10))
+		r.fit(do.designMatrix, do.workingDataArray)
+		tcs = r.coef_
+		do.deconvolvedTimeCoursesPerEventType =  tcs.reshape([len(events), do.designMatrix.shape[1]/len(events)])
+
+		# do = ArrayOperator.DeconvolutionOperator( inputObject = input_signal,
+		# 					eventObject = events, TR = 1.0/analysis_sample_rate, deconvolutionSampleDuration = 1.0/analysis_sample_rate, deconvolutionInterval = interval_duration, run = True )
+		# time_points = np.linspace(interval[0], interval[1], np.squeeze(do.deconvolvedTimeCoursesPerEventType).shape[1])
+		stim_sound_interval_timepoints = np.linspace(interval[0], interval[1], np.squeeze(do.deconvolvedTimeCoursesPerEventType).shape[1]) + stim_sound_interval0
+		delay_interval_timepoints = np.linspace(interval[0], interval[1], np.squeeze(do.deconvolvedTimeCoursesPerEventType).shape[1]) + delay_interval0
+
+		rm = np.squeeze(do.deconvolvedTimeCoursesPerEventType)
+
+		# do.residuals()
+		# shell()
+
+		fig = pl.figure(figsize = (10, 10))
+		s = fig.add_subplot(311)	# stim figure
+		s.axhline(0, stim_sound_interval_timepoints[0] - 0.5, stim_sound_interval_timepoints[-1] + 0.5, linewidth = 0.25, color='k')
+		s.axvline( 0.0, -2, 2, linewidth = 0.25, color='k')
+
+		pl.plot(stim_sound_interval_timepoints, rm[0], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_stim')
+		pl.plot(stim_sound_interval_timepoints, rm[1], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_stim')
+		pl.plot(stim_sound_interval_timepoints, rm[2], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_stim')
+		pl.plot(stim_sound_interval_timepoints, rm[-1], colors[-1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = 'blinks')
+		
+		simpleaxis(s)
+		spine_shift(s)
+		s.set_title('deconvolution stimulus response')
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim(np.array([stim_sound_interval_timepoints[0] - 1.5, stim_sound_interval_timepoints[-1] + 1.5]) )
+		s.set_xticks(np.arange(stim_sound_interval_timepoints[0], stim_sound_interval_timepoints[-1] + 0.1, 2.5))
+		leg = s.legend(fancybox = True, shadow = False)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (j, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
+	
+		s = fig.add_subplot(312)	# expectation figure
+		s.axhline(0, delay_interval_timepoints[0] - 0.5, delay_interval_timepoints[-1] + 0.5, linewidth = 0.25, color='k')
+		s.axvline(0.0, -1, 2, linewidth = 0.25, color='k')
+
+		pl.plot(delay_interval_timepoints, rm[3], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_delay')
+		pl.plot(delay_interval_timepoints, rm[4], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_delay')
+		pl.plot(delay_interval_timepoints, rm[5], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_delay')
+
+		# s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], rm[i,3] + rs[i,3], rm[i,3] - rs[i,3], color = colors[0][1], alpha = 0.15)
+		# s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], rm[i,4] + rs[i,4], rm[i,4] - rs[i,4], color = colors[1][1], alpha = 0.15)
+		# s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], rm[i,5] + rs[i,5], rm[i,5] - rs[i,5], color = colors[2][1], alpha = 0.15)
+	
+		simpleaxis(s)
+		spine_shift(s)
+		s.set_title('deconvolution delay response')
+		# s.set_xlabel('time [s]')
+		# s.set_ylabel('% signal change')
+		s.set_xlim(np.array([delay_interval_timepoints[0] - 1.5, delay_interval_timepoints[-1] + 1.5]) )
+		s.set_xticks(np.arange(delay_interval_timepoints[0], delay_interval_timepoints[-1]+0.1, 2.5))
+		leg = s.legend(fancybox = True, shadow = False)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (j, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
+	
+		s = fig.add_subplot(313)	# reward figure
+		s.axhline(0, stim_sound_interval_timepoints[0] - 0.5, stim_sound_interval_timepoints[-1] + 0.5, linewidth = 0.25, color='k')
+		s.axvline(0.0, -2, 2, linewidth = 0.25, color='k')
+		pl.plot(stim_sound_interval_timepoints, rm[6], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_yes')
+		pl.plot(stim_sound_interval_timepoints, rm[8], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_yes')
+		pl.plot(stim_sound_interval_timepoints, rm[10], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_yes')
+		pl.plot(stim_sound_interval_timepoints, rm[7], colors[0][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_no')
+		pl.plot(stim_sound_interval_timepoints, rm[9], colors[1][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_no')
+		pl.plot(stim_sound_interval_timepoints, rm[11], colors[2][1], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_no')
+		pl.plot(stim_sound_interval_timepoints, rm[12], 'k--', alpha = alphas[0][0], linewidth = lthns[0][0], label = 'blank_reward')
+		# s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], rm[i,12] + rs[i,12], rm[i,12] - rs[i,12], color = 'k', alpha = 0.15)
+
+		simpleaxis(s)
+		spine_shift(s)
+		s.set_title('deconvolution full reward response')
+		# s.set_xlabel('time [s]')
+		# s.set_ylabel('% signal change')
+		s.set_xlim(np.array([stim_sound_interval_timepoints[0] - 1.5, stim_sound_interval_timepoints[-1] + 1.5]) )
+		s.set_xticks(np.arange(stim_sound_interval_timepoints[0], stim_sound_interval_timepoints[-1] + 0.1, 2.5))
+		leg = s.legend(fancybox = True, shadow = False)
+		leg.get_frame().set_alpha(0.5)
+		# self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for (j, l) in enumerate(leg.get_lines()):
+				# if i == self.which_stimulus_rewarded:
+				l.set_linewidth(3.5)  # the legend line width
+				# else:
+					# l.set_linewidth(2.0)  # the legend line width
+	
+		# s = fig.add_subplot(336)	# stim figure
+		# s.axhline(0, stim_sound_interval_timepoints[0] - 0.5, stim_sound_interval_timepoints[-1] + 0.5, linewidth = 0.25)
+		# s.axvline(0.0, -1, 2, linewidth = 0.25)
+	
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,0], colors[0][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '75%_diff')
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,1], colors[1][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '50%_diff')
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,2], colors[2][0], alpha = alphas[0][0], linewidth = lthns[0][0], label = '25%_diff')
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], rm[i,12], 'k--', alpha = alphas[0][0], linewidth = lthns[0][0], label = 'blank_reward')
+	
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,0] + diffs_s[i,0], diffs_m[i,0] - diffs_s[i,0], color = colors[0][1], alpha = 0.15)
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,1] + diffs_s[i,1], diffs_m[i,1] - diffs_s[i,1], color = colors[1][1], alpha = 0.15)
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], diffs_m[i,2] + diffs_s[i,2], diffs_m[i,2] - diffs_s[i,2], color = colors[2][1], alpha = 0.15)
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], rm[i,12] + rs[i,12], rm[i,12] - rs[i,12], color = 'k', alpha = 0.15)
+	
+		# simpleaxis(s)
+		# spine_shift(s)
+		# s.set_title(roi + '\ndeconvolution reward difference response')
+		# # s.set_xlabel('time [s]')
+		# # s.set_ylabel('% signal change')
+		# s.set_xlim(np.array([stim_sound_interval_timepoints[0] - 1.5, stim_sound_interval_timepoints[-1] + 1.5]) )
+		# s.set_xticks(np.arange(stim_sound_interval_timepoints[0], stim_sound_interval_timepoints[-1] + 0.1, 2.5) + offsets['stim'])
+		# leg = s.legend(fancybox = True, shadow = False)
+		# leg.get_frame().set_alpha(0.5)
+		# # self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		# if leg:
+		# 	for t in leg.get_texts():
+		# 	    t.set_fontsize('small')    # the legend text fontsize
+		# 	for (j, l) in enumerate(leg.get_lines()):
+		# 		# if i == self.which_stimulus_rewarded:
+		# 		l.set_linewidth(3.5)  # the legend line width
+		# 		# else:
+		# 			# l.set_linewidth(2.0)  # the legend line width
+	
+		# s = fig.add_subplot(335)	# uncertainty/pe delay figure
+		# s.axhline(0, stim_sound_interval_timepoints[0] - 0.5, stim_sound_interval_timepoints[-1] + 0.5, linewidth = 0.25)
+		# s.axvline(0.0, -1, 2, linewidth = 0.25)
+	
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], delay_uncertainty_pe_m[i,0], 'k', alpha = 1.0, linewidth = lthns[0][0], label = 'uncertainty')
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], delay_uncertainty_pe_m[i,1], 'k', alpha = 0.5, linewidth = lthns[0][0], label = 'reward prob')
+	
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], delay_uncertainty_pe_m[i,0] + delay_uncertainty_pe_s[i,0], delay_uncertainty_pe_m[i,0] - delay_uncertainty_pe_s[i,0], color = 'k', alpha = 0.15)
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['delay'], delay_uncertainty_pe_m[i,1] + delay_uncertainty_pe_s[i,1], delay_uncertainty_pe_m[i,1] - delay_uncertainty_pe_s[i,1], color = 'k', alpha = 0.075)
+
+		# simpleaxis(s)
+		# spine_shift(s)
+		# s.set_title(roi + '\nuncertainty - reward expectation during delay')
+		# s.set_xlabel('time [s]')
+		# s.set_ylabel('% signal change')
+		# s.set_xlim(np.array([stim_sound_interval_timepoints[0] - 1.5, stim_sound_interval_timepoints[-1] + 1.5]) )
+		# s.set_xticks(np.arange(stim_sound_interval_timepoints[0], stim_sound_interval_timepoints[-1] + 0.1, 2.5) + offsets['stim'])
+		# leg = s.legend(fancybox = True, shadow = False)
+		# leg.get_frame().set_alpha(0.5)
+		# # self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		# if leg:
+		# 	for t in leg.get_texts():
+		# 	    t.set_fontsize('small')    # the legend text fontsize
+		# 	for (j, l) in enumerate(leg.get_lines()):
+		# 		# if i == self.which_stimulus_rewarded:
+		# 		l.set_linewidth(3.5)  # the legend line width
+		# 		# else:
+		# 			# l.set_linewidth(2.0)  # the legend line width
+
+		# s = fig.add_subplot(339)	# stim figure
+		# s.axhline(0, stim_sound_interval_timepoints[0] - 0.5, stim_sound_interval_timepoints[-1] + 0.5, linewidth = 0.25)
+		# s.axvline(0.0, -1, 2, linewidth = 0.25)
+	
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], reward_uncertainty_pe_m[i,0], 'k', alpha = 1.0, linewidth = lthns[0][0], label = 'uncertainty')
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], reward_uncertainty_pe_m[i,1], 'k', alpha = 0.5, linewidth = lthns[0][0], label = 'pe')
+	
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], reward_uncertainty_pe_m[i,0] + reward_uncertainty_pe_s[i,0], reward_uncertainty_pe_m[i,0] - reward_uncertainty_pe_s[i,0], color = 'k', alpha = 0.15)
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]) + offsets['reward'], reward_uncertainty_pe_m[i,1] + reward_uncertainty_pe_s[i,1], reward_uncertainty_pe_m[i,1] - reward_uncertainty_pe_s[i,1], color = 'k', alpha = 0.075)
+
+		# pl.plot(np.linspace(interval[0], interval[1], rm.shape[-1]), rm[i,12], 'k--', alpha = alphas[0][0], linewidth = lthns[0][0], label = 'blank_reward')
+		# # s.fill_between(np.linspace(interval[0], interval[1], rm.shape[-1]), rm[i,12] + rs[i,12], rm[i,12] - rs[i,12], color = 'k', alpha = 0.15)
+
+		# simpleaxis(s)
+		# spine_shift(s)
+		# s.set_title(roi + '\nuncertainty - reward expectation after reward')
+		# s.set_xlabel('time [s]')
+		# s.set_ylabel('% signal change')
+		# s.set_xlim(np.array([stim_sound_interval_timepoints[0] - 1.5, stim_sound_interval_timepoints[-1] + 1.5]) )
+		# s.set_xticks(np.arange(stim_sound_interval_timepoints[0], stim_sound_interval_timepoints[-1] + 0.1, 2.5) + offsets['stim'])
+		# leg = s.legend(fancybox = True, shadow = False)
+		# leg.get_frame().set_alpha(0.5)
+		# # self.rewarded_stimulus_run(self.runList[self.conditionDict['reward'][0]])
+		# if leg:
+		# 	for t in leg.get_texts():
+		# 	    t.set_fontsize('small')    # the legend text fontsize
+		# 	for (j, l) in enumerate(leg.get_lines()):
+		# 		# if i == self.which_stimulus_rewarded:
+		# 		l.set_linewidth(3.5)  # the legend line width
+		# 		# else:
+		# 			# l.set_linewidth(2.0)  # the legend line width
+
+
+		# pl.savefig(figure_folder + roi + '_' + type_of_roi[1:] + 'deconvolution_' + type_of_analysis + '.pdf')
+
+
+		# f = pl.figure()
+		# ax = f.add_subplot(111)
+		# for x in range(len(cond_labels)):
+		# 	pl.plot(time_points, np.squeeze(do.deconvolvedTimeCoursesPerEventType)[x], ['b','r','r','g','g','k','k'][x], alpha = [0.5, 0.5, 1.0, 0.5, 1.0, 0.5, 1.0][x])
+		# pl.axvline(0, lw=0.25, alpha=0.5, color = 'k')
+		# pl.axhline(0, lw=0.25, alpha=0.5, color = 'k')
+		# ax.set_xlim(xmin=interval[0], xmax=interval[1])
+		# pl.legend(cond_labels)
+		# simpleaxis(ax)
+		# spine_shift(ax)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution.pdf'))
+		
+		with pd.get_store(self.ho.inputObject) as h5_file:
+			# h5_file.put("/%s/%s"%('deconvolve_pupil', 'residuals'), pd.Series(np.squeeze(np.array(do.residuals))))
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'stim_sound_interval_timepoints'), pd.Series(stim_sound_interval_timepoints))
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'delay_interval_timepoints'), pd.Series(delay_interval_timepoints))
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'dec_time_course'), pd.DataFrame(np.squeeze(do.deconvolvedTimeCoursesPerEventType).T))
+

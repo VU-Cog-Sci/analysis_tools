@@ -44,7 +44,7 @@ class HDFEyeOperator(Operator):
 		"""
 		add_table_to_hdf adds a data table to the hdf file
 		"""
-		this_table = self.h5f.createTable(run_group, name, type_dict, '%s in file %s' % (name, self.edf_operator.inputFileName))
+		this_table = self.h5f.create_table(run_group, name, type_dict, '%s in file %s' % (name, self.edf_operator.inputFileName))
 		
 		row = this_table.row
 		for r in data:
