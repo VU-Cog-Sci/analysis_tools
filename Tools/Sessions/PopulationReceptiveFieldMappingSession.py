@@ -21,6 +21,7 @@ import matplotlib.mlab as mlab
 
 from nifti import *
 from math import *
+import shutil
 
 from joblib import Parallel, delayed
 from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV, ElasticNet, ElasticNetCV
@@ -202,7 +203,7 @@ def normalize_histogram(input_array, mask_array = None):
 # 		
 # 	return max_comp, surf
 
-def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, cond = cond, z_thresh=1.5, fit_on='smoothed_betas'):
+def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = False, contour_level = 0.9, voxel_no = 1, cond = cond, normalize_to = [], fit_on='smoothed_betas',plotdir = []):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	
@@ -221,70 +222,107 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		maximum = tuple((np.array(maximum).astype('float')/5).astype('int'))
 		upscale = 1
 		
+	# shell()
 	# ## compute surface:
 	# 1. normalize PRF
-	PRF_circle = disk((n_pixel_elements*upscale-1)/2)
-	PRF_n = (PRF-np.mean(PRF[PRF_circle==1]))/np.std(PRF[PRF_circle==1])
+	if normalize_to == 'z-score':
+		PRF_circle = disk((n_pixel_elements*upscale-1)/2)
+		PRF_n = (PRF-np.mean(PRF[PRF_circle==1]))/np.std(PRF[PRF_circle==1])
+		# cutoffs = np.arange(1,2.5,0.5)
+		cutoffs = [1]
+	elif normalize_to == 'zero-one':
+		PRF_n = (PRF - np.min(PRF)) / (np.max(PRF) - np.min(PRF))
+		cutoffs = np.array([0.5,0.6,0.7,0.8])
 
 	# 2. generate mask
-	PRF_n_m= zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
-	PRF_n_m[PRF_n>z_thresh] = 1
-
-	# 3. pick right PRF then create new windows around it using banded profile
-	labels = ndimage.label(PRF_n_m)[0]
-	label_index = labels[(maximum)]
-	label_4_surf = copy(labels)
-	label_4_surf[label_4_surf!=label_index] = 0
-	PRF_n_t = copy(PRF_n)
-	PRF_n_t[labels!=label_index] = 0
+	all_params = []
+	fitimages = []
+	EVS = []
+	PRF_n_t = []
 	# shell()
-	# 4. compute surface and volume
+	for i, thresh in enumerate(cutoffs):
+		labels = []; label_index = []
+		PRF_n_m= zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
+		PRF_n_m[PRF_n > thresh] = 1
 
-	params, infodict, errmsg, fitimage=gaussfit(PRF_n_t,voxel_no=voxel_no)
-	if params == []:
+		# 3. pick right PRF then create new windows around it using banded profile
+		labels = ndimage.label(PRF_n_m)[0]
+		label_index = labels[(maximum)]
+		label_4_surf = copy(labels)
+		label_4_surf[label_4_surf!=label_index] = 0
+		PRF_n_t.append(copy(PRF_n))
+		PRF_n_t[i][labels!=label_index] = 0
+		
+		# 4. compute surface and volume
+		p, infodict, errmsg, fi = gaussfit(PRF_n_t[i],voxel_no=voxel_no)
+		if not p == []: all_params.append(p)
+		if not fi == []: fitimages.append(fi)
+		
+		EVS.append(1- np.linalg.norm(PRF_n_t[i].ravel()-fitimages[i].ravel())**2 / np.linalg.norm(PRF_n_t[i].ravel())**2)
+			
+	if all_params == []:
 		center = [0,0]
 		max_norm = 2.0 * (np.array(center) / (n_pixel_elements*upscale)) - 1.0 
 		max_comp_gauss =  np.complex(max_norm[0], max_norm[1])
 		max_comp_abs = np.complex(max_norm[0], max_norm[1])
 		surf_gauss = 0
-		surf_mask = 0
+		surf_mask = 0.5
 		vol = 0
 		EV = 0
 	else:
-		EV = 1- np.linalg.norm(PRF_n_t.ravel()-fitimage.ravel())**2 / np.linalg.norm(PRF_n_t.ravel())**2
+		best = EVS.index(np.max(EVS))
+		params = all_params[best]
+		fitimage = fitimages[best]
+		
+		thresh = cutoffs[best]
+		# calculate EV
+		# ---------------
+		# create time-series for this voxel by multiplying the beta values
+	
+		
+		EV = EVS[best]#1- np.linalg.norm(PRF_n_t.ravel()-fitimage.ravel())**2 / np.linalg.norm(PRF_n_t.ravel())**2
 		center_gauss = np.array([params[3],params[2]])
 		center_abs = copy(maximum).astype('float32')
-		max_norm_gauss = 2.0 * (np.array(center_gauss) / (n_pixel_elements*upscale)) - 1.0 
+		max_norm_gauss = 2.0 * (np.array(center_gauss) / (n_pixel_elements*upscale)) - 1.0
+		# max_norm_gauss = 2.0 * np.array(center_gauss) - 1.0
 		max_comp_gauss =  np.complex(max_norm_gauss[0], max_norm_gauss[1])
 		max_norm_abs = 2.0 * (np.array(center_abs) / (n_pixel_elements*upscale)) - 1.0 
 		max_comp_abs =  np.complex(max_norm_abs[0], max_norm_abs[1])
-		ecc_gauss = np.abs(max_comp_gauss)
-		ecc_abs = np.abs(max_comp_abs)
+		ecc_gauss = np.abs(max_comp_gauss) * 27/2.0
+		ecc_abs = np.abs(max_comp_abs) * 27/2.0
 		# surf_gauss = 2*np.sqrt(2*(math.log(2)))*sd
 		surf_gauss = (np.pi * (params[4]) * (params[5])) / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
-		sd_gauss = np.sqrt(surf_gauss / np.pi)
+		sd_gauss =  ( ((params[4]+params[5]) / 2)  /  (n_pixel_elements*upscale)) * 27
+		# sd_gauss = np.sqrt(surf_gauss / np.pi)
 		fwhm = 2.0*np.sqrt(2.0*np.log(2))*sd_gauss
 		surf_mask = label_4_surf.sum().astype('float32') / (np.pi * (n_pixel_elements*upscale/2.0) * (n_pixel_elements*upscale/2.0)) * 27
 		sd_mask = np.sqrt(surf_mask / np.pi)
 		vol = 2*surf_gauss*(params[1]-params[0])
+		
 		# shell()
-		if diagnostics_plot:
-			if np.all([ecc_gauss<0.7,ecc_abs<0.7,fitimage != []]):
-				f=pl.figure(figsize = (8,7))
-				ax = f.add_subplot(111, aspect='equal')
-				pl.imshow(PRF)
-				pl.imshow(PRF_n_t,alpha=0.7)
-				c = pl.contour(fitimage)
-				e = matplotlib.patches.Ellipse(tuple([center_gauss[1],center_gauss[0]]),params[5]*3,params[4]*3,angle=params[6],alpha=0.5)
-				ax.add_artist(e)
-				pl.text(int(PRF_n_t.shape[0]/8),int(PRF_n_t.shape[0]/8*6), 'EV: %.2f \nsurf_gauss: %.2f \nsurf_mask: %.2f \necc_gauss: %.2f \necc_abs: %.2f \ncond: %s' %(EV,surf_gauss,surf_mask,ecc_gauss,ecc_abs,cond),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
-				pl.axis('off')
-				pl.plot([center_gauss[1]], [center_gauss[0]], 'ko')
-				pl.plot([center_abs[1]], [center_abs[0]], 'wo')
-				# pl.savefig(os.path.join('PopulationReceptiveFieldMappingSession.stageFolder('processed/mri/figs/example_fits/'+ 'vox_'  + str(voxel_no)  + '_' + fit_on + '_z_thresh_' + str(z_thresh) + '.pdf'))
-				pl.savefig(os.path.join('/home/shared/MB_PRF/data/LS/LS_290314/processed/mri/figs/'+ '35x35_vox_'  + str(voxel_no)  + '_' + cond + '_' + fit_on + '_z_thresh_' + str(z_thresh) + '.pdf'))
-				# pl.show()
-				pl.close()
+	if diagnostics_plot:
+		if np.all([ sd_gauss > 0.0, sd_gauss < 27.0/2, ecc_gauss < 0.8*(27.0/2), ecc_gauss> 0.1*(27.0/2), EV > 0.85, fitimage != []]):
+			f=pl.figure(figsize = (16,7))
+			ax = f.add_subplot(121)
+			pl.imshow(PRF)
+			pl.imshow(PRF_n_t[best],alpha=0.7)
+			ax.set_title('PRF spatial profile')
+			pl.text(int(PRF_n_t[best].shape[0]/8),int(PRF_n_t[best].shape[0]/8*6), 'EV: %.2f \nsize (sd): %.2f \necc: %.2f \nthresh: %.2f \ncond: %s' %(EV,sd_gauss,ecc_gauss,thresh ,cond),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+			
+			pl.axis('off')
+			# c = pl.contour(fitimage)
+			# e = matplotlib.patches.Ellipse(tuple([center_gauss[1],center_gauss[0]]),params[4],params[5],angle=params[6],alpha=0.5)
+			# e = matplotlib.patches.Circle(tuple([center_gauss[1],center_gauss[0]]),sd_gauss,alpha=0.5)
+			# ax.add_artist(e)
+			ax = f.add_subplot(122)
+			pl.imshow(fitimage)
+			pl.text(int(PRF_n_t[best].shape[0]/8),int(PRF_n_t[best].shape[0]/8*6), 'EV: %.2f \nsize (sd): %.2f \necc: %.2f \nthresh: %.2f \ncond: %s' %(EV,sd_gauss,ecc_gauss,thresh ,cond),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+			pl.axis('off')
+			# pl.plot([center_gauss[1]], [center_gauss[0]], 'ko')
+			# pl.plot([center_abs[1]], [center_abs[0]], 'wo')
+			ax.set_title('Gauss fit')
+			pl.savefig(os.path.join(plotdir + 'vox_'  + str(voxel_no)  + '_' + cond + '_' + fit_on + '_thresh_' + str(thresh) + '.pdf'))
+			pl.close()
 						
 	return max_comp_gauss, max_comp_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_mask, fwhm
 	
@@ -502,7 +540,7 @@ def gaussfit(data,err=None,params=(),return_all=False,circle=False,
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
-	def __init__(self, orientation, n_elements, n_samples, sample_duration, bar_width = 0.1):
+	def __init__(self, orientation, n_elements, n_samples, sample_duration, bar_width = 0.05):
 		super(PRFModelTrial, self).__init__()
 		self.orientation = orientation
 		self.n_elements = n_elements
@@ -532,7 +570,7 @@ class PRFModelTrial(object):
 	
 class PRFModelRun(object):
 	"""docstring for PRFModelRun"""
-	def __init__(self, run, n_TRs, TR, n_pixel_elements, sample_duration = 0.6, bar_width = 0.1):
+	def __init__(self, run, n_TRs, TR, n_pixel_elements, sample_duration = 0.6, bar_width = 0.05):
 		super(PRFModelRun, self).__init__()
 		self.run = run
 		self.n_TRs = n_TRs
@@ -549,8 +587,11 @@ class PRFModelRun(object):
 		
 		self.run_matrix = np.zeros((self.sample_times.shape[0], self.n_pixel_elements, self.n_pixel_elements))
 		
-		for i in range(len(self.orientation_list)): # trials
+		# for i in range(len(self.orientation_list)): # trials
+		for i in range(len(self.run.trial_times)):
+			# shell()
 			samples_in_trial = (self.sample_times > (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
+
 			# print samples_in_trial.sum()
 			if self.run.trial_times[i][0] != 'fix_no_stim':
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
@@ -677,8 +718,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			saccades=self.eye_informer(length_thresh = 5)
 			for ti, tb in enumerate(r.trial_times):
 				# subtract 2.5 seconds from every trial onset:
-				# r.trial_times[ti][1] -= 2.5
-				# r.trial_times[ti][2] -= 2.5
+				# r.trial_times[ti][1] -= 0.5
+				# r.trial_times[ti][2] -= 0.5
 				# change trials to fix_no_stim
 				# for s in saccades:
 # 					if np.all([ (s[0] > tb[1]), (s[0] < tb[2]) ]):
@@ -877,9 +918,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
 		# loop over runs
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
+			self.logger.info('per-condition Z-score of run %s' % r)
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			tr_times = np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime)
-			self.logger.info('per-condition Z-score of run %s, with %i trs' % (r, nii_file.timepoints))
 			masked_input_data = nii_file.data[:,cortex_mask]
 			if not hasattr(r, 'trial_times'):
 				self.stimulus_timings()
@@ -1068,8 +1109,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
-				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
-				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6) for vox_timeseries in these_voxels)
+				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
+				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				if mask_file_name == 'single_voxel':
@@ -1106,6 +1147,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			np.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition), z_data[selected_tr_times])
 	
+	
+	
 	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 0.0, condition = 'PRF'):
 		"""docstring for results_to_surface"""
 		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/%s/'%condition), file_name + '.nii.gz'))
@@ -1129,7 +1172,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.results_to_surface(file_name = value_file + '_%2.2f'%threshold, output_file_name = condition, frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, 'surf': 4})
 		
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', z_thresh = 1.0,voxels_to_plot=[]):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', normalize_to = [],voxels_to_plot=[],example_plots = False ):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
@@ -1148,58 +1191,59 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask]
 			self.logger.info('starting fitting of prf shapes')
-			# voxels_to_plot = [187,895,546,477,253,162,754,298,175,184,257,948,759,864,253,7789,456,7854,5368,1459,5842,8009,5845,6589,7458,6456,7846,5792,456,2545,784,657,95,4,2,875,98,46,533,6,5]
-			res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on = fit_on, z_thresh = z_thresh, cond=cond,voxel_no=i) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
-			# for i in [45,65,87,90,354,765,578]:#voxels_to_plot:#,175,184]:
-			# for i in np.arange(voxel_spatial_data_to_fit.shape[1]):#voxels_to_plot:#,175,184]:
-			# 	analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, fit_on=fit_on,z_thresh=z_thresh, cond=task_condition,voxel_no=i)
-			# max_comp_gauss, max_com_abs, surf_gauss, surf_mask, vol, EV
-			surf_gauss = np.real(res)[:,2]
-			surf_mask = np.real(res)[:,3]
-			vol = np.real(res)[:,4]
-			EV = np.real(res)[:,5]
-			sd_gauss = np.real(res)[:,6]
-			sd_surf = np.real(res)[:,7]
-			fwhm = np.real(res)[:,8]
+			if example_plots:
+				plotdir = self.stageFolder('processed/mri/') + 'figs/example_PRFS/'
+				if  os.path.isdir(plotdir): shutil.rmtree(plotdir); os.mkdir(plotdir)
+				else: os.mkdir(plotdir)
+				if voxels_to_plot == []: voxels_to_plot = np.array(np.random.sample(200)*len(voxel_spatial_data_to_fit.T)).astype(int)
+				for i in voxels_to_plot:
+					analyze_PRF_from_spatial_profile(voxel_spatial_data_to_fit.T[i], diagnostics_plot = True, fit_on=fit_on,normalize_to = normalize_to, cond=task_condition,voxel_no=i,plotdir = plotdir)
+			else:
+				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(analyze_PRF_from_spatial_profile)(voxel_spatial_data_to_fit.T[i], diagnostics_plot = False, normalize_to = normalize_to, fit_on = fit_on, cond=cond,voxel_no=i) for i in range(shape(voxel_spatial_data_to_fit.T)[0]))
+				surf_gauss = np.real(res)[:,2]
+				surf_mask = np.real(res)[:,3]
+				vol = np.real(res)[:,4]
+				EV = np.real(res)[:,5]
+				sd_gauss = np.real(res)[:,6]
+				sd_surf = np.real(res)[:,7]
+				fwhm = np.real(res)[:,8]
 
-			max_comp_gauss = np.array(res)[:,0]
-			polar_gauss = np.angle(max_comp_gauss)
-			ecc_gauss = np.abs(max_comp_gauss)
-			real_gauss = np.real(max_comp_gauss)
-			imag_gauss = np.imag(max_comp_gauss)
+				max_comp_gauss = np.array(res)[:,0]
+				polar_gauss = np.angle(max_comp_gauss)
+				ecc_gauss = np.abs(max_comp_gauss)
+				real_gauss = np.real(max_comp_gauss)
+				imag_gauss = np.imag(max_comp_gauss)
 			
-			max_comp_abs = np.array(res)[:,1]
-			polar_abs = np.angle(max_comp_abs)
-			ecc_abs = np.abs(max_comp_abs)
-			real_abs = np.real(max_comp_abs)
-			imag_abs = np.imag(max_comp_abs)
+				max_comp_abs = np.array(res)[:,1]
+				polar_abs = np.angle(max_comp_abs)
+				ecc_abs = np.abs(max_comp_abs)
+				real_abs = np.real(max_comp_abs)
+				imag_abs = np.imag(max_comp_abs)
 
-			# shell()
+				# shell()
 
-			prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_surf, fwhm])
+				prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_surf, fwhm])
 
-			empty_res = np.zeros([len(prf_res)] + [np.array(stats_data.shape[1:]).prod()])
-			empty_res[:,(stat_mask * anat_mask).ravel()] = prf_res
+				empty_res = np.zeros([len(prf_res)] + [np.array(stats_data.shape[1:]).prod()])
+				empty_res[:,(stat_mask * anat_mask).ravel()] = prf_res
 
-			all_res = empty_res.reshape([len(prf_res)] + list(stats_data.shape[1:]))
+				all_res = empty_res.reshape([len(prf_res)] + list(stats_data.shape[1:]))
 
-			self.logger.info('saving prf parameters')
+				self.logger.info('saving prf parameters')
 
-			all_res_file = NiftiImage(all_res)
-			all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
-			all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + '.nii.gz'))
+				all_res_file = NiftiImage(all_res)
+				all_res_file.header = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).header
+				all_res_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'results_' + filename + '.nii.gz'))	
 		
-		
-		
-		self.logger.info('converting prf values to surfaces')
-		for sm in [0,2,5]: # different smoothing values.
-			# reproject the original stats
-			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
-			# and the spatial values
-			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
-
-			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
-			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
+		# self.logger.info('converting prf values to surfaces')
+		# for sm in [0,2,5]: # different smoothing values.
+		# 	# reproject the original stats
+		# 	self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':1}, smooth = sm, condition = condition)
+		# 	# and the spatial values
+		# 	self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, '_surf':4}, smooth = sm, condition = condition)
+		#
+		# 	# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+		# 	self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), 'results_' + filename + '_' + str(sm) ))
 
 			
 	def surface_to_polar(self, filename, condition = 'PRF'):
@@ -1318,22 +1362,29 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		h5file.close()
 
-	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.9]):
+	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.6]):
 		self.logger.info('starting prf data correlations from region %s'%roi)
 		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11, 'sd_gauss':12,'sd_surf':13} 
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
 		h5file = open_file(self.hdf5_filename, mode = "r", title = condition + " file")
-
+		# shell()
 		# data to be correlated
+		shell()
+		
 		base_task_data = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_results')
 		all_comparison_task_data = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_results') for c in comparison_task_conditions]
-
+		# thisRoi = h5file.get_node(where = '/' + 'prf', name = roi, classname='Group')
+		# base_task_data = eval('thisRoi.' + 'fix_results' + '.read()').T
+		# all_comparison_task_data = []
+		# all_comparison_task_data.append(eval('thisRoi.' + 'fix_results' + '.read()').T)
 		# correlations on which to base the tasks
 		base_task_corr = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_corrs')
 		all_comparison_task_corr = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_corrs') for c in comparison_task_conditions]
-
+		# base_task_corr = eval('thisRoi.' + 'fix_corrs' + '.read()').T
+		# all_comparison_task_corr = []
+		# all_comparison_task_corr.append(eval('thisRoi.' + 'fix_corrs' + '.read()').T)
 		h5file.close()
 
 		# create and apply the mask. 
@@ -1355,15 +1406,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 			for j, res_type in enumerate(['ecc_gauss','sd_gauss']): # , 'ecc'
 				s = f.add_subplot(1,2,1+j)
 				for i, tc in enumerate(comparison_task_conditions):
-					pl.plot(base_task_data[:,results_frames['ecc_gauss']], np.sqrt(all_comparison_task_data[i][:,results_frames[res_type]]/pi), c = colors[i], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+					
+					# fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['surf_gauss']], 1)
+					# fit_fn = poly1d(fit)
+
+					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['surf_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
+					
+					
+					pl.plot(base_task_data[:,results_frames['ecc_gauss']], all_comparison_task_data[i][:,results_frames[res_type]], c = colors[i], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
 					sm_signal = np.convolve( all_comparison_task_data[i][:,results_frames[res_type]][order], kern / kern.sum(), 'valid' )
-					pl.plot(sm_ecc, np.sqrt(sm_signal/pi), c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
+					pl.plot(sm_ecc, sm_signal, c = colors[i], linewidth = 3.5, alpha = 0.75, label = comparison_task_conditions[i] )
 				s.set_title(roi + ' ' + res_type)
 
 				# if  j==1:
-				# 	s.set_ylim([0.85,1.25])
+					# s.set_ylim([0.85,1.25])
 				# else:
-				# 	s.set_ylim([0,0.6])
+					# s.set_ylim([0,0.6])
 				leg = s.legend(fancybox = True, loc = 'best')
 				leg.get_frame().set_alpha(0.5)
 				if leg:
@@ -1443,38 +1502,67 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM_displacement' + roi + '.pdf'))
 			pl.close()
 	
-	def ecc_surf_correlations(self, condition = 'PRF', corr_threshold = 0.1, rois = []):
+	def ecc_surf_correlations(self, condition = 'PRF', corr_threshold = 0.1, rois = [], task_condition = []):
 		
 		self.logger.info('starting eccen-surf correlations')
-		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11} 
+		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14} 
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
 		h5file = open_file(self.hdf5_filename, mode = "r", title = condition + " file")
 		
 		# combine rois
-		end_rois = {'v1':0,'v2':1,'v3':2,'v4':3,'v7':4,'LO':5,'VO':6,'TO':7,'IPS':8}
-		roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d','v3ab'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
-					
-		results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = 'fix' + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
-		stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = 'fix' + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
+		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3,'v7':4,'LO':5,'VO':6,'TO':7,'IPS':8}
+		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
+		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3}
+		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4']}
+		end_rois = {'v1':0}
+		roi_comb = {0: 'v1'}
+		if (size(end_rois) == 1) * (size(roi_comb[0]) == 1):
+			results = []
+			stats = []
+			results.append(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi_comb[0], data_type = task_condition[0] + '_results'))
+			stats.append(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi_comb[0], data_type = task_condition[0] + '_corrs'))
+		else:
+			results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
+			stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
 		
-		mask = [(stats[r][:,1] > corr_threshold) * (results[r][:,results_frames['ecc_gauss']] < 0.8) * (results[r][:,results_frames['ecc_abs']] < 0.8) * (results[r][:,results_frames['surf_gauss']] > 0.0) * (results[r][:,results_frames['surf_mask']] > 0.0) for r in range(len(end_rois))]
 		
-		f = pl.figure(figsize = (8,8))
-		s = f.add_subplot(1,1,1)
-		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1,10)]
+		for r in range(len(end_rois)):
+			results[r][:,results_frames['ecc_gauss']] = results[r][:,results_frames['ecc_gauss']] * 27.0/2
+			results[r][:,results_frames['ecc_abs']] = results[r][:,results_frames['ecc_abs']] * 27.0/2
+			
+		mask = [(stats[r][:,0]  > corr_threshold) * (results[r][:,results_frames['sd_gauss']] > 0.0) * (results[r][:,results_frames['sd_gauss']] < 27.0/2) * (results[r][:,results_frames['ecc_gauss']] < 0.8*(27.0/2))* (results[r][:,results_frames['ecc_gauss']] > 0.1*(27.0/2))  * (results[r][:,results_frames['EV']] > 0.85) for r in range(len(end_rois))]
+				
+		f = pl.figure(figsize = (16,8))
+		s = f.add_subplot(1,2,1)
+		pl.hist(results[0][mask[0],results_frames['ecc_gauss']],20)
+		s = f.add_subplot(1,2,2)
+				
+		colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1,len(end_rois))]
+		eccen_bins = np.array([[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9] ])
+		eccen_x = np.arange(np.mean(eccen_bins[0]),np.mean(eccen_bins[-1])+1,1)
+		mean_per_bin = []
+		sd_per_bin = []
+		for j, roi in enumerate(end_rois.keys()):
+			mean_per_bin.append([])
+			sd_per_bin.append([])
+			for b in range(len(eccen_bins)):			
+				mean_per_bin[j].append( np.mean( results[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,results_frames['sd_gauss']] ) )
+				sd_per_bin[j].append( np.std( results[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]), results_frames['sd_gauss']] ) )
 		
 		for j, roi in enumerate(end_rois.keys()):			
 			
-			fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['surf_gauss']], 1)
+			# fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']], 1)
+			fit = polyfit(eccen_x, mean_per_bin[j], 1)
 			fit_fn = poly1d(fit)
 
-			pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['surf_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+			# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+			pl.plot(eccen_x,mean_per_bin[j],c = colors[j], marker = 'o', markersize = 2,linewidth = 0.1, mec = 'w', ms = 3.5)
 			pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
 
-			s.set_xlim([0,0.8])
-			s.set_ylim([0,15])
+			s.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
+			s.set_ylim([1,5])
 
 			leg = s.legend(fancybox = True, loc = 'best')
 			leg.get_frame().set_alpha(0.5)
@@ -1487,12 +1575,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			simpleaxis(s)
 			spine_shift(s)
-			s.set_xlabel('eccentricity')
-			s.set_ylabel('surface')
+			s.set_xlabel('pRF eccentricity')
+			s.set_ylabel('pRF size (sd)')
 		
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'all_rois_eccen_surf_cor'))
 		
-
 		
 		
 		

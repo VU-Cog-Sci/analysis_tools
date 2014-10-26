@@ -315,6 +315,7 @@ class EDFOperator( Operator ):
 		self.clean_gaze_information()
 		self.identify_blocks()
 		
+		
 		with open(self.gaze_file) as gfd:
 			txt_data = gfd.readlines()
 			float_data = [[float(i) for i in line.split('\t')] for line in txt_data]
