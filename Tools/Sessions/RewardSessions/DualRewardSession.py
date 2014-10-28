@@ -986,6 +986,185 @@ class DualRewardSession(SingleRewardSession):
 										outputFileName = os.path.join(self.stageFolder('processed/mri/masks/stat'), stat_name+str(i)+'.nii.gz') )
 				flO.execute()
 
+	def prepare_for_pupil(self):
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.msg', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.gaz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			subprocess.Popen('rm ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.gaz.gz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			edf_file = subprocess.Popen('ls ' + self.runFolder(stage = 'processed/eye', run = r) + '/*.edf', shell=True, stdout=PIPE).communicate()[0].split('\n')[0] 
+			self.ho.add_edf_file(edf_file)
+			self.ho.edf_message_data_to_hdf(alias = str(r.indexInSession))
+			self.ho.edf_gaze_data_to_hdf(alias = str(r.indexInSession), pupil_hp = 0.04, pupil_lp = 4)		
+
+	def events_and_signals_in_time(self, data_type = 'pupil_bp'):
+		"""events_and_signals_in_time takes all aliases' data from the hdf5 file.
+		This results in variables that designate occurrences in seconds time, 
+		in the time as useful for the variable self.pupil_data, which contains z-scored data_type type data and
+		is still sampled at the original sample_rate. Note: the assumption is that all aliases are sampled at the same frequency. 
+		events_and_signals_in_time further creates self.colour_indices and self.sound_indices variables that 
+		index which trials (corresponding to _times indices) correspond to which sounds and which reward probabilities.
+		"""
+		event_data = []
+		pupil_data = []
+		blink_times = []
+
+		session_time = 0
+
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			self.rewarded_stimulus_run(r)
+
+			alias = r.indexInSession
+			trial_times = self.ho.read_session_data(alias, 'trials')
+			trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
+			session_start_EL_time = np.array(trial_phase_times[trial_phase_times['trial_phase_index'] == 1]['trial_phase_EL_timestamp'])[0] # np.array(trial_times['trial_start_EL_timestamp'])[0]#
+			session_stop_EL_time = np.array(trial_times['trial_end_EL_timestamp'])[-1]
+
+			trial_parameters = self.ho.read_session_data(alias, 'parameters')
+
+			self.sample_rate = self.ho.sample_rate_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			self.sampled_eye = self.ho.eye_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			#load in blink data
+			eyelink_blink_data = self.ho.read_session_data(alias, 'blinks_from_message_file')
+			eyelink_blink_data_L = eyelink_blink_data[eyelink_blink_data['eye'] == self.sampled_eye] #only select data from left eye
+			b_start_times = np.array(eyelink_blink_data_L.start_timestamp)
+			b_end_times = np.array(eyelink_blink_data_L.end_timestamp)
+
+			#evaluate only blinks that occur after start and before end experiment
+			b_indices = (b_start_times>session_start_EL_time)*(b_end_times<session_stop_EL_time) 
+			b_start_times_t = (b_start_times[b_indices] - session_start_EL_time) #valid blinks (start times) 
+			b_end_times_t = (b_end_times[b_indices] - session_start_EL_time) 
+			blinks = np.array(b_start_times_t)
+			blink_times.append(((blinks + session_time) / self.sample_rate ))
+	
+
+			pupil = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = data_type, requested_eye = self.sampled_eye))
+			pupil_data.append((pupil - pupil.mean()) / pupil.std())
+
+			self.order_for_rewards = r.order
+			this_run_events = []
+			for cond in conds[self.order_for_rewards]:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + session_time
+			event_data.append(this_run_events)
+			session_time += session_stop_EL_time - session_start_EL_time
+			
+
+		self.blink_times = np.concatenate(blink_times)
+		self.pupil_data = np.concatenate(pupil_data)
+		self.event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
+
+		#shell()
+
+	def prepocessing_report(self, downsample_rate =20 ):
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			self.logger.info('starting preprocessing report of pupil data for run %i'% r.indexInSession)
+			alias = str(r.indexInSession)
+			# load times per session:
+			trial_times = self.ho.read_session_data(alias, 'trials')
+			trial_phase_times = self.ho.read_session_data(alias, 'trial_phases')
+			session_start_EL_time = np.array(trial_times['trial_start_EL_timestamp'])[0]
+			session_stop_EL_time = np.array(trial_times['trial_end_EL_timestamp'])[-1]
+
+			sample_rate = self.ho.sample_rate_during_period([session_start_EL_time, session_stop_EL_time], alias)
+			eye = self.ho.eye_during_period([session_start_EL_time, session_stop_EL_time], alias)
+
+			pupil_raw = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil', requested_eye = eye))
+			pupil_int = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_int', requested_eye = eye))
+
+			pupil_bp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_bp', requested_eye = eye))
+			pupil_lp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_lp', requested_eye = eye))
+			pupil_hp = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = 'pupil_hp', requested_eye = eye))
+
+			x = sp.signal.decimate(np.arange(len(pupil_raw)) / float(sample_rate), downsample_rate, 1)
+			pup_raw_dec = sp.signal.decimate(pupil_raw, downsample_rate, 1)
+			pup_int_dec = sp.signal.decimate(pupil_int, downsample_rate, 1)
+
+			pupil_bp_dec = sp.signal.decimate(pupil_bp, downsample_rate, 1)
+			pupil_lp_dec = sp.signal.decimate(pupil_lp, downsample_rate, 1)
+			pupil_hp_dec = sp.signal.decimate(pupil_hp, downsample_rate, 1)
+
+			# plot interpolated pupil:
+			fig = pl.figure(figsize = (24,9))
+			s = fig.add_subplot(311)
+			pl.plot(x, pup_raw_dec, 'b'); pl.plot(x, pup_int_dec, 'g')
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['raw pupil', 'blink interpolated pupil'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			s = fig.add_subplot(312)
+			pl.plot(x, pupil_bp_dec, 'b'); pl.plot(x, pupil_lp_dec, 'g');
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['band_passed', 'lowpass'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			# s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			s = fig.add_subplot(313)
+			pl.plot(x, pupil_bp_dec, 'b'); pl.plot(x, pupil_hp_dec, 'b');
+			pl.ylabel('pupil size'); pl.xlabel('time (s)')
+			pl.legend(['band_passed', 'highpass'])
+			s.set_title(self.subject.initials)
+
+			ymin = pupil_raw.min(); ymax = pupil_raw.max()
+			tps = (list(trial_phase_times[trial_phase_times['trial_phase_index'] == 2]['trial_phase_EL_timestamp']) - session_start_EL_time, list(trial_phase_times[trial_phase_times['trial_phase_index'] == 3]['trial_phase_EL_timestamp']) - session_start_EL_time)
+			for i in range(tps[0].shape[0]):
+				pl.axvline(x = tps[0][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'r')
+				pl.axvline(x = tps[1][i] / float(sample_rate), ymin = ymin, ymax = ymax, color = 'k')
+			# s.set_ylim(ymin = pup_int_dec.min()-100, ymax = pup_int_dec.max()+100)
+			s.set_xlim(xmin = tps[0][0] / float(sample_rate), xmax = tps[1][-1] / float(sample_rate))
+
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/eye/'), 'figs', alias + '.pdf'))
+
+	def deconvolve_pupil(self, analysis_sample_rate = 20, interval = [-0.5,10.0], data_type = 'pupil_bp'):
+		"""raw deconvolution, to see what happens when the fixation colour changes, 
+		and when the sound chimes."""
+
+		self.events_and_signals_in_time(data_type = data_type )
+		cond_labels = ['blinks']
+		cond_labels += ['reward', 'left_CCW', 'right_CW', 'right_CCW'][self.order_for_rewards]
+		cond_labels += ['blank_silence', 'blank_rewarded']
+
+		input_signal = sp.signal.decimate(self.pupil_data, int(self.sample_rate / analysis_sample_rate))
+		events = [self.blink_times + interval[0], self.event_data[0] + interval[0], self.event_data[1] + interval[0], self.event_data[2] + interval[0], self.event_data[3] + interval[0], self.event_data[4] + interval[0], self.event_data[5] + interval[0]]
+		do = ArrayOperator.DeconvolutionOperator( inputObject = input_signal,
+							eventObject = events, TR = 1.0/analysis_sample_rate, deconvolutionSampleDuration = 1.0/analysis_sample_rate, deconvolutionInterval = interval[1] - interval[0], run = True )
+		time_points = np.linspace(interval[0], interval[1], np.squeeze(do.deconvolvedTimeCoursesPerEventType).shape[1])
+		do.residuals()
+		#shell()
+
+		f = pl.figure()
+		ax = f.add_subplot(111)
+		for x in range(len(cond_labels)):
+			pl.plot(time_points, np.squeeze(do.deconvolvedTimeCoursesPerEventType)[x], ['b','r','r','g','g','k','k'][x], alpha = [0.5, 0.5, 1.0, 0.5, 1.0, 0.5, 1.0][x])
+		pl.axvline(0, lw=0.25, alpha=0.5, color = 'k')
+		pl.axhline(0, lw=0.25, alpha=0.5, color = 'k')
+		ax.set_xlim(xmin=interval[0], xmax=interval[1])
+		pl.legend(cond_labels)
+		simpleaxis(ax)
+		spine_shift(ax)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution.pdf'))
+		
+		with pd.get_store(self.ho.inputObject) as h5_file:
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'residuals'), pd.Series(np.squeeze(np.array(do.residuals))))
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'time_points'), pd.Series(time_points))
+			h5_file.put("/%s/%s"%('deconvolve_pupil', 'dec_time_course'), pd.DataFrame(np.squeeze(do.deconvolvedTimeCoursesPerEventType).T))
+
 	def pupil_responses_one_run(self, run, frequency, sample_rate = 2000, postFix = ['mcf'], analysis_duration = 10):
 		# get EL Data
 			

@@ -40,10 +40,13 @@ class HDFEyeOperator(Operator):
 		"""docstring for close_hdf_file"""
 		self.h5f.close()
 	
-	def add_table_to_hdf(self, run_group, type_dict, data, name = 'bla'):
+	def add_table_to_hdf(self, run_group, type_dict, data, name = 'bla',filename = []):
 		"""
 		add_table_to_hdf adds a data table to the hdf file
 		"""
+		if filename == []:
+			filename = self.edf_operator.inputFileName
+			
 		this_table = self.h5f.createTable(run_group, name, type_dict, '%s in file %s' % (name, self.edf_operator.inputFileName))
 		
 		row = this_table.row
@@ -105,8 +108,10 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0):
+	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6):
 		"""docstring for edf_gaze_data_to_hdf"""
+		
+		# shell()
 		
 		if not hasattr(self, 'edf_operator'):
 			self.add_edf_file(edf_file_name = alias)
@@ -119,6 +124,7 @@ class HDFEyeOperator(Operator):
 		#	gaze data in blocks
 		#
 		with pd.get_store(self.inputObject) as h5_file:
+			# shell()
 			# recreate the non-gaze data for the block, that is, its sampling rate, eye of origin etc.
 			blocks_data_frame = pd.DataFrame([dict([[i,self.edf_operator.blocks[j][i]] for i in self.edf_operator.blocks[0].keys() if i not in ('block_data', 'data_columns')]) for j in range(len(self.edf_operator.blocks))])
 			h5_file.put("/%s/blocks"%alias, blocks_data_frame)
@@ -128,11 +134,10 @@ class HDFEyeOperator(Operator):
 				self.edf_operator.take_gaze_data_for_blocks()
 			for i, block in enumerate(self.edf_operator.blocks):
 				bdf = pd.DataFrame(block['block_data'], columns = block['data_columns'])
-				
+			
 				#
 				# preprocess pupil:
 				#
-
 				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
 				# create dictionairy of data per block:
 					gazeXY = bdf[[s%'gaze' for s in [eye+'_%s_x', eye+'_%s_y',]]]
@@ -151,7 +156,7 @@ class HDFEyeOperator(Operator):
 					# interpolate blinks:
 					eso.interpolate_blinks(method='linear')
 					# low-pass and band-pass pupil data:
-					eso.filter_pupil(hp=0.01, lp=6.0)
+					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
 					# add to existing dataframe:
@@ -228,14 +233,14 @@ class HDFEyeOperator(Operator):
 		"""docstring for gaze_during_period"""
 		recorded_eye = self.eye_during_period(time_period, alias)
 		if requested_eye == 'LR' and recorded_eye == 'LR':
-			if signal == 'gaze':
+			if np.any([signal == 'gaze', signal == 'vel']):
 				columns = [s%signal for s in ['L_%s_x', 'L_%s_y', 'R_%s_x', 'R_%s_y']]
 			elif signal == 'time':
-				columns = [s%signal for s in ['%s']]
+				columns = [s%signal for s in ['%s']]		
 			else:
 				columns = [s%signal for s in ['L_%s', 'R_%s']]
 		elif requested_eye in recorded_eye:
-			if signal == 'gaze':
+			if np.any([signal == 'gaze', signal == 'vel']):
 				columns = [s%signal for s in [requested_eye + '_%s_x', requested_eye + '_%s_y']]
 			elif signal == 'time':
 				columns = [s%signal for s in ['%s']]

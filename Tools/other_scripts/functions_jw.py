@@ -13,6 +13,7 @@ import os, sys, datetime, pickle
 import subprocess, logging, time
 
 import numpy as np
+import numpy
 import numpy.random as random
 import pandas as pd
 import scipy as sp
