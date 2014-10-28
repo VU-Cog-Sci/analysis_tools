@@ -152,25 +152,29 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		else:
 			expanded_saccade_end = np.min([cis[1]+50, xy_data.shape[0]])
 		
-		this_saccade = {
-			'expanded_start_time': expanded_saccade_start,
-			'expanded_end_time': expanded_saccade_end,
-			'expanded_duration': expanded_saccade_end - expanded_saccade_start,
-			'expanded_start_point': xy_data[expanded_saccade_start],
-			'expanded_end_point': xy_data[expanded_saccade_end],
-			'expanded_vector': xy_data[expanded_saccade_end] - xy_data[expanded_saccade_start],
-			'expanded_amplitude': np.sum(normed_vel_data[expanded_saccade_start:expanded_saccade_end]) / sample_rate,
-			'peak_velocity': np.max(normed_vel_data[expanded_saccade_start:expanded_saccade_end]),
+		try:
+			this_saccade = {
+				'expanded_start_time': expanded_saccade_start,
+				'expanded_end_time': expanded_saccade_end,
+				'expanded_duration': expanded_saccade_end - expanded_saccade_start,
+				'expanded_start_point': xy_data[expanded_saccade_start],
+				'expanded_end_point': xy_data[expanded_saccade_end],
+				'expanded_vector': xy_data[expanded_saccade_end] - xy_data[expanded_saccade_start],
+				'expanded_amplitude': np.sum(normed_vel_data[expanded_saccade_start:expanded_saccade_end]) / sample_rate,
+				'peak_velocity': np.max(normed_vel_data[expanded_saccade_start:expanded_saccade_end]),
 
-			'raw_start_time': cis[0],
-			'raw_end_time': cis[1],
-			'raw_duration': cis[1] - cis[0],
-			'raw_start_point': xy_data[cis[1]],
-			'raw_end_point': xy_data[cis[0]],
-			'raw_vector': xy_data[cis[1]] - xy_data[cis[0]],
-			'raw_amplitude': np.sum(normed_vel_data[cis[0]:cis[1]]) / sample_rate,
-		}
-		saccades.append(this_saccade)
+				'raw_start_time': cis[0],
+				'raw_end_time': cis[1],
+				'raw_duration': cis[1] - cis[0],
+				'raw_start_point': xy_data[cis[1]],
+				'raw_end_point': xy_data[cis[0]],
+				'raw_vector': xy_data[cis[1]] - xy_data[cis[0]],
+				'raw_amplitude': np.sum(normed_vel_data[cis[0]:cis[1]]) / sample_rate,
+			}
+			saccades.append(this_saccade)
+		except IndexError:
+			pass
+		
 	
 	# if this fucker was empty
 	if len(valid_threshold_crossing_indices) == 0:

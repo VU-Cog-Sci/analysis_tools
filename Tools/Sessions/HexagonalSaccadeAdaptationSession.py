@@ -7,7 +7,6 @@ Created by Tomas Knapen on 2011-04-27.
 Copyright (c) 2011 __MyCompanyName__. All rights reserved.
 """
 from IPython import embed as shell
-# shell()
 import os, math
 
 import numpy as np
@@ -105,7 +104,7 @@ class HexagonalSaccadeAdaptationSession(object):
 			self.ho.edf_message_data_to_hdf(alias = alias)
 			self.ho.edf_gaze_data_to_hdf(alias = alias)
 	
-	def detect_all_saccades(self, alias, n_jobs = -1, threshold = 5.0):
+	def detect_all_saccades(self, alias, n_jobs = -1, threshold = 5.0, use_eye = []):
 		"""docstring for detect_all_saccades"""
 		self.logger.info('starting saccade detection of ' + alias)
 		all_saccades = []
@@ -126,7 +125,7 @@ class HexagonalSaccadeAdaptationSession(object):
 		all_saccades_pd = pd.DataFrame(list(chain.from_iterable(all_saccades)))
 		self.ho.data_frame_to_hdf(alias = alias, name = 'saccades_per_trial', data_frame = all_saccades_pd)
 		
-	def trial_selection(self, alias, no_std_vel_cutoff = 3, amp_range = [5,15], degree_cutoff = 3, initials = 'unkown', trial_rejection_logger = []):
+	def trial_selection(self, alias, no_std_vel_cutoff = 3, amp_range = [5,15], degree_cutoff = 3, initials = 'unkown', trial_rejection_logger = [], analyze_eye = 'L'):
 		"""
 		select_trials returns a boolean array with 1's for trials to use. Trials are deselected when:
 		1. there was a blink in trialphase 2 of that trial (the phase where the script polls for a saccade)
@@ -143,9 +142,10 @@ class HexagonalSaccadeAdaptationSession(object):
 			trial_phases = h5_file['%s/trial_phases'%alias]
 			blinks = h5_file['%s/blinks_from_message_file'%alias]
 			params = h5_file['%s/parameters'%alias]
-				
+		saccade_table = saccade_table[saccade_table.eye == analyze_eye].set_index('trial')
+
 		# initialize outcome array
-		trials2use = np.ones(saccade_table.shape[0])	
+		trials2use = np.ones(saccade_table.shape[0])
 		
 		# 1. deselect trial when the blink onset was within trial phase 2 of that trial:
 		phase_2_start_times = np.array(trial_phases.trial_phase_EL_timestamp[trial_phases.trial_phase_index==2])
@@ -174,11 +174,10 @@ class HexagonalSaccadeAdaptationSession(object):
 		# c_amp = int(saccade_table.shape[0] - sum(trials2use) - c_blink - c_vel)
 		
 		# 3b. deselect trial when amplitude falls within 3 std of average amplitude per block
-		# shell()
-		amp_avg_blocks = [np.mean(saccade_table.expanded_amplitude[i*150:i*150+150]) for i in np.arange(8)]
-		amp_std_blocks = [np.std(saccade_table.expanded_amplitude[i*150:i*150+150]) for i in np.arange(8)]
+		amp_avg_blocks = [np.mean(saccade_table.expanded_amplitude[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block]) for i in np.arange(8)]
+		amp_std_blocks = [np.std(saccade_table.expanded_amplitude[i*self.nr_trials_per_block:i*self.nr_trials_per_block+self.nr_trials_per_block]) for i in np.arange(8)]
 		for i, amp in enumerate(saccade_table.expanded_amplitude):
-			if np.any([amp < (amp_avg_blocks[i/150] - amp_std_blocks[i/150]*3), amp > (amp_avg_blocks[i/150] + amp_std_blocks[i/150]*3)]):
+			if np.any([amp < (amp_avg_blocks[i/self.nr_trials_per_block] - amp_std_blocks[i/self.nr_trials_per_block]*3), amp > (amp_avg_blocks[i/self.nr_trials_per_block] + amp_std_blocks[i/self.nr_trials_per_block]*3)]):
 				trials2use[i] = 0
 		c_amp = int(saccade_table.shape[0] - sum(trials2use) - c_blink - c_vel)
 		
@@ -194,8 +193,6 @@ class HexagonalSaccadeAdaptationSession(object):
 		dot_directions = (np.arange(n_directions) * 2.0 * np.pi) / float(n_directions)
 		dot_xy = np.array([[-np.sin(d), -np.cos(d)] for d in dot_directions])
 		dot_xy_screen = amplitude * pixels_per_degree * dot_xy
-		
-		# shell()
 		
 		# now that we know the dot positions, we can compute the actual positions by subtracting the offsets and deselect unwanted trials
 		gaze_offset = np.zeros(saccade_table.shape[0])
@@ -309,13 +306,15 @@ class HexagonalSaccadeAdaptationSession(object):
 			panel_list.append([labels, wp])
 		return panel_list
 	
-	def amplitudes_first_last_bino_block(self, which_amplitude = 'raw_amplitude', acceptance_amplitude_range = [4.0, 14.0]):
+	def amplitudes_first_last_bino_block(self, which_amplitude = 'raw_amplitude', acceptance_amplitude_range = [4.0, 14.0],analyze_eye='L'):
 		""""""
 		block_amps = []
 		block_diffs = []
 		for alias in self.conditions.keys():
 			with pd.get_store(self.ho.inputObject) as h5_file:
 				saccade_table = h5_file['%s/saccades_per_trial'%alias]
+			saccade_table = saccade_table[saccade_table.eye == analyze_eye].set_index('trial')
+
 			nr_saccs_in_session = saccade_table.shape[0]
 			
 			first_block_amplitudes = np.array([saccade_table[which_amplitude][i*self.nr_trials_per_block:(i+1) * self.nr_trials_per_block] for i in [0,1]])
@@ -447,23 +446,21 @@ class HexagonalSaccadeAdaptationSession(object):
 		
 		return (ar, br, xr, 10**ar, 10**br, 10**xr)
 	
-	def amplitudes_all_adaptation_blocks(self, measures):
+	def amplitudes_all_adaptation_blocks(self, measures,analyze_eye='L'):
 		""""""
-		shell()
 		alias_amps = []
 		alias_fitted_amps = []
 		for alias in self.conditions.keys():
 			with pd.get_store(self.ho.inputObject) as h5_file:
 				saccade_table = h5_file['%s/saccades_per_trial'%alias]
-				# pixels per degree
+				# pixel per degree
 				parameters = h5_file['%s/parameters'%alias]
 				pixels_per_degree = parameters['pixels_per_degree'][0]
+				
+			saccade_table = saccade_table[saccade_table.eye == analyze_eye].set_index('trial')
 			
 			nr_saccs_in_session = saccade_table.shape[0]
-			which_trials_okay, vel_range, amp_range = self.trial_selection(alias = alias)
-			# self.trial_selection(alias = alias, amplitude_range = acceptance_amplitude_range, vel_range = [100,600],no_std_vel_cutoff = 3, no_std_gaze_offset = 3)
-			# shell()
-			
+			which_trials_okay, vel_range, amp_range = self.trial_selection(alias = alias)			
 			
 			for which_amplitude in measures:
 				
@@ -474,7 +471,6 @@ class HexagonalSaccadeAdaptationSession(object):
 				ad_bl_tr = []
 				f_ad_bl_tr = []
 				for i in range(self.nr_blocks):
-					# shell()
 					# if which_amplitude == 'peak_velocity':
 					if (saccade_table['block'] == i).sum() > self.nr_trials_per_block: # average the two eyes together for these trials
 						ad_bl_tr.append(((np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'R')]) + np.array(saccade_table[which_amplitude][(saccade_table['block'] == i) * (saccade_table['eye'] == 'L')]))/2.0))#-baseline)
@@ -499,11 +495,13 @@ class HexagonalSaccadeAdaptationSession(object):
 				s1.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
 				s1.axhline(0.0, linewidth = 0.25)
 				if which_amplitude != 'peak_velocity':				
-					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,amp_range[0]-np.mean(baseline),amp_range[1]-np.mean(baseline)])
+					# s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,amp_range[0]-np.mean(baseline),amp_range[1]-np.mean(baseline)])
+					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,amp_range[0],amp_range[1]])
 					s1.set_ylabel('saccade gain')
 				else:
 					s1.set_ylabel('peak velocity')
-					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,vel_range[0]-np.mean(baseline),vel_range[1]-np.mean(baseline)])
+					# s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,vel_range[0]-np.mean(baseline),vel_range[1]-np.mean(baseline)])
+					s1.axis([-20,self.nr_trials_per_block * self.nr_blocks + 20,vel_range[0],vel_range[1]])
 				s1.set_xlabel('trials within blocks, ' + alias)
 				s1.set_title(alias + '\nTrials + fit')
 		
