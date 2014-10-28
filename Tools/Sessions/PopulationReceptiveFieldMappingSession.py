@@ -779,6 +779,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		data_list = np.vstack(data_list)
 		# now we run the GLM
 		self.logger.info('nifti data loaded from %s for nuisance/trial onset analysis'%(self.runFile(stage = 'processed/mri', run = r, postFix = postFix )))
+		
 		betas = ((joined_design_matrix.T * joined_design_matrix).I * joined_design_matrix.T) * np.mat(data_list.T).T
 		residuals = data_list - (np.mat(joined_design_matrix) * np.mat(betas))
 		

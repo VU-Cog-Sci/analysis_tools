@@ -23,6 +23,7 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 import matplotlib.patches as patches
+import seaborn as sns
 from sklearn import preprocessing
 import statsmodels.formula.api as sm
 import mne
@@ -398,12 +399,6 @@ def pupil_scalar_lin_projection(data, time_start, time_end, template):
 	pupil_scalars = np.array([ np.dot(template, data[i,time_start:time_end])/np.dot(template,template) for i in range(data.shape[0])])
 	return pupil_scalars
 
-
-
-
-
-
-
 # -----------------
 # plotting        -
 # -----------------
@@ -440,18 +435,30 @@ def correlation_plot(X,Y):
 	regression_line = sp.polyval([m,b],X)
 	fig = plt.figure(figsize=(3,3))
 	ax = fig.add_subplot(111)
-	ax.scatter(X,Y, color='#808080', s=20, zorder=2)
+	ax.plot(X, Y, 'o', color='k', marker='o', markeredgecolor='w') #s=20, zorder=2, linewidths=2)
 	if p_value < 0.05:
 		ax.plot(X, regression_line, color='k', zorder=3)
-	simpleaxis(ax)
-	spine_shift(ax)
-	plt.subplots_adjust(top=.9, bottom=.2, left=.25)
+	# simpleaxis(ax)
+	# spine_shift(ax)
 	ax.tick_params(axis='both', which='major', labelsize=6)
 	ax.text(0.5*(plt.axis()[1]+plt.axis()[0]), 0.5*(plt.axis()[3]+plt.axis()[2]),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size=7)
 	plt.gca().spines["bottom"].set_linewidth(.5)
 	plt.gca().spines["left"].set_linewidth(.5)
 	
 	return fig
+
+def correlation_plot2(X, Y, labelX, labelY, xlim, ylim):
+	
+	d = {
+	labelX : pd.Series(X),
+	labelY : pd.Series(Y),
+	}
+	data = pd.DataFrame(d)
+	
+	color = sns.color_palette()[2]
+	g = sns.jointplot(labelX, labelY, data=data, xlim=xlim, ylim=ylim, kind="reg", color=color, size=7)
+	
+	return g
 	
 def sdt_barplot(hit, fa, miss, cr, p1, p2, type_plot=1, values=True):
 	
@@ -980,59 +987,49 @@ def run_model(trace_id, data, model_dir, model_name, samples=10000, accuracy_cod
 	import hddm
 	
 	if accuracy_coding:
-		m = hddm.HDDM(data, bias=False, include=('sv', 'st'), p_outlier=.025)
+		m = hddm.HDDM(data, bias=False, include=('sv', 'st'), group_only_nodes=['sv', 'st'], p_outlier=.05)
 	else:
 		# Here boundaries reflect the actual choices (yes and no), and hence a shift in starting point makes sense:
-		# m = hddm.HDDMStimCoding(data, stim_col='stimulus', include=('z', 'sv', 'st', 'sz'), p_outlier=.025)
-		m = hddm.HDDMStimCoding(data, stim_col='stimulus', split_param='v', drift_criterion=True, bias=True, include=('sv', 'st', 'sz'), p_outlier=.025)
+		# m = hddm.HDDMStimCoding(data, stim_col='stimulus', split_param='v', bias=True, include=('sv', 'st', 'sz'), group_only_nodes=['sv', 'st', 'sz'], p_outlier=.025)
+		# m = hddm.HDDMStimCoding(data, stim_col='stimulus', split_param='v', drift_criterion=True, include=('sv', 'st'), group_only_nodes=['sv', 'st'], p_outlier=.025)
+		m = hddm.HDDMStimCoding(data, stim_col='stimulus', split_param='v', drift_criterion=True, bias=True, include=('sv', 'st', 'sz'), group_only_nodes=['sv', 'st', 'sz'], p_outlier=.05)
+		
 	m.find_starting_values()
-	m.sample(samples, burn=samples/20, thin=2, dbname=os.path.join(model_dir, model_name+ '_db%i'%trace_id), db='pickle')
+	m.sample(samples, burn=samples/10, thin=1, dbname=os.path.join(model_dir, model_name+ '_db{}'.format(trace_id)), db='pickle')
 	return m
 	
-def drift_diffusion_hddm(data, samples=10000, n_jobs=10, run=True, parallel=True, model_name='model', model_dir='.', accuracy_coding=False):
-	
-	# nr of subjects:
-	nr_subjects = len(np.unique(data['subj_idx']))
+def drift_diffusion_hddm(data, samples=10000, n_jobs=6, run=True, parallel=True, model_name='model', model_dir='.', accuracy_coding=False):
 	
 	# run the model:
 	if run:
 		if parallel:
 			job_server = pp.Server(ppservers=(), ncpus=n_jobs)
 			start_time = time.time()
-			jobs = [(trace_id, job_server.submit(run_model,(trace_id, data, model_dir, model_name, int(samples/n_jobs), accuracy_coding), (), ('functions_jw',))) for trace_id in range(n_jobs)]
+			jobs = [(trace_id, job_server.submit(run_model,(trace_id, data, model_dir, model_name, samples, accuracy_coding), (), ('functions_jw',))) for trace_id in range(n_jobs)]
 			results = []
 			for s, job in jobs:
 				results.append(job())
 			print "Time elapsed: ", time.time() - start_time, "s"
 			job_server.print_stats()
-			model = kabuki.utils.concat_models(results)
-			model.save(os.path.join(model_dir, model_name))
+			
+			# save:
+			for i in range(n_jobs):
+				model = results[i]
+				model.save(os.path.join(model_dir, '{}_{}'.format(model_name,i)))
 		else:
 			model = run_model(1, data, model_dir, model_name, samples, accuracy_coding)
 			model.save(os.path.join(model_dir, model_name))
+	
 	# load the models:
 	else:
-		print 'loading existing model'
+		print 'loading existing model(s)'
 		if parallel:
-			results = []
+			model = []
 			for i in range(n_jobs):
-				m = hddm.load(os.path.join(model_dir, model_name))
-				m.load_db(os.path.join(model_dir, model_name + '_db{}'.format(i)), db='pickle')
-				results.append(m)
-			model = kabuki.utils.concat_models(results)
+				model.append(hddm.load(os.path.join(model_dir, '{}_{}'.format(model_name,i))))
 		else:
 			model = hddm.load(os.path.join(model_dir, model_name))
-	
-	t = np.array([model.values.get('t_subj.' + str(i)) for i in range(nr_subjects)])
-	v = np.array([model.values.get('v_subj.' + str(i)) for i in range(nr_subjects)])
-	a = np.array([model.values.get('a_subj.' + str(i)) for i in range(nr_subjects)])
-	
-	if accuracy_coding:
-		return model, t, v, a
-	else:
-		z = np.array([model.values.get('z_subj.' + str(i)) for i in range(nr_subjects)])
-		dc = np.array([model.values.get('dc_subj.' + str(i)) for i in range(nr_subjects)])
-		return model, z, t, v, a, dc
+	return model
 
 
 

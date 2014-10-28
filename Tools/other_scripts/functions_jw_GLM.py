@@ -23,10 +23,13 @@ class GeneralLinearModel(object):
 		self.timepoints = np.arange(0, input_object.shape[0]*sample_dur, new_sample_dur)
 		self.raw_design_matrix = []
 		
-	def configure(self, IRF, IRF_params, regressor_types):
+	def configure(self, IRF='pupil', IRF_params=None, regressor_types='stick', IRF_dt=False, subsample=False):
 		
 		# resample input_object:
-		self.resample_input_object()
+		if subsample:
+			self.resample_input_object()
+		else:
+			self.working_data_array = self.input_object
 		
 		# create raw regressors, and add them to self.raw_design_matrix:
 		for i, reg in enumerate(self.event_object):
@@ -39,14 +42,19 @@ class GeneralLinearModel(object):
 			if regressor_types[i] == 'downramp':
 				self.add_downramp_regressor(reg)
 		
+		self.IRF_dt = IRF_dt
+		
 		# create IRF:
 		if IRF == 'pupil':
 			self.IRF = self.IRF_pupil(dur=IRF_params['dur'], s=IRF_params['s'], n=IRF_params['n'], tmax=IRF_params['tmax'])
+		if IRF == 'BOLD':
+			self.IRF = self.HRF(dur=IRF_params['dur'])
 		else:
 			self.IRF = IRF
 		
 		# convolve raw regressors with IRF to obtain the full design matrix:
 		self.convolve_with_IRF()
+		self.z_score()
 		
 	def resample_input_object(self):
 		"""resample_input_object takes a timeseries of data points and resamples them according to the ratio between sample duration and the new sample duration."""
@@ -62,6 +70,12 @@ class GeneralLinearModel(object):
 			for IRF in self.IRF:
 				self.design_matrix[i,:] = (sp.signal.fftconvolve(reg, IRF, 'full'))[:-(IRF.shape[0]-1)]
 				i += 1
+	
+	def z_score(self):
+		"""z scores design matrix"""
+		
+		for i in range(self.design_matrix.shape[0]):
+			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean()) / self.design_matrix[i,:].std()
 	
 	def execute(self):
 		
@@ -89,7 +103,7 @@ class GeneralLinearModel(object):
 		"""
 		regressor_values = np.zeros(self.timepoints.shape[0])
 		for event in regressor:
-			start_time = np.argmin(np.abs(self.timepoints - event[0]))
+			start_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			regressor_values[start_time] = event[2]
 		self.raw_design_matrix.append(regressor_values)
 	
@@ -99,8 +113,8 @@ class GeneralLinearModel(object):
 		"""
 		regressor_values = np.zeros(self.timepoints.shape[0])
 		for event in regressor:
-			start_time = event[0]
-			end_time = event[0]+event[1]
+			start_time = np.floor(event[0]/self.new_sample_dur)
+			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = sum((self.timepoints > start_time) * (self.timepoints < end_time))
 			height = np.linspace(event[2]/dur, event[2]/dur, dur)
 			regressor_values[(self.timepoints > start_time) * (self.timepoints < end_time)] = height
@@ -136,6 +150,35 @@ class GeneralLinearModel(object):
 	# Impulse Response Functions (IRF)     -
 	# --------------------------------------
 	
+	def HRF(self, dur=25, a1=6.0, a2=12.0, b1=0.9, b2=0.9, c=0.35):
+		
+		# parameters:
+		timepoints = np.arange(0, dur, self.new_sample_dur)
+		
+		# sympy variable:
+		t = sympy.Symbol('t')
+		
+		# function:
+		d1 = a1 * b1
+		d2 = a2 * b2
+		y = ( (t/(d1))**a1 * sympy.exp(-(t-d1)/b1) - c*(t/(d2))**a2 * sympy.exp(-(t-d2)/b2) )
+		
+		# derivative:
+		y_dt = y.diff(t)
+		
+		# lambdify:
+		y = sympy.lambdify(t, y, "numpy")
+		y_dt = sympy.lambdify(t, y_dt, "numpy")
+		
+		# evaluate:
+		y = y(timepoints)
+		y_dt = y_dt(timepoints)
+		
+		if self.IRF_dt:
+			return [y/np.std(y), y_dt/np.std(y_dt)]
+		else:
+			return [y/np.std(y)]
+
 	def IRF_pupil(self, dur=3, s=1.0/(10**26), n=10.1, tmax=.930):
 		"""
 		Canocial pupil impulse fucntion [ref]: 
@@ -161,4 +204,7 @@ class GeneralLinearModel(object):
 		y = y(timepoints)
 		y_dt = y_dt(timepoints)
 		
-		return [y/np.std(y), y_dt/np.std(y_dt)]
+		if self.IRF_dt:
+			return [y/np.std(y), y_dt/np.std(y_dt)]
+		else:
+			return [y/np.std(y)]

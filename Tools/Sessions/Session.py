@@ -40,6 +40,8 @@ from joblib import Parallel, delayed
 
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
+from IPython import embed as shell
+
 class PathConstructor(object):
 	"""
 	FilePathConstructor is an abstract superclass for sessions.
@@ -396,7 +398,7 @@ class Session(PathConstructor):
 		else:
 			os.system('featregapply ' + feat_directory + ' & ' )
 			
-	def motionCorrectFunctionals(self, registerNoMC = False, init_transform_file = None):
+	def motionCorrectFunctionals(self, postFix='', registerNoMC = False, init_transform_file = None):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		how we do this depends on whether we have parallel processing turned on or not
@@ -792,15 +794,19 @@ class Session(PathConstructor):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
+		
 		if type(run) == str:
 			this_run_group_name = run
 		# elif type(run) == Tools.Run:
 		else:
 			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
-
+		
 		try:
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
+			
+			# shell()
+			
 			roi_names = []
 			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
 				if len(roi_name._v_name.split('.')) > 1:
@@ -1336,7 +1342,7 @@ class Session(PathConstructor):
 				subprocess.Popen('cp ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
 				
 	def B0_unwarping(self, conditions, wfs, etl, acceleration):
-	
+		
 		# ----------------------------------------
 		# Set-up everything for BO unwarping:    -
 		# ----------------------------------------
@@ -1349,7 +1355,7 @@ class Session(PathConstructor):
 			fmO = FSLMathsOperator(inputObject=inputObject)
 			fmO.configurePi(outputFileName=outputObject, div=100, mul=3.141592653589793116)
 			fmO.execute()
-
+		
 		# Bet:
 		# bet $FUNCDIR/"$SUB"_B0_magnitude $FUNCDIR/"$SUB"_B0_magnitude_brain -m
 		# fslmaths $FUNCDIR/"$SUB"_B0_magnitude_brain_mask -dilM $FUNCDIR/"$SUB"_B0_magnitude_brain_mask
@@ -1394,17 +1400,18 @@ class Session(PathConstructor):
 		ro.execute()
 
 		# Bet al epi's:
-		for er in self.scanTypeDict['epi_bold']:
-			better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = self.runList[er]) )
-			better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = self.runList[er], postFix = ['NB']), **{'-F': ''} )
-			better.execute()
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
+				better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = r ) )
+				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), **{'-F': ''} )
+				better.execute()
 
 		# ----------------------------------------
 		# Formula:                               -
 		# ----------------------------------------
 
 		effective_echo_spacing = ((1000.0 * wfs)/(434.215 * (etl+1))/acceleration)
-
+		
 		# ----------------------------------------
 		# Do actual B0 unwarping:                -
 		# ----------------------------------------
@@ -1416,8 +1423,8 @@ class Session(PathConstructor):
 		signal_loss_threshold = str(10)
 	
 		# for er in self.scanTypeDict['epi_bold']:
-		for condition in conditions:
-			for r in [self.runList[i] for i in self.conditionDict[condition]]:
+		for cond in conditions:
+			for r in [self.runList[i] for i in self.conditionDict[cond]]:
 				
 				# remove previous feat directories
 				try:
@@ -1426,17 +1433,16 @@ class Session(PathConstructor):
 					os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.fsf'))
 				except OSError:
 					pass
-					
+				
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
 				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_B0/design.fsf'
 				REDict = {
 				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), 
-				# '---MC_REF---':self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID] ),
-	
+			
 				'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']), 
 				'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['NB']), 
 				'---HIGHRES_FILES---':os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), 
-	
+
 				'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
 				'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
 				'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
@@ -1445,7 +1451,7 @@ class Session(PathConstructor):
 				'---UNWARP_DIREC---':unwarp_direction,
 				'---SIGNAL_LOSS_THRESHOLD---':signal_loss_threshold,
 				}
-	
+			
 				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
 				featOp = FEATOperator(inputObject = thisFeatFile)
 				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
