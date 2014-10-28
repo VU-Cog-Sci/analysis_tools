@@ -105,104 +105,6 @@ def normalize_histogram(input_array, mask_array = None):
 	
 	return (input_array - input_array[mask_array].min()) / (input_array[mask_array].max() - input_array[mask_array].min())
 
-# def convert_2d_array_to_points(input_array, mask_array = None, nr_points = 100000):
-# 	if mask_array = None:
-# 		mask_array = input_array != 0.0
-# 	
-# 	indices = np.linspace(0, 1, input_array.shape[0], endpoint = True)
-# 	n_a = normalize_histogram(input_array, mask_array)
-
-# def analyze_PRF_from_spatial_profile(spatial_profile_array, spatial_profile_array_fix, upscale = 5.0, diagnostics_plot = True, contour_level = 0.9, voxel_no = 1, band = 75, cond = cond):
-# 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
-# 	to the spatial profile of spatial beta values from the ridge regression """
-# 	shell()
-# 	n_pixel_elements = int(sqrt(spatial_profile_array.shape[0]))
-# 	# upsample five-fold and gaussian smooth with upscale factor
-# 	us_spatial_profile = ndimage.interpolation.zoom(spatial_profile_array.reshape((n_pixel_elements, n_pixel_elements)), upscale)
-# 	us_spatial_profile_fix = ndimage.interpolation.zoom(spatial_profile_array_fix.reshape((n_pixel_elements, n_pixel_elements)), upscale)
-# 	us_spatial_profile_banded = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-# 	us_spatial_profile_banded[(band+1.0)/2:(band+1.0)/2+n_pixel_elements*upscale,(band+1)/2:(band+1)/2+n_pixel_elements*upscale] = us_spatial_profile
-# 	uss_spatial_profile_banded = ndimage.gaussian_filter(us_spatial_profile_banded, upscale*2)
-# 	uss_spatial_profile = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
-# 	uss_spatial_profile_fix = ndimage.gaussian_filter(us_spatial_profile, upscale*2)
-# 	
-# 	maximum = ndimage.measurements.maximum_position(uss_spatial_profile)
-# 	maximum_fix = ndimage.measurements.maximum_position(uss_spatial_profile_fix)
-# 	maximum_for_select = ndimage.measurements.maximum_position(uss_spatial_profile_banded)
-# 	
-# 	# find level at which to take contour:
-# 	positive = uss_spatial_profile + (np.min(uss_spatial_profile)*-1)
-# 	normalized = positive/np.max(positive)
-# 	for_gradient = (normalized*255).astype(uint8)
-# 	output = rank.gradient(for_gradient, disk(1))
-# 	
-# 	# output_array = output.reshape((50625))
-# 	# contour_threshold = output_array[np.argsort(output_array)[round(0.8 * output_array.size)]]
-# 	# contour = zeros((225,225))
-# 	# contour[output>contour_threshold] =1
-# 	
-# 	# output_array = output.reshape((50625))
-# 	# contour_threshold = output_array[np.argsort(output_array)[round(0.4 * output_array.size)]]
-# 	# contour_edges = measure.find_contours(output, contour_threshold)
-# 	
-# 	f = pl.figure()
-# 	s = f.add_subplot(121)
-# 	pl.imshow(uss_spatial_profile)
-# 	s = f.add_subplot(122)
-# 	pl.imshow(output)
-# 	# for n, contour in enumerate(contour_edges):
-# 		# pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
-# 	pl.show()
-# 
-# 	
-# 	
-# 	
-# 	contour_threshold = spatial_profile_array_fix[np.argsort(spatial_profile_array)[round(contour_level * spatial_profile_array.shape[0])]]
-# 	contour_edges = measure.find_contours(uss_spatial_profile_banded, contour_threshold)
-# 	
-# 	max_norm = 2.0 * (np.array(maximum) / (n_pixel_elements*upscale)) - 1.0
-# 	max_comp =  np.complex(max_norm[0], max_norm[1])
-# 	
-# 	# convert contours to image and fill for fix
-# 	contour_array = np.zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-# 	for contour in contour_edges:
-# 		for i in range(len(contour)):
-# 			contour_array[int(contour[i,0]),int(contour[i,1])] = 1
-# 
-# 	contour_array_filled = ndimage.binary_fill_holes(contour_array)
-# 	# contour_array_filled = fill_contours(contour_array = contour_array, dimension = int(n_pixel_elements*upscale-1), voxel_no = voxel_no, uss_spatial_profile = uss_spatial_profile)
-# 	contour_labels = ndimage.label(contour_array_filled)[0]
-# 	label_index = contour_labels[(maximum_for_select)]
-# 	# implement measure.regionprops.filled_area
-# 	PRF = zeros((int(n_pixel_elements*upscale + band + 1),int(n_pixel_elements*upscale+ band + 1)))
-# 	PRF[contour_labels==label_index] = 1
-# 	surf = (sum(PRF)/(n_pixel_elements**2*upscale**2))*100
-# 	
-# 	if diagnostics_plot:
-# 		f = pl.figure(figsize = (12,4))
-# 		f.suptitle('voxel no' + str(voxel_no))
-# 		s = f.add_subplot(131)
-# 		pl.imshow(us_spatial_profile)
-# 		pl.plot([maximum[1]], [maximum[0]], 'ko')
-# 		s.set_title('original')
-# 		s.axis([0,n_pixel_elements*upscale,0,n_pixel_elements*upscale])
-# 		s = f.add_subplot(132)
-# 		pl.imshow(uss_spatial_profile_banded)
-# 		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
-# 		s.set_title('gaussian smoothed with contour')
-# 		for n, contour in enumerate(contour_edges):
-# 			pl.plot(contour[:, 1], contour[:, 0], linewidth=2, color = 'gray')
-# 		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
-# 		s = f.add_subplot(133)
-# 		pl.imshow(PRF)
-# 		s.axis([0,n_pixel_elements*upscale+band+1,0,n_pixel_elements*upscale+band+1])
-# 		pl.plot([maximum_for_select[1]], [maximum_for_select[0]], 'ko')
-# 		s.set_title('PRF with maximum')
-# 		pl.show()
-# 		# plt.savefig(os.path.join('/home/shared/PRF/data/AS/AS_090414/processed/mri/figs/failed_contours_2/' + cond + '/' + 'failed_contour' + '_' + str(voxel_no) + '.pdf'))
-# 		
-# 	return max_comp, surf
-
 def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = False, contour_level = 0.9, voxel_no = 1, cond = cond, normalize_to = [], fit_on='smoothed_betas',plotdir = []):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
@@ -222,7 +124,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		maximum = tuple((np.array(maximum).astype('float')/5).astype('int'))
 		upscale = 1
 		
-	# shell()
+	# 
 	# ## compute surface:
 	# 1. normalize PRF
 	if normalize_to == 'z-score':
@@ -239,7 +141,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 	fitimages = []
 	EVS = []
 	PRF_n_t = []
-	# shell()
+	# 
 	for i, thresh in enumerate(cutoffs):
 		labels = []; label_index = []
 		PRF_n_m= zeros((n_pixel_elements*upscale,n_pixel_elements*upscale))
@@ -299,7 +201,7 @@ def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnos
 		sd_mask = np.sqrt(surf_mask / np.pi)
 		vol = 2*surf_gauss*(params[1]-params[0])
 		
-		# shell()
+		# 
 	if diagnostics_plot:
 		if np.all([ sd_gauss > 0.0, sd_gauss < 27.0/2, ecc_gauss < 0.8*(27.0/2), ecc_gauss> 0.1*(27.0/2), EV > 0.85, fitimage != []]):
 			f=pl.figure(figsize = (16,7))
@@ -581,7 +483,7 @@ class PRFModelRun(object):
 		
 		self.orientation_list = self.run.orientations
 	
-	def simulate_run(self, save_images_to_file = None):
+	def simulate_run(self, orientations,save_images_to_file = None):
 		"""docstring for simulate_run"""
 		self.sample_times = np.arange(0, self.n_TRs * self.TR, self.sample_duration)
 		
@@ -589,11 +491,17 @@ class PRFModelRun(object):
 		
 		# for i in range(len(self.orientation_list)): # trials
 		for i in range(len(self.run.trial_times)):
-			# shell()
+		
+			# if self.run.ID == 3:
+			# 	
 			samples_in_trial = (self.sample_times > (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
 
 			# print samples_in_trial.sum()
-			if self.run.trial_times[i][0] != 'fix_no_stim':
+			# if self.run.trial_times[i][0] != 'fix_no_stim':
+			# 
+			# 
+
+			if np.all([self.run.trial_times[i][0] != 'fix_no_stim', self.orientation_list[i] in np.radians(orientations)]):
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
 				pt.pass_through()
 				self.run_matrix[samples_in_trial] = pt.pass_matrix
@@ -611,7 +519,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	"""
 	Class for population receptive field mapping sessions analysis.
 	"""
-	
+
 	def resample_epis(self, condition = 'PRF'):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
 		# create identity matrix
@@ -645,7 +553,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
-			# shell()
+			# 
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			tr = round(niiFile.rtime*1)/1000.0
 			with open (self.runFile(stage = 'processed/eye', run = r, extension = '.msg')) as inputFileHandle:
@@ -706,6 +614,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		fmO.execute()
 
 	def stimulus_timings(self, stim_offsets = [0.0, 0.0]):
+		# 
 		"""stimulus_timings uses behavior operators to distil:
 		- the times at which stimulus presentation began and ended per task type
 		- the times at which the task buttons were pressed. 
@@ -727,10 +636,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 				pass
 			r.all_button_times = bO.all_button_times
 			r.parameters = bO.parameters
+			# if r.tasks = []
 			r.tasks = [t.task for t in bO.trials]
 			r.orientations = [t.parameters['orientation'] for t in bO.trials]
 			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
-			# shell()
+			# 
 			these_trials = np.array([[tt[1], tt[2] - tt[1], 1.0] for tt in r.trial_times])
 			np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['trial_times']), these_trials, fmt = '%3.2f', delimiter = '\t')
 			for task in tasks:
@@ -738,6 +648,47 @@ class PopulationReceptiveFieldMappingSession(Session):
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]), these_trials, fmt = '%3.2f', delimiter = '\t')
 				these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
+
+	def stimulus_timings_square(self):
+
+		run_start_time = []
+		run_duration = []
+		for ri, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+			filename = self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' )
+			with open(filename) as f:
+				picklefile = pickle.load(f)
+
+			run_start_time_string = [e for e in picklefile['eventArray'][0] if e[:len('trial 0 phase 1')] == 'trial 0 phase 1']
+			run_start_time.append(float(run_start_time_string[0].split(' ')[-1]))
+
+			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r)) 
+			tr  = round(niiFile.rtime*1)/1000.0
+			if ri == 0:
+				run_duration.append(0)
+			else:
+				run_duration.append(round(niiFile.rtime*1)/1000.0 * niiFile.timepoints)
+
+			corrected_durations = np.cumsum(np.array(run_duration))
+
+			task_per_trial = np.array([picklefile['parameterArray'][i]['task'] for i in range(len(picklefile['parameterArray'])) ])
+			trial_start_times_uncorrected = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 2" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri] 
+			trial_end_times_uncorrected = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 3" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri] 
+
+			trial_start_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 2" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri] + corrected_durations[ri]
+			trial_end_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 3" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri] + corrected_durations[ri]
+			trial_durations = trial_end_times - trial_start_times
+
+			fix_no_stim_times = np.dstack([ trial_start_times[task_per_trial==0], trial_end_times[task_per_trial==0],trial_durations[task_per_trial==0]])[0]
+			fix_stim_times = np.dstack([ trial_start_times[task_per_trial==1], trial_end_times[task_per_trial==1],trial_durations[task_per_trial==1]])[0]
+
+			trial_names = [np.tile(['fix_no_stim','fix_stim'],(40,1))[rint][task_per_trial[rint]]for rint in range(len(task_per_trial))]
+			# 
+			r.trial_times = [ [trial_names[i], trial_start_times_uncorrected[i], trial_end_times_uncorrected[i]] for i in range(len(trial_names))]
+			 # np.transpose([trial_names, trial_start_times.astype(float), trial_end_times.astype(float)])
+			r.orientations = [np.radians(t['motion_direction']) for t in picklefile['parameterArray'] ]
+			# 
+			np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['fix_no_stim']), fix_no_stim_times, fmt = '%3.2f', delimiter = '\t')
+			np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['fix_stim']), fix_stim_times, fmt = '%3.2f', delimiter = '\t')
 	
 	def physio(self, condition = 'PRF'):
 		"""physio loops across runs to analyze their physio data"""
@@ -753,8 +704,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		stimulus_timings have been run beforehand, as it uses the output
 		text files of these procedures.
 		"""
-		# shell()
-		self.stimulus_timings()
+		# 
+		if 'Square' in self.project.projectName: self.stimulus_timings_square()
+		else: self.stimulus_timings()
+		
 		self.eye_informer(length_thresh=5)
 		# physio regressors
 		physio_list = []
@@ -764,12 +717,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 		blink_times_list = []
 		total_trs  = 0
 		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
-			# shell()
+			# 
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			# moco and physiology regressors are per-TR regressors that need no convolution anymore.
-			if physiology_type == 'RETROICOR':
+			if physiology_type != None and physiology_type == 'RETROICOR':
 				physio_list.append(np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['regressors']) ).T)
-			else:
+			elif physiology_type != None:
 				physio_list.append(np.array([
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['resp']) ),
 					np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu']) ),
@@ -780,35 +733,37 @@ class PopulationReceptiveFieldMappingSession(Session):
 			mcf_list.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
+			# 
 			trial_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + tt[1], 1.5, 1.0]] for tt in r.trial_times]) 
-			button_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[1]), 0.5, 1.0]] for tt in r.all_button_times]) # changed the occurrence of this event to -4.5 to -1.5...
+
+			# button_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[1]), 0.5, 1.0]] for tt in r.all_button_times]) # changed the occurrence of this event to -4.5 to -1.5...
 			# lateron, this will also have pupil size and the occurrence of saccades in there.
-			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']))
-			blink_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[0]), tt[1],tt[2]]] for tt in this_blink_events])
+			# this_blink_events = np.loadtxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']))
+			# blink_times_list.extend([[[(j * nii_file.rtime * nii_file.timepoints) + float(tt[0]), tt[1],tt[2]]] for tt in this_blink_events])
 			
 			total_trs += nii_file.timepoints
-		
-		# shell()
+		# total_trs = 1944
+		# 
 		# to arrays with these regressors
 		mcf_list = np.vstack(mcf_list).T
-		physio_list = np.hstack(physio_list)
+		if physiology_type!= None: physio_list = np.hstack(physio_list)
 		
 		# check for weird nans and throw out those columns
-		physio_list = physio_list[-np.array(np.isnan(physio_list).sum(axis = 1), dtype = bool),:]
-		# shell()
+		if physiology_type!= None: physio_list = physio_list[-np.array(np.isnan(physio_list).sum(axis = 1), dtype = bool),:]
+		# 
 		# create a design matrix and convolve 
 		run_design = Design(total_trs, nii_file.rtime, subSamplingRatio = 10)
 		run_design.configure(trial_times_list)
 		# run_design.configure(blink_times_list)
 		# run_design.configure([np.array(button_times_list).squeeze()])
-		joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
-		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
+		if physiology_type != None: joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list, physio_list]).T)
+		else: joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf_list]).T)
 		# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, physio_list]).T)
 		# only using the mc and physio now
 		# joined_design_matrix = np.mat(np.vstack([mcf_list, physio_list]).T)
 		# joined_design_matrix = np.mat(physio_list.T)
-		# shell()
-		# shell()
+		# 
+		# 
 		self.logger.info('nuisance and trial_onset design_matrix of dimensions %s'%(str(joined_design_matrix.shape)))
 		# take data
 		data_list = []
@@ -841,7 +796,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			betas_nii_file.header = nii_file.header
 			betas_nii_file.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['betas']))
 			
-		# shell()
+		# 
 
 	def GLM_for_nuisances_per_run(self, condition = 'PRF', postFix = ['mcf', 'sgtf']):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
@@ -850,7 +805,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 		stimulus_timings have been run beforehand, as it uses the output
 		text files of these procedures.
 		"""
-		self.stimulus_timings()
+		if 'Square' in self.project.projectName: self.stimulus_timings_square()
+		else: self.stimulus_timings()
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
 		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
@@ -874,7 +830,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			blink_times_list = blink_times_list.reshape((1,blink_times_list.shape[0], blink_times_list.shape[-1]))
 
 			instruct_times.extend(blink_times_list)
-			# shell()
+			# 
 
 			run_design = Design(nii_file.timepoints, nii_file.rtime, subSamplingRatio = 10)
 			# run_design.configure(np.vstack([instruct_times, blink_times_list]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
@@ -907,7 +863,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			betas_nii_file.header = nii_file.header
 			betas_nii_file.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['betas']))
 		
-		# shell()
+		# 
 	
 	def zscore_timecourse_per_condition(self, dilate_width = 2, condition = 'PRF', postFix = ['mcf', 'sgtf']):
 		"""fit_voxel_timecourse loops over runs and for each run:
@@ -924,7 +880,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			tr_times = np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime)
 			masked_input_data = nii_file.data[:,cortex_mask]
 			if not hasattr(r, 'trial_times'):
-				self.stimulus_timings()
+				if 'Square' in self.project.projectName: self.stimulus_timings_square()
+				else: self.stimulus_timings()			
 			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
 			tasks.pop(tasks.index('fix_no_stim'))
 			output_data = np.zeros(list(masked_input_data.shape) + [len(tasks)])
@@ -948,7 +905,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False,orientations=orientations):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -962,8 +919,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}
 
 		# get orientations and stimulus timings
-		# shell()
-		self.stimulus_timings(stim_offsets = [-1.5, -0.5])
+		# 
+		# self.stimulus_timings(stim_offsets = [-1.5, -0.5])
+		# 
+		if 'Square' in self.project.projectName: self.stimulus_timings_square()
+		else: self.stimulus_timings()
 		self.logger.info('design_matrix of %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
 		
 		self.stim_matrix_list = []
@@ -972,10 +932,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.tr_time_list = []
 		self.trial_start_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
-			# shell()
+			# 
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
 			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.05)
-			mr.simulate_run( )
+			mr.simulate_run( orientations )
 			self.stim_matrix_list.append(mr.run_matrix)
 			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
 			self.tr_time_list.append(np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime) + i * nii_file.timepoints * nii_file.rtime)
@@ -988,7 +948,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				
 				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
 				workingDesignMatrix = run_design.designMatrix
-				# shell()
+				# 
 			elif method == 'fir':
 				new_size = list(mr.run_matrix.shape)
 				new_size[0] *= int(fir_ratio)
@@ -997,7 +957,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					new_array[i:i+int(fir_ratio)] = mr.run_matrix[int(floor(i/int(fir_ratio)))]
 				workingDesignMatrix = new_array
 			
-			# shell()
+			# 
 			self.design_matrix_list.append(workingDesignMatrix)
 		self.full_design_matrix = np.hstack(self.design_matrix_list).T
 		self.full_design_matrix = np.array(self.full_design_matrix - self.full_design_matrix.mean(axis = 0) )# / self.full_design_matrix.std(axis = 0)
@@ -1006,7 +966,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.trial_start_list = np.concatenate(self.trial_start_list)
 		self.logger.info('design_matrix of shape %s created, of which %d are valid stimulus locations'%(str(self.full_design_matrix.shape), int((self.full_design_matrix.sum(axis = 0) != 0).sum())))
 		
-		# shell()
+		# 
 		if plot_diagnostics:
 			f = pl.figure(figsize = (10, 3))
 			s = f.add_subplot(111)
@@ -1028,7 +988,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_image.header = NiftiImage(input_file).header
 		output_image.save(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '_' + task_condition[0] + '.nii.gz'))
 
-	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.6, save_all_data = True): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.6, save_all_data = True, orientations = [0,45,90,135,180,225,270,315]): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -1037,9 +997,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 		mask_single_file allows the user to set a binary mask to mask the functional data
 		for fitting of individual regions.
 		"""
+		# 
+		orient_list = ''
+		for i in range(len(orientations)):
+			orient_list += '_' + str(orientations[i])
+			
 		# we need a design matrix.
-		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration)
-		# shell()
+		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration,orientations=orientations)
+		# 
 		valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
 		self.full_design_matrix = self.full_design_matrix[:,valid_regressors]
 		
@@ -1104,13 +1069,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 				if save_all_data:
 					save_design_matrix = np.zeros((this_design_matrix.shape[0],n_pixel_elements * n_pixel_elements))
 					save_design_matrix[:,valid_regressors] = this_design_matrix
-					np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%ix%i_%s'%(n_pixel_elements, n_pixel_elements, task_conditions[0])), save_design_matrix)
+					np.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%ix%i_%s_%s'%(n_pixel_elements, n_pixel_elements, task_conditions[0],orient_list)), save_design_matrix)
 				
-				# shell()
+				# 
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
 				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
+				# 
 				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
@@ -1125,18 +1091,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_coefs = np.zeros([n_pixel_elements ** 2] + list(cortex_mask.shape))
 		output_coefs[valid_regressors] = all_coefs
 		
-		# shell()
-		
+		# 
+
 		self.logger.info('saving coefficients and correlations of PRF fits')
 		coef_nii_file = NiftiImage(output_coefs)
 		coef_nii_file.header = mask_file.header
-		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + '.nii.gz'))
+		coef_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + orient_list +'.nii.gz'))
 		
 		# replace infs in correlations with the maximal value of the rest of the array.
 		all_corrs[np.isinf(all_corrs)] = all_corrs[-np.isinf(all_corrs)].max() + 1.0
 		corr_nii_file = NiftiImage(all_corrs)
 		corr_nii_file.header = mask_file.header
-		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + '.nii.gz'))
+		corr_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + orient_list+ '.nii.gz'))
 	
 		if save_all_data:
 			all_data = np.zeros([selected_tr_times.sum()] + list(cortex_mask.shape))
@@ -1144,9 +1110,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			data_nii_file = NiftiImage(all_data)
 			data_nii_file.header = mask_file.header
-			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + '.nii.gz'))
+			data_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-'  + condition + orient_list + '.nii.gz'))
 			
-			np.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition), z_data[selected_tr_times])
+			np.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_conditions[0] + '-' + condition + orient_list), z_data[selected_tr_times])
 	
 	
 	
@@ -1173,20 +1139,20 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.results_to_surface(file_name = value_file + '_%2.2f'%threshold, output_file_name = condition, frames = {'_polar':0, '_ecc':1, '_real':2, '_imag':3, 'surf': 4})
 		
 	
-	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', normalize_to = [],voxels_to_plot=[],example_plots = False ):
+	def RF_fit(self, mask_file = 'cortex_dilated_mask', postFix = ['mcf','sgtf','prZ','res'], task_condition = 'all', anat_mask = 'cortex_dilated_mask', stat_threshold = -10.0, n_jobs = 28, run_fits = True, condition = 'PRF', fit_on = 'smoothed_betas', normalize_to = [],voxels_to_plot=[],example_plots = False,orientations=orientations ):
 		"""select_voxels_for_RF_fit takes the voxels with high stat values
 		and tries to fit a PRF model to their spatial selectivity profiles.
 		it takes the images from the mask_file result file, and uses stat_threshold
 		to select all voxels crossing a p-value (-log10(p)) threshold.
 		"""
-		
+		orient_list = ''
+		for i in range(len(orientations)):
+			orient_list += '_' + str(orientations[i])
 		anat_mask = os.path.join(self.stageFolder('processed/mri/'), 'masks', 'anat', anat_mask + '.nii.gz')
-		filename = mask_file + '_' + '_'.join(postFix + [task_condition]) + '-%s'%condition
-		# shell()
+		filename = mask_file + '_' + '_'.join(postFix + [task_condition]) + '-%s%s'%(condition,orient_list)
 		if run_fits:
 			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).data
 			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + filename + '.nii.gz')).data
-			# shell()
 			anat_mask = NiftiImage(anat_mask).data > 0
 			stat_mask = stats_data[1] > stat_threshold
 
@@ -1220,9 +1186,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				ecc_abs = np.abs(max_comp_abs)
 				real_abs = np.real(max_comp_abs)
 				imag_abs = np.imag(max_comp_abs)
-
-				# shell()
-
+				
 				prf_res = np.vstack([polar_gauss, polar_abs, ecc_gauss, ecc_abs, real_gauss, real_abs, imag_gauss, imag_abs, surf_gauss, surf_mask, vol, EV, sd_gauss, sd_surf, fwhm])
 
 				empty_res = np.zeros([len(prf_res)] + [np.array(stats_data.shape[1:]).prod()])
@@ -1256,7 +1220,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				svO.configure(templateFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict[condition][0]], postFix = ['mcf']), hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = filename + '_' + component + '.nii.gz', threshold = 0.5, surfType = 'paint')
 				print svO.runcmd
 				svO.execute()
-				# shell()
+				# 
 				
 			# now, there's a pair of imag and real nii files for this hemisphere. Let's open them and make polar and eccen phases before re-transforming to surface. 
 			complex_values = NiftiImage(filename + '_real-' + hemi + '.nii.gz').data + 1j * NiftiImage(filename + '_imag-' + hemi + '.nii.gz').data
@@ -1296,12 +1260,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# run 
 			rmtOp.execute()
 	
-	def mask_stats_to_hdf(self, condition = 'PRF', mask_file = 'cortex_dilated_mask_all', postFix = ['mcf','sgtf','prZ','res'], task_conditions = ['fix','all','color','sf','orient','speed']):
+	def mask_stats_to_hdf(self, condition = 'PRF', mask_file = 'cortex_dilated_mask_all', postFix = ['mcf','sgtf','prZ','res'], task_conditions = ['fix','all','color','sf','orient','speed'],orientations=orientations):
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
 		
-		# shell()
+		# 
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
 		# anatRoiFileNames = ['/home/shared/PRF/data/AS/AS_090414/processed/mri/masks/anat/lh.v1.nii.gz']
@@ -1331,6 +1295,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.logger.info('Adding group ' + this_run_group_name + ' to this file')
 			thisRunGroup = h5file.create_group("/", this_run_group_name, '')
 			
+		orient_list = ''
+		for i in range(len(orientations)):
+			orient_list += '_' + str(orientations[i])
+
 		stat_files = {}
 		for c in task_conditions:
 		# 	"""loop over runs, and try to open a group for this run's data"""
@@ -1340,7 +1308,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# 	"""
 	
 			for res_type in ['results', 'coefs', 'corrs']:
-				filename = mask_file + '_' + '_'.join(postFix + [c]) + '-' + condition
+				filename = mask_file + '_' + '_'.join(postFix + [c]) + '-' + condition + orient_list
 				stat_files.update({c+'_'+res_type: os.path.join(self.stageFolder('processed/mri/%s'%condition), res_type + '_' + filename + '.nii.gz')})
 		
 		
@@ -1370,9 +1338,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition + '.hdf5')
 		h5file = open_file(self.hdf5_filename, mode = "r", title = condition + " file")
-		# shell()
+		# 
 		# data to be correlated
-		shell()
 		
 		base_task_data = self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = base_task_condition + '_results')
 		all_comparison_task_data = [self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = c + '_results') for c in comparison_task_conditions]
@@ -1441,7 +1408,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', roi + '_45*45_noGLM.pdf'))
 			pl.close()
 			
-			# shell()
+			# 
 			# circular plot
 			colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,2)]
 			mcs = ['o', 'v', 's', '>', '<']
@@ -1456,7 +1423,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					s=f.add_subplot(2,3,i+1)
 				else:
 					s=f.add_subplot(2,3,i+2)
-				# shell()
+				# 
 				x_loc = base_task_data[:,results_frames['ecc_gauss']]*np.cos(base_task_data[:,results_frames['polar_gauss']])
 				y_loc = base_task_data[:,results_frames['ecc_gauss']]*np.sin(base_task_data[:,results_frames['polar_gauss']])
 				x_dif = all_comparison_task_data[i][:,results_frames['ecc_gauss']]*np.cos(all_comparison_task_data[i][:,results_frames['polar_gauss']]) - base_task_data[:,results_frames['ecc_gauss']]*np.cos(base_task_data[:,results_frames['polar_gauss']])
@@ -1465,7 +1432,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				sd_dis[i] = np.std( [np.linalg.norm([x_dif[z], y_dif[z]]) for z in range(len(x_loc)) if np.linalg.norm([x_dif[i], y_dif[i]]) < 3*sd_dis[i] ] )
 				median_dis.append(np.median( [np.linalg.norm([x_dif[z], y_dif[z]]) for z in range(len(x_loc)) if np.linalg.norm([x_dif[i], y_dif[i]]) < 3*sd_dis[i] ] ))
 				
-				# shell()
+				# 
 				eccen_difference = all_comparison_task_data[i][:,results_frames['ecc_gauss']]/all_comparison_task_data[i][:,results_frames['surf_gauss']] - base_task_data[:,results_frames['ecc_gauss']]/base_task_data[:,results_frames['surf_gauss']]  
 				sd_eccen_dif.append( np.std(eccen_difference))
 				median_eccen_dif.append(np.median(eccen_difference[eccen_difference < sd_eccen_dif[i]*3 ]) )
@@ -1518,7 +1485,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3}
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4']}
 		end_rois = {'v1':0}
-		roi_comb = {0: 'v1'}
+		roi_comb = {0: 'V1'}
 		if (size(end_rois) == 1) * (size(roi_comb[0]) == 1):
 			results = []
 			stats = []

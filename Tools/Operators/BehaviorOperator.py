@@ -472,6 +472,7 @@ class TrialEventSequence(object):
 		self.events = events
 		self.run_start_time = run_start_time
 		self.index = index
+
 	
 	def convert_events(self):
 		"""convert the string-based event-array from the pickle file 
@@ -480,27 +481,30 @@ class TrialEventSequence(object):
 		rec_button = re.compile('trial %i key: (\S+) at time: (-?\d+\.?\d*) for task [\S+]' % self.index)
 		self.button_events = [re.findall(rec_button, e)[0] for e in self.events if 'trial %i key:' % self.index in e]
 		self.button_events = [[b[0], float(b[1]) - self.run_start_time] for b in self.button_events]
-		
-		rec_phase = re.compile('trial %d phase (\d+) started at (-?\d+\.?\d*)' % self.index)
-		self.phase_events = [re.findall(rec_phase, e)[0] for e in self.events if 'trial %d phase'% self.index in e]
-		self.phase_events = [[p[0], float(p[1]) - self.run_start_time] for p in self.phase_events]
-		
+
 		self.find_task()	# need to know the task this trial to be able to extract.
 		rec_signal = re.compile('signal in task (\S+) at (-?\d+\.?\d*) value 1.0')
 		self.signal_events = [re.findall(rec_signal, e)[0] for e in self.events if 'signal' in e]
 		self.signal_events = [[s[0], float(s[1]) - self.run_start_time] for s in self.signal_events]
-		self.task_signal_events = np.array([s[0] == self.task for s in self.signal_events])
-		# shell()
+		self.task_signal_events = np.array([s[0] == self.task for s in self.signal_events])			
 		
-		self.task_signal_times = np.array(np.array(self.signal_events)[self.task_signal_events,1], dtype = float)
+		rec_phase = re.compile('trial %d phase (\d+) started at (-?\d+\.?\d*)' % self.index)
+		self.phase_events = [re.findall(rec_phase, e)[0] for e in self.events if 'trial %d phase'% self.index in e]
+		self.phase_events = [[p[0], float(p[1]) - self.run_start_time] for p in self.phase_events]
+
+		self.task_signal_times = np.array(np.array(self.signal_events)[self.task_signal_events,1], dtype = float)	
 		
 	
 	def find_task(self):
 		"""find the task from parameters, 
 		if the 'y' button has been pressed, 
 		this means the fixation task."""
+		# shell()
+		if not 'task' in self.parameters.iterkeys():
+			self.parameters['task'] = 'fix'
+			
 		self.task = self.parameters['task']
-		
+
 		if np.array([b[0] == 'y' for b in self.button_events]).sum() > 0:
 			self.task = 'fix'
 			self.task_button_event_times = np.array([b[1] for b in self.button_events if b[0] == 'y'])
@@ -554,6 +558,7 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 			self.convert_events()
 		self.trial_times = []
 		self.all_button_times = []
+		shell()
 		for i, t in enumerate(self.trials):
 			stim_on_time = [p[1] for p in t.phase_events if p[0] == '2']
 			stim_off_time = [p[1] for p in t.phase_events if p[0] == '3' ]
@@ -563,4 +568,9 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 				self.all_button_times.append([[t.task, bt[1]] for bt in t.button_events])
 		self.all_button_times = np.concatenate(self.all_button_times)
 	
+
+
+
+
+
 			
