@@ -522,18 +522,21 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def preprocessing_evaluation(self):
 
+		mask = 'lh.Pole_occipital'
+		mask_data = np.array(NiftiImage(os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), mask)).data, dtype = bool)
+
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
 			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
 			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
-			prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
+			prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
 			# res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
 
 			all_files = ['raw_file','mcf_file','sgtf_file','prZ_file']	 # ,'res_file'
-			f = pl.figure(figsize = ((24,24)))
+			f = pl.figure(figsize = ((36,24)))
 			for i,p in enumerate(all_files):
 				s = f.add_subplot(len(all_files),1,i+1)
-				exec("pl.plot("+p+".data[:,17,34,34])")
+				exec("pl.plot("+p+".data[:,mask_data], alpha = 0.05)")
 				simpleaxis(s)
 				spine_shift(s)
 				pl.title(p,fontsize=14)
@@ -929,7 +932,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 25, condition = 'PRF', save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315]):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 100, condition = 'PRF', save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315]):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -970,11 +973,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * TR) 		
 			
 			if method == 'hrf':
-				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
+			# 	run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
+			# 	rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
+			# 	run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
+			# 	run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
+				# workingDesignMatrix = run_design.designMatrix
+				
+				new_run_design = NewDesign(mr.run_matrix.shape[0], mr.sample_duration, sample_duration = 0.01)
 				rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
-				run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
-				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
-				workingDesignMatrix = run_design.designMatrix
+				new_run_design.raw_design_matrix = np.repeat(rdm, int(mr.sample_duration / 0.01), axis = 1)
+				new_run_design.convolve_with_HRF(hrf_type = gamma_hrfType, hrf_parameters = gamma_hrfParameters)
+				workingDesignMatrix = new_run_design.design_matrix
+
 				# 
 			elif method == 'fir':
 				new_size = list(mr.run_matrix.shape)
@@ -1110,10 +1120,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
-				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# 
-				shell()
-				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
+				# shell()
+				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e7) for vox_timeseries in these_voxels[:,selected_tr_times])
+				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				if mask_file_name == 'single_voxel':
@@ -1302,10 +1312,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		
 		# 
-		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
-		# anatRoiFileNames = ['/home/shared/PRF/data/AS/AS_090414/processed/mri/masks/anat/lh.v1.nii.gz']
-
+		# anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		# anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
+		anatRoiFileNames = [os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), 'lh.Pole_occipital')]
 
 		self.logger.info('Taking masks ' + str(anatRoiFileNames))
 		rois, roinames = [], []
