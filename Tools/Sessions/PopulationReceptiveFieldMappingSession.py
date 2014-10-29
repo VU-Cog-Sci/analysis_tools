@@ -105,6 +105,7 @@ def normalize_histogram(input_array, mask_array = None):
 	
 	return (input_array - input_array[mask_array].min()) / (input_array[mask_array].max() - input_array[mask_array].min())
 
+
 def analyze_PRF_from_spatial_profile(spatial_profile_array, upscale = 5, diagnostics_plot = False, contour_level = 0.9, voxel_no = 1, cond = cond, normalize_to = [], fit_on='smoothed_betas',plotdir = []):
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
@@ -520,6 +521,24 @@ class PopulationReceptiveFieldMappingSession(Session):
 	Class for population receptive field mapping sessions analysis.
 	"""
 
+	def preprocessing_evaluation(self):
+
+		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
+			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
+			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
+			prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
+			res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
+
+			all_files = ['raw_file','mcf_file','sgtf_file','prZ_file','res_file']	
+			f = pl.figure(figsize = ((24,24)))
+			for i,p in enumerate(all_files):
+				s = f.add_subplot(5,1,i+1)
+				exec("pl.plot("+p+".data[:,17,34,34])")
+				simpleaxis(s)
+				spine_shift(s)
+				pl.title(p,fontsize=14)
+
 	def resample_epis(self, condition = 'PRF'):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
 		# create identity matrix
@@ -932,7 +951,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.trial_start_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			# 
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
+			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'psc'] ))
 			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.05)
 			mr.simulate_run( orientations )
 			self.stim_matrix_list.append(mr.run_matrix)
@@ -1076,7 +1095,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
 				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# 
-				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
+				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e7) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				if mask_file_name == 'single_voxel':
@@ -1483,8 +1502,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
 		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3}
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4']}
-		end_rois = {'v1':0}
-		roi_comb = {0: 'V1'}
+		end_rois = {'Pole_oc':0}
+		roi_comb = {0: 'Pole_oc'}
 		if (size(end_rois) == 1) * (size(roi_comb[0]) == 1):
 			results = []
 			stats = []
@@ -1493,7 +1512,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 		else:
 			results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
 			stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
-		
 		
 		for r in range(len(end_rois)):
 			results[r][:,results_frames['ecc_gauss']] = results[r][:,results_frames['ecc_gauss']] * 27.0/2
