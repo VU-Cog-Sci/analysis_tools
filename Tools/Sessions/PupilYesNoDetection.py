@@ -14,6 +14,7 @@ import scipy as sp
 import scipy.stats as stats
 import matplotlib
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import numpy.linalg as LA
 import bottleneck as bn
@@ -24,6 +25,8 @@ from itertools import chain
 import logging
 import logging.handlers
 import logging.config
+
+import hddm
 
 from IPython import embed as shell
 
@@ -549,7 +552,36 @@ class pupilAnalyses(object):
 		self.criterion = np.array(self.parameters_joined['criterion'])[0]
 		
 		if self.experiment == 1:
+			self.ppr_feed = np.array(self.parameters_joined['ppr_peak_feed_lp'])
 			self.bpd_feed = np.array(self.parameters_joined['bpd_feed_lp'])
+	
+	def trial_wise_pupil(self):
+		
+		nr_runs = (pd.Series(np.array(self.parameters_joined.trial_nr))==0).sum()
+		start_run = np.where(pd.Series(np.array(self.parameters_joined.trial_nr))==0)[0]
+		run_nr = np.ones(len(np.array(self.parameters_joined.trial_nr)))
+		for i in range(nr_runs):
+			if i != (nr_runs-1):
+				run_nr[start_run[i]:start_run[i+1]] = i
+			if i == (nr_runs-1): 
+				run_nr[start_run[i]:] = i
+		
+		# data:
+		d = {
+		'trial_nr' : pd.Series(np.array(self.parameters_joined.trial_nr)),
+		'run_nr' : pd.Series(run_nr),
+		'omissions' : pd.Series(np.array(self.omissions)),
+		'pupil' : pd.Series(np.array(self.parameters_joined.ppr_mean_lp)),
+		# 'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_b' : pd.Series(np.array(self.bpd)),
+		'hit' : pd.Series(np.array(self.hit)),
+		'fa' : pd.Series(np.array(self.fa)),
+		'miss' : pd.Series(np.array(self.miss)),
+		'cr' : pd.Series(np.array(self.cr)),
+		'rt' : pd.Series(np.array(self.rt)/1000.0),
+		}
+		data = pd.DataFrame(d)
+		data.to_csv(os.path.join(self.project_directory, 'data', self.subject.initials, 'pupil_data.csv'))
 		
 	def timelocked_plots(self):
 		
@@ -825,16 +857,18 @@ class pupilAnalyses(object):
 				t.set_fontsize(7)
 			for l in leg.get_lines():
 				l.set_linewidth(2)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
 		ax.set_ylabel("d'")
 		ax2.set_ylabel('criterion')
 		ax.set_xlabel('confidence')
+		ax.set_ylim(ymin=0, ymax=2)
+		ax2.set_ylim(ymin=-0.7, ymax=0.7)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
 		plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.base_directory, 'figs', "behavior_confidence_" + self.subject.initials + '.pdf'))
 	
-	def pupil_confidence(self):
+	def pupil_bars(self):
 		
 		conf1 = np.array(self.parameters_joined['confidence'] == 0)
 		conf2 = np.array(self.parameters_joined['confidence'] == 1)
@@ -865,6 +899,7 @@ class pupilAnalyses(object):
 		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
 		ax.tick_params(axis='x', which='major', labelsize=10)
 		ax.tick_params(axis='y', which='major', labelsize=10)
+		ax.set_ylim(ymin=0.2, ymax=1.6)
 		plt.gca().spines["bottom"].set_linewidth(.5)
 		plt.gca().spines["left"].set_linewidth(.5)
 		plt.xlabel('confidence')
@@ -878,17 +913,18 @@ class pupilAnalyses(object):
 		SEMS = np.array([(sp.stats.sem(self.ppr[(self.hit+self.fa)*cond])+sp.stats.sem(self.ppr[(self.miss+self.cr)*cond]))/2 for cond in conditions])
 		fig = plt.figure(figsize=(4,3))
 		ax = fig.add_subplot(111)
-		for i in range(N):
-			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color = 'r', alpha = [.25,0.5,0.75,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.errorbar(ind, MEANS, yerr=SEMS, color = 'k', capsize = 0)
 		simpleaxis(ax)
 		spine_shift(ax)
 		ax.set_xticklabels( ('--','-','+','++') )
 		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
 		ax.tick_params(axis='x', which='major', labelsize=10)
 		ax.tick_params(axis='y', which='major', labelsize=10)
+		ax.set_ylim(ymin=-0.4, ymax=1.0)
 		plt.gca().spines["bottom"].set_linewidth(.5)
 		plt.gca().spines["left"].set_linewidth(.5)
-		plt.ylabel('pupil choice effect (a.u.)')
+		plt.xlabel('confidence')
+		plt.ylabel('pupil response (a.u.)')
 		plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_confidence_choice_' + self.subject.initials + '.pdf'))
@@ -932,8 +968,48 @@ class pupilAnalyses(object):
 		plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_confidence_overall_' + self.subject.initials + '.pdf'))
+		
+		if self.experiment == 1:
+			# FIGURE 4
+			MEANS_yes = np.array([np.mean(self.ppr_feed[(self.hit+self.cr)*cond]) for cond in conditions])
+			SEMS_yes = np.array([sp.stats.sem(self.ppr_feed[(self.hit+self.cr)*cond]) for cond in conditions])
+			MEANS_no = np.array([np.mean(self.ppr_feed[(self.fa+self.miss)*cond]) for cond in conditions])
+			SEMS_no = np.array([sp.stats.sem(self.ppr_feed[(self.fa+self.miss)*cond]) for cond in conditions])
+			fig = plt.figure(figsize=(4,3))
+			ax = fig.add_subplot(111)
+			ax.errorbar(ind, MEANS_no-MEANS_yes, yerr=(SEMS_yes+SEMS_no)/2.0, color = 'k', capsize = 0)
+			simpleaxis(ax)
+			spine_shift(ax)
+			ax.set_xticklabels( ('--','-','+','++') )
+			ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+			ax.tick_params(axis='x', which='major', labelsize=10)
+			ax.tick_params(axis='y', which='major', labelsize=10)
+			# ax.set_ylim(ymin=0.2, ymax=1.6)
+			plt.gca().spines["bottom"].set_linewidth(.5)
+			plt.gca().spines["left"].set_linewidth(.5)
+			plt.xlabel('confidence')
+			plt.ylabel('prediction error (a.u.)')
+			plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
+			plt.tight_layout()
+			fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_prediction_error_' + self.subject.initials + '.pdf'))
+			
 	
-	
+	def sequential_effects(self):
+		
+		high_feedback_n = np.concatenate((np.array([False]), np.array(self.parameters_joined['ppr_peak_feed_lp'] > np.median(self.parameters_joined['ppr_peak_feed_lp']))))[:-1]
+		
+		d, c = myfuncs.SDT_measures(np.array(self.parameters_joined['present'])[high_feedback_n], np.array(self.parameters_joined['hit'])[high_feedback_n], np.array(self.parameters_joined['fa'])[high_feedback_n])
+		d1, c1 = myfuncs.SDT_measures(np.array(self.parameters_joined['present'])[-high_feedback_n], np.array(self.parameters_joined['hit'])[-high_feedback_n], np.array(self.parameters_joined['fa'])[-high_feedback_n])
+		
+		print
+		print
+		print self.subject.initials
+		print '---------------------'
+		print 'd prime: {} vs {}'.format(d, d1)
+		print 'criterion: {} vs {}'.format(c, c1)
+		print
+		print
+		
 	def rescorla_wagner(self):
 		
 		# rescorla wagner model:
@@ -1024,10 +1100,17 @@ class pupilAnalysesAcross(object):
 		
 		self.rt = self.parameters_joined['rt']
 		
-		self.hit = np.array(self.parameters_joined['hit'])
-		self.fa = np.array(self.parameters_joined['fa'])
-		self.miss = np.array(self.parameters_joined['miss'])
-		self.cr = np.array(self.parameters_joined['cr'])
+		self.hit = np.array(self.parameters_joined['hit'], dtype=bool)
+		self.fa = np.array(self.parameters_joined['fa'], dtype=bool)
+		self.miss = np.array(self.parameters_joined['miss'], dtype=bool)
+		self.cr = np.array(self.parameters_joined['cr'], dtype=bool)
+		
+		self.yes = np.array(self.parameters_joined['yes'], dtype=bool)
+		self.no = -np.array(self.parameters_joined['yes'], dtype=bool)
+		self.present = np.array(self.parameters_joined['signal_present'], dtype=bool)
+		self.absent = -np.array(self.parameters_joined['signal_present'], dtype=bool)
+		self.correct = np.array(self.parameters_joined['correct'], dtype=bool)
+		self.error = -np.array(self.parameters_joined['correct'], dtype=bool)
 		
 		self.bpd = np.array(self.parameters_joined['bpd_lp'])
 		self.ppr = np.array(self.parameters_joined['ppr_proj_lp'])
@@ -1036,6 +1119,104 @@ class pupilAnalysesAcross(object):
 		
 		self.criterion = np.array([np.array(self.parameters_joined[self.parameters_joined['subject']==subj]['criterion'])[0] for subj in self.subjects])
 	
+	
+	def behavior(self):
+		
+		# SDT fractions:
+		# --------------
+		
+		hit_fraction = np.zeros(len(self.subjects))
+		fa_fraction = np.zeros(len(self.subjects))
+		miss_fraction = np.zeros(len(self.subjects))
+		cr_fraction = np.zeros(len(self.subjects))
+		for i in range(len(self.subjects)):
+			hit_fraction[i] = sum(self.hit[self.subj_idx==i]) / float(sum(self.present[self.subj_idx==i]))
+			fa_fraction[i] = sum(self.fa[self.subj_idx==i]) / float(sum(self.absent[self.subj_idx==i]))
+			miss_fraction[i] = sum(self.miss[self.subj_idx==i]) / float(sum(self.present[self.subj_idx==i]))
+			cr_fraction[i] = sum(self.cr[self.subj_idx==i]) / float(sum(self.absent[self.subj_idx==i]))
+		
+		MEANS_correct = (np.mean(hit_fraction), np.mean(cr_fraction))
+		SEMS_correct = (sp.stats.sem(hit_fraction), sp.stats.sem(cr_fraction))
+		
+		MEANS_error = (np.mean(miss_fraction), np.mean(fa_fraction))
+		SEMS_error = (sp.stats.sem(miss_fraction), sp.stats.sem(fa_fraction))
+		
+		N = 2
+		ind = np.linspace(0,N/2,N)  # the x locations for the groups
+		bar_width = 0.50	   # the width of the bars
+		
+		sns.set_style("white")
+		
+		# FIGURE 1
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS_correct[i], width = bar_width, yerr = SEMS_correct[i], color = ['r', 'b'][i], alpha = 1, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS_error[i], bottom = MEANS_correct[i], width = bar_width, color = ['b', 'r'][i], alpha = 0.5, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_ylabel('fraction of trials', size = 10)
+		ax.set_title('SDT fractions', size = 12)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('signal+\nnoise', 'noise') )
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'SDT_fractions.pdf'))
+		
+		# RT histograms:
+		# --------------
+		
+		RESPONSE_TIME = np.array(self.rt)/1000.0
+		max_y = max( max(plt.hist(RESPONSE_TIME[self.hit], bins=30)[0]), max(plt.hist(RESPONSE_TIME[self.cr], bins=30)[0]) )
+		y1,binEdges1 = np.histogram(RESPONSE_TIME[self.hit],bins=30)
+		bincenters1 = 0.5*(binEdges1[1:]+binEdges1[:-1])
+		y2,binEdges2 = np.histogram(RESPONSE_TIME[self.fa],bins=30)
+		bincenters2 = 0.5*(binEdges2[1:]+binEdges2[:-1])
+		y3,binEdges3 = np.histogram(RESPONSE_TIME[self.miss],bins=30)
+		bincenters3 = 0.5*(binEdges3[1:]+binEdges3[:-1])
+		y4,binEdges4 = np.histogram(RESPONSE_TIME[self.cr],bins=30)
+		bincenters4 = 0.5*(binEdges4[1:]+binEdges4[:-1])
+		
+		# Make the plt.plot
+		fig = plt.figure(figsize=(4, 5))
+		# present:
+		a = plt.subplot(211)
+		a.plot(bincenters1,y1,'-', color='r', label='hit')
+		a.plot(bincenters3,y3,'-', color='b', alpha=0.5, label='miss')
+		a.legend()
+		a.set_ylim(ymax=max_y)
+		a.set_xlim(xmin=0.25, xmax=3.5)
+		simpleaxis(a)
+		spine_shift(a)
+		a.axes.tick_params(axis='both', which='major', labelsize=8)
+		a.set_title('RT histograms', size = 12)
+		a.set_ylabel('# trials')
+		a.axvline(np.median(RESPONSE_TIME[self.hit]), color='r', linestyle='--')
+		a.axvline(np.median(RESPONSE_TIME[self.miss]), color='b', linestyle='--')
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		# absent:
+		b = plt.subplot(212)
+		b.plot(bincenters2,y2,'-', color='r', alpha=0.5, label='fa')
+		b.plot(bincenters4,y4,'-', color='b', label='cr')
+		b.legend()
+		b.set_ylim(ymax=max_y)
+		b.set_xlim(xmin=0.25, xmax=3.5)
+		simpleaxis(b)
+		spine_shift(b)
+		b.axes.tick_params(axis='both', which='major', labelsize=8)
+		b.set_xlabel('RT (s)')
+		b.set_ylabel('# trials')
+		b.axvline(np.median(RESPONSE_TIME[self.fa]), color='r', linestyle='--')
+		b.axvline(np.median(RESPONSE_TIME[self.cr]), color='b', linestyle='--')
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'rt_hists.pdf'))
+		
+		
 	def rt_distributions(self, bins=25):
 		
 		quantiles = [0.5, 10, 30, 50, 70, 90, 99.5]
@@ -1111,8 +1292,315 @@ class pupilAnalysesAcross(object):
 	
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'rt_split_answer.pdf'))
 	
+	def pupil_bars(self):
+		
+		ppr_hit = [np.mean(self.ppr[self.subj_idx == i][self.hit[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_fa = [np.mean(self.ppr[self.subj_idx == i][self.fa[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_miss = [np.mean(self.ppr[self.subj_idx == i][self.miss[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_cr = [np.mean(self.ppr[self.subj_idx == i][self.cr[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		
+		ppr_yes = [np.mean(self.ppr[self.subj_idx == i][(self.hit+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_no = [np.mean(self.ppr[self.subj_idx == i][(self.miss+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_correct = [np.mean(self.ppr[self.subj_idx == i][(self.hit+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		ppr_error = [np.mean(self.ppr[self.subj_idx == i][(self.miss+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		
+		bpd_hit = [np.mean(self.bpd[self.subj_idx == i][self.hit[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_fa = [np.mean(self.bpd[self.subj_idx == i][self.fa[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_miss = [np.mean(self.bpd[self.subj_idx == i][self.miss[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_cr = [np.mean(self.bpd[self.subj_idx == i][self.cr[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		
+		bpd_yes = [np.mean(self.bpd[self.subj_idx == i][(self.hit+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_no = [np.mean(self.bpd[self.subj_idx == i][(self.miss+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_correct = [np.mean(self.bpd[self.subj_idx == i][(self.hit+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		bpd_error = [np.mean(self.bpd[self.subj_idx == i][(self.miss+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
+		
+		my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
+
+		N = 4
+		ind = np.linspace(0,2,N)  # the x locations for the groups
+		bar_width = 0.6   # the width of the bars
+		spacing = [0, 0, 0, 0]
+		
+		sns.set_style("white")
+		
+		# FIGURE 1
+		p_values = np.array([myfuncs.permutationTest(ppr_hit, ppr_miss)[1], myfuncs.permutationTest(ppr_fa, ppr_cr)[1]])
+		ppr = [ppr_hit, ppr_miss, ppr_fa, ppr_cr]
+		MEANS = np.array([np.mean(values) for values in ppr])
+		SEMS = np.array([sp.stats.sem(values) for values in ppr])
+		fig = plt.figure(figsize=(4,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color=['r','b','r','b'][i], alpha=[1,0.5,0.5,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('H','M','FA','CR') )
+		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.title('phasic pupil responses')
+		plt.ylabel('pupil response (a.u.)')
+		plt.text(x=np.mean((ind[0],ind[1])), y=1, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=1, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD1_ppr.pdf'))
+		
+		# FIGURE 2
+		p_values = np.array([myfuncs.permutationTest(ppr_yes, ppr_no)[1], myfuncs.permutationTest(ppr_correct, ppr_error)[1]])
+		ppr = [ppr_yes, ppr_no, ppr_correct, ppr_error]
+		MEANS = np.array([np.mean(values) for values in ppr])
+		SEMS = np.array([sp.stats.sem(values) for values in ppr])
+		fig = plt.figure(figsize=(4,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color=['r','b','k','k'][i], alpha=[1,1,1,0.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('YES','NO','CORRECT','ERROR') )
+		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.title('phasic pupil responses')
+		plt.ylabel('pupil response (a.u.)')
+		plt.text(x=np.mean((ind[0],ind[1])), y=1, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=1, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD2_ppr.pdf'))
+		
+		# FIGURE 3
+		p_values = np.array([myfuncs.permutationTest(bpd_hit, bpd_miss)[1], myfuncs.permutationTest(bpd_fa, bpd_cr)[1]])
+		bpd = [bpd_hit, bpd_miss, bpd_fa, bpd_cr]
+		MEANS = np.array([np.mean(values) for values in bpd])
+		SEMS = np.array([sp.stats.sem(values) for values in bpd])
+		fig = plt.figure(figsize=(4,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color=['r','b','r','b'][i], alpha=[1,0.5,0.5,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('H','M','FA','CR') )
+		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.title('baseline pupil responses')
+		plt.ylabel('pupil response (z)')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0.02, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0.02, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD1_bpd.pdf'))
+		
+		# FIGURE 4
+		p_values = np.array([myfuncs.permutationTest(bpd_yes, bpd_no)[1], myfuncs.permutationTest(bpd_correct, bpd_error)[1]])
+		bpd = [bpd_yes, bpd_no, bpd_correct, bpd_error]
+		MEANS = np.array([np.mean(values) for values in bpd])
+		SEMS = np.array([sp.stats.sem(values) for values in bpd])
+		fig = plt.figure(figsize=(4,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color=['r','b','k','k'][i], alpha=[1,1,1,0.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('YES','NO','CORRECT','ERROR') )
+		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.title('baseline pupil responses')
+		plt.ylabel('pupil response (a.u.)')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0.02, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0.02, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD2_bpd.pdf'))
+	
+	
+	def pupil_criterion(self):
+		
+		ppr_yes = np.array([np.mean(self.ppr[self.subj_idx == i][(self.hit+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_no = np.array([np.mean(self.ppr[self.subj_idx == i][(self.miss+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		
+		sns.set_style("darkgrid")
+		
+		fig = myfuncs.correlation_plot(self.criterion, ppr_yes-ppr_no)
+		plt.xlabel('criterion')
+		plt.ylabel('choice effect (yes-no)')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'criterion.pdf'))
+		
+	def pupil_prediction_error(self):
+		
+		self.confidence = np.array(self.parameters_joined['confidence'])
+		self.ppr_feed = np.array(self.parameters_joined['ppr_peak_feed_lp'])
+		
+		ppr_correct_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==0))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==0))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==1))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==1))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==2))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==2))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==3))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==3))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		
+		my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
+
+		N = 4
+		ind = np.linspace(0,2,N)  # the x locations for the groups
+		bar_width = 0.6   # the width of the bars
+		spacing = [0, 0, 0, 0]
+		
+		# FIGURE 1
+		ppr = [ppr_error_0-ppr_correct_0, ppr_error_1-ppr_correct_1, ppr_error_2-ppr_correct_2, ppr_error_3-ppr_correct_3]
+		MEANS = np.array([np.mean(values) for values in ppr])
+		SEMS = np.array([sp.stats.sem(values) for values in ppr])
+		fig = plt.figure(figsize=(4,3))
+		ax = fig.add_subplot(111)
+		ax.errorbar(ind, MEANS, yerr=SEMS, color = 'k', capsize = 0)
+		simpleaxis(ax)
+		spine_shift(ax)
+		ax.set_xticklabels( ('--','-','+','++') )
+		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+		ax.tick_params(axis='x', which='major', labelsize=10)
+		ax.tick_params(axis='y', which='major', labelsize=10)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		plt.title('phasic pupil responses')
+		plt.ylabel('pupil response (z)')
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'prediction_error_ppr.pdf'))
+		
+		# FIGURE 2
+		ppr = np.concatenate([ppr_error_0-ppr_correct_0, ppr_error_1-ppr_correct_1, ppr_error_2-ppr_correct_2, ppr_error_3-ppr_correct_3])
+		conf = np.concatenate((np.ones(self.nr_subjects), np.ones(self.nr_subjects)*2, np.ones(self.nr_subjects)*3, np.ones(self.nr_subjects)*4))
+		fig = myfuncs.correlation_plot2(conf, ppr)
+		plt.xlim(0,5)
+		plt.ylim(ymax=0.75)
+		plt.title('phasic pupil responses')
+		plt.ylabel('pupil response (z)')
+		plt.xticks( (1,2,3,4), ('--','-','+','++') )
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'prediction_error2_ppr.pdf'))
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+	# 	# FIGURE 1
+	# 	MEANS_yes = np.array([np.mean(self.ppr[(self.hit+self.fa)*cond]) for cond in conditions])
+	# 	SEMS_yes = np.array([sp.stats.sem(self.ppr[(self.hit+self.fa)*cond]) for cond in conditions])
+	# 	MEANS_no = np.array([np.mean(self.ppr[(self.miss+self.cr)*cond]) for cond in conditions])
+	# 	SEMS_no = np.array([sp.stats.sem(self.ppr[(self.miss+self.cr)*cond]) for cond in conditions])
+	# 	fig = plt.figure(figsize=(4,3))
+	# 	ax = fig.add_subplot(111)
+	# 	ax.errorbar(ind, MEANS_yes, yerr=SEMS_yes, color = 'r', capsize = 0)
+	# 	ax.errorbar(ind, MEANS_no, yerr=SEMS_no, color = 'b', capsize = 0)
+	# 	simpleaxis(ax)
+	# 	spine_shift(ax)
+	# 	ax.set_xticklabels( ('--','-','+','++') )
+	# 	ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+	# 	ax.tick_params(axis='x', which='major', labelsize=10)
+	# 	ax.tick_params(axis='y', which='major', labelsize=10)
+	# 	ax.set_ylim(ymin=0.2, ymax=1.6)
+	# 	plt.gca().spines["bottom"].set_linewidth(.5)
+	# 	plt.gca().spines["left"].set_linewidth(.5)
+	# 	plt.xlabel('confidence')
+	# 	plt.ylabel('pupil response (a.u.)')
+	# 	plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
+	# 	plt.tight_layout()
+	# 	fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_confidence_choice_2_' + self.subject.initials + '.pdf'))
+	#
+	# 	# FIGURE 1
+	# 	MEANS = np.array([np.mean(self.ppr[(self.hit+self.fa)*cond])-np.mean(self.ppr[(self.miss+self.cr)*cond]) for cond in conditions])
+	# 	SEMS = np.array([(sp.stats.sem(self.ppr[(self.hit+self.fa)*cond])+sp.stats.sem(self.ppr[(self.miss+self.cr)*cond]))/2 for cond in conditions])
+	# 	fig = plt.figure(figsize=(4,3))
+	# 	ax = fig.add_subplot(111)
+	# 	ax.errorbar(ind, MEANS, yerr=SEMS, color = 'k', capsize = 0)
+	# 	simpleaxis(ax)
+	# 	spine_shift(ax)
+	# 	ax.set_xticklabels( ('--','-','+','++') )
+	# 	ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+	# 	ax.tick_params(axis='x', which='major', labelsize=10)
+	# 	ax.tick_params(axis='y', which='major', labelsize=10)
+	# 	ax.set_ylim(ymin=-0.4, ymax=1.0)
+	# 	plt.gca().spines["bottom"].set_linewidth(.5)
+	# 	plt.gca().spines["left"].set_linewidth(.5)
+	# 	plt.xlabel('confidence')
+	# 	plt.ylabel('pupil response (a.u.)')
+	# 	plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
+	# 	plt.tight_layout()
+	# 	fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_confidence_choice_' + self.subject.initials + '.pdf'))
+	#
+	# 	# FIGURE 2
+	# 	MEANS = np.array([np.mean(self.ppr[(self.hit+self.cr)*cond])-np.mean(self.ppr[(self.fa+self.miss)*cond]) for cond in conditions])
+	# 	SEMS = np.array([(sp.stats.sem(self.ppr[(self.hit+self.cr)*cond])+sp.stats.sem(self.ppr[(self.fa+self.miss)*cond]))/2 for cond in conditions])
+	# 	fig = plt.figure(figsize=(4,3))
+	# 	ax = fig.add_subplot(111)
+	# 	for i in range(N):
+	# 		ax.bar(ind[i]+spacing[i], MEANS[i], width = bar_width, yerr=SEMS[i], color = 'b', alpha = [.25,0.5,0.75,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+	# 	simpleaxis(ax)
+	# 	spine_shift(ax)
+	# 	ax.set_xticklabels( ('--','-','+','++') )
+	# 	ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+	# 	ax.tick_params(axis='x', which='major', labelsize=10)
+	# 	ax.tick_params(axis='y', which='major', labelsize=10)
+	# 	plt.gca().spines["bottom"].set_linewidth(.5)
+	# 	plt.gca().spines["left"].set_linewidth(.5)
+	# 	plt.ylabel('pupil correctness effect (a.u.)')
+	# 	plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
+	# 	plt.tight_layout()
+	# 	fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_confidence_correct_' + self.subject.initials + '.pdf'))
+	#
+	#
+	# 	if self.experiment == 1:
+	# 		# FIGURE 4
+	# 		MEANS_yes = np.array([np.mean(self.ppr_feed[(self.hit+self.cr)*cond]) for cond in conditions])
+	# 		SEMS_yes = np.array([sp.stats.sem(self.ppr_feed[(self.hit+self.cr)*cond]) for cond in conditions])
+	# 		MEANS_no = np.array([np.mean(self.ppr_feed[(self.fa+self.miss)*cond]) for cond in conditions])
+	# 		SEMS_no = np.array([sp.stats.sem(self.ppr_feed[(self.fa+self.miss)*cond]) for cond in conditions])
+	# 		fig = plt.figure(figsize=(4,3))
+	# 		ax = fig.add_subplot(111)
+	# 		ax.errorbar(ind, MEANS_no-MEANS_yes, yerr=(SEMS_yes+SEMS_no)/2.0, color = 'k', capsize = 0)
+	# 		simpleaxis(ax)
+	# 		spine_shift(ax)
+	# 		ax.set_xticklabels( ('--','-','+','++') )
+	# 		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
+	# 		ax.tick_params(axis='x', which='major', labelsize=10)
+	# 		ax.tick_params(axis='y', which='major', labelsize=10)
+	# 		# ax.set_ylim(ymin=0.2, ymax=1.6)
+	# 		plt.gca().spines["bottom"].set_linewidth(.5)
+	# 		plt.gca().spines["left"].set_linewidth(.5)
+	# 		plt.xlabel('confidence')
+	# 		plt.ylabel('prediction error (a.u.)')
+	# 		plt.title('subject {}, c = {}'.format((self.subject.initials), round(np.array(self.parameters_joined['criterion'])[0],3)))
+	# 		plt.tight_layout()
+	# 		fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_prediction_error_' + self.subject.initials + '.pdf'))
+	#
+	#
+	#
+	# self.ppr
+	# self.bpd
+	#
+	# conf1 = np.array(self.parameters_joined['confidence'] == 0)
+	# conf2 = np.array(self.parameters_joined['confidence'] == 1)
+	# conf3 = np.array(self.parameters_joined['confidence'] == 2)
+	# conf4 = np.array(self.parameters_joined['confidence'] == 3)
+	#
+	# conditions = [conf1, conf2, conf3, conf4]
 	
 	def pupil_signal_presence(self):
+		
+		# shell()
 		
 		tp_h = np.zeros(len(self.subjects))
 		tp_l = np.zeros(len(self.subjects))
@@ -1166,221 +1654,34 @@ class pupilAnalysesAcross(object):
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'pupil_split_d_prime.pdf'))
 		
 
-	def drift_diffusion(self, run=False):
+	def drift_diffusion(self):
+		
+		shell()
 		
 		# data:
 		d = {
 		'subj_idx' : pd.Series(self.subj_idx),
-		'stimulus' : pd.Series(np.array(self.parameters_joined['present'], dtype=int)),
 		'response' : pd.Series(np.array(self.parameters_joined['correct'], dtype=int)),
-		'choice' : pd.Series(np.array(self.parameters_joined['yes'], dtype=int)),
 		'rt' : pd.Series(np.array(self.parameters_joined['rt']/1000.0)),
+		'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_b' : pd.Series(np.array(self.bpd)),
 		}
-		data = pd.DataFrame(d)
+		data_accuracy = pd.DataFrame(d)
+		data_accuracy.to_csv(os.path.join(self.project_directory, 'data_accuracy.csv'))
 		
-		# path to save model:
-		model_dir = os.path.join(self.project_directory, 'model_dir')
-		
-		# run model:
-		model, t, v, a = myfuncs.drift_diffusion_hddm(data=data, samples=50000, n_jobs=10, run=run, model_name='model_{}'.format(self.nr_subjects), model_dir=model_dir)
-		
-		shell()
-		
-		# analytic plots:
-		# model.plot_posteriors()
-		model.plot_posterior_predictive(samples=10, bins=100, columns=3, figsize=(14, 10), save=True, path=os.path.join(self.project_directory, 'figures'), format='pdf')
-		model.plot_posterior_quantiles(samples=10, alpha=0.5, columns=3, figsize=(14, 10), save=True, path=os.path.join(self.project_directory, 'figures'), format='pdf')
+		d = {
+		'subj_idx' : pd.Series(self.subj_idx),
+		'stimulus' : pd.Series(np.array(self.parameters_joined['present'], dtype=int)),
+		'response' : pd.Series(np.array(self.parameters_joined['yes'], dtype=int)),
+		'rt' : pd.Series(np.array(self.parameters_joined['rt']/1000.0)),
+		'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_b' : pd.Series(np.array(self.bpd)),
+		}
+		data_response = pd.DataFrame(d)
+		data_response.to_csv(os.path.join(self.project_directory, 'data_response.csv'))
 		
 		
-		# hddm.analyze.gelman_rubin(model)
 		
-			
-			# shell()
-			#
-			#
-			# v0, v1 = model_a.nodes_db.node[['v(0)', 'v(1)']]
-			# plt.figure()
-			# hddm.analyze.plot_posterior_nodes([v0,v1])
-			# plt.title('drift rates')
-			# plt.legend(('no', 'yes'))
-			# a0, a1 = model_a.nodes_db.node[['a(0)', 'a(1)']]
-			# plt.figure()
-			# hddm.analyze.plot_posterior_nodes([a0,a1])
-			# plt.title('thresholds')
-			# plt.legend(('no', 'yes'))
-			#
-			# # # Analytics:
-			# # model_s.plot_posteriors()
-			# # model_s.plot_posterior_predictive(figsize=(14, 10))
-			#
-			#
-			# # set path:
-			# this_dir = '/Users/jwdegee/Dropbox/deGee_research/drift_diffusion/data/'
-			# os.chdir(this_dir)
-			#
-			# # load data:
-			# RT_data_accuracy = pd.read_csv('RT_data_accuracy.csv')
-			# RT_data_stimulus = hddm.load_csv('RT_data_stimulus.csv')
-			# pupil_data = pd.read_csv('pupil_data.csv')
-			# p_yes = pupil_data['ppr_yes']
-			# p_no = pupil_data['ppr_no']
-			# p_choice = pupil_data['ppr_choice']
-			# bpd_yes = pupil_data['bpd_yes']
-			# bpd_no = pupil_data['bpd_no']
-			# bpd_choice = pupil_data['bpd_choice']
-			# rt_yes = pupil_data['rt_yes']
-			# rt_no = pupil_data['rt_no']
-			# rt_choice = pupil_data['rt_choice']
-			# criterion = pupil_data['criterion']
-			# nr_subjects = max(RT_data_accuracy['subj_idx'])+1
-			#
-			# # set path:
-			# this_dir = '/Users/jwdegee/Dropbox/deGee_research/drift_diffusion/hddm_python/figs/'
-			# os.chdir(this_dir)
-			#
-			# # analytics and plots:
-			#
-			#
-			#
-			# drift_resid_threshold = myfuncs.lin_regress_resid(d_choice, a_choice)
-			# pupil_resid_threshold = myfuncs.lin_regress_resid(p_choice, a_choice)
-			# drift_resid_criterion = myfuncs.lin_regress_resid(d_choice, criterion)
-			# pupil_resid_criterion = myfuncs.lin_regress_resid(p_choice, criterion)
-			#
-			#
-			# fig = myfuncs.correlation_plot(criterion, d_choice)
-			# plt.xlabel('criterion', size=6)
-			# plt.ylabel('drift rate choice effect', size=6)
-			# pp = PdfPages('criterion---drift_choice' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# fig = myfuncs.correlation_plot(criterion, a_choice)
-			# plt.xlabel('criterion', size=6)
-			# plt.ylabel('threshold choice effect', size=6)
-			# pp = PdfPages('criterion---threshold_choice' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# fig = myfuncs.correlation_plot(drift_resid_threshold, pupil_resid_threshold)
-			# plt.xlabel('residual drift choice effect (threshold removed)', size=6)
-			# plt.ylabel('residual pupil choice effect (threshold removed)', size=6)
-			# pp = PdfPages('drift_resid_threshold---pupil_resid_threshold' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# fig = myfuncs.correlation_plot(drift_resid_criterion, pupil_resid_criterion)
-			# plt.xlabel('residual drift choice effect (criterion removed)', size=6)
-			# plt.ylabel('residual pupil choice effect (criterion removed)', size=6)
-			# pp = PdfPages('drift_resid_criterion---pupil_resid_criterion' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# #### PLOTTING ##########################################################
-			#
-			# # X = [p_no, p_yes, p_choice, criterion, bias, non_decision_time, d_no, d_yes, d_choice, d_var, threshold]
-			# # Y = [p_no, p_yes, p_choice, criterion, bias, non_decision_time, d_no, d_yes, d_choice, d_var, threshold]
-			# X = [p_choice, bpd_choice, rt_choice, criterion, bias, non_decision_time, d_choice, threshold]
-			# Y = [p_choice, bpd_choice, rt_choice, criterion, bias, non_decision_time, d_choice, threshold]
-			# r_values = []
-			# p_values = []
-			# for i in range(len(X)):
-			#     for j in range(len(X)):
-			#         varX = np.array(X[i])
-			#         varY = np.array(Y[j])
-			#         slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
-			#         r_values.append(r_value)
-			#         p_values.append(p_value)
-			# r_values = np.array(r_values)
-			# p_values = np.array(p_values)
-			# reject, p_values_adj = mne.stats.fdr_correction(p_values)
-			#
-			# # select only FDR corrected correlations:
-			# r_values[p_values_adj>0.05] = 0
-			#
-			# # plot:
-			# fig = plt.figure(figsize=(5,4))
-			# ax = plt.subplot(111)
-			# im = plt.pcolormesh(r_values.reshape((len(X), len(Y))), vmin=-1, vmax=1, cmap=plt.get_cmap('RdYlGn'))
-			# plt.colorbar(im)
-			# ax.set_xlim((0,len(Y)))
-			# ax.set_ylim((0,len(Y)))
-			# ax.set_yticks(np.arange(0.5,len(X)+0.5))
-			# ax.set_xticks(np.arange(0.5,len(Y)+0.5))
-			# # ax.set_xticklabels(('pupil_no', 'pupil_yes', 'pupil_choice', 'criterion', 'starting_point', 'non_decision_time', 'drift_no', 'drift_yes', 'drift_choice', 'drift_var', 'threshold'), size=6)
-			# # ax.set_yticklabels(('pupil_no', 'pupil_yes', 'pupil_choice', 'criterion', 'starting_point', 'non_decision_time', 'drift_no', 'drift_yes', 'drift_choice', 'drift_var', 'threshold'), size=6)
-			# ax.set_xticklabels(('pupil_choice', 'baseline_choice', 'rt_choice', 'criterion', 'starting_point', 'non_decision_time', 'drift_choice', 'threshold'), size=6)
-			# ax.set_yticklabels(('pupil_choice', 'baseline_choice', 'rt_choice', 'criterion', 'starting_point', 'non_decision_time', 'drift_choice', 'threshold'), size=6)
-			# fig.autofmt_xdate()
-			# pp = PdfPages('correlation_matrix.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# pupil_resid_criterion = myfuncs.lin_regress_resid(p_choice, criterion)
-			# drift_resid_criterion = myfuncs.lin_regress_resid(d_choice, criterion)
-			# criterion_resid_pupil = myfuncs.lin_regress_resid(criterion, p_choice)
-			# drift_resid_pupil = myfuncs.lin_regress_resid(d_choice, p_choice)
-			# criterion_resid_drift = myfuncs.lin_regress_resid(criterion, d_choice)
-			# pupil_resid_drift = myfuncs.lin_regress_resid(p_choice, d_choice)
-			# print stats.linregress(criterion,p_choice)
-			# print stats.linregress(criterion,d_choice)
-			# print stats.linregress(d_choice,p_choice)
-			# print stats.linregress(drift_resid_criterion,pupil_resid_criterion)
-			# print stats.linregress(drift_resid_pupil,criterion_resid_pupil)
-			# print stats.linregress(pupil_resid_drift,criterion_resid_drift)
-			#
-			# pupil_resid_bias = myfuncs.lin_regress_resid(p_choice, bias)
-			# drift_resid_bias = myfuncs.lin_regress_resid(d_choice, bias)
-			# bias_resid_pupil = myfuncs.lin_regress_resid(bias, p_choice)
-			# drift_resid_pupil = myfuncs.lin_regress_resid(d_choice, p_choice)
-			# bias_resid_drift = myfuncs.lin_regress_resid(bias, d_choice)
-			# pupil_resid_drift = myfuncs.lin_regress_resid(p_choice, d_choice)
-			# print stats.linregress(bias,p_choice)
-			# print stats.linregress(bias,d_choice)
-			# print stats.linregress(d_choice,p_choice)
-			# print stats.linregress(drift_resid_bias,pupil_resid_bias)
-			# print stats.linregress(drift_resid_pupil,bias_resid_pupil)
-			# print stats.linregress(pupil_resid_drift,bias_resid_drift)
-			#
-			# # plot correlation partial correlation (after removing effects of criterion) pupil choice effect - drift choice effect:
-			# fig = myfuncs.correlation_plot(pupil_resid_criterion, drift_resid_criterion)
-			# plt.xlabel('residual pupil choice effect (effect criterion removed)', size=6)
-			# plt.ylabel('residual drift choice effect (effect criterion removed)', size=6)
-			# pp = PdfPages('resid_pupil-drift' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# fig = myfuncs.correlation_plot(criterion_resid_pupil, drift_resid_pupil)
-			# plt.xlabel('residual criterion (effect pupil removed)', size=6)
-			# plt.ylabel('residual drift choice effect (effect pupil removed)', size=6)
-			# pp = PdfPages('resid_criterion_drift' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			# fig = myfuncs.correlation_plot(criterion_resid_drift, pupil_resid_drift)
-			# plt.xlabel('residual criterion (effect drift removed)', size=6)
-			# plt.ylabel('residual pupil choice effect (effect drift removed)', size=6)
-			# pp = PdfPages('resid_criterion-pupil' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			#
-			#
-			# fig = myfuncs.correlation_plot(pupil_resid_bias, drift_resid_bias)
-			# plt.xlabel('residual pupil choice effect (effect starting point removed)', size=6)
-			# plt.ylabel('residual drift choice effect (effect starting point removed)', size=6)
-			# pp = PdfPages('pupil_resid_bias---drift' + '.pdf')
-			# fig.savefig(pp, format='pdf')
-			# pp.close()
-			#
-			#
-			#
-			# ########################
-			# # MNE:
-			# r_matrix = r_values.reshape((len(X), len(Y)))
-			# r_matrix[r_matrix==0] = NaN
-			# label_names = ['pupil_no', 'pupil_yes', 'pupil_choice', 'criterion', 'starting_point', 'non_decision_time', 'drift_no', 'drift_yes', 'drift_choice', 'drift_var', 'threshold']
-			# node_order = label_names
-			# node_angles = circular_layout(label_names, node_order, start_pos=90)
-			# plot_connectivity_circle(r_matrix, label_names, node_angles=node_angles, colormap=plt.get_cmap('RdYlGn'))
-			#
+		
+		
+

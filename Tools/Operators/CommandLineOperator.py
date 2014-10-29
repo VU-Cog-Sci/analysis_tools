@@ -145,7 +145,7 @@ class FlirtOperator( CommandLineOperator ):
 		self.referenceFileName = referenceFileName
 		self.costFunction = costFunction
 
-	def configureApply(self, transformMatrixFileName = None, outputFileName = None, sinc = True):
+	def configureApply(self, transformMatrixFileName = None, outputFileName = None, sinc = True, extra_args = ''):
 		"""
 		apply runs flirt's applyxfm argument.
 		It takes an input matrix and a reference file in order to use transformMatrix
@@ -167,7 +167,7 @@ class FlirtOperator( CommandLineOperator ):
 		if sinc:
 			applycmd += ' -interp sinc '
 
-		self.runcmd = applycmd
+		self.runcmd = applycmd + extra_args
 
 
 	def configureRun(self, outputFileName = None, transformMatrixFileName = None, sinc = True, resample = True, extra_args = ''):
@@ -357,7 +357,7 @@ class FSLMathsOperator( CommandLineOperator ):
 				mathcmd += ' ' + v
 
 		mathcmd += ' ' + self.outputFileName
-		mathcmd += ' -odt ' +  self.outputDataType
+		# mathcmd += ' -odt ' +  self.outputDataType
 		self.runcmd = mathcmd
 
 	def configurePi(self, outputFileName = None, div = 100, mul = 3.141592653589793116):

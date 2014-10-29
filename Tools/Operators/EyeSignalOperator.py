@@ -238,7 +238,7 @@ class EyeSignalOperator(Operator):
 			self.raw_pupil[-coalesce_period+1:] = pupil_median_end
 		
 			# detect zero edges (we just created from blinks, plus missing data):
-			zero_edges = np.arange(self.raw_pupil.shape[0])[np.diff(( self.raw_pupil < threshold_level ))]
+			zero_edges = np.arange(self.raw_pupil.shape[0])[np.diff((self.raw_pupil<threshold_level))]
 			if zero_edges.shape[0] == 0:
 				pass
 			else:
@@ -247,7 +247,7 @@ class EyeSignalOperator(Operator):
 			# check for neighbouring blinks (coalesce_period, default is 250ms), and string them together:
 			start_indices = np.ones(zero_edges.shape[0], dtype=bool)
 			end_indices = np.ones(zero_edges.shape[0], dtype=bool)
-			for i in range(zero_edges.shape[0]):               
+			for i in range(zero_edges.shape[0]):
 				try:
 					if zero_edges[i+1,0] - zero_edges[i,1] <= coalesce_period:
 						start_indices[i+1] = False
@@ -256,9 +256,6 @@ class EyeSignalOperator(Operator):
 					pass
 		
 			# these are the blink start and end samples to work with:
-			
-			
-			
 			if sum(start_indices) > 0:
 				self.blink_starts = zero_edges[start_indices,0]
 				self.blink_ends = zero_edges[end_indices,1]
@@ -313,7 +310,7 @@ class EyeSignalOperator(Operator):
 					self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
 					self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 		
-	def filter_pupil(self, hp = 0.01, lp = 4.0):
+	def filter_pupil(self, hp = 0.05, lp = 4.0):
 		"""band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. after interpolation."""
 		# band-pass filtering of signal, high pass first and then low-pass
 		# High pass:

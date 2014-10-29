@@ -75,10 +75,16 @@ class DeconvolutionOperator(EventDataOperator):
 		self.upsampleDataTimeSeries()
 		self.createDesignMatrix()
 		if run:
-			self.rawDeconvolvedTimeCourse = self.h()
-			self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((int(self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval),int(self.nrSamplesInInterval),-1))
+			self.run()
+			# self.rawDeconvolvedTimeCourse = self.h()
+			# self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((int(self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval),int(self.nrSamplesInInterval),-1))
 			# shell()
-		
+	
+	def run(self):
+		self.rawDeconvolvedTimeCourse = self.h()
+		self.deconvolvedTimeCoursesPerEventType = np.array(self.rawDeconvolvedTimeCourse).reshape((int(self.rawDeconvolvedTimeCourse.shape[0]/self.nrSamplesInInterval),int(self.nrSamplesInInterval),-1))
+
+
 	def upsampleDataTimeSeries(self):
 		"""upsampleDataTimeSeries takes a timeseries of data points
 		 and upsamples them according to 
@@ -147,7 +153,7 @@ class DeconvolutionOperator(EventDataOperator):
 			design_matrix = self.designMatrix
 		else:
 			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
-		self.residuals = self.workingDataArray - np.dot(design_matrix, betas).T
+		self.residuals = self.workingDataArray - np.dot(design_matrix, betas)
 		return np.array(self.residuals)
 	
 	def sse(self):
