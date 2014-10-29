@@ -558,7 +558,7 @@ class PopulationReceptiveFieldBehaviorOperator(NewBehaviorOperator):
 			self.convert_events()
 		self.trial_times = []
 		self.all_button_times = []
-		shell()
+		# shell()
 		for i, t in enumerate(self.trials):
 			stim_on_time = [p[1] for p in t.phase_events if p[0] == '2']
 			stim_off_time = [p[1] for p in t.phase_events if p[0] == '3' ]

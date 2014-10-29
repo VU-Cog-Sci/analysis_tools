@@ -169,11 +169,16 @@ class EDFOperator( Operator ):
 			self.trial_starts = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.start_trial_strings])
 			self.trial_ends = np.array([[float(s[0]), int(s[1]), float(s[2])] for s in self.stop_trial_strings])
 			
+			# sometimes we have twice as many trial starts as trial ends!
 			if 2 * len(self.trial_starts) == len(self.trial_ends):
 				self.trial_ends = self.trial_ends[::2]
 			
-			self.nr_trials = len(self.stop_trial_strings)
+			# due to early task abortion we can have more trial starts than trial ends:
+			if abs(len(self.trial_starts) - len(self.trial_ends)) == 1:
+				self.trial_starts = self.trial_starts[:-2]
+				self.trial_ends = self.trial_ends[:len(self.trial_starts)]
 			
+			self.nr_trials = len(self.trial_starts)
 			self.trials = np.hstack((self.trial_starts, self.trial_ends))
 			
 			# create a dictionary for the types of timing informations we'd like to look at

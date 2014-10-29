@@ -520,6 +520,26 @@ class PopulationReceptiveFieldMappingSession(Session):
 	Class for population receptive field mapping sessions analysis.
 	"""
 
+	def preprocessing_evaluation(self):
+
+		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
+			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
+			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
+			prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
+			# res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
+
+			all_files = ['raw_file','mcf_file','sgtf_file','prZ_file']	 # ,'res_file'
+			f = pl.figure(figsize = ((24,24)))
+			for i,p in enumerate(all_files):
+				s = f.add_subplot(len(all_files),1,i+1)
+				exec("pl.plot("+p+".data[:,17,34,34])")
+				simpleaxis(s)
+				spine_shift(s)
+				pl.title(p,fontsize=14)
+			pl.savefig(self.runFile(stage = 'processed/mri', run = r, postFix = [], extension = '.pdf'))
+
+
 	def resample_epis(self, condition = 'PRF'):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
 		# create identity matrix
@@ -695,7 +715,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for r in [self.runList[i] for i in self.conditionDict[condition]]:
 			pO = PhysioOperator(self.runFile(stage = 'processed/hr', run = r, extension = '.log' ))
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf'] ))
-			pO.preprocess_to_continuous_signals(TR = nii_file.rtime, nr_TRs = nii_file.timepoints)
+			if nii_file.rtime > 10:
+				TR = nii_file.rtime / 1000.0
+			else:
+				TR = nii_file.rtime
+			pO.preprocess_to_continuous_signals(TR = TR, nr_TRs = nii_file.timepoints)
 	
 	def GLM_for_nuisances(self, condition = 'PRF', physiology_type = 'RETROICOR', postFix = ['mcf', 'sgtf', 'prZ']):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
@@ -775,6 +799,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		data_list = np.vstack(data_list)
 		# now we run the GLM
 		self.logger.info('nifti data loaded from %s for nuisance/trial onset analysis'%(self.runFile(stage = 'processed/mri', run = r, postFix = postFix )))
+		
 		betas = ((joined_design_matrix.T * joined_design_matrix).I * joined_design_matrix.T) * np.mat(data_list.T).T
 		residuals = data_list - (np.mat(joined_design_matrix) * np.mat(betas))
 		
@@ -900,11 +925,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 			file_output_data[:,cortex_mask] = output_data
 			opf = NiftiImage(file_output_data)
 			opf.header = nii_file.header
-			self.logger.info('saving output file %s' % self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
+			self.logger.info('saving output file %s with dimensions %s' % (self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ), str(output_data.shape)))
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 5, condition = 'PRF', save_design_matrix = False,orientations=orientations):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 25, condition = 'PRF', save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315]):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -932,19 +957,22 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.trial_start_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			# 
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf', 'sgtf', 'prZ'] ))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = nii_file.rtime, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.05)
+			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
+			if nii_file.rtime > 10:
+				TR = nii_file.rtime / 1000.0
+			else:
+				TR = nii_file.rtime
+			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = TR, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = 0.05)
 			mr.simulate_run( orientations )
 			self.stim_matrix_list.append(mr.run_matrix)
-			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * nii_file.rtime)
-			self.tr_time_list.append(np.arange(0, nii_file.timepoints * nii_file.rtime, nii_file.rtime) + i * nii_file.timepoints * nii_file.rtime)
-			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * nii_file.rtime) 		
+			self.sample_time_list.append(mr.sample_times + i * nii_file.timepoints * TR)
+			self.tr_time_list.append(np.arange(0, nii_file.timepoints * TR, TR) + i * nii_file.timepoints * TR)
+			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * TR) 		
 			
 			if method == 'hrf':
 				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
 				rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
 				run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
-				
 				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
 				workingDesignMatrix = run_design.designMatrix
 				# 
@@ -1002,7 +1030,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			orient_list += '_' + str(orientations[i])
 			
 		# we need a design matrix.
-		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration,orientations=orientations)
+		self.design_matrix(n_pixel_elements = n_pixel_elements, condition = condition, sample_duration = sample_duration, orientations = orientations)
 		# 
 		valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
 		self.full_design_matrix = self.full_design_matrix[:,valid_regressors]
@@ -1014,17 +1042,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 		slices = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T[cortex_mask]
 		slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
 		
+		# shell()
+
 		data_list = []
 		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			data_list.append(nii_file.data[:,cortex_mask])
-			self.TR = nii_file.rtime
+			if nii_file.rtime > 10:
+				self.TR = nii_file.rtime / 1000.0
+			else:
+				self.TR = nii_file.rtime
+
 			tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
 			
 		z_data = np.array(np.vstack(data_list), dtype = np.float32)
 		# get rid of the raw data list that will just take up memory
 		del(data_list)
-		
+		self.logger.info('data for PRF model fits read')
 		# do the separation based on condition
 		# loop over tasks
 		task_tr_times = np.zeros((len(tasks), self.tr_time_list.shape[0]))
@@ -1037,7 +1071,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				this_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 				trial_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))[:,0] + add_time_for_previous_runs)
 				trial_duration = np.median(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [task]))[:,1])
-				add_time_for_previous_runs += this_nii_file.rtime * this_nii_file.timepoints
+				add_time_for_previous_runs += self.TR * this_nii_file.timepoints
 			trial_events = np.concatenate(trial_events)
 			task_tr_times[i] = np.array([(self.tr_time_list > (t - dilate_width)) * (self.tr_time_list < (t + dilate_width + trial_duration)) for t in trial_events]).sum(axis = 0, dtype = bool)
 			task_sample_times[i] = np.array([(self.sample_time_list > (t - dilate_width)) * (self.sample_time_list < (t + dilate_width + trial_duration)) for t in trial_events]).sum(axis = 0, dtype = bool)
@@ -1050,6 +1084,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			selected_tr_times = task_tr_times[[tasks.index(c) for c in all_conditions]].sum(axis = 0, dtype = bool)
 			selected_sample_times = task_sample_times[[tasks.index(c) for c in all_conditions]].sum(axis = 0, dtype = bool)
 		
+		self.logger.info('timings for PRF model fits calculated')
+
 		# set up empty arrays for saving the data
 		all_coefs = np.zeros([int(valid_regressors.sum())] + list(cortex_mask.shape))
 		all_corrs = np.zeros([2] + list(cortex_mask.shape))
@@ -1076,6 +1112,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
 				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# 
+				shell()
 				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))

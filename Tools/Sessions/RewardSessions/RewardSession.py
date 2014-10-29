@@ -11,6 +11,7 @@ from ..Session import *
 from ...Operators.ArrayOperator import *
 from ...Operators.EyeOperator import *
 from ...other_scripts.circularTools import *
+from ...Operators import ArrayOperator, EDFOperator, HDFEyeOperator, EyeSignalOperator
 from pylab import *
 from nifti import *
 from IPython import embed as shell
@@ -24,6 +25,10 @@ class RewardSession(Session):
 	def __init__(self, ID, date, project, subject, session_label, parallelize = True, loggingLevel = logging.DEBUG):
 		self.session_label = session_label
 		super(RewardSession, self).__init__(ID, date, project, subject, parallelize = parallelize, loggingLevel = loggingLevel)
+
+		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/eye'), self.subject.initials + '.hdf5')
+		self.ho = HDFEyeOperator.HDFEyeOperator(self.hdf5_filename)
+
 	
 	# these functions here to create the appropriate hierarchy for this project.
 	def base_dir(self):
