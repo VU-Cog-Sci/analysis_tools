@@ -468,7 +468,11 @@ class Session(PathConstructor):
 					funcFile = NiftiImage(zscO.outputFileName)
 				if op == 'sgtf':
 					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
-					sgtfO.configure(mask_file = mask_file, TR = funcFile.rtime, width = 240, order = 3)
+					if funcFile.rtime > 10:
+						TR = funcFile.rtime / 1000.0
+					else:
+						TR = funcFile.rtime
+					sgtfO.configure(mask_file = mask_file, TR = TR, width = 240, order = 3)
 					sgtfO.execute()
 				if op =='mbs':
 					mbsO = MeanBrainSubtractionOperator(funcFile)
