@@ -524,19 +524,24 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def preprocessing_evaluation(self):
 
+		mask = 'lh.Pole_occipital'
+		mask_data = np.array(NiftiImage(os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), mask)).data, dtype = bool)
+
 		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
 			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
 			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
 			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
+
 			psc_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
 			# prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
 			# res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
 
 			all_files = ['raw_file','mcf_file','sgtf_file','psc_file']	 # ,'res_file'
 			f = pl.figure(figsize = ((24,24)))
+
 			for i,p in enumerate(all_files):
 				s = f.add_subplot(len(all_files),1,i+1)
-				exec("pl.plot("+p+".data[:,17,34,34])")
+				exec("pl.plot("+p+".data[:,mask_data], alpha = 0.05)")
 				simpleaxis(s)
 				spine_shift(s)
 				pl.title(p,fontsize=14)
@@ -999,11 +1004,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + i * nii_file.timepoints * TR) 		
 			
 			if method == 'hrf':
-				run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
+			# 	run_design = Design(mr.run_matrix.shape[0], mr.sample_duration, subSamplingRatio = ssr)
+			# 	rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
+			# 	run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
+			# 	run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
+				# workingDesignMatrix = run_design.designMatrix
+				
+				new_run_design = NewDesign(mr.run_matrix.shape[0], mr.sample_duration, sample_duration = 0.01)
 				rdm = mr.run_matrix.reshape((mr.run_matrix.shape[0], mr.run_matrix.shape[1] * mr.run_matrix.shape[2])).T
-				run_design.rawDesignMatrix = np.repeat(mr.run_matrix, ssr, axis=0).reshape((-1,n_pixel_elements*n_pixel_elements)).T
-				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
-				workingDesignMatrix = run_design.designMatrix
+				new_run_design.raw_design_matrix = np.repeat(rdm, int(mr.sample_duration / 0.01), axis = 1)
+				new_run_design.convolve_with_HRF(hrf_type = gamma_hrfType, hrf_parameters = gamma_hrfParameters)
+				workingDesignMatrix = new_run_design.design_matrix
+
 				# 
 			elif method == 'fir':
 				new_size = list(mr.run_matrix.shape)
@@ -1044,7 +1056,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_image.header = NiftiImage(input_file).header
 		output_image.save(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '_' + task_condition[0] + '.nii.gz'))
 
-	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.6, save_all_data = True, orientations = [0,45,90,135,180,225,270,315]): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.15, save_all_data = True, orientations = [0,45,90,135,180,225,270,315]): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -1140,11 +1152,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# loop across voxels in this slice in parallel using joblib, 
 				# fitBayesianRidge returns coefficients of results, and spearman correlation R and p as a 2-tuple
 				self.logger.info('starting fitting of slice %d, with %d voxels and %d timepoints' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum()), int(these_samples.shape[0])))
+		# 
+				# shell()
+				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e7) for vox_timeseries in these_voxels[:,selected_tr_times])
 				res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
-				# vox_timeseries = these_voxels[50]
-				# res = fitBayesianRidge(self.full_design_matrix[these_samples,:], vox_timeseries)
 
-				# res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitRidge)(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e8) for vox_timeseries in these_voxels[:,selected_tr_times])
 				# res = [fitRidge(self.full_design_matrix[these_samples,:], vox_timeseries, alpha = 1e6, n_jobs = n_jobs) for vox_timeseries in these_voxels]
 				self.logger.info('done fitting of slice %d, with %d voxels' % (sl, int((cortex_mask * voxels_in_this_slice_in_full).sum())))
 				if mask_file_name == 'single_voxel':
@@ -1554,6 +1566,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# combine rois
 		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3,'v7':4,'LO':5,'VO':6,'TO':7,'IPS':8}
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
+
 		end_rois = {}
 		roi_comb = {}
 		for i in range(len(rois)):
@@ -1573,6 +1586,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# else:
 		results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
 		stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = task_condition[0] + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
+
 		
 		for r in range(len(end_rois)):
 			results[r][:,results_frames['ecc_gauss']] = results[r][:,results_frames['ecc_gauss']] * 27.0/2
