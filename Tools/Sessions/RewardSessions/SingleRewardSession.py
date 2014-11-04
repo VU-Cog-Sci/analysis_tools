@@ -4860,5 +4860,25 @@ class SingleRewardSession(RewardSession):
 			self.whole_brain_deconvolve_interval_roi_no_stim_response(response_type = 'stim', iti_type = itit )
 
 
+	def all_whole_brain_interval_decos_to_surface(self):
+		nii_files = subprocess.Popen('ls ' + self.stageFolder(stage = 'processed/mri/reward/deco/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		nii_files_LS = [nii for nii in nii_files if '_LS_diff_' in nii]
+
+		for f in nii_files_LS:
+			vsO = VolToSurfOperator(inputObject = f)
+			ofn = os.path.join(os.path.split(f)[0], 'surf/', os.path.split(f)[-1])
+			vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+			vsO.execute()
+
+			for hemi in ['lh','rh']:
+				ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+				ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+				ssO.execute(wait = False)
+
+		# for itit in ['all_reward', 'fix_reward', 'all_trials', 'stim_reward']:
+		# 	for rt in ['fix', 'stim']:
+		# 		for files in ['stim_response_stim_deconvolution', 'fix_response_stim_deconvolution', 'reference_subtracted_residuals_stim_deconvolution', '']
+
+		# 			os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + '_LS_diff_projected_residuals_stim_deconvolution.nii.gz')
 
 

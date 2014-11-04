@@ -1025,7 +1025,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_image.header = NiftiImage(input_file).header
 		output_image.save(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '_' + task_condition[0] + '.nii.gz'))
 
-	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.6, save_all_data = True, orientations = [0,45,90,135,180,225,270,315]): # cortex_dilated_mask
+	def fit_PRF(self, n_pixel_elements = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], condition = 'PRF', sample_duration = 0.15, save_all_data = True, orientations = [0,45,90,135,180,225,270,315]): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -1314,7 +1314,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# 
 		# anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		# anatRoiFileNames = [anRF for anRF in anatRoiFileNames if 'cortex' not in anRF]
-		anatRoiFileNames = [os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), 'lh.Pole_occipital')]
+		anatRoiFileNames = [os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), 'rh.V1')]
 
 		self.logger.info('Taking masks ' + str(anatRoiFileNames))
 		rois, roinames = [], []
@@ -1529,7 +1529,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
 		# end_rois = {'v1':0,'v2':1,'v3':2,'v4':3}
 		# roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4']}
-		end_rois = {'v1':0}
+		end_rois = {'V1':0}
 		roi_comb = {0: 'V1'}
 		if (size(end_rois) == 1) * (size(roi_comb[0]) == 1):
 			results = []
