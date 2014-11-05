@@ -1042,9 +1042,6 @@ class Session(PathConstructor):
 				# ----------------------------------------
 				
 				if prepare:
-					
-					# shell()
-					
 					# load nifti:
 					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
 					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
@@ -1079,8 +1076,8 @@ class Session(PathConstructor):
 					# shim_slices = np.arange(x.shape[0])[shim_slice_indices]
 					# shim_volumes = shim_slices[0::nr_slices]
 					
-					gap = np.where(np.diff(slice_times) > nr_TRs / (nr_slices*10.0))[0][-1]
-					
+					gap = np.where(np.diff(slice_times) > ((nr_TRs / nr_slices)*10.0))[0][-1]
+						
 					# dummy slices and volumes:
 					dummy_slice_indices = (np.arange(slice_times.shape[0]) > gap) * (np.arange(slice_times.shape[0]) < gap + (nr_dummies * nr_slices))
 					dummy_slices = np.arange(x.shape[0])[dummy_slice_indices]
