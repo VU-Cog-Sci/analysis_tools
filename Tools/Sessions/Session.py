@@ -1033,7 +1033,7 @@ class Session(PathConstructor):
 				
 				if prepare:
 					
-					# shell()
+					shell()
 					
 					# load nifti:
 					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
@@ -1062,14 +1062,17 @@ class Session(PathConstructor):
 					if slice_times.shape[0] > (nr_TRs*nr_slices*2):
 						slice_times = slice_times[0::2]
 					
-					# shim slices and volumes:
-					max_time_between_slices = max(np.diff(slice_times))
-					shim_slice_indices = np.arange(slice_times.shape[0]) < int(np.where(np.diff(slice_times)==max_time_between_slices)[0])+1
-					shim_slices = np.arange(x.shape[0])[shim_slice_indices]
-					shim_volumes = shim_slices[0::nr_slices]
-				
+					# identify gaps due to shimming:
+					# gaps = max(np.diff(slice_times))
+					# shim_slice_indices = np.arange(slice_times.shape[0]) < int(np.where(np.diff(slice_times)==gaps)[0])+1
+					# shim_slice_indices = np.arange(slice_times.shape[0]) < int(gaps[-1])+1
+					# shim_slices = np.arange(x.shape[0])[shim_slice_indices]
+					# shim_volumes = shim_slices[0::nr_slices]
+					
+					gap = np.where(np.diff(slice_times) > nr_TRs / (nr_slices*10.0))[0][-1]
+					
 					# dummy slices and volumes:
-					dummy_slice_indices = (np.arange(slice_times.shape[0]) > shim_slices[-1]) * (np.arange(slice_times.shape[0]) < (nr_dummies * nr_slices) + shim_slices[-1])
+					dummy_slice_indices = (np.arange(slice_times.shape[0]) > gap) * (np.arange(slice_times.shape[0]) < gap + (nr_dummies * nr_slices))
 					dummy_slices = np.arange(x.shape[0])[dummy_slice_indices]
 					dummy_volumes = dummy_slices[0::nr_slices]
 				
