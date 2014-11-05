@@ -2902,7 +2902,7 @@ class SingleRewardSession(RewardSession):
 		what_trials_are_sensible = delays.min(axis = 1)!=0.0
 		
 		raw_itis_of_stim_reward_trials = relative_delays[visual_sound_trials * what_trials_are_sensible, 3]
-		onsets_stim_reward_trials = stim_onsets[blank_sound_trials * what_trials_are_sensible]
+		onsets_stim_reward_trials = stim_onsets[visual_sound_trials * what_trials_are_sensible]
 		all_reward_itis_of_stim_reward_trials = relative_delays[visual_sound_trials * what_trials_are_sensible, 0]
 		fixation_reward_itis_stim_reward_trials = relative_delays[visual_sound_trials * what_trials_are_sensible, 1]
 		stimulus_reward_itis_stim_reward_trials = relative_delays[visual_sound_trials * what_trials_are_sensible, 2]
@@ -4456,12 +4456,17 @@ class SingleRewardSession(RewardSession):
 			h5_file.put("/per_trial_glm_results/%s"% roi + '_' + mask_type + '_' + mask_direction + '_' + data_type, trial_info)
 
 
-	def deconvolve_interval_roi_no_stim_response(self, roi, threshold = 3.5, mask_type = 'center_Z', analysis_type = 'deconvolution', mask_direction = 'pos', signal_type = 'mean', nr_bins = 2, iti_type = 'all_reward', binning_grain = 'session', zero_time_offset = -3.0, add_other_conditions = 'full_design'):
+	def deconvolve_interval_roi_no_stim_response(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', response_type = 'fix', iti_type = 'all_reward', binning_grain = 'session', zero_time_offset = -3.0, add_other_conditions = 'full_design'):
 		"""
 		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
 		Event data will be extracted from the .txt fsl event files used for the initial glm.
 		roi argument specifies the region from which to take the data.
 		"""
+
+		signal_type = 'mean'
+		analysis_type = 'deconvolution'
+		nr_bins = 2
+
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
 		tr, nr_trs = niiFile.rtime, niiFile.timepoints
@@ -4470,15 +4475,25 @@ class SingleRewardSession(RewardSession):
 		reward_h5file = self.hdf5_file('reward')
 		mapper_h5file = self.hdf5_file('mapper')
 		
-		other_conds = ['blank_silence','visual_silence','visual_sound']
-		other_cond_labels = ['fix_no_reward','stimulus_no_reward','stimulus_reward']
-		
+		if response_type == 'fix':
+			other_conds = ['blank_silence','visual_silence','visual_sound']
+			other_cond_labels = ['fix_no_reward','stimulus_no_reward','stimulus_reward']
+		elif response_type == 'stim':
+			other_conds = ['blank_silence','blank_sound','visual_silence']
+			other_cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward']
+	
+		all_conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		all_cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+
+
 		iti_data = []
 		event_data = []
 		roi_data = []
 		blink_events = []
 		other_conditions_event_data = []
 		nr_runs = 0
+		all_event_data = []
+
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
 			roi_data.append(self.roi_data_from_hdf(reward_h5file, r, roi, 'psc_hpf_data'))
 			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
@@ -4489,51 +4504,57 @@ class SingleRewardSession(RewardSession):
 			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters')
 			
 			onsets_fix_reward_trials, raw_itis_of_fix_reward_trials, all_reward_itis_of_fix_reward_trials, fixation_reward_itis_fix_reward_trials, stimulus_reward_itis_fix_reward_trials = self.calculate_event_history_fix_reward(trial_times, parameter_data)
+			onsets_stim_reward_trials, raw_itis_of_stim_reward_trials, all_reward_itis_of_stim_reward_trials, fixation_reward_itis_stim_reward_trials, stimulus_reward_itis_stim_reward_trials = self.calculate_event_history_stim_reward(trial_times, parameter_data)
 			
-			events_of_interest = onsets_fix_reward_trials + nr_runs * run_duration
-			if iti_type == 'all_reward':
-				itis = all_reward_itis_of_fix_reward_trials
-			elif iti_type == 'fix_reward':
-				itis = fixation_reward_itis_fix_reward_trials
-			elif iti_type == 'stim_reward':
-				itis = stimulus_reward_itis_fix_reward_trials
-			elif iti_type == 'all_trials':
-				itis = raw_itis_of_fix_reward_trials
-			
-			iti_order = np.argsort(itis)
-			stepsize = floor(itis.shape[0]/float(nr_bins))
-			if binning_grain == 'run':
-				event_data.append([events_of_interest[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)])
-				iti_data.append([itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)])
-			else:
-				iti_data.append([itis, events_of_interest])
-			
+			if response_type == 'fix':
+				events_of_interest = onsets_fix_reward_trials + nr_runs * run_duration
+				if iti_type == 'all_reward':
+					itis = all_reward_itis_of_fix_reward_trials
+				elif iti_type == 'fix_reward':
+					itis = fixation_reward_itis_fix_reward_trials
+				elif iti_type == 'stim_reward':
+					itis = stimulus_reward_itis_fix_reward_trials
+				elif iti_type == 'all_trials':
+					itis = raw_itis_of_fix_reward_trials
+			elif response_type == 'stim':
+				events_of_interest = onsets_stim_reward_trials + nr_runs * run_duration
+				if iti_type == 'all_reward':
+					itis = all_reward_itis_of_stim_reward_trials
+				elif iti_type == 'fix_reward':
+					itis = fixation_reward_itis_stim_reward_trials
+				elif iti_type == 'stim_reward':
+					itis = stimulus_reward_itis_stim_reward_trials
+				elif iti_type == 'all_trials':
+					itis = raw_itis_of_stim_reward_trials
+
+			iti_data.append([itis, events_of_interest])
+
 			this_run_events = []
 			for cond in other_conds:
-				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
 			this_run_events = np.array(this_run_events) + nr_runs * run_duration
 			other_conditions_event_data.append(this_run_events)
-			# do median split here
-			# event_data.append([events_of_interest[itis < np.median(itis)], events_of_interest[itis > np.median(itis)]])
+			this_run_all_events = []
+			for cond in all_conds:
+				this_run_all_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_all_events = np.array(this_run_all_events) + nr_runs * run_duration
+			all_event_data.append(this_run_all_events)
 			
 			nr_runs += 1
 		
-		if binning_grain == 'run':
-			# event_data_per_run = event_data
-			event_data = [np.concatenate([e[i] for e in event_data]) + zero_time_offset for i in range(nr_bins)]
-			iti_data = [np.concatenate([e[i] for e in iti_data]) for i in range(nr_bins)]
-		elif binning_grain == 'session':
-			itis = np.concatenate([it[0] for it in iti_data])
-			event_times = np.concatenate([it[1] for it in iti_data])
-			iti_order = np.argsort(itis)
-			stepsize = floor(itis.shape[0]/float(nr_bins))
-			event_data = [event_times[iti_order[x*stepsize:(x+1)*stepsize]] + zero_time_offset for x in range(nr_bins)]
-			iti_data = [itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)]
-			self.logger.info(self.subject.initials + ' ' + iti_type + ' bin means for itis: ' + str([i.mean() for i in iti_data]))
 		# shell()
+		itis = np.concatenate([it[0] for it in iti_data])
+		event_times = np.concatenate([it[1] for it in iti_data])
+		iti_order = np.argsort(itis)
+		stepsize = floor(itis.shape[0]/float(nr_bins))
+		event_data = [event_times[iti_order[x*stepsize:(x+1)*stepsize]] + zero_time_offset for x in range(nr_bins)]
+		iti_data = [itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)]
+		self.logger.info(self.subject.initials + ' ' + iti_type + ' bin means for itis: ' + str([i.mean() for i in iti_data]))
 		
 		other_conditions_event_data = [np.concatenate([e[i] for e in other_conditions_event_data]) + zero_time_offset for i in range(len(other_conditions_event_data[0]))]
 		
+		all_event_data = [np.concatenate([e[i] for e in all_event_data]) + zero_time_offset for i in range(len(all_event_data[0]))]
+
 		demeaned_roi_data = []
 		for rd in roi_data:
 			demeaned_roi_data.append( (rd.T - rd.mean(axis = 1)).T )
@@ -4549,34 +4570,60 @@ class SingleRewardSession(RewardSession):
 		else:
 			mapping_mask = mapping_data[:,0] < threshold
 		
+		interval = [0.0,16.0]
+
 		timeseries = eval('roi_data[mapping_mask,:].' + signal_type + '(axis = 0)')
 		
-		fig = pl.figure(figsize = (6, 5))
-		s = fig.add_subplot(111)
-		s.axhline(0, -10, 30, linewidth = 0.25)
-		colors = [(c, 0, 1-c) for c in np.linspace(0.1,0.9,nr_bins)]
-		time_signals = []
-		interval = [0.0,16.0]
+		# design 
 		# nuisance version?
 		nuisance_design = Design(timeseries.shape[0] * 2, tr/2.0 )
 		nuisance_design.configure(np.array([np.hstack(blink_events)]))
 		
+		# split up for stimulus/no stimulus
+		stim_ev_data = [np.concatenate((all_event_data[0], all_event_data[1])), np.concatenate((all_event_data[2], all_event_data[3]))]
+
+		stim_deco = DeconvolutionOperator(inputObject = timeseries, eventObject = stim_ev_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		stim_deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
+		stim_deco.residuals()
+
+		fig = pl.figure(figsize = (6, 5))
+		s = fig.add_subplot(111)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		colors = [(c, 0, 1-c) for c in np.linspace(0.1,0.9,stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0])]
+		for i in range(0, stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+			pl.plot(np.linspace(interval[0],interval[1],stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), alpha = 0.7)
+
+		s.set_title('deconvolution' + roi + ' ' + mask_type)
+		
+		s.set_xlabel('time [s]')
+		s.set_ylabel('% signal change')
+		s.set_xlim([interval[0]-1.5, interval[1]+1.5])
+		pl.draw()
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'stim_response_interval_' + roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '_' + response_type +  '.pdf'))
+
+
 		if add_other_conditions == 'full_design':
 			# this next line adds other conditions to the design
 			event_data.extend(other_conditions_event_data)
-		
+
 		deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
-		deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
-		# shell()
-		# for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
+		deco.workingDataArray[:] = stim_deco.residuals[0,:]
+		deco.run()
+
+		time_signals = []
 		for i in range(0, nr_bins):
 			if add_other_conditions == 'full_design':
-				time_signals.append((deco.deconvolvedTimeCoursesPerEventTypeNuisance[i] - deco.deconvolvedTimeCoursesPerEventTypeNuisance[nr_bins]).squeeze())
+				time_signals.append((deco.deconvolvedTimeCoursesPerEventType[i] - deco.deconvolvedTimeCoursesPerEventType[nr_bins]).squeeze())
 			else:
-				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
-			# shell()
-			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), color = colors[i], alpha = 0.7, label = '%2.1f'%iti_data[i].mean())
-			
+				time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i].squeeze())
+
+		fig = pl.figure(figsize = (6, 5))
+		s = fig.add_subplot(111)
+		s.axhline(0, -10, 30, linewidth = 0.25)
+		colors = [(c, 0, 1-c) for c in np.linspace(0.1,0.9,nr_bins)]
+		for i in range(0, nr_bins):
+			pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), np.array(deco.deconvolvedTimeCoursesPerEventType[i].squeeze()), color = colors[i], alpha = 0.7, label = '%2.1f'%iti_data[i].mean())
+
 		s.set_title('deconvolution' + roi + ' ' + mask_type)
 		
 		s.set_xlabel('time [s]')
@@ -4589,25 +4636,22 @@ class SingleRewardSession(RewardSession):
 			    t.set_fontsize('small')    # the legend text fontsize
 			for l in leg.get_lines():
 			    l.set_linewidth(3.5)  # the legend line width
+		pl.draw()
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'interval_' + roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '_' + response_type +  '.pdf'))
 
 		reward_h5file.close()
 		mapper_h5file.close()
 		
-		pl.draw()
-		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'interval_' + roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '.pdf'))
 		
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '_' + add_other_conditions, event_data, timeseries, np.array(time_signals)]
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + iti_type + '_' + response_type + '_' + add_other_conditions, event_data, timeseries, np.array(time_signals)]
 	
-	def deconvolve_intervals_no_stim(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB'], analysis_type = 'deconvolution', signal_type = 'mean', zero_time_offset = 0.0, mask_direction = 'pos', add_other_conditions = 'full_design', nr_bins = 4 ):
+	def deconvolve_intervals_no_stim(self, threshold = 3.0, rois = ['V1', 'V2', 'V3'], analysis_type = 'deconvolution', signal_type = 'mean', zero_time_offset = 0.0, mask_direction = 'pos', add_other_conditions = 'full_design' ):
 		results = []
 		for roi in rois:
 			results.append([])
 			for itit in ['all_reward', 'fix_reward', 'all_trials', 'stim_reward']:
-				results[-1].append(self.deconvolve_interval_roi_no_stim_response(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = mask_direction, nr_bins = nr_bins, signal_type = signal_type, iti_type = itit, binning_grain = 'session', zero_time_offset = zero_time_offset, add_other_conditions = add_other_conditions))
-			# results.append(self.deconvolve_interval_roi(roi, threshold, mask_type = 'center_Z', analysis_type = analysis_type, mask_direction = 'neg', signal_type = signal_type))
-			# results.append(self.deconvolve_interval_roi(roi, threshold, mask_type = 'surround_center_Z', analysis_type = analysis_type, mask_direction = 'pos', signal_type = signal_type))
-			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
-			# self.deconvolve_roi(roi, -threshold, mask_type = 'surround_Z', analysis_type = analysis_type, mask_direction = 'neg')
+				results[-1].append(self.deconvolve_interval_roi_no_stim_response(roi, threshold, mask_type = 'center_Z', mask_direction = mask_direction, response_type = 'fix', iti_type = itit, binning_grain = 'session', zero_time_offset = zero_time_offset, add_other_conditions = add_other_conditions))
+				results[-1].append(self.deconvolve_interval_roi_no_stim_response(roi, threshold, mask_type = 'center_Z', mask_direction = mask_direction, response_type = 'stim', iti_type = itit, binning_grain = 'session', zero_time_offset = zero_time_offset, add_other_conditions = add_other_conditions))
 		
 		# now construct hdf5 table for this whole mess - do the same for glm and pupil size responses
 		reward_h5file = self.hdf5_file('reward', mode = 'r+')
@@ -4631,5 +4675,210 @@ class SingleRewardSession(RewardSession):
 				# reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run', r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 
+
+
+	def whole_brain_deconvolve_interval_roi_no_stim_response(self, response_type = 'fix', iti_type = 'all_reward', binning_grain = 'session', zero_time_offset = -3.0, add_other_conditions = 'full_design'):
+		"""
+		run deconvolution analysis on the input (mcf_psc_hpf) data that is stored in the reward hdf5 file. 
+		Event data will be extracted from the .txt fsl event files used for the initial glm.
+		roi argument specifies the region from which to take the data.
+		"""
+
+		signal_type = 'mean'
+		analysis_type = 'deconvolution'
+		nr_bins = 2
+
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+		nii_file_shape = list(niiFile.data.shape)
+
+		reward_h5file = self.hdf5_file('reward')
+		
+		if response_type == 'fix':
+			other_conds = ['blank_silence','visual_silence','visual_sound']
+			other_cond_labels = ['fix_no_reward','stimulus_no_reward','stimulus_reward']
+		elif response_type == 'stim':
+			other_conds = ['blank_silence','blank_sound','visual_silence']
+			other_cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward']
+	
+		all_conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		all_cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+
+		nr_reward_runs = len(self.conditionDict['reward'])
+		iti_data = []
+		event_data = []
+		nii_data = np.zeros([nr_reward_runs] + nii_file_shape)
+		blink_events = []
+		other_conditions_event_data = []
+		nr_runs = 0
+		all_event_data = []
+
+		for j, r in enumerate([self.runList[i] for i in self.conditionDict['reward']]):
+			nii_data[j] = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','tf','psc'])).data
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times')
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters')
+			
+			onsets_fix_reward_trials, raw_itis_of_fix_reward_trials, all_reward_itis_of_fix_reward_trials, fixation_reward_itis_fix_reward_trials, stimulus_reward_itis_fix_reward_trials = self.calculate_event_history_fix_reward(trial_times, parameter_data)
+			onsets_stim_reward_trials, raw_itis_of_stim_reward_trials, all_reward_itis_of_stim_reward_trials, fixation_reward_itis_stim_reward_trials, stimulus_reward_itis_stim_reward_trials = self.calculate_event_history_stim_reward(trial_times, parameter_data)
+			
+			if response_type == 'fix':
+				events_of_interest = onsets_fix_reward_trials + nr_runs * run_duration
+				if iti_type == 'all_reward':
+					itis = all_reward_itis_of_fix_reward_trials
+				elif iti_type == 'fix_reward':
+					itis = fixation_reward_itis_fix_reward_trials
+				elif iti_type == 'stim_reward':
+					itis = stimulus_reward_itis_fix_reward_trials
+				elif iti_type == 'all_trials':
+					itis = raw_itis_of_fix_reward_trials
+			elif response_type == 'stim':
+				events_of_interest = onsets_stim_reward_trials + nr_runs * run_duration
+				if iti_type == 'all_reward':
+					itis = all_reward_itis_of_stim_reward_trials
+				elif iti_type == 'fix_reward':
+					itis = fixation_reward_itis_stim_reward_trials
+				elif iti_type == 'stim_reward':
+					itis = stimulus_reward_itis_stim_reward_trials
+				elif iti_type == 'all_trials':
+					itis = raw_itis_of_stim_reward_trials
+
+			iti_data.append([itis, events_of_interest])
+
+			this_run_events = []
+			for cond in other_conds:
+				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_events = np.array(this_run_events) + nr_runs * run_duration
+			other_conditions_event_data.append(this_run_events)
+			this_run_all_events = []
+			for cond in all_conds:
+				this_run_all_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_all_events = np.array(this_run_all_events) + nr_runs * run_duration
+			all_event_data.append(this_run_all_events)
+			
+			nr_runs += 1
+		
+		
+		reward_h5file.close()
+		nii_data = nii_data.reshape((nr_reward_runs * nii_file_shape[0], -1))
+		# shell()
+		itis = np.concatenate([it[0] for it in iti_data])
+		event_times = np.concatenate([it[1] for it in iti_data])
+		iti_order = np.argsort(itis)
+		stepsize = floor(itis.shape[0]/float(nr_bins))
+		event_data = [event_times[iti_order[x*stepsize:(x+1)*stepsize]] + zero_time_offset for x in range(nr_bins)]
+		iti_data = [itis[iti_order[x*stepsize:(x+1)*stepsize]] for x in range(nr_bins)]
+		self.logger.info(self.subject.initials + ' ' + iti_type + ' bin means for itis: ' + str([i.mean() for i in iti_data]))
+		
+		other_conditions_event_data = [np.concatenate([e[i] for e in other_conditions_event_data]) + zero_time_offset for i in range(len(other_conditions_event_data[0]))]
+		
+		all_event_data = [np.concatenate([e[i] for e in all_event_data]) + zero_time_offset for i in range(len(all_event_data[0]))]		
+		
+		interval = [0.0,16.0]
+		
+		# shell()
+
+		# design 
+		# nuisance version?
+		nuisance_design = Design(nii_data.shape[0] * 2, tr/2.0 )
+		nuisance_design.configure(np.array([np.hstack(blink_events)]))
+		
+		# split up for stimulus/no stimulus
+		stim_ev_data = [np.concatenate((all_event_data[0], all_event_data[1])), np.concatenate((all_event_data[2], all_event_data[3]))]
+
+		stim_deco = DeconvolutionOperator(inputObject = nii_data, eventObject = stim_ev_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		stim_deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
+		stim_deco.residuals()
+
+		# output IR curves and residuals after deconvolution
+		
+		res = NiftiImage(np.array(stim_deco.residuals).reshape((nr_reward_runs * nii_file_shape[0] * 2, nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+		res.header = niiFile.header
+		res.rtime = tr/2.0
+		res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + 'residuals_stim_deconvolution.nii.gz'))
+
+		stim_response = NiftiImage(stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance[0].reshape((stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance[0].shape[0], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+		stim_response.header = niiFile.header
+		stim_response.rtime = tr/2.0
+		stim_response.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + 'stim_response_stim_deconvolution.nii.gz'))
+
+		fix_response = NiftiImage(stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance[1].reshape((stim_deco.deconvolvedTimeCoursesPerEventTypeNuisance[1].shape[0], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+		fix_response.header = niiFile.header
+		stim_response.rtime = tr/2.0
+		fix_response.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + 'fix_response_stim_deconvolution.nii.gz'))
+
+		if add_other_conditions == 'full_design':
+			# this next line adds other conditions to the design
+			event_data.extend(other_conditions_event_data)
+
+		deco = DeconvolutionOperator(inputObject = nii_data, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
+		deco.workingDataArray[:] = stim_deco.residuals[:]
+		deco.run()
+
+		frame_names = ['long', 'short'] + other_conds
+		for frame in range(len(deco.deconvolvedTimeCoursesPerEventType)):
+			res = NiftiImage(deco.deconvolvedTimeCoursesPerEventType[frame].reshape((deco.deconvolvedTimeCoursesPerEventType.shape[1], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+			res.header = niiFile.header
+			res.rtime = tr/2.0
+			res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + frame_names[frame] + '_' + 'residuals_stim_deconvolution.nii.gz'))
+
+		# reference against the fix no reward condition and then project
+		thisFolder = '/home/knapen/projects/reward/man/'
+		mean_reward_response_across = np.loadtxt(os.path.join(thisFolder, 'data', 'first', 'group_level', 'data', 'V1_mean_reward_response_across.txt' ))
+
+		for frame in [0,1]:
+			these_data = (deco.deconvolvedTimeCoursesPerEventType[frame]-deco.deconvolvedTimeCoursesPerEventType[nr_bins])
+			res = NiftiImage(these_data.reshape((deco.deconvolvedTimeCoursesPerEventType.shape[1], nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+			res.header = niiFile.header
+			res.rtime = tr/2.0
+			res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + frame_names[frame] + '_' + 'reference_subtracted_residuals_stim_deconvolution.nii.gz'))
+
+
+			res = NiftiImage(np.dot(mean_reward_response_across, these_data).reshape((nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+			res.header = niiFile.header
+			# res.rtime = tr/2.0
+			res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + frame_names[frame] + '_' + 'reference_subtracted_projected_residuals_stim_deconvolution.nii.gz'))
+
+			res = NiftiImage(np.dot(mean_reward_response_across, deco.deconvolvedTimeCoursesPerEventType[frame]).reshape((nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+			res.header = niiFile.header
+			# res.rtime = tr/2.0
+			res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + frame_names[frame] + '_' + 'projected_residuals_stim_deconvolution.nii.gz'))
+
+		res = NiftiImage(np.dot(mean_reward_response_across, deco.deconvolvedTimeCoursesPerEventType[0]-deco.deconvolvedTimeCoursesPerEventType[1]).reshape((nii_file_shape[1], nii_file_shape[2], nii_file_shape[3])))
+		res.header = niiFile.header
+		res.save(os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + '_LS_diff_projected_residuals_stim_deconvolution.nii.gz'))
+
+		
+	def whole_brian_deconvolution_interval_no_stim(self):
+		for itit in ['all_reward', 'fix_reward', 'all_trials', 'stim_reward']:
+			self.whole_brain_deconvolve_interval_roi_no_stim_response(response_type = 'fix', iti_type = itit )
+			self.whole_brain_deconvolve_interval_roi_no_stim_response(response_type = 'stim', iti_type = itit )
+
+
+	def all_whole_brain_interval_decos_to_surface(self):
+		nii_files = subprocess.Popen('ls ' + self.stageFolder(stage = 'processed/mri/reward/deco/') + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		nii_files_LS = [nii for nii in nii_files if '_LS_diff_' in nii]
+
+		for f in nii_files_LS:
+			vsO = VolToSurfOperator(inputObject = f)
+			ofn = os.path.join(os.path.split(f)[0], 'surf/', os.path.split(f)[-1])
+			vsO.configure(frames = {'':0}, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = 0.0, surfType = 'paint'  )
+			vsO.execute()
+
+			for hemi in ['lh','rh']:
+				ssO = SurfToSurfOperator(vsO.outputFileName + '-' + hemi + '.mgh')
+				ssO.configure(fsSourceSubject = self.subject.standardFSID, fsTargetSubject = 'reward_AVG', hemi = hemi, outputFileName = os.path.join(os.path.split(ssO.inputFileName)[0],  'ss_' + os.path.split(ssO.inputFileName)[1]), insmooth = 5.0 )
+				ssO.execute(wait = False)
+
+		# for itit in ['all_reward', 'fix_reward', 'all_trials', 'stim_reward']:
+		# 	for rt in ['fix', 'stim']:
+		# 		for files in ['stim_response_stim_deconvolution', 'fix_response_stim_deconvolution', 'reference_subtracted_residuals_stim_deconvolution', '']
+
+		# 			os.path.join(self.stageFolder(stage = 'processed/mri/reward/deco'), response_type + '_' + iti_type + '_' + '_LS_diff_projected_residuals_stim_deconvolution.nii.gz')
 
 

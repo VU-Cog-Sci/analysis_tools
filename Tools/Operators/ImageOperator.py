@@ -328,7 +328,7 @@ def singleGamma(timepoints, a = 6, b = 0.9):
 
 class Design(object):
 	"""Design represents the design matrix of a given run"""
-	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 1):
+	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 100):
 		self.nrTimePoints = nrTimePoints
 		self.rtime = rtime
 		self.subSamplingRatio = subSamplingRatio
@@ -379,6 +379,51 @@ class Design(object):
 		# standard HRF for now - double gamma
 		self.convolveWithHRF(hrfType = hrfType, hrfParameters = hrfParameters)
 		
+class NewDesign(object):
+	"""Design represents the design matrix of a given run"""
+	def __init__(self, nr_time_points, rtime, sample_duration = 0.01):
+		self.nr_time_points = nr_time_points
+		self.rtime = rtime
+		self.sample_duration = sample_duration
+		
+		self.raw_design_matrix = []
+		self.time_values_for_convolution = np.arange(0,nr_time_points * self.rtime, self.sample_duration)
+	
+	def add_regressor(self, regressor):
+		"""
+		regressors are vectors identical to custom EV files in FSL
+		"""
+		regressor_values = np.zeros(self.time_values_for_convolution.shape[0])
+		for event in regressor:
+			start_time = event[0]
+			end_time = event[0]+event[1]
+			regressor_values[(self.time_values_for_convolution > start_time) * (self.time_values_for_convolution < end_time)] = event[2]
+		self.raw_design_matrix.append(regressor_values)
+		
+		return regressorValues
+	
+	def convolve_with_HRF(self, hrf_type = 'singleGamma', hrf_parameters = {'a': 6, 'b': 0.9}): # hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35}
+		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
+		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
+		self.hrf_type = hrf_type
+		self.hrf_kernel = eval(self.hrf_type + '(np.arange(0,32,self.sample_duration), **hrf_parameters)')
+		if self.hrf_kernel.shape[0] % 2 == 1:
+			self.hrf_kernel = np.r_[self.hrf_kernel, 0]
+		self.hrf_kernel /= self.hrf_kernel.sum()
+		self.convolved_design_matrix = np.zeros_like(self.raw_design_matrix)
+		for i, ds in enumerate(self.raw_design_matrix):
+			self.convolved_design_matrix[i] = fftconvolve( ds, self.hrf_kernel, 'full' )[:self.convolved_design_matrix[i].shape[0]]
+		self.design_matrix = resample(self.convolved_design_matrix, self.nr_time_points, axis = 1)
+			
+	def configure(self, regressors, hrf_type = 'singleGamma', hrf_parameters = {'a': 6, 'b': 0.9} ):
+		"""
+		configure takes the design matrix in FSL EV format and sets up the design matrix
+		"""
+		for reg in regressors:
+			self.add_regressor(reg)
+		# standard HRF for now - double gamma
+		self.convolve_with_HRF(hrf_type = hrf_type, hrf_parameters = hrf_parameters)
+
 
 class ImageRegressOperator(ImageOperator):
 	"""
