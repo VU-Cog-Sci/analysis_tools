@@ -410,13 +410,14 @@ class Session(PathConstructor):
 		for er in self.scanTypeDict['epi_bold']:
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix=postFix ), target = self.referenceFunctionalFileName )
 			
-			# RUN WITH 7 DEGREES OF FREEDOM:
-			if further_args != '':
-				mcf.configure(further_args = further_args)
 
 			if init_transform_file != None:
 				mcf.transformMatrixFileName = init_transform_file
-		 	mcf.configure()
+			# RUN WITH 7 DEGREES OF FREEDOM:
+			if further_args != '':
+				mcf.configure(further_args = further_args)
+		 	else:
+		 		mcf.configure()
 			mcOperatorList.append(mcf)
 			# add registration of non-motion corrected functionals to the forRegistration file
 			# to be run together with the motion correction runs
