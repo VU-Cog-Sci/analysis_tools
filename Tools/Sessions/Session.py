@@ -1043,7 +1043,7 @@ class Session(PathConstructor):
 				
 				if prepare:
 					
-					shell()
+					# shell()
 					
 					# load nifti:
 					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
@@ -1107,10 +1107,10 @@ class Session(PathConstructor):
 					# indices = (x > slice_times[scan_slices[-1]]+50)
 					# physio_new = physio[-indices,:]
 					# np.savetxt(self.runFile(stage = 'processed/hr', run = r, postFix=['new2'], extension='.log'), physio_new, fmt = '%i', delimiter = '\t')
-				
+					
 					# plot:
 					plot_timewindow = [	np.arange(0, slice_times[dummy_volumes[-1]]+(4*sample_rate)),
-										np.arange(slice_times[scan_volumes[-1]]-(8*sample_rate), x.shape[0]),
+										,
 										np.arange(slice_times[scan_slices[-10]], slice_times[scan_slices[-5]]),
 										]
 				
