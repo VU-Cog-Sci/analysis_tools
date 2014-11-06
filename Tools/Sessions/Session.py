@@ -1107,7 +1107,7 @@ class Session(PathConstructor):
 					
 					# plot:
 					plot_timewindow = [	np.arange(0, slice_times[dummy_volumes[-1]]+(4*sample_rate)),
-										,
+										np.arange(slice_times[scan_slices[-1]]-(8*sample_rate), x.shape[0]),
 										np.arange(slice_times[scan_slices[-10]], slice_times[scan_slices[-5]]),
 										]
 				
