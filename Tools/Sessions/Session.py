@@ -551,7 +551,14 @@ class Session(PathConstructor):
 				
 				lvo.configure(templateFileName = template_file, hemispheres = [hemi], register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), fsSubject = self.subject.standardFSID, outputFileName = self.runFile(stage = 'processed/mri/masks/anat/', base = lfx[:-6] ), threshold = 0.05, surfType = 'label')
 				lvo.execute()
-		
+
+	def remove_empty_masks(self, masks_folder = 'anat'):
+		mask_file_names = subprocess.Popen('ls ' + os.path.join(self.stageFolder(stage = 'processed/mri/masks/' ), masks_folder) + '*.nii.gz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		for m in mask_file_names:
+			this_mask_file = NiftiImage(m)
+			if this_mask_file.data.sum() == 0:	# this is an empty mask file...
+				self.logger.info('removing mask %s, because it doesn\'t contain any voxels in this EPI image space'%m)
+				os.system('rm ' + m)
 	
 	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
