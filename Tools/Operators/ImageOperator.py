@@ -245,9 +245,8 @@ class ZScoreOperator(ImageOperator):
 
 	def execute(self):
 		meanImage = bn.nanmean(self.inputObject.data, axis = 0)
-		stdImage = bn.nanstd(self.inputObject.data.std, axis = 0)
-		# outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
-		outputFile = NiftiImage(((self.inputObject.data) / stdImage).astype(np.float32), self.inputObject.header)
+		stdImage = bn.nanstd(self.inputObject.data, axis = 0)
+		outputFile = NiftiImage(((self.inputObject.data - meanImage) / stdImage).astype(np.float32), self.inputObject.header)
 		outputFile.save(self.outputFileName)
 		
 
