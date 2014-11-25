@@ -74,7 +74,7 @@ class HDFEyeOperator(Operator):
 		if hasattr(self.edf_operator, 'trials'):
 			# create a table for the parameters of this run's trials
 			self.add_table_to_hdf(thisRunGroup, self.edf_operator.trial_type_dictionary, self.edf_operator.trials, 'trials')
-		
+			
 		if hasattr(self.edf_operator, 'trial_phases'):
 			# create a table for the parameters of this run's trials
 			self.add_table_to_hdf(thisRunGroup, self.edf_operator.trial_phase_type_dictionary, self.edf_operator.trial_phases, 'trial_phases')
@@ -155,6 +155,7 @@ class HDFEyeOperator(Operator):
 					eso.blink_detection_pupil(coalesce_period=250)
 					# interpolate blinks:
 					eso.interpolate_blinks(method='linear')
+					eso.interpolate_blinks2()
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
 					# z-score filtered pupil data:
@@ -164,9 +165,11 @@ class HDFEyeOperator(Operator):
 
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
+
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
 					bdf[eye+'_pupil_lp'] = eso.lp_filt_pupil
 					bdf[eye+'_pupil_lp_zscore'] = eso.lp_filt_pupil_zscore
+					bdf[eye+'_pupil_lp_diff'] = np.concatenate((np.array([0]),np.diff(eso.lp_filt_pupil)))
 					
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
@@ -174,6 +177,25 @@ class HDFEyeOperator(Operator):
 
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
+					
+					# plot interpolated pupil time series:
+					fig = pl.figure()
+					x = np.linspace(0,eso.raw_pupil.shape[0]/1000, eso.raw_pupil.shape[0])
+					pl.plot(x, eso.raw_pupil, 'b')
+					pl.plot(x, eso.interpolated_pupil, 'g')
+					pl.ylabel('pupil size (raw)')
+					pl.xlabel('time (s)')
+					pl.legend(['raw', 'int + filt'])
+					fig.savefig(os.path.join(self.inputObject.split('processed')[0], 'figs', 'blink_interpolation_1_{}_{}.jpg'.format(alias, i)))
+					
+					# plot results blink detection next to hdf5:
+					fig = pl.figure()
+					pl.plot(eso.pupil_diff)
+					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8,)
+					pl.ylim(ymin=-200, ymax=200)
+					pl.ylabel('diff pupil size (raw)')
+					pl.xlabel('samples')
+					fig.savefig(os.path.join(self.inputObject.split('processed')[0], 'figs', 'blink_interpolation_2_{}_{}.jpg'.format(alias, i)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
