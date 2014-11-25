@@ -553,14 +553,14 @@ class Session(PathConstructor):
 				lvo.execute()
 
 	def remove_empty_masks(self, masks_folder = 'anat'):
-		mask_file_names = subprocess.Popen('ls ' + os.path.join(self.stageFolder(stage = 'processed/mri/masks/' ), masks_folder) + '*.nii.gz', shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		mask_file_names = subprocess.Popen('ls ' + os.path.join(self.stageFolder(stage = 'processed/mri/masks/' ), masks_folder, '*.nii.gz'), shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		for m in mask_file_names:
 			this_mask_file = NiftiImage(m)
 			if this_mask_file.data.sum() == 0:	# this is an empty mask file...
 				self.logger.info('removing mask %s, because it doesn\'t contain any voxels in this EPI image space'%m)
 				os.system('rm ' + m)
 	
-	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
+	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC'], smoothing_width = 2.0, threshold = 0.3):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
 		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
 		"""
@@ -578,7 +578,8 @@ class Session(PathConstructor):
 		list_of_areas = [[al.split(' ')[0], al.split(' ')[1]] for al in a]
 		
 		# open file
-		aseg_image = NiftiImage(os.path.join(self.stageFolder(stage = 'processed/mri/masks'), asegFile + '.nii.gz'))
+		aseg_file_name = os.path.join(self.stageFolder(stage = 'processed/mri/masks'), asegFile + '.nii.gz')
+		aseg_image = NiftiImage(aseg_file_name)
 		for wanted_region in which_regions:
 			for area in list_of_areas:
 				if len(area[1].split('_')) > 1:
@@ -589,13 +590,39 @@ class Session(PathConstructor):
 						elif area[1].split('_')[0] == 'Right':
 							prefix = 'rh.'
 						# shell()
+						label_opf_name_int = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '_int.nii.gz')
+						selection_cmd = 'fslmaths "%s" -uthr %i -thr %i "%s"' % (aseg_file_name, int(area[0]), int(area[0]), label_opf_name_int)
+						ExecCommandLine(selection_cmd)
+
+						# label_opf_name = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '.nii.gz')
+						# selection_cmd = 'fslmaths %s –div %i %s' % (label_opf_name_int, float(area[0]), label_opf_name)
+						# ExecCommandLine(selection_cmd)
+
+						label_opf_name_s = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '_smooth.nii.gz')
+						smooth_cmd = 'fslmaths %s -s %f %s' % (label_opf_name_int, smoothing_width, label_opf_name_s)
+						ExecCommandLine(smooth_cmd)
+
+						label_opf_name_t = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '_thresh.nii.gz')
+						thres_cmd = 'fslmaths %s -thr %f %s' % (label_opf_name_s, threshold * float(area[0]), label_opf_name_t)
+						ExecCommandLine(thres_cmd)
+
 						label_opf_name = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'),  prefix + wanted_region + '.nii.gz')
-						this_label_data = np.array(aseg_image.data == int(area[0]), dtype = int)
-						# create new image
-						label_opf = NiftiImage(this_label_data)
-						label_opf.header = aseg_image.header
-						label_opf.save(label_opf_name)
-						self.logger.info( area[1] + ' outputted to ' + label_opf_name )
+						thres_cmd = 'fslmaths %s -bin %s' % (label_opf_name_t, label_opf_name)
+						ExecCommandLine(thres_cmd)
+
+						ExecCommandLine('rm ' + label_opf_name_int)
+						ExecCommandLine('rm ' + label_opf_name_s)
+						ExecCommandLine('rm ' + label_opf_name_t)
+
+						self.logger.info('converting %s from %s to %s'%(area[1],aseg_file_name,label_opf_name))
+
+						
+						# this_label_data = np.array(aseg_image.data == int(area[0]), dtype = int)
+						# # create new image
+						# label_opf = NiftiImage(this_label_data)
+						# label_opf.header = aseg_image.header
+						# label_opf.save(label_opf_name)
+						# self.logger.info( area[1] + ' outputted to ' + label_opf_name )
 					
 					
 	
