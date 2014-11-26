@@ -462,7 +462,7 @@ class Session(PathConstructor):
 					else:
 						if r == self.scanTypeDict['epi_bold'][0]:
 							ifs = []
-						ifs.append(ifO)
+						ifs.append(ifO.runcmd)
 					# funcFile = NiftiImage(ifO.outputFileName)
 				if op == 'percentsignalchange':
 					pscO = PercentSignalChangeOperator(funcFile)
@@ -472,6 +472,19 @@ class Session(PathConstructor):
 					zscO = ZScoreOperator(funcFile)
 					zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
+					# create mean, std and demeaned files
+					mean_cmd = 'fslmaths %s -Tmean %s' % (funcFile, funcFile[:-7] + '_m.nii.gz')
+					std_cmd = 'fslmaths %s -Tstd %s' % (funcFile, funcFile[:-7] + '_std.nii.gz')
+					dm_cmd = 'fslmaths %s -Tmean -mul -1 -add %s %s' %(funcFile, funcFile, funcFile[:-7] + '_dm.nii.gz')
+					z_cmd = 'fslmaths %s -div %s %s' %(funcFile[:-7] + '_m.nii.gz', funcFile[:-7] + '_std.nii.gz', funcFile[:-7] + '_zscore.nii.gz')
+					rem_cmd = 'rm %s' % (funcFile[:-7] + '_dm.nii.gz')
+					total_cmd = ';\n'.join([mean_cmd,std_cmd,dm_cmd,z_cmd,z_cmd])
+					if not self.parallelize:
+						ExecCommandLine(total_cmd)
+					else:
+						if r == self.scanTypeDict['epi_bold'][0]:
+							zsc_cmds = []
+						zsc_cmds.append(total_cmd)
 				if op == 'sgtf':
 					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
 					if funcFile.rtime > 10:
@@ -491,12 +504,19 @@ class Session(PathConstructor):
 			ppservers = ()
 			job_server = pp.Server(ppservers=ppservers)
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
-			ppResults = [job_server.submit(ExecCommandLine,(ifO.runcmd,),(),('subprocess','tempfile',)) for ifO in ifs]
+			ppResults = [job_server.submit(ExecCommandLine,(ifO,),(),('subprocess','tempfile',)) for ifO in ifs]
 			for ifOf in ppResults:
 				ifOf()
-				
 			job_server.print_stats()
-		
+		if self.parallelize and 'zscore' in operations:
+			# tryout parallel implementation - later, this should be abstracted out of course. 
+			ppservers = ()
+			job_server = pp.Server(ppservers=ppservers)
+			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)
+			ppResults = [job_server.submit(ExecCommandLine,(zsc_cmd,),(),('subprocess','tempfile',)) for zsc_cmd in zsc_cmds]
+			for zsc_cmd in ppResults:
+				zsc_cmd()
+			job_server.print_stats()
 	
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None, cortex = True):
 		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
