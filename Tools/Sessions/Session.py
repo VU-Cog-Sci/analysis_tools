@@ -476,7 +476,7 @@ class Session(PathConstructor):
 					mean_cmd = 'fslmaths %s -Tmean %s' % (funcFile, funcFile[:-7] + '_m.nii.gz')
 					std_cmd = 'fslmaths %s -Tstd %s' % (funcFile, funcFile[:-7] + '_std.nii.gz')
 					dm_cmd = 'fslmaths %s -Tmean -mul -1 -add %s %s' %(funcFile, funcFile, funcFile[:-7] + '_dm.nii.gz')
-					z_cmd = 'fslmaths %s -div %s %s' %(funcFile[:-7] + '_m.nii.gz', funcFile[:-7] + '_std.nii.gz', funcFile[:-7] + '_zscore.nii.gz')
+					z_cmd = 'fslmaths %s -div %s %s' %(funcFile[:-7] + '_m.nii.gz', funcFile[:-7] + '_std.nii.gz', funcFile[:-7] + '_Z.nii.gz')
 					rem_cmd = 'rm %s' % (funcFile[:-7] + '_dm.nii.gz')
 					total_cmd = ';\n'.join([mean_cmd,std_cmd,dm_cmd,z_cmd,z_cmd])
 					if not self.parallelize:
