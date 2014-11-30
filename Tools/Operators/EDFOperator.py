@@ -211,19 +211,48 @@ class EDFOperator( Operator ):
 		#
 		# parameters 
 		#
+		
 		parameters = []
 		for i in range(self.nr_trials):
 			this_re = parameter_re.replace(' X ', ' ' + str(i) + ' ')
 			parameter_strings = re.findall(re.compile(this_re), self.message_string)
-			if len(parameter_strings) > 0:
-				# assuming all these parameters are numeric
-				this_trial_parameters = {'trial_nr': float(i)}
-				for s in parameter_strings:
-					try:
-						this_trial_parameters.update({s[0]: float(s[1])})
-					except ValueError:
-						pass
-				parameters.append(this_trial_parameters)
+			
+			# check if double params:
+			param_names = np.array([p[0] for p in parameter_strings])
+			try:
+				nr_double_trials = sum(param_names == param_names[0])
+			
+				# we have double trials -- custom procedure!:
+				if nr_double_trials > 1:
+					nr_params = len(param_names) / nr_double_trials
+					nr_param = 0
+					parameter_strings2 = []
+					for d in range(nr_double_trials):
+						parameter_strings2.append( parameter_strings[nr_param:nr_param+nr_params] )
+						nr_param += nr_params
+					for d in parameter_strings2:
+						# assuming all these parameters are numeric
+						this_trial_parameters = {'trial_nr': float(i)}
+						for s in d:
+							try:
+								this_trial_parameters.update({s[0]: float(s[1])})
+							except ValueError:
+								pass
+						parameters.append(this_trial_parameters)
+				
+				# we don't have double trial -- standard procedure!
+				else:
+					if len(parameter_strings) > 0:
+						# assuming all these parameters are numeric
+						this_trial_parameters = {'trial_nr': float(i)}
+						for s in parameter_strings:
+							try:
+								this_trial_parameters.update({s[0]: float(s[1])})
+							except ValueError:
+								pass
+						parameters.append(this_trial_parameters)
+			except:
+				pass
 		
 		if len(parameters) > 0:		# there were parameters in the edf file
 			self.parameters = parameters
