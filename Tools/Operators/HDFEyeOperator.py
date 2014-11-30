@@ -165,8 +165,12 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
 					
+					bdf[eye+'_pupil_bp_zscore'] = eso.bp_pupil_zscore
+					bdf[eye+'_pupil_lp_zscore'] = eso.lp_pupil_zscore
+
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
+					
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)

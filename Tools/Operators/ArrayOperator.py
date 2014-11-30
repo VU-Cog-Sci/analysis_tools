@@ -154,6 +154,7 @@ class DeconvolutionOperator(EventDataOperator):
 		else:
 			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
 		self.residuals = self.workingDataArray - np.dot(design_matrix, betas)
+		shell()
 		return np.array(self.residuals)
 	
 	def sse(self):
