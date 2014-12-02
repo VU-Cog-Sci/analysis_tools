@@ -1165,7 +1165,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 			opf.save(self.runFile(stage = 'processed/mri', run = r, postFix = postFix + ['prZ'] ))
 
 	
-	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, ssr = 100, condition = 'PRF', save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315],specific_direction=False,stimulus_correction=0):
+	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', 
+						gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, 
+						fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.6, plot_diagnostics = False, 
+						ssr = 100, condition = 'PRF', save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315],
+						specific_direction=False,stimulus_correction=0):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -1287,6 +1291,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.tr_time_list = np.concatenate(self.tr_time_list)
 		self.sample_time_list = np.concatenate(self.sample_time_list)
 		self.trial_start_list = np.concatenate(self.trial_start_list)
+		self.stim_matrix_list = np.concatenate(self.stim_matrix_list)
 		self.logger.info('design_matrix of shape %s created, of which %d are valid stimulus locations'%(str(self.full_design_matrix.shape), int((self.full_design_matrix.sum(axis = 0) != 0).sum())))
 		
 		# 
@@ -1300,7 +1305,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		if save_design_matrix:
 			with open(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'design_matrix_%1.2f_%ix%i_%s.pickle'%(sample_duration, n_pixel_elements, n_pixel_elements, method)), 'w') as f:
-				pickle.dump({'tr_time_list' : self.tr_time_list, 'full_design_matrix' : self.full_design_matrix, 'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
+				pickle.dump({'tr_time_list' : self.tr_time_list, 'full_design_matrix' : self.full_design_matrix, 'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list, 'stim_matrix_list': self.stim_matrix_list} , f)
 		
 	def stats_to_mask(self, mask_file_name, postFix = ['mcf', 'sgtf', 'prZ', 'res'], condition = 'PRF', task_condition = ['all'], threshold = 5.0):
 		"""stats_to_mask takes the stats from an initial fitting and converts it to a anatomical mask, and places it in the masks/anat folder"""

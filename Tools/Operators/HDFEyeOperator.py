@@ -245,6 +245,13 @@ class HDFEyeOperator(Operator):
 		with pd.get_store(self.inputObject) as h5_file:
 			period_block_nr = self.sample_in_block(sample = time_period[0], block_table = h5_file['%s/blocks'%alias])
 			return np.array(h5_file['%s/blocks'%alias][['screen_x_pix','screen_y_pix']][period_block_nr:period_block_nr+1]).squeeze()
+
+	def screen_dimensions_during_trial(self, trial_nr, alias):
+		"""docstring for eye_during_period"""
+		with pd.get_store(self.inputObject) as h5_file:
+			table = h5_file['%s/trials'%alias]
+			time_period = np.array(table[table['trial_start_index'] == trial_nr][['trial_start_EL_timestamp', 'trial_end_EL_timestamp']])[0]
+		return self.screen_dimensions_during_period(time_period = time_period, alias = alias)	
 	
 	def sample_rate_during_period(self, time_period, alias):
 		"""docstring for eye_during_period"""
