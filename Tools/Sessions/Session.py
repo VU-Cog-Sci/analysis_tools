@@ -803,7 +803,6 @@ class Session(PathConstructor):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
-		
 		if type(run) == str:
 			this_run_group_name = run
 		# elif type(run) == Tools.Run:
@@ -814,7 +813,6 @@ class Session(PathConstructor):
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			
-			# shell()
 			
 			roi_names = []
 			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -822,6 +820,8 @@ class Session(PathConstructor):
 					hemi, area = roi_name._v_name.split('.')
 					if roi_wildcard == area:
 						roi_names.append(roi_name._v_name)
+				elif roi_wildcard == roi_name._v_name:
+					roi_names.append(roi_name._v_name)
 			if len(roi_names) == 0:
 				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
 				return None
