@@ -270,10 +270,13 @@ class EyeSignalOperator(Operator):
 			self.blink_ends = self.timepoints[:-1][np.diff(self.blinks_indices) == -1]
 		
 			# now make sure we're only looking at the blnks that fall fully inside the data stream
-			if self.blink_starts[0] > self.blink_ends[0]:
-				self.blink_ends = self.blink_ends[1:]
-			if self.blink_starts[-1] > self.blink_ends[-1]:
-				self.blink_starts = self.blink_starts[:-1]
+			try:
+				if self.blink_starts[0] > self.blink_ends[0]:
+					self.blink_ends = self.blink_ends[1:]
+				if self.blink_starts[-1] > self.blink_ends[-1]:
+					self.blink_starts = self.blink_starts[:-1]
+			except:
+				shell()
 		
 	def interpolate_blinks(self, method = 'linear', lin_interpolation_points = [[-100],[100]], spline_interpolation_points = [[-0.15, -0.075],[0.075, 0.15]]):
 		"""interpolate_blinks interpolates blink periods with method, which can be spline or linear. 

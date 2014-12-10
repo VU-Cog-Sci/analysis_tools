@@ -132,7 +132,12 @@ class pupilPreprocessSession(object):
 		y_matrix = []
 		
 		for t in range(self.nr_trials):
-			indices = (self.time > self.cue_times[t]) * (self.time < self.choice_times[t])
+			
+			try:
+				indices = (self.time > self.cue_times[t]) * (self.time < self.choice_times[t])
+			except:
+				shell()
+			
 			x = self.gaze_x[indices]
 			x = x - bn.nanmean(x)
 			y = self.gaze_y[indices]
@@ -160,6 +165,7 @@ class pupilPreprocessSession(object):
 		self.omission_indices_first[0:2] = True
 		if self.experiment == 1:
 			self.omission_indices_subject = np.array(self.parameters['confidence'] == -1)
+			self.omission_indices_subject = np.array(self.parameters['correct'] == -1)
 		else:
 			self.omission_indices_subject = np.zeros(self.nr_trials, dtype=bool)
 		self.omission_indices = self.omission_indices_answer + self.omission_indices_sac + self.omission_indices_blinks + self.omission_indices_rt + self.omission_indices_first + self.omission_indices_subject
@@ -291,40 +297,46 @@ class pupilPreprocessSession(object):
 			response_times = np.array(events[((events.key == 275) + (events.key == 276)) * (events.up_down == 'Down')].EL_timestamp)
 			
 			if len(response_times) != 0:
-				ind = np.where(response_times>=self.choice_times[i])[0][0]
-				response_time = response_times[ind]
-				response_key = np.array(events[((events.key == 275) + (events.key == 276)) * (events.up_down == 'Down')].key)[ind]
+				
+				try:
+					ind = np.where(response_times>=self.choice_times[i])[0][0]
+					response_time = response_times[ind]
+					response_key = np.array(events[((events.key == 275) + (events.key == 276)) * (events.up_down == 'Down')].key)[ind]
+					
+					# choice time:
+					self.choice_times[i] = response_time
 			
-				# choice time:
-				self.choice_times[i] = response_time
+					# answer & correct:
+					if self.version == 1:
+						if response_key == 275:
+							self.parameters.answer[i] = -1
+							if self.parameters.target_present_in_stimulus[i] == 0:
+								self.parameters.correct[i] = 1
+							else:
+								self.parameters.correct[i] = 0
+						if response_key == 276:
+							self.parameters.answer[i] = 1
+							if self.parameters.target_present_in_stimulus[i] == 0:
+								self.parameters.correct[i] = 0
+							else:
+								self.parameters.correct[i] = 1
+					if self.version == 2:
+						if response_key == 275:
+							self.parameters.answer[i] = 1
+							if self.parameters.target_present_in_stimulus[i] == 0:
+								self.parameters.correct[i] = 0
+							else:
+								self.parameters.correct[i] = 1
+						if response_key == 276:
+							self.parameters.answer[i] = -1
+							if self.parameters.target_present_in_stimulus[i] == 0:
+								self.parameters.correct[i] = 1
+							else:
+								self.parameters.correct[i] = 0
+					
+				except:
+					pass
 			
-				# answer & correct:
-				if self.version == 1:
-					if response_key == 275:
-						self.parameters.answer[i] = -1
-						if self.parameters.target_present_in_stimulus[i] == 0:
-							self.parameters.correct[i] = 1
-						else:
-							self.parameters.correct[i] = 0
-					if response_key == 276:
-						self.parameters.answer[i] = 1
-						if self.parameters.target_present_in_stimulus[i] == 0:
-							self.parameters.correct[i] = 0
-						else:
-							self.parameters.correct[i] = 1
-				if self.version == 2:
-					if response_key == 275:
-						self.parameters.answer[i] = 1
-						if self.parameters.target_present_in_stimulus[i] == 0:
-							self.parameters.correct[i] = 0
-						else:
-							self.parameters.correct[i] = 1
-					if response_key == 276:
-						self.parameters.answer[i] = -1
-						if self.parameters.target_present_in_stimulus[i] == 0:
-							self.parameters.correct[i] = 1
-						else:
-							self.parameters.correct[i] = 0
 			else:
 				pass
 			
@@ -367,15 +379,6 @@ class pupilPreprocessSession(object):
 		self.gaze_x = np.array(self.pupil_data[(self.eye + '_gaze_x')])
 		self.gaze_y = np.array(self.pupil_data[(self.eye + '_gaze_y')])
 		
-		# plot interpolated pupil time series:
-		fig = plt.figure()
-		x = sp.signal.decimate(np.arange(len(self.pupil_raw)) / 1000, self.downsample_rate, 1)
-		plt.plot(x, sp.signal.decimate(self.pupil_raw, self.downsample_rate, 1), 'b')
-		plt.plot(x, sp.signal.decimate(self.pupil_lp, self.downsample_rate, 1), 'g')
-		plt.ylabel('pupil size (z)')
-		plt.xlabel('time (s)')
-		plt.legend(['raw', 'int + filt'])
-		fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_preprocess_' + self.alias + '.pdf'))
 		self.compute_omission_indices()
 		self.trial_params()
 		self.pupil_zscore()
@@ -571,8 +574,8 @@ class pupilAnalyses(object):
 		'trial_nr' : pd.Series(np.array(self.parameters_joined.trial_nr)),
 		'run_nr' : pd.Series(run_nr),
 		'omissions' : pd.Series(np.array(self.omissions)),
-		'pupil' : pd.Series(np.array(self.parameters_joined.ppr_mean_lp)),
-		# 'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_mean' : pd.Series(np.array(self.parameters_joined.ppr_mean_lp)),
+		'pupil_proj' : pd.Series(np.array(self.ppr)),
 		'pupil_b' : pd.Series(np.array(self.bpd)),
 		'hit' : pd.Series(np.array(self.hit)),
 		'fa' : pd.Series(np.array(self.fa)),
@@ -597,10 +600,11 @@ class pupilAnalyses(object):
 		if self.experiment == 1:
 			
 			# baseline:
-			feed_timings = [-499, 1500]
+			feed_timings = [-499, 2000]
 			feed_data = self.feedback_locked_array_joined[:,feed_timings[0]+1000:feed_timings[1]+1000]
 			for i in range(len(self.bpd_feed)):
-				feed_data[i,:] = feed_data[i,:] - self.bpd_feed[i]
+				feed_data[i,:] = feed_data[i,:] - self.bpd_feed[i]		
+			
 			
 			# indices:
 			
@@ -628,113 +632,167 @@ class pupilAnalyses(object):
 			no_conf3 = conf3 * (self.cr + self.miss)
 			no_conf4 = conf4 * (self.cr + self.miss)
 		
-			for aaaaaaaaa in range(4):
+		for aaaaaaaaa in range(4):
 			
+			if self.experiment == 1:
 				if aaaaaaaaa == 0:
-				
+			
 					condition = [self.hit, self.fa, self.miss, self.cr]
 					colors = ['r', 'r', 'b', 'b']
 					alphas = [1,0.5,0.5,1]
 					labels = ['H', 'FA', 'M', 'CR']
 					filename = ''
-				
+			
 				if aaaaaaaaa == 1:
-				
+			
 					condition = [conf1, conf2, conf3, conf4]
 					colors = ['b', 'b', 'r', 'r']
 					alphas = [1,0.5,0.5,1]
 					labels = ['--', '-', '+', '++']
 					filename = 'confidence_'
-				
+			
 				if aaaaaaaaa == 2:
-				
+			
 					condition = [correct_conf1, correct_conf2, correct_conf3, correct_conf4, error_conf1, error_conf2, error_conf3, error_conf4]
 					colors = ['g', 'g', 'g', 'g', 'r', 'r', 'r', 'r']
 					alphas = [0.25,0.5,0.75,1,0.25,0.5,0.75,1]
 					labels = ['correct --', 'correct -', 'correct +', 'correct ++', 'error --', 'error -', 'error +', 'error ++']
 					filename = 'confidence_correct_'
-				
+			
 				if aaaaaaaaa == 3:
-				
+			
 					condition = [yes_conf1, yes_conf2, yes_conf3, yes_conf4, no_conf1, no_conf2, no_conf3, no_conf4]
 					colors = ['r', 'r', 'r', 'r', 'b', 'b', 'b', 'b']
 					alphas = [0.25,0.5,0.75,1,0.25,0.5,0.75,1]
 					labels = ['yes --', 'yes -', 'yes +', 'yes ++', 'no --', 'no -', 'no +', 'no ++']
 					filename = 'confidence_yes_'
-				
-				# ----------------------
-				# do some plotting:    -
-				# ----------------------
+			
+			if self.experiment == 2:
+				condition = [self.hit, self.fa, self.miss, self.cr]
+				colors = ['r', 'r', 'b', 'b']
+				alphas = [1,0.5,0.5,1]
+				labels = ['H', 'FA', 'M', 'CR']
+				filename = ''
+			
+			print filename
+			
+			# ----------------------
+			# do some plotting:    -
+			# ----------------------
+	
+			# create downsampled means and sems:
+			cue_means = []
+			cue_sems = []
+			choice_means = []
+			choice_sems = []
+			for i in range(len(condition)):
+				cue_means.append(sp.signal.decimate(bn.nanmean(cue_data[condition[i]], axis=0), self.downsample_rate, 1))
+				cue_sems.append(sp.signal.decimate(bn.nanstd(cue_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
+				choice_means.append(sp.signal.decimate(bn.nanmean(choice_data[condition[i]], axis=0), self.downsample_rate, 1))
+				choice_sems.append(sp.signal.decimate(bn.nanstd(choice_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
+	
+			# stuff for ylim:
+			max_y_cue = max(np.concatenate(np.vstack(cue_means) + np.vstack(cue_sems)))
+			min_y_cue = min(np.concatenate(np.vstack(cue_means) - np.vstack(cue_sems)))
+			diff_cue = max_y_cue - min_y_cue
+			max_y_choice = max(np.concatenate(np.vstack(choice_means) + np.vstack(choice_sems)))
+			min_y_choice = min(np.concatenate(np.vstack(choice_means) - np.vstack(choice_sems)))
+			diff_choice = max_y_choice - min_y_choice
+			max_y = max((max_y_cue, max_y_choice))
+			min_y = max((min_y_cue, min_y_choice))
+			diff = abs(max_y - min_y)
+	
+			# cue locked plot:
+			fig = plt.figure(figsize=(4, 3))
+			a = plt.subplot(111)
+			x = np.linspace(cue_timings[0], cue_timings[1], len(cue_means[0]))
+			for i in range(len(condition)):
+				a.plot(x, cue_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
+				a.fill_between(x, cue_means[i] + cue_sems[i], cue_means[i] - cue_sems[i], color=colors[i], alpha=0.1)
+			# a.set_xlim((-500, 4000))
+			leg = plt.legend(loc=2, fancybox=True)
+			leg.get_frame().set_alpha(0.9)
+			if leg:
+				for t in leg.get_texts():
+					t.set_fontsize(7)
+
+				for l in leg.get_lines():
+					l.set_linewidth(2)
+			a.axes.tick_params(axis='both', which='major', labelsize=8)
+			a.set_xticks((0, 1000, 2000, 3000, 4000))
+			a.set_xticklabels((0, 1, 2, 3, 4))
+			if diff < 0.5:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
+			elif diff < 1:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
+			else:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.5))
+			a.set_ylim(ymin=min_y - diff / 20.0, ymax=max_y + diff / 20.0)
+			a.set_title('{}; c = {}'.format(self.subject.initials, round(self.criterion, 3)), size=12)
+			a.set_ylabel('Pupil diameter (s.d.)', size=10)
+			a.set_xlabel('Time from cue (s)', size=10)
+			a.vlines(np.mean(self.rt[(condition[0] + condition[1])]), plt.axis()[2], plt.axis()[3], color='r', linestyle='--', alpha=0.5)
+			a.vlines(np.mean(self.rt[(condition[2] + condition[3])]), plt.axis()[2], plt.axis()[3], color='b', linestyle='--', alpha=0.5)
+			a.vlines(0, plt.axis()[2], plt.axis()[3], linewidth=1)
+			plt.tight_layout()
+			fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_cue_locked_' + filename + self.subject.initials + '.pdf'))
+	
+			# choice locked plot:
+			fig = plt.figure(figsize=(4, 3))
+			a = plt.subplot(111)
+			x = np.linspace(choice_timings[0], choice_timings[1], len(choice_means[0]))
+			for i in range(len(condition)):
+				a.plot(x, choice_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
+				a.fill_between(x, choice_means[i] + choice_sems[i], choice_means[i] - choice_sems[i], color=colors[i], alpha=0.1)
+			a.set_xlim((-2500, 2000))
+			leg = plt.legend(loc=2, fancybox=True)
+			leg.get_frame().set_alpha(0.9)
+			if leg:
+				for t in leg.get_texts():
+					t.set_fontsize(7)
+				for l in leg.get_lines():
+					l.set_linewidth(2)
+			a.axes.tick_params(axis='both', which='major', labelsize=8)
+			a.set_xticks((-2000, -1000, 0, 1000, 2000))
+			a.set_xticklabels((-2, -1, 0, 1, 2))
+			if diff < 0.5:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
+			elif diff < 1:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
+			else:
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.5))
+			a.set_ylim(ymin=min_y - diff / 20.0, ymax=max_y + diff / 20.0)
+			a.set_title('{}; c = {}'.format(self.subject.initials, round(self.criterion, 3)), size=12)
+			a.set_ylabel('Pupil diameter (s.d.)', size=10)
+			a.set_xlabel('Time from choice (s)', size=10)
+			a.vlines(0 - np.mean(self.rt[(condition[0] + condition[1])]), plt.axis()[2], plt.axis()[3], color='r', linestyle='--', alpha=0.5)
+			a.vlines(0 - np.mean(self.rt[(condition[2] + condition[3])]), plt.axis()[2], plt.axis()[3], color='b', linestyle='--', alpha=0.5)
+			a.vlines(0, plt.axis()[2], plt.axis()[3], linewidth=1)
+			plt.tight_layout()
+			fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_choice_locked_' + filename + self.subject.initials + '.pdf'))
+	
+			if self.experiment == 1:
 		
 				# create downsampled means and sems:
-				cue_means = []
-				cue_sems = []
-				choice_means = []
-				choice_sems = []
+				feed_means = []
+				feed_sems = []
 				for i in range(len(condition)):
-					cue_means.append(sp.signal.decimate(bn.nanmean(cue_data[condition[i]], axis=0), self.downsample_rate, 1))
-					cue_sems.append(sp.signal.decimate(bn.nanstd(cue_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
-					choice_means.append(sp.signal.decimate(bn.nanmean(choice_data[condition[i]], axis=0), self.downsample_rate, 1))
-					choice_sems.append(sp.signal.decimate(bn.nanstd(choice_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
+					feed_means.append(sp.signal.decimate(bn.nanmean(feed_data[condition[i]], axis=0), self.downsample_rate, 1))
+					feed_sems.append(sp.signal.decimate(bn.nanstd(feed_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
 		
 				# stuff for ylim:
-				max_y_cue = max(np.concatenate(np.vstack(cue_means) + np.vstack(cue_sems)))
-				min_y_cue = min(np.concatenate(np.vstack(cue_means) - np.vstack(cue_sems)))
-				diff_cue = max_y_cue - min_y_cue
-				max_y_choice = max(np.concatenate(np.vstack(choice_means) + np.vstack(choice_sems)))
-				min_y_choice = min(np.concatenate(np.vstack(choice_means) - np.vstack(choice_sems)))
-				diff_choice = max_y_choice - min_y_choice
-				max_y = max((max_y_cue, max_y_choice))
-				min_y = max((min_y_cue, min_y_choice))
-				diff = abs(max_y - min_y)
+				max_y_feed = max(np.concatenate( np.vstack(feed_means)+np.vstack(feed_sems) ))
+				min_y_feed = min(np.concatenate( np.vstack(feed_means)-np.vstack(feed_sems) ))
+				diff_feed = max_y_feed - min_y_feed
 		
-				# cue locked plot:
+				# feedback locked plot:
 				fig = plt.figure(figsize=(4, 3))
 				a = plt.subplot(111)
-				x = np.linspace(cue_timings[0], cue_timings[1], len(cue_means[0]))
+				x = np.linspace(feed_timings[0], feed_timings[1], len(feed_means[0]))
 				for i in range(len(condition)):
-					a.plot(x, cue_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
-					a.fill_between(x, cue_means[i] + cue_sems[i], cue_means[i] - cue_sems[i], color=colors[i], alpha=0.1)
-				# a.set_xlim((-500, 4000))
-				leg = plt.legend(loc=2, fancybox=True)
-				leg.get_frame().set_alpha(0.9)
-				if leg:
-					for t in leg.get_texts():
-						t.set_fontsize(7)
-
-					for l in leg.get_lines():
-						l.set_linewidth(2)
-				a.axes.tick_params(axis='both', which='major', labelsize=8)
-				simpleaxis(a)
-				spine_shift(a)
-				a.set_xticks((0, 1000, 2000, 3000, 4000))
-				a.set_xticklabels((0, 1, 2, 3, 4))
-				if diff < 0.5:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
-				elif diff < 1:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
-				else:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.5))
-				a.set_ylim(ymin=min_y - diff / 20.0, ymax=max_y + diff / 20.0)
-				a.set_title('{}; c = {}'.format(self.subject.initials, round(self.criterion, 3)), size=12)
-				a.set_ylabel('Pupil diameter (s.d.)', size=10)
-				a.set_xlabel('Time from cue (s)', size=10)
-				a.vlines(np.mean(self.rt[(condition[0] + condition[1])]), plt.axis()[2], plt.axis()[3], color='r', linestyle='--', alpha=0.5)
-				a.vlines(np.mean(self.rt[(condition[2] + condition[3])]), plt.axis()[2], plt.axis()[3], color='b', linestyle='--', alpha=0.5)
-				a.vlines(0, plt.axis()[2], plt.axis()[3], linewidth=1)
-				plt.gca().spines['bottom'].set_linewidth(0.5)
-				plt.gca().spines['left'].set_linewidth(0.5)
-				plt.tight_layout()
-				fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_cue_locked_' + filename + self.subject.initials + '.pdf'))
-		
-				# choice locked plot:
-				fig = plt.figure(figsize=(4, 3))
-				a = plt.subplot(111)
-				x = np.linspace(choice_timings[0], choice_timings[1], len(choice_means[0]))
-				for i in range(len(condition)):
-					a.plot(x, choice_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
-					a.fill_between(x, choice_means[i] + choice_sems[i], choice_means[i] - choice_sems[i], color=colors[i], alpha=0.1)
-				a.set_xlim((-2500, 2000))
+					a.plot(x, feed_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
+					a.fill_between(x, feed_means[i] + feed_sems[i], feed_means[i] - feed_sems[i], color=colors[i], alpha=0.1)
+				a.set_xlim((-500, 2000))
 				leg = plt.legend(loc=2, fancybox=True)
 				leg.get_frame().set_alpha(0.9)
 				if leg:
@@ -743,77 +801,26 @@ class pupilAnalyses(object):
 					for l in leg.get_lines():
 						l.set_linewidth(2)
 				a.axes.tick_params(axis='both', which='major', labelsize=8)
-				simpleaxis(a)
-				spine_shift(a)
-				a.set_xticks((-2000, -1000, 0, 1000, 2000))
-				a.set_xticklabels((-2, -1, 0, 1, 2))
-				if diff < 0.5:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
-				elif diff < 1:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
-				else:
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.5))
-				a.set_ylim(ymin=min_y - diff / 20.0, ymax=max_y + diff / 20.0)
+				a.set_xticks([-500,-0,500,1000,1500,2000])
+				a.set_xticklabels([-.5,0,.5,1,1.5,2.0])
+				a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
+				a.set_ylim(ymin=min_y_feed-(diff_feed/20.0), ymax=max_y_feed+(diff_feed/20.0))
 				a.set_title('{}; c = {}'.format(self.subject.initials, round(self.criterion, 3)), size=12)
 				a.set_ylabel('Pupil diameter (s.d.)', size=10)
-				a.set_xlabel('Time from choice (s)', size=10)
-				a.vlines(0 - np.mean(self.rt[(condition[0] + condition[1])]), plt.axis()[2], plt.axis()[3], color='r', linestyle='--', alpha=0.5)
-				a.vlines(0 - np.mean(self.rt[(condition[2] + condition[3])]), plt.axis()[2], plt.axis()[3], color='b', linestyle='--', alpha=0.5)
+				a.set_xlabel('Time from feedback (s)', size=10)
 				a.vlines(0, plt.axis()[2], plt.axis()[3], linewidth=1)
-				plt.gca().spines['bottom'].set_linewidth(0.5)
-				plt.gca().spines['left'].set_linewidth(0.5)
 				plt.tight_layout()
-				fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_choice_locked_' + filename + self.subject.initials + '.pdf'))
-		
-				if self.experiment == 1:
-			
-					# create downsampled means and sems:
-					feed_means = []
-					feed_sems = []
-					for i in range(len(condition)):
-						feed_means.append(sp.signal.decimate(bn.nanmean(feed_data[condition[i]], axis=0), self.downsample_rate, 1))
-						feed_sems.append(sp.signal.decimate(bn.nanstd(feed_data[condition[i]], axis=0), self.downsample_rate, 1) / sp.sqrt(condition[i].sum()))
-			
-					# stuff for ylim:
-					max_y_feed = max(np.concatenate( np.vstack(feed_means)+np.vstack(feed_sems) ))
-					min_y_feed = min(np.concatenate( np.vstack(feed_means)-np.vstack(feed_sems) ))
-					diff_feed = max_y_feed - min_y_feed
-			
-					# feedback locked plot:
-					fig = plt.figure(figsize=(4, 3))
-					a = plt.subplot(111)
-					x = np.linspace(feed_timings[0], feed_timings[1], len(feed_means[0]))
-					for i in range(len(condition)):
-						a.plot(x, feed_means[i], linewidth=2, color=colors[i], alpha=alphas[i], label=labels[i] + ' ' + str(condition[i].sum()) + ' trials')
-						a.fill_between(x, feed_means[i] + feed_sems[i], feed_means[i] - feed_sems[i], color=colors[i], alpha=0.1)
-					a.set_xlim((-500, 3000))
-					leg = plt.legend(loc=2, fancybox=True)
-					leg.get_frame().set_alpha(0.9)
-					if leg:
-						for t in leg.get_texts():
-							t.set_fontsize(7)
-						for l in leg.get_lines():
-							l.set_linewidth(2)
-					a.axes.tick_params(axis='both', which='major', labelsize=8)
-					simpleaxis(a)
-					spine_shift(a)
-					a.set_xticks([-500,-0,500,1000,1500])
-					a.set_xticklabels([-.5,0,.5,1,1.5])
-					a.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.25))
+				fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_feedback_locked_' + filename + self.subject.initials + '.pdf'))
+				
+				if aaaaaaaaa == 2:
+					shell()
 					
-					# shell()
-					
-					a.set_ylim(ymin=min_y_feed-(diff_feed/20.0), ymax=max_y_feed+(diff_feed/20.0))
-					a.set_xlim(xmax=1500)
-					a.set_title('{}; c = {}'.format(self.subject.initials, round(self.criterion, 3)), size=12)
-					a.set_ylabel('Pupil diameter (s.d.)', size=10)
-					a.set_xlabel('Time from feedback (s)', size=10)
-					a.vlines(0, plt.axis()[2], plt.axis()[3], linewidth=1)
-					plt.gca().spines['bottom'].set_linewidth(0.5)
-					plt.gca().spines['left'].set_linewidth(0.5)
-					plt.tight_layout()
-					fig.savefig(os.path.join(self.base_directory, 'figs', 'pupil_response_feedback_locked_' + filename + self.subject.initials + '.pdf'))
-	
+					means = np.vstack(feed_means)
+					np.savetxt(os.path.join(self.base_directory, 'figs', 'means.csv'), means, delimiter=",")
+					sems = np.vstack(feed_sems)
+					np.savetxt(os.path.join(self.base_directory, 'figs', 'sems.csv'), sems, delimiter=",")
+				
+				
 	def behavior_confidence(self):
 		
 		conf1 = np.array(self.parameters_joined['confidence'] == 0)
@@ -1096,7 +1103,8 @@ class pupilAnalysesAcross(object):
 			
 			parameters.append(self.ho.read_session_data('', 'parameters_joined'))
 		self.parameters_joined = pd.concat(parameters)
-		self.parameters_joined = self.parameters_joined[-self.parameters_joined['omissions']]
+		self.omissions = np.array(self.parameters_joined['omissions'])
+		self.parameters_joined = self.parameters_joined[-self.omissions]
 		
 		self.rt = self.parameters_joined['rt']
 		
@@ -1107,8 +1115,12 @@ class pupilAnalysesAcross(object):
 		
 		self.yes = np.array(self.parameters_joined['yes'], dtype=bool)
 		self.no = -np.array(self.parameters_joined['yes'], dtype=bool)
-		self.present = np.array(self.parameters_joined['signal_present'], dtype=bool)
-		self.absent = -np.array(self.parameters_joined['signal_present'], dtype=bool)
+		
+		try:
+			self.present = np.array(self.parameters_joined['signal_present'], dtype=bool)
+		except:
+			self.present = np.array(self.parameters_joined['target_present_in_stimulus'], dtype=bool)
+		self.absent = -self.present
 		self.correct = np.array(self.parameters_joined['correct'], dtype=bool)
 		self.error = -np.array(self.parameters_joined['correct'], dtype=bool)
 		
@@ -1435,17 +1447,33 @@ class pupilAnalysesAcross(object):
 		
 	def pupil_prediction_error(self):
 		
-		self.confidence = np.array(self.parameters_joined['confidence'])
-		self.ppr_feed = np.array(self.parameters_joined['ppr_peak_feed_lp'])
+		shell()
 		
-		ppr_correct_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==0))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_error_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==0))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_correct_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==1))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_error_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==1))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_correct_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==2))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_error_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==2))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_correct_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*(self.confidence==3))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_error_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*(self.confidence==3))[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		self.confidence = np.array(self.parameters_joined['confidence'])
+		
+		conf1 = np.array(self.parameters_joined['confidence'] == 0)
+		conf1[self.subj_idx ==np.where(np.array(self.subjects) == 'dh')[0][0]] = np.array(self.parameters_joined['confidence'][self.subj_idx ==np.where(np.array(self.subjects) == 'dh')[0][0]] == 1)
+		conf2 = np.array(self.parameters_joined['confidence'] == 1)
+		conf3 = np.array(self.parameters_joined['confidence'] == 2)
+		conf4 = np.array(self.parameters_joined['confidence'] == 3)
+		
+		
+		self.ppr_feed = np.array(self.parameters_joined['ppr_mean_feed_lp'])
+		# self.ppr_feed = np.array(self.parameters_joined['ppr_proj_feed_lp'])
+		
+		ppr_correct_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*conf1)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_0 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*conf1)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*conf2)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_1 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*conf2)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*conf3)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_2 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*conf3)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_correct_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.hit+self.cr)*conf4)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		ppr_error_3 = np.array([np.mean(self.ppr_feed[self.subj_idx == i][((self.miss+self.fa)*conf4)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		
+		performance_0 = np.array([sum(self.correct[self.subj_idx == i][conf1[self.subj_idx == i]]) / float(len(self.correct[self.subj_idx == i][conf1[self.subj_idx == i]])) for i in range(self.nr_subjects)]) * 100.0
+		performance_1 = np.array([sum(self.correct[self.subj_idx == i][conf2[self.subj_idx == i]]) / float(len(self.correct[self.subj_idx == i][conf2[self.subj_idx == i]])) for i in range(self.nr_subjects)]) * 100.0 
+		performance_2 = np.array([sum(self.correct[self.subj_idx == i][conf3[self.subj_idx == i]]) / float(len(self.correct[self.subj_idx == i][conf3[self.subj_idx == i]])) for i in range(self.nr_subjects)]) * 100.0
+		performance_3 = np.array([sum(self.correct[self.subj_idx == i][conf4[self.subj_idx == i]]) / float(len(self.correct[self.subj_idx == i][conf4[self.subj_idx == i]])) for i in range(self.nr_subjects)]) * 100.0
 		
 		my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
 
@@ -1458,26 +1486,36 @@ class pupilAnalysesAcross(object):
 		ppr = [ppr_error_0-ppr_correct_0, ppr_error_1-ppr_correct_1, ppr_error_2-ppr_correct_2, ppr_error_3-ppr_correct_3]
 		MEANS = np.array([np.mean(values) for values in ppr])
 		SEMS = np.array([sp.stats.sem(values) for values in ppr])
+		
+		performance = [performance_0, performance_1, performance_2, performance_3]
+		MEANS2 = np.array([np.mean(values) for values in performance])
+		SEMS2 = np.array([sp.stats.sem(values) for values in performance])
+		
+				
 		fig = plt.figure(figsize=(4,3))
 		ax = fig.add_subplot(111)
-		ax.errorbar(ind, MEANS, yerr=SEMS, color = 'k', capsize = 0)
-		simpleaxis(ax)
-		spine_shift(ax)
+		ax.plot(ind, MEANS, ls='--', color='k', alpha=0.75)
+		ax.errorbar(ind, MEANS, yerr=SEMS, color = 'k', fmt="o", ms=10, capsize = 1, label='pupil')
 		ax.set_xticklabels( ('--','-','+','++') )
 		ax.set_xticks( (ind[0], ind[1], ind[2], ind[3]) )
-		ax.tick_params(axis='x', which='major', labelsize=10)
-		ax.tick_params(axis='y', which='major', labelsize=10)
-		plt.gca().spines["bottom"].set_linewidth(.5)
-		plt.gca().spines["left"].set_linewidth(.5)
-		plt.title('phasic pupil responses')
-		plt.ylabel('pupil response (z)')
+		ax.set_ylabel('pupil response amplitude\n(error - correct) (Z)')
+		ax2 = plt.twinx(ax)
+		ax2.plot(ind, MEANS2, ls='--', color='g', alpha=0.75)
+		ax2.errorbar(ind, MEANS2, yerr=SEMS2, color = 'g', fmt="o", ms=10, capsize = 1, label='accuracy')
+		ax2.set_ylabel('accuracy (% correct)')
+		plt.xlim(ind[0]-0.5, ind[-1]+0.5)
+		ax.legend(loc=2)
+		ax2.legend()
+		plt.title('N=6')
+		plt.xlabel('confidence')
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'prediction_error_ppr.pdf'))
 		
 		# FIGURE 2
 		ppr = np.concatenate([ppr_error_0-ppr_correct_0, ppr_error_1-ppr_correct_1, ppr_error_2-ppr_correct_2, ppr_error_3-ppr_correct_3])
 		conf = np.concatenate((np.ones(self.nr_subjects), np.ones(self.nr_subjects)*2, np.ones(self.nr_subjects)*3, np.ones(self.nr_subjects)*4))
-		fig = myfuncs.correlation_plot2(conf, ppr)
+		# fig = myfuncs.correlation_plot2(X=conf, Y=ppr, labelX='confidence', labelY='pupil', xlim=(-0.2, 0.8), ylim=(0,4))
+		fig = myfuncs.correlation_plot(conf, ppr)
 		plt.xlim(0,5)
 		plt.ylim(ymax=0.75)
 		plt.title('phasic pupil responses')
@@ -1486,6 +1524,14 @@ class pupilAnalysesAcross(object):
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'prediction_error2_ppr.pdf'))
 		
+		d = {
+		'subj_idx' : pd.Series(self.subj_idx),
+		'correct' : pd.Series(np.array(self.parameters_joined['correct'], dtype=int)),
+		'confidence' : pd.Series(np.array(self.parameters_joined['confidence'], dtype=int)),
+		'pupil' : pd.Series(np.array(self.ppr_feed)),
+		}
+		data_response = pd.DataFrame(d)
+		data_response.to_csv(os.path.join(self.project_directory, 'feedback_data_jw.csv'))
 		
 		
 		

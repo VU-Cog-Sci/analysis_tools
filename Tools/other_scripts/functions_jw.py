@@ -31,6 +31,8 @@ import statsmodels.formula.api as sm
 import mne
 import hddm
 import kabuki
+import pypsignifit as psi
+from itertools import combinations as comb
 
 import pp
 from IPython import embed as shell
@@ -256,6 +258,28 @@ def zscore_2d(array, rep):
 # -----------------
 # stats           -
 # -----------------
+def bootstrap(data, nrand=10000, full_output = False, threshold = 0.0):
+	"""data is a subjects by value array
+	bootstrap returns the p-value of the difference with zero, and optionally the full distribution.
+	"""
+	
+	permutes = np.random.randint(0, data.shape[0], size = (data.shape[0], nrand))
+	bootstrap_distro = data[permutes].mean(axis = 0)
+	p_val = 1.0 - ((bootstrap_distro > threshold).sum() / float(nrand))
+	if full_output:
+		return p_val, bootstrap_distro
+	else:
+		return p_val
+
+def permutationTest(a, b):
+	ab = a + b
+	Tobs = sum(a)
+	under = 0
+	for count, perm in enumerate(comb(ab, len(a)), 1):
+		if sum(perm) <= Tobs:
+			under += 1
+		return under * 100. / count
+	
 def permutationTest(group1, group2, nrand=5000, tail=0):
 	
 	"""
@@ -575,6 +599,69 @@ def pupil_scalar_lin_projection(data, time_start, time_end, template):
 # -----------------
 # plotting        -
 # -----------------
+def psychometric_curve(contrasts, answers, corrects, yesno=False):
+	
+	contrasts_unique = np.unique(contrasts)
+	
+	if yesno:
+		
+		ind = ((answers == 1)*(corrects == 1)) + ((answers == 0)*(corrects == 0))
+		contrasts = contrasts[ind]
+		answers = answers[ind]
+		corrects = corrects[ind]
+		
+		# psychometric curve settings
+		# gumbel_l makes the fit a weibull given that the x-data are log-transformed
+		# logistic and gauss (core = ab) deliver similar results
+		nafc = 1
+		sig = 'logistic'
+		core = 'ab'
+		cuts = [0.50]
+		constraints = ( 'flat', 'flat', 'Beta(2,20)' )
+		# constraints = ( 'flat', 'flat', 'flat' )
+		# constraints = ( 'unconstrained', 'unconstrained', 'Uniform(0.05,0.1)' )
+	
+		# separate out the per-test orientation answers
+		corrects_grouped = [answers[contrasts == c] for c in contrasts_unique]
+		# and sum them...
+		corrects_grouped_sum = [c.sum() for c in corrects_grouped]
+		# we also need the amount of samples
+		nr_samples = [float(c.shape[0]) for c in corrects_grouped]
+		# now we construct the tuple that goes into the pypsignifit package
+		fit_data = zip(contrasts_unique, corrects_grouped_sum, nr_samples )
+		
+		# and we fit the data
+		pf = psi.BootstrapInference(fit_data, sigmoid=sig, nafc=nafc, core=core, cuts=cuts, priors=constraints, gammaislambda=True)
+		
+	else:
+		# psychometric curve settings
+		# gumbel_l makes the fit a weibull given that the x-data are log-transformed
+		# logistic and gauss (core = ab) deliver similar results
+		nafc = 2
+		sig = 'logistic'
+		core = 'ab'
+		cuts = [0.75]
+		constraints = ( 'unconstrained', 'unconstrained', 'Uniform(0,0.1)' )
+		# constraints = ( 'unconstrained', 'unconstrained', 'Uniform(0.05,0.1)' )
+	
+		# separate out the per-test orientation answers
+		corrects_grouped = [corrects[contrasts == c] for c in contrasts_unique]
+		# and sum them...
+		corrects_grouped_sum = [c.sum() for c in corrects_grouped]
+		# we also need the amount of samples
+		nr_samples = [float(c.shape[0]) for c in corrects_grouped]
+		# now we construct the tuple that goes into the pypsignifit package
+		fit_data = zip(contrasts_unique, corrects_grouped_sum, nr_samples)
+	
+		# and we fit the data
+		pf = psi.BootstrapInference(fit_data, sigmoid=sig, nafc=nafc, core=core, cuts=cuts, priors=constraints)
+	# and let the package do a bootstrap sampling of the resulting fits
+	pf.sample()
+	
+	# psi.GoodnessOfFit(pf)
+	
+	return (pf, corrects_grouped)
+
 def hist_q(rt, bins=10, quantiles=[10,30,50,70,90], ax=None, xlim=None, ylim=None, quantiles_color='k', alpha=1):
 	
 	nr_observations = len(rt) / 100.0 * np.diff(quantiles)
@@ -610,10 +697,11 @@ def hist_q2(rt, bins=10, quantiles=[10,30,50,70,90], corrects=None, ax=None, xli
 	widths = np.diff(break_points)
 	total_width = max(rt[corrects]) - min(rt[corrects])
 	heights = nr_observations/(widths/total_width*bins)
-
+	
+	# quantile_hist = sns.distplot(rt[corrects], bins=bins, hist=True, norm_hist=True, rug=True, color='g')
 	quantile_hist = ax.hist(rt[corrects], bins=bins, color='g', alpha=0.5, lw=0)
 	for j in range(heights.shape[0]):
-		rect = patches.Rectangle((break_points[j], 0), widths[j], heights[j], fill=False, color=quantiles_color, linewidth=2, alpha=alpha)
+		rect = patches.Rectangle((break_points[j], 0), widths[j], heights[j], fill=False, color=quantiles_color, linewidth=1, alpha=alpha)
 		ax.add_patch(rect)
 		
 	nr_observations = len(rt[-corrects]) / 100.0 * np.diff(quantiles)
@@ -624,7 +712,7 @@ def hist_q2(rt, bins=10, quantiles=[10,30,50,70,90], corrects=None, ax=None, xli
 
 	quantile_hist = ax.hist(rt[-corrects]*-1.0, bins=bins, color='r', alpha=0.5, lw=0)
 	for j in range(heights.shape[0]):
-		rect = patches.Rectangle((break_points2[j], 0), widths[j], heights[j], fill=False, color=quantiles_color, linewidth=2, alpha=alpha)
+		rect = patches.Rectangle((break_points2[j], 0), widths[j], heights[j], fill=False, color=quantiles_color, linewidth=1, alpha=alpha)
 		ax.add_patch(rect)
 	if xlim:
 		ax.set_xlim(xlim)

@@ -34,13 +34,13 @@ class GeneralLinearModel(object):
 		# create raw regressors, and add them to self.raw_design_matrix:
 		for i, reg in enumerate(self.event_object):
 			if regressor_types[i] == 'stick':
-				self.add_stick_regressor(reg)
+				self.add_stick_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'box':
-				self.add_box_regressor(reg)
+				self.add_box_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'upramp':
-				self.add_upramp_regressor(reg)
+				self.add_upramp_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'downramp':
-				self.add_downramp_regressor(reg)
+				self.add_downramp_regressor(np.atleast_2d(reg))
 		
 		self.IRF_dt = IRF_dt
 		
@@ -63,6 +63,9 @@ class GeneralLinearModel(object):
 		
 	def convolve_with_IRF(self):
 		"""convolve_wit_IRF convolves the designMatrix with the specified IRF (sampled according to resample_ratio)"""
+		
+		print
+		print len(self.IRF)
 		
 		self.design_matrix = np.zeros([len(self.raw_design_matrix)*len(self.IRF), self.timepoints.shape[0]])
 		i = 0
