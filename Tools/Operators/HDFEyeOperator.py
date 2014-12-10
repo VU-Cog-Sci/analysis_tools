@@ -74,7 +74,7 @@ class HDFEyeOperator(Operator):
 		if hasattr(self.edf_operator, 'trials'):
 			# create a table for the parameters of this run's trials
 			self.add_table_to_hdf(thisRunGroup, self.edf_operator.trial_type_dictionary, self.edf_operator.trials, 'trials')
-			
+		
 		if hasattr(self.edf_operator, 'trial_phases'):
 			# create a table for the parameters of this run's trials
 			self.add_table_to_hdf(thisRunGroup, self.edf_operator.trial_phase_type_dictionary, self.edf_operator.trial_phases, 'trial_phases')
@@ -160,12 +160,22 @@ class HDFEyeOperator(Operator):
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
+					# now dt the resulting pupil data:
+					eso.dt_pupil()
+
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
-					bdf[eye+'_pupil_lp'] = eso.lp_filt_pupil
-					bdf[eye+'_pupil_lp_diff'] = np.concatenate((np.array([0]),np.diff(eso.lp_filt_pupil)))
-					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
+
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
+					bdf[eye+'_pupil_lp'] = eso.lp_filt_pupil
+					bdf[eye+'_pupil_lp_zscore'] = eso.lp_filt_pupil_zscore
+					bdf[eye+'_pupil_lp_diff'] = np.concatenate((np.array([0]),np.diff(eso.lp_filt_pupil)))
+					
+					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
+					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
+					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
+					bdf[eye+'_pupil_lp_zscore'] = eso.lp_pupil_zscore
+
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					
@@ -235,6 +245,13 @@ class HDFEyeOperator(Operator):
 		with pd.get_store(self.inputObject) as h5_file:
 			period_block_nr = self.sample_in_block(sample = time_period[0], block_table = h5_file['%s/blocks'%alias])
 			return np.array(h5_file['%s/blocks'%alias][['screen_x_pix','screen_y_pix']][period_block_nr:period_block_nr+1]).squeeze()
+
+	def screen_dimensions_during_trial(self, trial_nr, alias):
+		"""docstring for eye_during_period"""
+		with pd.get_store(self.inputObject) as h5_file:
+			table = h5_file['%s/trials'%alias]
+			time_period = np.array(table[table['trial_start_index'] == trial_nr][['trial_start_EL_timestamp', 'trial_end_EL_timestamp']])[0]
+		return self.screen_dimensions_during_period(time_period = time_period, alias = alias)	
 	
 	def sample_rate_during_period(self, time_period, alias):
 		"""docstring for eye_during_period"""
