@@ -493,7 +493,7 @@ class Session(PathConstructor):
 						TR = funcFile.rtime / 1000.0
 					else:
 						TR = funcFile.rtime
-					sgtfO.configure(mask_file = mask_file, TR = TR, width = 240, order = 3)
+					sgtfO.configure(mask_file = mask_file, TR = TR, width = filterFreqs['highpass'], order = 3)
 					sgtfO.execute()
 				if op =='mbs':
 					mbsO = MeanBrainSubtractionOperator(funcFile)
@@ -645,9 +645,47 @@ class Session(PathConstructor):
 						# label_opf.header = aseg_image.header
 						# label_opf.save(label_opf_name)
 						# self.logger.info( area[1] + ' outputted to ' + label_opf_name )
+						
+	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
+		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
+		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
+		"""
+		
+		# find the subcortical labels in the converted brain from aseg.auto_noCCseg.label_intensities file
+		with open(os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg.auto_noCCseg.label_intensities.txt')) as f:
+			a = f.readlines()
+		list_of_areas = [[al.split(' ')[0], al.split(' ')[1]] for al in a]
+		
+		# open file
+		aseg_image = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.mgz')
+		for wanted_region in which_regions:
+			for area in list_of_areas:
+				if area[1] == wanted_region:
 					
+					# create masks:
+					inputObject = aseg_image
+					outputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.mgz'.format(area[1]))
+					os.system('mri_binarize --i {} --match {} --o {}'.format(inputObject, area[0], outputObject))
+
+					# convert to nifti
+					inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.mgz'.format(area[1]))
+					outputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.nii.gz'.format(area[1]))
+					os.system('mri_convert {} {}'.format(inputObject, outputObject))
 					
-	
+					# transform to subject's space:
+					inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.nii.gz'.format(area[1]))
+					outputObject = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'), '{}.nii.gz'.format(area[1]))
+					target = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]])
+					reg = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID, 'flirt', 'BB', 'inv'], extension = '.mat' )
+					flO = FlirtOperator(inputObject = inputObject, referenceFileName = target)
+					flO.configureApply(transformMatrixFileName=reg, outputFileName = outputObject, sinc=False)
+					flO.execute()
+		
+					# treshold:
+					inputObject = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'), '{}.nii.gz'.format(area[1]))
+					fmo = FSLMathsOperator(inputObject)
+					fmo.configure(outputFileName=inputObject, **{'-thr':str(0.5), '-bin':''})
+					fmo.execute()
 	
 	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
