@@ -469,14 +469,15 @@ class Session(PathConstructor):
 					pscO.execute()
 					funcFile = NiftiImage(pscO.outputFileName)
 				if op == 'zscore':
-					zscO = ZScoreOperator(funcFile)
-					zscO.execute()
-					funcFile = NiftiImage(zscO.outputFileName)
+					# zscO = ZScoreOperator(funcFile)
+					# zscO.execute()
+					# funcFile = NiftiImage(zscO.outputFileName)
 					# create mean, std and demeaned files
+					funcFile = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = funcPostFix )
 					mean_cmd = 'fslmaths %s -Tmean %s' % (funcFile, funcFile[:-7] + '_m.nii.gz')
 					std_cmd = 'fslmaths %s -Tstd %s' % (funcFile, funcFile[:-7] + '_std.nii.gz')
 					dm_cmd = 'fslmaths %s -Tmean -mul -1 -add %s %s' %(funcFile, funcFile, funcFile[:-7] + '_dm.nii.gz')
-					z_cmd = 'fslmaths %s -div %s %s' %(funcFile[:-7] + '_m.nii.gz', funcFile[:-7] + '_std.nii.gz', funcFile[:-7] + '_Z.nii.gz')
+					z_cmd = 'fslmaths %s -div %s %s' %(funcFile[:-7] + '_dm.nii.gz', funcFile[:-7] + '_std.nii.gz', funcFile[:-7] + '_Z.nii.gz')
 					rem_cmd = 'rm %s' % (funcFile[:-7] + '_dm.nii.gz')
 					total_cmd = ';\n'.join([mean_cmd,std_cmd,dm_cmd,z_cmd,z_cmd])
 					if not self.parallelize:
@@ -485,6 +486,7 @@ class Session(PathConstructor):
 						if r == self.scanTypeDict['epi_bold'][0]:
 							zsc_cmds = []
 						zsc_cmds.append(total_cmd)
+					funcFile = NiftiImage(funcFile[:-7] + '_Z.nii.gz')
 				if op == 'sgtf':
 					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
 					if funcFile.rtime > 10:
@@ -858,7 +860,6 @@ class Session(PathConstructor):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
-		
 		if type(run) == str:
 			this_run_group_name = run
 		# elif type(run) == Tools.Run:
@@ -869,7 +870,6 @@ class Session(PathConstructor):
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			
-			# shell()
 			
 			roi_names = []
 			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
@@ -877,6 +877,8 @@ class Session(PathConstructor):
 					hemi, area = roi_name._v_name.split('.')
 					if roi_wildcard == area:
 						roi_names.append(roi_name._v_name)
+				elif roi_wildcard == roi_name._v_name:
+					roi_names.append(roi_name._v_name)
 			if len(roi_names) == 0:
 				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
 				return None
@@ -1527,5 +1529,7 @@ class Session(PathConstructor):
 				# run feat
 				featOp.execute()
 
-				
-	
+
+
+
+
