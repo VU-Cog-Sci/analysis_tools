@@ -68,6 +68,10 @@ class PathConstructor(object):
 		"""
 		if not os.path.isdir(self.base_dir()):
 			try:
+				os.mkdir(self.project.base_dir)
+			except OSError:
+				pass
+			try:
 				os.mkdir(os.path.join(self.project.base_dir, self.subject.initials))
 			except OSError:
 				pass
