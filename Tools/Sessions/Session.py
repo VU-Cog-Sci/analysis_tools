@@ -222,7 +222,9 @@ class Session(PathConstructor):
 		"""
 		When all runs are listed in the session, 
 		the session will be able to distill what conditions are there 
-		and setup the folder hierarchy and copy the raw image files into position
+		and setup the folder hierarchy and copy the raw image files into position.
+		Depending on settings, it will also produce slightly processed files,
+		e.g. nii.gz from par/rec and hdf5 from edf.
 		"""
 		if not os.path.isfile(self.runFile(stage = 'processed/behavior', run = self.runList[0] )):
 			self.logger.info('creating folder hierarchy')
