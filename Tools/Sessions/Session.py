@@ -52,10 +52,20 @@ class PathConstructor(object):
 		self.fileNameBaseString = self.dateCode
 	
 	def base_dir(self):
-		"""docstring for baseFolder"""
+		"""
+		base_dir returns the path in which  all data of this session
+		is located. this path is located within this observer's
+		folder which, in turn, is located within this project's folder
+		"""
 		return os.path.join(self.project.base_dir, self.subject.initials, self.dateCode)
 	
 	def make_base_dir(self):
+		"""
+		make_base_dir creates the path in which  all data of this session
+		will be located. it will attempt to build the folder tree towards
+		this path, but will run into trouble if even the folder containing
+		self.project.base_dir doesn't exist
+		"""
 		if not os.path.isdir(self.base_dir()):
 			try:
 				os.mkdir(os.path.join(self.project.base_dir, self.subject.initials))
@@ -67,7 +77,10 @@ class PathConstructor(object):
 				pass
 	
 	def stageFolder(self, stage):
-		"""folder for a certain stage - such as 'raw/mri' or 'processed/eyelink', or something like that. """
+		"""
+		stageFolder returns the path associated with a certain analysis stage
+		such as the subfolders 'raw/mri' or 'processed/eyelink' within the session's base_dir.
+		"""
 		return os.path.join(self.base_dir(), stage)
 	
 	def runFolder(self, stage, run):
@@ -101,7 +114,10 @@ class PathConstructor(object):
 			return os.path.join(self.stageFolder(stage), fn)
 	
 	def createFolderHierarchy(self):
-		"""docstring for fname"""
+		"""
+		createFolderHierarchy creates the folder tree for a session
+		
+		"""
 		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
 		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
 		conditionFolders = np.concatenate((self.conditionList, ['log','figs','masks','masks/stat','masks/anat','reg','surf','scripts']))
@@ -173,7 +189,15 @@ class Session(PathConstructor):
 		# self.logger.info('starting analysis of session ' + str(self.ID))
 	
 	def addRun(self, run):
-		"""addRun adds a run to a session's run list"""
+		"""
+		addRun adds a run to a session's run list
+		It creates/updates the following attributes of self:
+		the list runList, containing all Run objects associated with self;
+		the list conditionList, containing all unique condition attributes among those Run objects;
+		the list scanTypeList, containing all unique scanType attributes among those Run objects;
+		and various other attributes via the parcelateConditions() method (see there)
+		"""
+		
 		run.indexInSession = len(self.runList)
 		self.runList.append(run)
 		# recreate conditionList
@@ -183,6 +207,15 @@ class Session(PathConstructor):
 		self.parcelateConditions()
 	
 	def parcelateConditions(self):
+		"""
+		parcelateConditions creates/updates the following attributes of self:
+		the dict scanTypeDict, of which each key-value pair indicates a possible value for the scanType attribute
+		of the Run objects of self's runList, and the values of the indexInSession arguments of those Run objects 
+		that are associated with that scanType value;
+		the list conditions, containing all unique condition attributes among the Run objects in runList. This appears identical to self.conditionList;
+		the dict conditionDict, analogous to scanTypeDict but for condition attributes scanType attributes
+		"""
+		
 		# conditions will vary across experiments - this one will be amenable in subclasses,
 		# but these are the principal types of runs. For EPI runs conditions will depend on the experiment.
 		self.scanTypeDict = {}
@@ -225,7 +258,10 @@ class Session(PathConstructor):
 		and setup the folder hierarchy and copy the raw image files into position.
 		Depending on settings, it will also produce slightly processed files,
 		e.g. nii.gz from par/rec and hdf5 from edf.
+		The folder within which the hierarchy will be built, is indicated by the
+		base_dir attribute of self.project
 		"""
+		
 		if not os.path.isfile(self.runFile(stage = 'processed/behavior', run = self.runList[0] )):
 			self.logger.info('creating folder hierarchy')
 			self.createFolderHierarchy()
