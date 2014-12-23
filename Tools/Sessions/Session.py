@@ -554,7 +554,7 @@ class Session(PathConstructor):
 						if r == self.scanTypeDict['epi_bold'][0]:
 							zsc_cmds = []
 						zsc_cmds.append(total_cmd)
-					funcFile = NiftiImage(funcFile[:-7] + '_Z.nii.gz')
+					# funcFile = NiftiImage(funcFile[:-7] + '_Z.nii.gz')
 				if op == 'sgtf':
 					sgtfO = SavitzkyGolayHighpassFilterOperator(funcFile)
 					if funcFile.rtime > 10:
