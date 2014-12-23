@@ -835,14 +835,23 @@ class RetMapReDrawOperator( CommandLineOperator ):
 
 class EDF2ASCOperator( CommandLineOperator ):
 	"""
-	EDF2ASCOperator will convert an edf file to a pair of output files, one containing the gaze samples (.gaz) and another containing all the messages/events (.msg).
-	It uses edf2asc command-line executable, which is assumed to be on the $PATH.
+	EDF2ASCOperator provides the tools to convert an edf file to a pair of output files,
+	one containing the gaze samples (.gaz) and another containing all the messages/events (.msg).
+	It requires edf2asc command-line executable, which is assumed to be on the $PATH.
 	Missing values are imputed as 0.0001, time is represented as a floating point number for 2000Hz sampling.
 	"""
 	def __init__(self, inputObject, **kwargs):
 		super(EDF2ASCOperator, self).__init__(inputObject = inputObject, cmd = 'edf2asc', **kwargs)
 
 	def configure(self, gazeOutputFileName = None, messageOutputFileName = None, settings = ' -t -ftime '):
+		"""
+		configure creates commands self.gazcmd and self.msgcmd which,
+		when executed on the command line, convert the edf 2 an asc file,
+		taking either the sample data or the event data, respectively.
+		it also creates self.runcmd which can be used to run both above
+		commands in succession, and which will be executed when calling
+		'execute' (as per CommandLineOperator behavior)
+		"""
 		if gazeOutputFileName == None:
 			self.gazeOutputFileName = os.path.splitext(self.inputFileName)[0] + '.gaz'
 		else:

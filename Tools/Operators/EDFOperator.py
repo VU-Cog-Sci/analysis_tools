@@ -25,7 +25,11 @@ from Operator import Operator
 from IPython import embed as shell
 
 class EDFOperator( Operator ):     
-	"""docstring for EDFOperator"""     
+	"""
+	upon initialization, EDFOperator creates an EDF2ASCOperator that sets up 
+	the edf to asc conversion of self.inputFileObject, and immediately
+	executes the conversion.
+	"""     
 	def __init__(self, inputObject, **kwargs):         
 		super(EDFOperator, self).__init__(inputObject = inputObject, **kwargs)         
 		if self.inputObject.__class__.__name__ == 'str':             
@@ -46,7 +50,12 @@ class EDFOperator( Operator ):
 			self.logger.error('input file has to be of edf type.')
 	
 	def clean_gaze_information(self):
-		"""clean_gaze_information takes out non-numeric signs from the gaze data file."""
+		"""
+		clean_gaze_information takes out non-numeric signs from the gaze data file,
+		stores the non-cleaned data in a zipped version of the file (.gz)
+		and stores the clean data under the original, non-zipped file name
+		"""
+		
 		self.logger.info('cleaning gaze information from %s'%self.gaze_file)
 		if os.path.isfile(self.gaze_file + '.gz'):
 			self.logger.error('gaze information already cleaned')
@@ -62,7 +71,7 @@ class EDFOperator( Operator ):
 		# # check for these really weird character shit in the final columns of the output.
 		# self.workingStringClean = re.sub(re.compile('C.'), '', self.workingStringClean)
 		
-		# clean the older gaze file up a bit by compressing it
+		# compress the older, non-clean, gaze file
 		os.system('gzip "' + self.gaze_file + '"')
 		
 		of = open(self.gaze_file, 'w')
@@ -92,11 +101,13 @@ class EDFOperator( Operator ):
 	
 	def identify_blocks(self, minimal_time_gap = 50.0):
 		"""
-		identify separate recording blocks in eyelink file
+		identify separate recording blocks in eyelink file, where 'blocks' means periods between
+		startrecording and stoprecording
 		
 		identify_blocks looks into the gaze file and searches for discontinuities in the sample times of at least minimal_time_gap milliseconds. 
 		The message file is used to look at the recorded eyes and samplerate per discontinuous block.
-		The resulting internal variable is blocks, which is a dictionary for each of the encountered blocks.
+		The resulting internal variable is self.blocks, which is a dictionary that specifies the characteristics of each of the encountered blocks,
+		but not the sample data itself, which will remain accessable via self.gaze_file and is added to self.blocks later (see take_gaze_data_for_blocks).
 		"""
 		self.logger.info('identifying recording blocks from %s'%self.gaze_file)
 		# check whether the gaze data has been cleaned up
@@ -137,12 +148,33 @@ class EDFOperator( Operator ):
 	
 	def read_all_messages(self):
 		"""
-		read_messages reads the messages sent to the eyelink by the experiment computer.
+		read_all_messages reads the messages sent to the eyelink by the experiment computer.
 		
 		it does this with all of the different types of information that can be listed in a message file.
 		read_all_messages works independently of the identify_blocks method.
+		
+		read_all_messages counts on messages in particular formats having been sent to the eyelink during the experiment.
+		The defaults are as follows (where X=trial number):
+		Start of a trial: 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)'
+		End of a trial: 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'
+		Start of a phase within a trial: 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'
+		Parameters that may vary per trial: 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s+: ([-\d\.]*|[\w]*)'
+		Keys that may have been pressed within a trial:
+		'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'
+		Sound events: 'MSG\t([\d\.]+)\treward (\d+) at (\d+.\d)'
+		
+		These messages can be customized, but the code does expect these to be regular
+		expressions that return the numbers and strings that these REs do (i.e. parts between []).
+		
+		read_all_messages also counts on further info that is automatically included in the edf event data,
+		so there is no need to send it to Eyelink yourself:
+		Saccade info:
+		'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)', 
+		Fixation info: 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?', 
+		Blink info: 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'
 		"""
-		self.get_message_string()
+		
+		self.get_message_string()	#loads the entire message file into an internal variable self.message_string
 		self.read_trials()
 		self.read_key_events()
 		self.read_eyelink_events()
@@ -154,7 +186,15 @@ class EDFOperator( Operator ):
 		phase_re = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)',
 		parameter_re = 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s+: ([-\d\.]*|[\w]*)'):
 		
-		"""read_trials reads in trials from the message file, constructing timings and parameters for each of the trials and their phases. """
+		"""
+		read_trials reads in trials from the message file,
+		constructing timings and parameters for each of the trials,
+		their phases and their parameters.
+		It reads the actual values to internal variables, and also 
+		creates dictionaries that will indicate the formats needed
+		when creating the hfd5 file
+		"""
+		
 		self.logger.info('reading trials from %s', os.path.split(self.message_file)[-1])
 		self.get_message_string()
 		
@@ -344,7 +384,14 @@ class EDFOperator( Operator ):
 		self.sound_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('sound_type', np.float64), ('exp_timestamp', np.float64)])
 	
 	def take_gaze_data_for_blocks(self):
-		"""docstring for take_gaze_data"""
+		"""
+		take_gaze_data_for_blocks takes the data per block from self.gaze_file,
+		where a 'block' is a period between startrecording and stoprecording,
+		and puts those data into internal variable self.blocks, identified
+		by the key 'block_data'. Other keys in this dict contain remaining
+		information needed to effectively process these data further (see 
+		self.identify_blocks() 
+		"""
 		# check for gaze data and blocks
 		self.clean_gaze_information()
 		self.identify_blocks()

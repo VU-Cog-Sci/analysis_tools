@@ -162,6 +162,11 @@ class EyelinkOperator( EyeOperator ):
 	that contains the eyelink data. If this is an .edf file, its data are separated into a
 	.msg file (messages) and a .gaz (gaze/samples) file, but only if split=True (default)
 	and if the .msg file doesn't already exist.
+	
+	EyelinkOperator is largely superseded by EDFOperator. One important difference between the two is
+	that EDFOperator, in the way it is typically used in conjunction with the add_edf_file() method of 
+	HDFEyeOperator, creates a single hdf5 file that contains the data of all runs in a session, 
+	whereas EyelinkOperator in typical usage, using the processIntoTable() method, creates a single hdf5 file per run.
 	"""
 	
 	def __init__(self, inputObject, split = True, date_format = 'python_experiment', **kwargs):

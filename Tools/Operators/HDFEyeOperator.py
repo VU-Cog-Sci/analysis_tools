@@ -18,13 +18,34 @@ from EyeSignalOperator import EyeSignalOperator
 from IPython import embed as shell 
 
 class HDFEyeOperator(Operator):
-	"""docstring for HDFEyeOperator"""
+	"""
+	HDFEyeOperator is typically used to deal with the data from 
+	an entire session. In that case it is associated with a single
+	hdf5 file that contains all eye data for the runs of that session,
+	and which is given as inputObject upon the creation of the
+	HDFEyeOperator object 
+	"""
+	
 	def __init__(self, inputObject, **kwargs):
 		super(HDFEyeOperator, self).__init__(inputObject = inputObject, **kwargs)
 		"""inputObject is the name of the hdf5 file that this operator will create"""
 	
 	def add_edf_file(self, edf_file_name):
-		"""docstring for add_edf_file"""
+		"""
+		add_edf_file is the first step in adding a run's edf data 
+		to the sessions hdf5 file indicated by self.inputObject
+		
+		add_edf_file creates an EDFOperator object using edf_file_name, and thereby
+		immediately converts the edf file to two asc files.
+		add_edf_file then uses the EDFOperator object to read all kinds
+		of event information (trials, keys, etc) from the event asc file into
+		internal variables of the EDFOperator object,
+		and also reads the sample data per block (i.e. interval between startrecording
+		and stoprecording) into a separate internal variable of the EDFOperator object.
+		Putting these data into a hdf5 file is not done here, but in 
+		self.edf_message_data_to_hdf and self.edf_gaze_data_to_hdf
+		"""
+		
 		self.edf_operator = EDFOperator(edf_file_name)
 		# now create all messages
 		self.edf_operator.read_all_messages()
@@ -33,11 +54,17 @@ class HDFEyeOperator(Operator):
 		self.edf_operator.take_gaze_data_for_blocks()
 	
 	def open_hdf_file(self, mode = "a"):
-		"""docstring for open_hdf_file"""
+		"""
+		open_hdf_file opens the hdf file that was indicated when
+		first creating this HDFEyeOperator object
+		"""
 		self.h5f = open_file(self.inputObject, mode = mode )
 	
 	def close_hdf_file(self):
-		"""docstring for close_hdf_file"""
+		"""
+		close_hdf_file closes the hdf file that was indicated when
+		first creating this HDFEyeOperator object
+		"""
 		self.h5f.close()
 	
 	def add_table_to_hdf(self, run_group, type_dict, data, name = 'bla',filename = []):
@@ -57,7 +84,17 @@ class HDFEyeOperator(Operator):
 		this_table.flush()
 	
 	def edf_message_data_to_hdf(self, alias = None, mode = 'a'):
-		"""docstring for edf_message_data_to_hdf"""
+		"""
+		edf_message_data_to_hdf writes the message data
+		from the run's edf file to the session's hdf5 file
+		indicated by self.inputObject.
+		
+		The data have typically been taken from the edf
+		file and associated with self.edf_operator during an
+		earlier call to self.add_edf_file(), but if this is not the case,
+		and there is no self.edf_operator,
+		then self.add_edf_file() can be called right here.
+		"""
 		if not hasattr(self, 'edf_operator'):
 			self.add_edf_file(edf_file_name = alias)
 		
@@ -109,7 +146,20 @@ class HDFEyeOperator(Operator):
 		self.close_hdf_file()
 	
 	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6):
-		"""docstring for edf_gaze_data_to_hdf"""
+		"""
+		edf_gaze_data_to_hdf takes the gaze data
+		that is in the run's edf file, processes it,
+		and writes the results, as well as the raw data,
+		to the sessions hdf5 file that is indicated by
+		self.inputObject, and also produces some visual
+		feedback in the form of figures.
+		
+		The data have typically been taken from the edf
+		file and associated with self.edf_operator during an
+		earlier call to self.add_edf_file(), but if this is not the case,
+		and there is no self.edf_operator,
+		then self.add_edf_file() can be called right here.
+		"""
 		
 		# shell()
 		
