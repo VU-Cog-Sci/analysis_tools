@@ -328,7 +328,7 @@ def singleGamma(timepoints, a = 6, b = 0.9):
 
 class Design(object):
 	"""Design represents the design matrix of a given run"""
-	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 100):
+	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 5):
 		self.nrTimePoints = nrTimePoints
 		self.rtime = rtime
 		self.subSamplingRatio = subSamplingRatio
@@ -356,6 +356,7 @@ class Design(object):
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,32,self.rtime/(self.subSamplingRatio)), **hrfParameters)')
 		if self.hrfKernel.shape[0] % 2 == 1:
 			self.hrfKernel = np.r_[self.hrfKernel, 0]
+		self.hrfKernel/=self.hrfKernel.sum()
 		self.designMatrix = np.zeros([len(self.rawDesignMatrix), self.nrTimePoints])
 		for i, ds in enumerate(self.rawDesignMatrix):
 			kl = self.hrfKernel.shape[0]
