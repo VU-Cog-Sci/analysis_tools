@@ -53,7 +53,7 @@ class PathConstructor(object):
 	
 	def base_dir(self):
 		"""
-		base_dir returns the path in which  all data of this session
+		base_dir returns the path in which all data of this session
 		is located. this path is located within this observer's
 		folder which, in turn, is located within this project's folder
 		"""
@@ -88,7 +88,11 @@ class PathConstructor(object):
 		return os.path.join(self.base_dir(), stage)
 	
 	def runFolder(self, stage, run):
-		"""docstring for runFolder"""
+		"""
+		runFolder returns the folder path, within a certain analysis stage (e.g. 'raw/mri/'),
+		associated with a particular run (e.g. the run whose ID is 1) that belongs to a certain condition (e.g. 'mapper').
+		the return object of that example would be 'raw/mri/mapper/1'
+		"""
 		return os.path.join(self.stageFolder(stage), run.condition, str(run.ID))
 	
 	def conditionFolder(self, stage, run):
@@ -97,10 +101,25 @@ class PathConstructor(object):
 	
 	def runFile(self, stage, run = None, postFix = [], extension = standardMRIExtension, base = None):
 		"""
-		runFile, returns runFileName in file hierarchy. usage:
-		raw mri file X = self.runFile('raw/mri', postFix = [str(self.runList[X])], base = self.subject.initials)
-		motion corrected file X = self.runFile('processed/mri', run = self.runList[X], postFix = ['mcf'])
+		runFile returns the file path, within a certain analysis stage (e.g. 'raw/mri'),
+		associated with a particular run (e.g. 1) that belongs to a certain condition (e.g. 'mapper').
+		see runFolder for comparison. runFile is more flexible than runFolder, because the run
+		can have many different relevant files, for instance a motion corrected file and a non-motion
+		corrected file, all within the same folder
+	
+		example of usage 1 (JB, dec 22 2014: I don't quite understand this first one):
+		the raw mri file for run index X can be obtained with
+		self.runFile('raw/mri', postFix = [str(self.runList[X])], base = self.subject.initials)
+		
+		example of usage 2:
+		the motion corrected file of the run at index X in runList can be obtained with
+		self.runFile('processed/mri', run = self.runList[X], postFix = ['mcf'])
+		if self.fileNameBaseString for this session is 'QQ_101214', this run's ID and 
+		condition are 'mapper' and 1, respectively, and standardMRIExtension (defined in Operator.py)
+		is '.nii.gz', then the result, relative to self.base_dir(),
+		is: 'processed/mri/mapper/1/QQ_101214_1_mcf.nii.gz'
 		"""
+		
 		fn = ''
 		if not base:
 			fn += self.fileNameBaseString
@@ -119,8 +138,9 @@ class PathConstructor(object):
 	
 	def createFolderHierarchy(self):
 		"""
-		createFolderHierarchy creates the folder tree for a session
-		
+		createFolderHierarchy creates the folder tree for a session. It needs for at least
+		the folder enclosing the project folder self.project.base_dir to exist,
+		and will build from there: project/observer/session/[further subfolders].
 		"""
 		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
 		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
@@ -146,7 +166,9 @@ class PathConstructor(object):
 					if pf == 'processed/mri':
 						if not os.path.isdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf')):
 							os.mkdir(os.path.join(self.stageFolder(pf+'/'+c), 'surf'))
-			# create folders for each of the runs in the session and their surfs
+			# create folders for each of the runs in the session and their surfs. NB:
+			# these will only be created within the condition folder indicated by 
+			# each Run object (i.e. associated with the condition that the run belongs to).
 			for rl in self.runList:
 				if not os.path.isdir(self.runFolder(pf, run = rl)):
 					os.mkdir(self.runFolder(pf, run = rl))
@@ -260,10 +282,14 @@ class Session(PathConstructor):
 		When all runs are listed in the session, 
 		the session will be able to distill what conditions are there 
 		and setup the folder hierarchy and copy the raw image files into position.
-		Depending on settings, it will also produce slightly processed files,
-		e.g. nii.gz from par/rec and hdf5 from edf.
 		The folder within which the hierarchy will be built, is indicated by the
-		base_dir attribute of self.project
+		base_dir attribute of self.project.
+		
+		Depending on settings, setupFiles will also process files: 
+		nii.gz from par/rec and hdf5 from edf. NB: the par/rec->nii.gz
+		conversion is not currently supported; one is supposed to have done 
+		that conversion beforehand using e.g. Parrec2nii or r2agui,
+		and use the .nii.gz path as r.rawDataFilePath
 		"""
 		
 		if not os.path.isfile(self.runFile(stage = 'processed/behavior', run = self.runList[0] )):
@@ -272,7 +298,7 @@ class Session(PathConstructor):
 		
 		for r in self.runList:
 			if hasattr(r, 'rawDataFilePath'):
-				if os.path.splitext(r.rawDataFilePath)[-1] == '.PAR':
+				if os.path.splitext(r.rawDataFilePath)[-1] == '.PAR':	#if the rawDataFilePath of the Run object indicates a .par file, then convert to nifti
 					self.logger.info('converting par/rec file %s into nii.gz file', r.rawDataFilePath)
 					prc = ParRecConversionOperator( self.runFile(stage = 'raw/mri', postFix = [str(r.ID)], base = rawBase, extension = '.PAR' ) )
 					prc.configure()
@@ -295,7 +321,7 @@ class Session(PathConstructor):
 				elO = EyelinkOperator(r.eyeLinkFilePath, date_format = date_format)
 				ExecCommandLine('cp ' + os.path.splitext(r.eyeLinkFilePath)[0] + '.* ' + self.runFolder(stage = 'processed/eye', run = r ) )
 				if process_eyelink_file:
-					elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False)
+					elO.processIntoTable(hdf5_filename = self.runFile(stage = 'processed/eye', run = r, extension = '.hdf5'), compute_velocities = False, check_answers = False) #a lot happens in this line: the edf file is parsed into .hdf5 on the basis of messages sent to the eyelink during the experiment
 			if hasattr(r, 'rawBehaviorFile'):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 			if hasattr(r, 'physiologyFile'):
