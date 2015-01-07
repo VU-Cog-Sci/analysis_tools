@@ -94,6 +94,10 @@ class HDFEyeOperator(Operator):
 		earlier call to self.add_edf_file(), but if this is not the case,
 		and there is no self.edf_operator,
 		then self.add_edf_file() can be called right here.
+		
+		within the hdf5 file, data are stored under, and can later be retrieved
+		at /[source_edf_file_name_without_extension]/[data_kind_name],
+		with the latter being e.g. 'trials'
 		"""
 		if not hasattr(self, 'edf_operator'):
 			self.add_edf_file(edf_file_name = alias)
@@ -159,6 +163,15 @@ class HDFEyeOperator(Operator):
 		earlier call to self.add_edf_file(), but if this is not the case,
 		and there is no self.edf_operator,
 		then self.add_edf_file() can be called right here.
+		
+		within the hdf5 file, data are stored under, and can later be retrieved
+		at /[source_edf_file_name_without_extension]/[block_name],
+		with the latter being e.g. 'block_1'
+		
+		edf_gaze_data_to_hdf also produces plots of the raw pupil data and
+		blink-interpolated data (stored in pdf files named 'blink_interpolation_1_'[...])
+		and of something akin to the derivative of the pupil data along with
+		markers indicating that variable's peaks (stored in pdf files named 'blink_interpolation_2_'[...])
 		"""
 		
 		# shell()
@@ -388,6 +401,13 @@ class HDFEyeOperator(Operator):
 	#
 	
 	def read_session_data(self, alias, name):
+		"""
+		read_session_data reads data from the hdf5 file indicated by self.inputObject.
+		Specifically, it reads the data associated with alias/name, with
+		'alias' and 'name' typically referring to a run (e.g. 'QQ241214') and
+		a data kind (e.g. 'trials'), respectively.
+		"""
+		
 		with pd.get_store(self.inputObject) as h5_file:
 			session_data = h5_file['%s/%s'%(alias, name)]
 		return session_data

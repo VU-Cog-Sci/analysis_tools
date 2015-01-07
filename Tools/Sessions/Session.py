@@ -103,7 +103,10 @@ class PathConstructor(object):
 		"""
 		runFile returns the file path, within a certain analysis stage (e.g. 'raw/mri'),
 		associated with a particular run (e.g. 1) that belongs to a certain condition (e.g. 'mapper').
-		see runFolder for comparison. runFile is more flexible than runFolder, because the run
+		postFix is typically something like ['mcf'], for getting the motion corrected path, but
+		can also be an array of strings, which will then be concatenated with '_' separators.
+		
+		runFile is more flexible than runFolder, because the run
 		can have many different relevant files, for instance a motion corrected file and a non-motion
 		corrected file, all within the same folder
 	
@@ -469,8 +472,12 @@ class Session(PathConstructor):
 	def motionCorrectFunctionals(self, postFix, registerNoMC = False, init_transform_file = None, further_args = ''):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
-		how we do this depends on whether we have parallel processing turned on or not
+		How we do this depends on whether we have parallel processing turned on or not.
+		motionCorrectFunctionals automatically uses as its target the same file that was
+		used to register to freesurfer anatomical by self.registerSession() (i.e. processed/mri/reg/forRegistration[...]),
+		so self.registerSession() needs to be run first.
 		"""
+		
 		self.logger.info('run motion correction')
 		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
 		# set up a list of motion correction operator objects for the runs
@@ -515,7 +522,7 @@ class Session(PathConstructor):
 	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf'], mask_file = None):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
-		and does high/low pass filtering, percent signal change or zscoring of the data
+		and does high/low pass filtering, percent signal change or zscoring of the data. as such, it doesn't really rescale any functionals in most cases.
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
 		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel
@@ -589,8 +596,17 @@ class Session(PathConstructor):
 			job_server.print_stats()
 	
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None, cortex = True):
-		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
-		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
+		"""
+		createMasksFromFreeSurferLabels creates masks in the volume out of labels on the surface, located in (subfolders of) the
+		subject's freesurfer label folder. Resulting mask files are written to the session's /processed/mri/masks/anat folder.
+		The argument 'labelFolders' can contain the names of subfolders of the label to be included, and/or '' for the label folder itself.
+		If annot is set to True, then the annotFile argument will be used to identify a freesurfer annotation file to be converted to 
+		surface labels first, and then to to volume masks along with any other labels being processed.
+		template_condition identifies a condition kind (default 'epi_bold') whose first scan is used as target for converting to the volume. This target
+		must have the right dimensions but its space is otherwise irrelevant: the actual transformation depends on LabelToVolOperator.configure's 'register'
+		argument, which by default is set to the registration file created by Session.registerSession().
+		
+		For some reason 'cortex' can be set to True to specifically convert the *h.cortex.label files, but it seems those would also be included in the label folder identified by ''
 		"""
 		if labelFolders == []:
 			labelFolders.append(self.subject.labelFolderOfPreference)
@@ -598,7 +614,7 @@ class Session(PathConstructor):
 		if annot:
 			self.logger.info('create labels based on anatomical parcelation as in %s.annot', annotFile)
 			# convert designated annotation to labels in an identically named directory
-			anlo = AnnotationToLabelOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'rh' + '.' + annotFile + '.annot'))
+			anlo = AnnotationToLabelOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'rh' + '.' + annotFile + '.annot'))	#initialize with (e.g.) the rh file to avoid warning of file not existing; doesn't mean that only rh file will be used
 			anlo.configure(subjectID = self.subject.standardFSID )
 			anlo.execute()
 			labelFolders.append(annotFile)
@@ -643,6 +659,9 @@ class Session(PathConstructor):
 				lvo.execute()
 
 	def remove_empty_masks(self, masks_folder = 'anat'):
+		"""
+		remove_empty_masks removes mask volumes that consist of only zeros
+		"""
 		mask_file_names = subprocess.Popen('ls ' + os.path.join(self.stageFolder(stage = 'processed/mri/masks/' ), masks_folder, '*.nii.gz'), shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		for m in mask_file_names:
 			this_mask_file = NiftiImage(m)
@@ -651,8 +670,8 @@ class Session(PathConstructor):
 				os.system('rm ' + m)
 	
 	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC'], smoothing_width = 2.0, threshold = 0.3):
-		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
-		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
+		"""
+		docstring for createMasksFromFreeSurferAseg. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
 		# convert aseg file to nii
 		os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz')) 
@@ -715,8 +734,8 @@ class Session(PathConstructor):
 						# self.logger.info( area[1] + ' outputted to ' + label_opf_name )
 						
 	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
-		"""createMasksFromFreeSurferLabels looks in the subject's freesurfer subject folder and reads label files out of the subject's label folder of preference. (empty string if none given).
-		Annotations in the freesurfer directory will also be used to generate roi files in the functional volume. The annotFile argument dictates the file to be used for this. 
+		"""
+		docstring for createMasksFromFreeSurferAseg2. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
 		
 		# find the subcortical labels in the converted brain from aseg.auto_noCCseg.label_intensities file
@@ -1072,7 +1091,7 @@ class Session(PathConstructor):
 				# return None
 	
 	def resample_epis(self, conditions = ['PRF']):
-		"""resample_epi resamples the mc'd epi files back to their functional space."""
+		"""resample_epi resamples the mc'd epi files back to the resolution of the functional images."""
 		# create identity matrix
 		np.savetxt(os.path.join(self.stageFolder(stage = 'processed/mri/reg'), 'eye.mtx'), np.eye(4), fmt = '%1.1f')
 		
@@ -1100,7 +1119,11 @@ class Session(PathConstructor):
 			
 	
 	def resample_epis2(self, conditions=['PRF'], postFix=['mcf']):
-		"""resample_epi resamples the mc'd epi files back to their functional space."""
+		"""
+		resample_epi resamples the mc'd epi files back to the resolution of the functional images.
+		The resulting files will by default have the postfix 'mcf', whereas the hi res files will have
+		'mcf_hr'. 
+		"""
 		
 		postFix_hr = [pf for pf in postFix]
 		postFix_hr.append('hr')

@@ -251,8 +251,12 @@ class ZScoreOperator(ImageOperator):
 		
 
 class SavitzkyGolayHighpassFilterOperator(ImageOperator):
-	"""SavitzkyGolayHighpassFilterOperator uses the local regression smoothing savitzky-golay algorithm to smooth the data, which it then subtracts from the data to create a high-pass filtered signal.
 	"""
+	SavitzkyGolayHighpassFilterOperator performs a type of highpass filter.
+	It uses the local regression smoothing savitzky-golay algorithm to smooth the data,
+	which it then subtracts from the data to create a high-pass filtered signal.
+	"""
+	
 	def __init__(self, inputObject, outputFileName = None, **kwargs):
 		super(SavitzkyGolayHighpassFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
