@@ -454,7 +454,19 @@ class Session(PathConstructor):
 					stV.execute()
 	
 	def setupRegistrationForFeat(self, feat_directory, wait_for_execute = True):
-		"""apply the freesurfer/flirt registration for this session to a feat directory. This ensures that the feat results can be combined across runs and subjects without running flirt all the time."""
+		"""
+		setupRegistrationForFeat applies the freesurfer/flirt registration for this session to a feat directory, thereby
+		making available the feat results in other spaces than the one in which feat was originally run. 
+		This ensures that the feat results can be combined across runs and subjects without running flirt all the time,
+		and populating the /reg subfolders of the feat folder is necessary for higher-level feat analyses, 
+		which run on the standard (MNI) space data. It is not uncommon to then transform the outcome of those higher-level analyses
+		back to e.g. mean func space using a FlirtOperator, because things like masks are often in that space.
+		
+		The procedure of setupRegistrationForFeat consists of creating (if not yet present) transformation info
+		for the entire session, like the transformation matrix between mean functional and high-res anatomical,
+		in the folder /processed/mri/reg/feat, and then moving this information to the single feat folder's /reg
+		folder and applying FSL's featregapply on that feat folder.
+		"""
 		try:
 			os.mkdir(os.path.join(feat_directory,'reg'))
 		except OSError:
