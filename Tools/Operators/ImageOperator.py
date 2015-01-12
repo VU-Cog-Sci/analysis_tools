@@ -353,10 +353,12 @@ class Design(object):
 		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
+		if self.rtime > 1000:
+			self.rtime /= 1000
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,32,self.rtime/(self.subSamplingRatio)), **hrfParameters)')
 		if self.hrfKernel.shape[0] % 2 == 1:
 			self.hrfKernel = np.r_[self.hrfKernel, 0]
-		self.hrfKernel/=self.hrfKernel.sum()
+		# self.hrfKernel/=self.hrfKernel.sum()
 		self.designMatrix = np.zeros([len(self.rawDesignMatrix), self.nrTimePoints])
 		for i, ds in enumerate(self.rawDesignMatrix):
 			kl = self.hrfKernel.shape[0]

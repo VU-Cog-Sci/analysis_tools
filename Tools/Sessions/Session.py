@@ -813,7 +813,9 @@ class Session(PathConstructor):
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			
-			
+			if len(roi_wildcard.split('.')) > 1:
+				roi_wildcard = roi_wildcard.split('.')[1]
+
 			roi_names = []
 			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
 				if len(roi_name._v_name.split('.')) > 1:
