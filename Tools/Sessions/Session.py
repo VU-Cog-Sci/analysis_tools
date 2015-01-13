@@ -99,10 +99,11 @@ class PathConstructor(object):
 		"""docstring for runFolder"""
 		return os.path.join(self.stageFolder(stage), run.condition)
 	
-	def runFile(self, stage, run = None, postFix = [], extension = standardMRIExtension, base = None):
+	def runFile(self, stage = None, run = None, postFix = [], extension = standardMRIExtension, base = None):
 		"""
 		runFile returns the file path, within a certain analysis stage (e.g. 'raw/mri'),
 		associated with a particular run (e.g. 1) that belongs to a certain condition (e.g. 'mapper').
+		If 'stage' is left blank, then only the filename, rather than the full path, is returned.
 		postFix is typically something like ['mcf'], for getting the motion corrected path, but
 		can also be an array of strings, which will then be concatenated with '_' separators.
 		
@@ -121,6 +122,7 @@ class PathConstructor(object):
 		condition are 'mapper' and 1, respectively, and standardMRIExtension (defined in Operator.py)
 		is '.nii.gz', then the result, relative to self.base_dir(),
 		is: 'processed/mri/mapper/1/QQ_101214_1_mcf.nii.gz'
+		
 		"""
 		
 		fn = ''
@@ -134,7 +136,9 @@ class PathConstructor(object):
 			fn += '_' + pf
 		fn += extension
 		
-		if run and stage.split('/')[0] == 'processed':
+		if stage is None:
+			return fn
+		elif run and stage.split('/')[0] == 'processed':
 			return os.path.join(self.runFolder(stage, run), fn)
 		else:
 			return os.path.join(self.stageFolder(stage), fn)
