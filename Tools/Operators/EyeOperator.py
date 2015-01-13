@@ -437,7 +437,6 @@ class EyelinkOperator( EyeOperator ):
 		findKeyEvents finds key press events associated with the trials
 		whose numbers are listed in self.which_trials_actually_exist.
 		"""
-		
 		events = []
 		this_length = 0
 		for i in self.which_trials_actually_exist:

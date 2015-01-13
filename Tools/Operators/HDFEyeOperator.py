@@ -149,7 +149,7 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6):
+	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6,sample_rate = 1000.):
 		"""
 		edf_gaze_data_to_hdf takes the gaze data
 		that is in the run's edf file, processes it,
@@ -211,11 +211,11 @@ class HDFEyeOperator(Operator):
 					if hasattr(self.edf_operator, 'blinks_from_message_file'):
 						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
 						blink_dict[blink_dict['eye'] == eye]
-						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
+						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict,sample_rate=sample_rate)
 					else:
-						eso = EyeSignalOperator(inputObject=eye_dict)
+						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
 					# detect blinks (coalese period in samples):
-					eso.blink_detection_pupil(coalesce_period=250)
+					eso.blink_detection_pupil(coalesce_period=sample_rate*250./1000.)
 					# interpolate blinks:
 					eso.interpolate_blinks(method='linear')
 					eso.interpolate_blinks2()
