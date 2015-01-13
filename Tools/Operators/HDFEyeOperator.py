@@ -243,7 +243,7 @@ class HDFEyeOperator(Operator):
 					
 					# plot interpolated pupil time series:
 					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/1000, eso.raw_pupil.shape[0])
+					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
 					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
 					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
 					pl.ylabel('pupil size (raw)')
