@@ -249,7 +249,7 @@ class HDFEyeOperator(Operator):
 					pl.ylabel('pupil size (raw)')
 					pl.xlabel('time (s)')
 					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}.pdf'.format(alias, i)))
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# plot results blink detection next to hdf5:
 					fig = pl.figure()
@@ -258,7 +258,7 @@ class HDFEyeOperator(Operator):
 					pl.ylim(ymin=-200, ymax=200)
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}.pdf'.format(alias, i)))
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
@@ -290,7 +290,7 @@ class HDFEyeOperator(Operator):
 		return table[(table['time'] > float(time_period[0])) & (table['time'] < float(time_period[1]))][columns]
 	
 	def eye_during_period(self, time_period, alias):
-		"""docstring for eye_during_period"""
+		"""eye_during_period returns the identity of the eye that was recorded during a given period"""
 		with pd.get_store(self.inputObject) as h5_file:
 			period_block_nr = self.sample_in_block(sample = time_period[0], block_table = h5_file['%s/blocks'%alias])
 			return h5_file['%s/blocks'%alias]['eye_recorded'][period_block_nr]
