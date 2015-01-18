@@ -18,13 +18,34 @@ from EyeSignalOperator import EyeSignalOperator
 from IPython import embed as shell 
 
 class HDFEyeOperator(Operator):
-	"""docstring for HDFEyeOperator"""
+	"""
+	HDFEyeOperator is typically used to deal with the data from 
+	an entire session. In that case it is associated with a single
+	hdf5 file that contains all eye data for the runs of that session,
+	and which is given as inputObject upon the creation of the
+	HDFEyeOperator object 
+	"""
+	
 	def __init__(self, inputObject, **kwargs):
 		super(HDFEyeOperator, self).__init__(inputObject = inputObject, **kwargs)
 		"""inputObject is the name of the hdf5 file that this operator will create"""
 	
 	def add_edf_file(self, edf_file_name):
-		"""docstring for add_edf_file"""
+		"""
+		add_edf_file is the first step in adding a run's edf data 
+		to the sessions hdf5 file indicated by self.inputObject
+		
+		add_edf_file creates an EDFOperator object using edf_file_name, and thereby
+		immediately converts the edf file to two asc files.
+		add_edf_file then uses the EDFOperator object to read all kinds
+		of event information (trials, keys, etc) from the event asc file into
+		internal variables of the EDFOperator object,
+		and also reads the sample data per block (i.e. interval between startrecording
+		and stoprecording) into a separate internal variable of the EDFOperator object.
+		Putting these data into a hdf5 file is not done here, but in 
+		self.edf_message_data_to_hdf and self.edf_gaze_data_to_hdf
+		"""
+		
 		self.edf_operator = EDFOperator(edf_file_name)
 		# now create all messages
 		self.edf_operator.read_all_messages()
@@ -33,11 +54,17 @@ class HDFEyeOperator(Operator):
 		self.edf_operator.take_gaze_data_for_blocks()
 	
 	def open_hdf_file(self, mode = "a"):
-		"""docstring for open_hdf_file"""
+		"""
+		open_hdf_file opens the hdf file that was indicated when
+		first creating this HDFEyeOperator object
+		"""
 		self.h5f = open_file(self.inputObject, mode = mode )
 	
 	def close_hdf_file(self):
-		"""docstring for close_hdf_file"""
+		"""
+		close_hdf_file closes the hdf file that was indicated when
+		first creating this HDFEyeOperator object
+		"""
 		self.h5f.close()
 	
 	def add_table_to_hdf(self, run_group, type_dict, data, name = 'bla',filename = []):
@@ -57,7 +84,21 @@ class HDFEyeOperator(Operator):
 		this_table.flush()
 	
 	def edf_message_data_to_hdf(self, alias = None, mode = 'a'):
-		"""docstring for edf_message_data_to_hdf"""
+		"""
+		edf_message_data_to_hdf writes the message data
+		from the run's edf file to the session's hdf5 file
+		indicated by self.inputObject.
+		
+		The data have typically been taken from the edf
+		file and associated with self.edf_operator during an
+		earlier call to self.add_edf_file(), but if this is not the case,
+		and there is no self.edf_operator,
+		then self.add_edf_file() can be called right here.
+		
+		within the hdf5 file, data are stored under, and can later be retrieved
+		at /[source_edf_file_name_without_extension]/[data_kind_name],
+		with the latter being e.g. 'trials'
+		"""
 		if not hasattr(self, 'edf_operator'):
 			self.add_edf_file(edf_file_name = alias)
 		
@@ -108,8 +149,30 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6):
-		"""docstring for edf_gaze_data_to_hdf"""
+	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6,sample_rate = 1000.):
+		"""
+		edf_gaze_data_to_hdf takes the gaze data
+		that is in the run's edf file, processes it,
+		and writes the results, as well as the raw data,
+		to the sessions hdf5 file that is indicated by
+		self.inputObject, and also produces some visual
+		feedback in the form of figures.
+		
+		The data have typically been taken from the edf
+		file and associated with self.edf_operator during an
+		earlier call to self.add_edf_file(), but if this is not the case,
+		and there is no self.edf_operator,
+		then self.add_edf_file() can be called right here.
+		
+		within the hdf5 file, data are stored under, and can later be retrieved
+		at /[source_edf_file_name_without_extension]/[block_name],
+		with the latter being e.g. 'block_1'
+		
+		edf_gaze_data_to_hdf also produces plots of the raw pupil data and
+		blink-interpolated data (stored in pdf files named 'blink_interpolation_1_'[...])
+		and of something akin to the derivative of the pupil data along with
+		markers indicating that variable's peaks (stored in pdf files named 'blink_interpolation_2_'[...])
+		"""
 		
 		# shell()
 		
@@ -148,11 +211,11 @@ class HDFEyeOperator(Operator):
 					if hasattr(self.edf_operator, 'blinks_from_message_file'):
 						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
 						blink_dict[blink_dict['eye'] == eye]
-						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict)
+						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict,sample_rate=sample_rate)
 					else:
-						eso = EyeSignalOperator(inputObject=eye_dict)
+						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
 					# detect blinks (coalese period in samples):
-					eso.blink_detection_pupil(coalesce_period=250)
+					eso.blink_detection_pupil(coalesce_period=sample_rate*250./1000.)
 					# interpolate blinks:
 					eso.interpolate_blinks(method='linear')
 					eso.interpolate_blinks2()
@@ -174,28 +237,27 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
 					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
-					
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					
 					# plot interpolated pupil time series:
 					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/1000, eso.raw_pupil.shape[0])
-					pl.plot(x, eso.raw_pupil, 'b')
-					pl.plot(x, eso.interpolated_pupil, 'g')
+					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
+					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
+					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
 					pl.ylabel('pupil size (raw)')
 					pl.xlabel('time (s)')
 					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(self.inputObject.split('processed')[0], 'figs', 'blink_interpolation_1_{}_{}.jpg'.format(alias, i)))
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# plot results blink detection next to hdf5:
 					fig = pl.figure()
-					pl.plot(eso.pupil_diff)
-					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8,)
+					pl.plot(eso.pupil_diff, rasterized=True)
+					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
 					pl.ylim(ymin=-200, ymax=200)
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
-					fig.savefig(os.path.join(self.inputObject.split('processed')[0], 'figs', 'blink_interpolation_2_{}_{}.jpg'.format(alias, i)))
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
@@ -227,7 +289,7 @@ class HDFEyeOperator(Operator):
 		return table[(table['time'] > float(time_period[0])) & (table['time'] < float(time_period[1]))][columns]
 	
 	def eye_during_period(self, time_period, alias):
-		"""docstring for eye_during_period"""
+		"""eye_during_period returns the identity of the eye that was recorded during a given period"""
 		with pd.get_store(self.inputObject) as h5_file:
 			period_block_nr = self.sample_in_block(sample = time_period[0], block_table = h5_file['%s/blocks'%alias])
 			return h5_file['%s/blocks'%alias]['eye_recorded'][period_block_nr]
@@ -338,6 +400,13 @@ class HDFEyeOperator(Operator):
 	#
 	
 	def read_session_data(self, alias, name):
+		"""
+		read_session_data reads data from the hdf5 file indicated by self.inputObject.
+		Specifically, it reads the data associated with alias/name, with
+		'alias' and 'name' typically referring to a run (e.g. 'QQ241214') and
+		a data kind (e.g. 'trials'), respectively.
+		"""
+		
 		with pd.get_store(self.inputObject) as h5_file:
 			session_data = h5_file['%s/%s'%(alias, name)]
 		return session_data

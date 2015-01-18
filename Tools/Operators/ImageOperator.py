@@ -55,6 +55,10 @@ class ImageOperator( Operator ):
 		
 
 class ImageMaskingOperator( ImageOperator ):
+	"""
+	ImageMaskingOperator is used to extract data from those voxels in a nifti file, designated by inputObject,
+	that are identified by the mask file, designated by maskObject.
+	"""
 	def __init__(self, inputObject, maskObject = None, thresholds = [0.0], nrVoxels = [False], outputFileName = False, **kwargs):
 		super(ImageMaskingOperator, self).__init__(inputObject = inputObject, **kwargs)
 		if maskObject == None:
@@ -98,7 +102,10 @@ class ImageMaskingOperator( ImageOperator ):
 		"""
 		buildData creates the necessary arrays of data in 
 		such a way that even single-volume masks will have 4D shapes.
-		This makes all masking functions transparent
+		This makes all masking functions transparent.
+		self.maskObject and self.inputObject already exist before calling 
+		this method, but afterwards the relevant data are in self.maskData
+		and self.inputData.
 		"""
 		self.maskFrameNames = self.maskObject.description.split('|')
 		if self.maskObject.data.shape[0] != len(self.maskFrameNames):
@@ -133,7 +140,10 @@ class ImageMaskingOperator( ImageOperator ):
 		self.logger.debug('input and mask data dimensions: %s, %s', str(self.inputData.shape), str(self.maskData.shape) )
 	
 	def applySingleMask(self, whichMask = 0, maskThreshold = 0.0, nrVoxels = False, maskFunction = '__gt__', flat = False):
-		"""docstring for applySingleMask"""
+		"""
+		applySingleMask extracts data from self.inputData using a mask in self.maskData. argument 'flat' affects the shape of the
+		array that is returned.
+		"""
 		
 		if nrVoxels:	# if nrVoxels we'll need to set the threshold to reach that nr of Voxels.
 			sortedData = np.sort(self.maskData[whichMask].ravel())
@@ -251,8 +261,12 @@ class ZScoreOperator(ImageOperator):
 		
 
 class SavitzkyGolayHighpassFilterOperator(ImageOperator):
-	"""SavitzkyGolayHighpassFilterOperator uses the local regression smoothing savitzky-golay algorithm to smooth the data, which it then subtracts from the data to create a high-pass filtered signal.
 	"""
+	SavitzkyGolayHighpassFilterOperator performs a type of highpass filter.
+	It uses the local regression smoothing savitzky-golay algorithm to smooth the data,
+	which it then subtracts from the data to create a high-pass filtered signal.
+	"""
+	
 	def __init__(self, inputObject, outputFileName = None, **kwargs):
 		super(SavitzkyGolayHighpassFilterOperator, self).__init__(inputObject = inputObject, **kwargs)
 		

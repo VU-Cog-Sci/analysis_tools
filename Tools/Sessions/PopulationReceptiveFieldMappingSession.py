@@ -2209,7 +2209,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			results[r][:,results_frames['ecc_gauss']] = results[r][:,results_frames['ecc_gauss']] * 27.0/2
 			results[r][:,results_frames['ecc_abs']] = results[r][:,results_frames['ecc_abs']] * 27.0/2
 
-		mask = [(stats[r][:,0]  > corr_threshold) *(results[r][:,results_frames['ecc_abs']] < 12 )for r in range(len(end_rois))]
+		mask = [(stats[r][:,1]  > corr_threshold) * (results[r][:,results_frames['ecc_gauss']] < 12 ) for r in range(len(end_rois))]
 		# mask = [(stats[r][:,0]  > corr_threshold) * (results[r][:,results_frames['ecc_gauss']] < 0.7*(27.0/2)) *  (results[r][:,results_frames['EV']] > 0.85) * (results[r][:,results_frames['n_regions']] < 3) for r in range(len(end_rois))]
 		# mask = [(stats[r][:,0]  > corr_threshold) * (results[r][:,results_frames['sd_gauss']] > 0.0) * (results[r][:,results_frames['sd_gauss']] < 27.0/2) * (results[r][:,results_frames['ecc_gauss']] < 0.7*(27.0/2)) * (results[r][:,results_frames['EV']] > 0.85) * (results[r][:,results_frames['n_regions']] <20) for r in range(len(end_rois))]
 
@@ -2243,21 +2243,21 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
 
 			s.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
-			s.set_ylim([1,5])
+			# s.set_ylim([1,5])
 
-			leg = s.legend(fancybox = True, loc = 'best')
-			leg.get_frame().set_alpha(0.5)
-			if leg:
-				for t in leg.get_texts():
-				    t.set_fontsize('small')    # the legend text fontsize
-				for l in leg.get_lines():
-				    l.set_linewidth(3.5)  # the legend line width
+		leg = s.legend(fancybox = True, loc = 'best')
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
 
 
-			simpleaxis(s)
-			spine_shift(s)
-			s.set_xlabel('pRF eccentricity')
-			s.set_ylabel('pRF size (sd)')
+		simpleaxis(s)
+		spine_shift(s)
+		s.set_xlabel('pRF eccentricity')
+		s.set_ylabel('pRF size (sd)')
 
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'eccen_surf_cor_%s_%0.3f.pdf'%(n_pixel_elements,sample_duration)))
 		

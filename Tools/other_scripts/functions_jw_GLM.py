@@ -47,7 +47,7 @@ class GeneralLinearModel(object):
 		# create IRF:
 		if IRF == 'pupil':
 			self.IRF = self.IRF_pupil(dur=IRF_params['dur'], s=IRF_params['s'], n=IRF_params['n'], tmax=IRF_params['tmax'])
-		if IRF == 'BOLD':
+		elif IRF == 'BOLD':
 			self.IRF = self.HRF(dur=IRF_params['dur'])
 		else:
 			self.IRF = IRF

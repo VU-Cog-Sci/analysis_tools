@@ -156,7 +156,19 @@ class ASLEyeOperator( EyeOperator ):
 	
 
 class EyelinkOperator( EyeOperator ):
-	"""docstring for EyelinkOperator"""
+	"""
+	EyelinkOperator manages operations on data from the Eyelink.
+	Upon initialization, EyelinkOperator takes as its argument the path of an .edf file or a .hdf5 file
+	that contains the eyelink data. If this is an .edf file, its data are separated into a
+	.msg file (messages) and a .gaz (gaze/samples) file, but only if split=True (default)
+	and if the .msg file doesn't already exist.
+	
+	EyelinkOperator is largely superseded by EDFOperator. One important difference between the two is
+	that EDFOperator, in the way it is typically used in conjunction with the add_edf_file() method of 
+	HDFEyeOperator, creates a single hdf5 file that contains the data of all runs in a session, 
+	whereas EyelinkOperator in typical usage, using the processIntoTable() method, creates a single hdf5 file per run.
+	"""
+	
 	def __init__(self, inputObject, split = True, date_format = 'python_experiment', **kwargs):
 		super(EyelinkOperator, self).__init__(inputObject = inputObject, **kwargs)
 		
@@ -232,6 +244,10 @@ class EyelinkOperator( EyeOperator ):
 		os.rename(self.gazeFile+'.npy', self.gazeFile)
 	
 	def loadData(self, get_gaze_data = True):
+		"""
+		loadData reads all message data from self.messageFile into self.msgData,
+		and also all gaze data from self.gazeFile into self.gazeData if get_gaze_data=True (default)
+		"""
 		mF = open(self.messageFile, 'r')
 		self.msgData = mF.read()
 		mF.close()
@@ -241,7 +257,32 @@ class EyelinkOperator( EyeOperator ):
 			self.gazeData = self.gazeData.astype(np.float64)
 	
 	def findAll(self, check_answers = False, el_key_event_RE = None):
-		"""docstring for findAll"""
+		"""
+		findAll finds all kinds of data from the run's edf file and puts it in attributes
+		of self, as well as preparing data formats that will later
+		help create the hdf5 file that will contain these data.
+		
+		findAll counts on messages in particular formats having been sent to the eyelink during the experiment.
+		The defaults are as follows (where X=trial number):
+		Start of a trial: 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)'
+		End of a trial: 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'
+		Start of a phase within a trial: 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'
+		Parameters that may vary per trial: 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s+: ([-\d\.]*|[\w]*)',
+		unless they are listed in the accompanying behavioral file.
+		Degrees per pixel: 'MSG\t[\d\.]+\tdegrees per pixel (\d*.\d*)'
+		
+		These messages can be customized, but the code does expect these to be regular
+		expressions that return the numbers and strings that these REs do (i.e. parts between []).
+		
+		findAll also counts on further info that is automatically included in the edf event data,
+		so there is no need to send it to Eyelink yourself:
+		Eyelink settings: 'MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)'
+		Screen dimensions: 'MSG\t[\d\.]+\tGAZE_COORDS (\d+.\d+) (\d+.\d+) (\d+.\d+) (\d+.\d+)'
+		Saccade info:
+		'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)', 
+		Fixation info: 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?', 
+		Blink info: 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'):
+		"""
 		if not hasattr(self, 'msgData'):
 			self.loadData(get_gaze_data = False)
 		
@@ -278,6 +319,11 @@ class EyelinkOperator( EyeOperator ):
 		return re.findall(re.compile(RE), self.msgData)
 	
 	def findRecordingParameters(self, sampleRE = 'MSG\t[\d\.]+\t!MODE RECORD CR (\d+) \d+ \d+ (\S+)', screenRE = 'MSG\t[\d\.]+\tGAZE_COORDS (\d+.\d+) (\d+.\d+) (\d+.\d+) (\d+.\d+)', pixelRE = 'MSG\t[\d\.]+\tdegrees per pixel (\d*.\d*)', standardPixelsPerDegree = 84.6):
+		"""
+		findRecordingParameters finds parameters associated with the eyelink settings,
+		based on event data in the edf file.
+		"""
+		
 		self.parameterStrings = self.findOccurences(sampleRE)
 		self.sampleFrequency = int(self.parameterStrings[0][0])
 		self.eye = self.parameterStrings[0][1]
@@ -303,7 +349,7 @@ class EyelinkOperator( EyeOperator ):
 		fixRE = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?', 
 		blinkRE = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'):
 		"""
-		searches for the ends of Eyelink events, since they
+		findELEvents searches for the ends of Eyelink events, since they
 		contain all the information about the occurrence of the event. Examples:
 		ESACC	R	2347313	2347487	174	  621.8	  472.4	  662.0	  479.0	   0.99	 
 		EFIX	R	2340362.0	2347312.0	6950	  650.0	  480.4	   5377
@@ -323,6 +369,21 @@ class EyelinkOperator( EyeOperator ):
 			self.blinksTypeDictionary = np.dtype([(s , np.array(self.blinks_from_MSG_file[0][s]).dtype) for s in self.blinks_from_MSG_file[0].keys()])
 	
 	def findTrials(self, startRE = 'MSG\t([\d\.]+)\ttrial (\d+) started at (\d+.\d)', stopRE = 'MSG\t([\d\.]+)\ttrial (\d+) stopped at (\d+.\d)'):
+		"""
+		findTrials finds the start and end points of trials in self.msgData,
+		based on the strings in startRE and stopRE, respectively.
+		The resulting attribute self.trials is a numpy array with each row indicating
+		[trial start EL-timestamp, trial number, trial start experiment-timestamp, ...
+		trial end EL-timestamp, trial number, trial end experiment-timestamp].
+		The resulting attribute self.which_trials_actually_exist contains only 
+		the trial numbers.
+		The resulting attribute self.monotonic indicates whether all trial
+		numbers are unique, and therefore whether there is a single (True)
+		or multiple (False) runs within this eyelink file.
+		The resulting attribute self.trialTypeDictionary is only defined
+		in terms of the types of its keys at this point, without any data entered.
+		"""
+		
 		self.startTrialStrings = self.findOccurences(startRE)
 		self.stopTrialStrings = self.findOccurences(stopRE)
 		
@@ -345,12 +406,20 @@ class EyelinkOperator( EyeOperator ):
 		self.trialTypeDictionary = [('trial_start_EL_timestamp', np.float64), ('trial_start_index',np.int32), ('trial_start_exp_timestamp',np.float64), ('trial_end_EL_timestamp',np.float64), ('trial_end_index',np.int32), ('trial_end_exp_timestamp',np.float64)]
 	
 	def findTrialPhases(self, RE = 'MSG\t([\d\.]+)\ttrial X phase (\d+) started at (\d+.\d)'):
+		"""
+		findTrialPhases finds phases inside the trials whose numbers
+		are listed in self.which_trials_actually_exist.
+		The resulting attribute self.phaseStarts is a numpy array with each 
+		element containing all phase starts for a given trial, as: 
+		[phase start EL-timestamp, phase number, phase start experiment-timestamp]
+		"""
+		
 		phaseStarts = []
 		for i in self.which_trials_actually_exist:
 			thisRE = RE.replace(' X ', ' ' + str(i) + ' ')
 			phaseStrings = self.findOccurences(thisRE)
 			phaseStarts.append([[float(s[0]), int(s[1]), float(s[2])] for s in phaseStrings])
-		if self.monotonic == False:
+		if self.monotonic == False:	#if there are multiple runs, then we have just put phase starts from separate trials of the same number into single entries in phaseStarts. the following undoes this by separating properly.
 			nrPhases = len(phaseStarts[0])/self.nrRunsInDataFile
 			newPhases = []
 			for j in range(self.nrTrials / self.nrRunsInDataFile):
@@ -360,10 +429,14 @@ class EyelinkOperator( EyeOperator ):
 		self.phaseStarts = phaseStarts
 		# sometimes there are not an equal amount of phasestarts in a run.
 		self.nrPhaseStarts = np.array([len(ps) for ps in self.phaseStarts])
-		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts.max(), 3)))
+		self.trialTypeDictionary.append(('trial_phase_timestamps', np.float64, (self.nrPhaseStarts.max(), 3)))	#set key 'trial_phase_timestamps' to have a shape long enough to accommodate the trial with the most phases, times 3 for the 3 elements in self.phaseStarts elements
 		self.trialTypeDictionary = np.dtype(self.trialTypeDictionary)
 	
 	def findKeyEvents(self, RE = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
+		"""
+		findKeyEvents finds key press events associated with the trials
+		whose numbers are listed in self.which_trials_actually_exist.
+		"""
 		events = []
 		this_length = 0
 		for i in self.which_trials_actually_exist:
@@ -388,7 +461,19 @@ class EyelinkOperator( EyeOperator ):
 		# print 'self.eventTypeDictionary is ' + str(self.eventTypeDictionary) + '\n' +str(self.events[0])
 	
 	def findParameters(self, RE = 'MSG\t[\d\.]+\ttrial X parameter[\t ]*(\S*?)\s+: ([-\d\.]*|[\w]*)', add_parameters = None):
-		
+		"""
+		findParameters finds parameter values that may vary per trial,
+		First looks in edf data, searching only those trials whose numbers
+		are listed in self.which_trials_actually_exist.
+		If parameters have not been sent to .edf file during experiment,
+		then looks in behavioral output file instead.
+		Output attribute self.parameters is an array of dicts, each dict
+		having parameter names and values as well as a trial indicator, 
+		plus some other entries.
+		Output attribute self.parameterTypeDictionary is an object
+		whose entries are dicts that can each contain all unique parameter
+		names and their values.
+		"""
 		parameters = []
 		# if there are no duplicates in the edf file
 		trialCounter = 0
@@ -397,7 +482,7 @@ class EyelinkOperator( EyeOperator ):
 			parameterStrings = self.findOccurences(thisRE)
 			# shell()
 			if len(parameterStrings) > 0:
-				if self.monotonic == False:
+				if self.monotonic == False:		#dealing with possibility that trial numbers not unique because multiple runs (self.monotonic=False)
 					nrParameters = len(parameterStrings)/self.nrRunsInDataFile
 					for j in range(self.nrRunsInDataFile):
 						thisTrialParameters = dict([[s[0], float(s[1])] for s in parameterStrings[j*nrParameters:(j+1)*nrParameters]])
@@ -465,7 +550,7 @@ class EyelinkOperator( EyeOperator ):
 	
 	def computeVelocities(self, smoothingFilterWidth = 0.002 ):
 		"""
-		calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
+		computeVelocities calculates velocities by multiplying the fourier-transformed raw data and a derivative of gaussian.
 		the width of this gaussian determines the extent of temporal smoothing inherent in the calculation.
 		Presently works only for one-eye data only - will change this as binocular data comes available.
 		"""
@@ -506,7 +591,12 @@ class EyelinkOperator( EyeOperator ):
 	
 	def processIntoTable(self, hdf5_filename = '', name = 'bla', compute_velocities = False, check_answers = False, el_key_event_RE = None):
 		"""
-		Take all the existent data from this run's edf file and put it into a standard format hdf5 file using pytables.
+		processIntoTable takes all the existent data from this run's edf file and puts it into a standard format hdf5 file using pytables.
+		processIntoTable first calls self.findAll to collect all the data and define the data format required to create the hdf5 file.
+		Then put the data into the file using pytables.
+		Most information (trial times, trial parameters, etc) will be entered into file as tables (i.e columns have names), but 
+		gaze data will be entered as array (i.e. columns have no names).
+		You can view hdf5 file in gui e.g. with hdfview.
 		"""
 		if hdf5_filename == '':
 			self.logger.error('cannot process data into no table')

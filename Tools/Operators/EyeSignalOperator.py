@@ -201,8 +201,16 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	return saccades
 
 class EyeSignalOperator(Operator):
-	"""EyeSignalOperator operates on eye signals, preferably sampled at 1000 Hz. 
-	This operator is just created by feeding it timepoints, eye signals and pupil size signals in separate arrays, on a per-eye basis.
+	"""
+	EyeSignalOperator operates on eye signals, preferably sampled at 1000 Hz. 
+	This operator is just created by feeding it timepoints,
+	eye signals and pupil size signals in separate arrays, on a per-eye basis.
+	
+	Upon init it creates internal variables self.timepoints, self.raw_gazeXY, self.raw_pupil, self.sample_rate
+	and, if available, self.blink_dur, self.blink_starts and self.blink_ends
+	
+	Its further methods create internal variables storing more derived
+	signals that result from further processing.
 	"""
 	def __init__(self, inputObject, **kwargs):
 		"""inputObject is a dictionary with timepoints, gazeXY and pupil keys and timeseries as values"""
@@ -220,11 +228,24 @@ class EyeSignalOperator(Operator):
 			self.sample_rate = 1000.0
 	
 	def blink_detection_pupil(self, coalesce_period = 250, threshold_level = 0.01):
-		"""blink_detection_pupil detects blinks in the pupil signal depending on when signals go below threshold_level, dilates these intervals by period coalesce_period"""
+		"""
+		blink_detection_pupil detects blinks in the pupil signal
+		depending on when signals go below threshold_level,
+		dilates these intervals by period coalesce_period.
+		
+		If eyelink already provided blink information,
+		then this information is used to set raw_pupil entries within
+		those blinks to zero (so they're not really raw anymore), and then the eyelink-provided 
+		pupil information (in self.blink_starts and self.blink_ends) is
+		overwritten (probably causing a mismatch with the eyelink-provided
+		blink duration information in self.blink_dur).
+		
+		In typical usage a call to the present method is followed by a call to self.interpolate_blinks().
+		"""
 		
 		if hasattr(self, 'eyelink_blink_data'):
 			
-			# set all blinks to 0:
+			# set all eyelink-identified blinks to 0:
 			for i in range(len(self.blink_starts)):
 				self.raw_pupil[(self.timepoints>self.blink_starts[i])*(self.timepoints<self.blink_ends[i])] = 0
 		
@@ -279,10 +300,18 @@ class EyeSignalOperator(Operator):
 				shell()
 		
 	def interpolate_blinks(self, method = 'linear', lin_interpolation_points = [[-100],[100]], spline_interpolation_points = [[-0.15, -0.075],[0.075, 0.15]]):
-		"""interpolate_blinks interpolates blink periods with method, which can be spline or linear. 
-		Use after blink_detection_pupil.
-		spline_interpolation_points is an 2 by X list detailing the data points around the blinks (in s offset from blink start and end) that should be used for fitting the interpolation spline.
 		"""
+		interpolate_blinks interpolates blink periods with method, which can be spline or linear. 
+		Use after self.blink_detection_pupil().
+		spline_interpolation_points is a 2 by X list detailing the data points around the blinks
+		(in s offset from blink start and end) that should be used for fitting the interpolation spline.
+		
+		The results are stored in self.interpolated_pupil, self.interpolated_x and self.interpolated_y
+		without affecting the self.raw_... variables
+		
+		After calling this method, additional interpolation may be performed by calling self.interpolate_blinks2()
+		"""
+		
 		import copy
 		
 		self.interpolated_pupil = copy.copy(self.raw_pupil[:])
@@ -324,6 +353,17 @@ class EyeSignalOperator(Operator):
 		# shell()
 		
 	def interpolate_blinks2(self, lin_interpolation_points = [[-100],[100]]):
+		"""
+		interpolate_blinks2 performs linear interpolation around peaks in the rate of change of
+		the pupil size.
+		
+		The results are stored in self.interpolated_pupil, self.interpolated_x and self.interpolated_y
+		without affecting the self.raw_... variables.
+		
+		This method is typically called after an initial interpolation using self.interpolateblinks(),
+		consistent with the fact that this method expects the self.interpolated_... variables to already exist.
+		"""	
+		
 		from Tools.other_scripts import functions_jw as myfuncs
 		self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
 		self.peaks = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=500, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)
@@ -335,7 +375,15 @@ class EyeSignalOperator(Operator):
 				self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 			
 	def filter_pupil(self, hp = 0.05, lp = 4.0):
-		"""band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. after interpolation."""
+		"""
+		band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. 
+		
+		The results are stored in self.lp_filt_pupil, self.hp_filt_pupil and self.bp_filt_pupil
+		
+		This method is typically called after self.interpolateblinks() and, optionally, self.interpolateblinks2(),
+		consistent with the fact that this method expects the self.interpolated_... variables to exist.
+		"""
+		
 		# band-pass filtering of signal, high pass first and then low-pass
 		# High pass:
 		hp_cof_sample = hp / (self.interpolated_pupil.shape[0] / self.sample_rate / 2)
@@ -349,13 +397,23 @@ class EyeSignalOperator(Operator):
 		self.bp_filt_pupil = sp.signal.filtfilt(blp, alp, self.hp_filt_pupil)
 	
 	def zscore_pupil(self):
-		"""zscore_pupil: simple zscoring of pupil sizes."""
+		"""
+		zscore_pupil z-scores the low-pass filtered pupil size data and the band-pass filtered pupil size data.
+		
+		The results are stored in self.bp_filt_pupil_zscore and self.lp_filt_pupil_zscore.
+		
+		This method is typically called after self.filter_pupil(), consistent with the fact that it
+		expects the self.[...]_filt_pupil variables to exist.
+		"""
+		
 		self.bp_filt_pupil_zscore = (self.bp_filt_pupil - self.bp_filt_pupil.mean()) / self.bp_filt_pupil.std() 
 		self.lp_filt_pupil_zscore = (self.lp_filt_pupil - self.lp_filt_pupil.mean()) / self.lp_filt_pupil.std() 
 	
 	def dt_pupil(self, dtype = 'bp_filt_pupil'):
-		"""dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable
 		"""
+		dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable.
+		"""
+		
 		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
 
 	def time_frequency_decomposition_pupil(self, min_freq = 0.01, max_freq = 3.0, freq_stepsize = 0.25, n_cycles = 7):

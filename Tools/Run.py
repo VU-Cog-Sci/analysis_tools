@@ -27,14 +27,13 @@ class Run(object):
 		
 		self.trialList = []
 		
-		# datetime of this run is the creation time of the raw data file
 		for k,v in kwargs.items():
-			setattr(self, k, v)
+			setattr(self, k, v)		# here the object gets all the attributes listed in the arguments
 			
 		if not hasattr(self, 'condition'):
 			self.condition = ''
 		
-		if hasattr(self, 'rawDataFilePath'):
+		if hasattr(self, 'rawDataFilePath'): # datetime of this run is the creation time of the raw data file
 			if os.path.isfile(self.rawDataFilePath)			:
 				self.dateTime = os.path.getctime(self.rawDataFilePath)
 			else:
