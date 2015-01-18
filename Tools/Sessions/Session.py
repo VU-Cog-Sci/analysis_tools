@@ -473,6 +473,7 @@ class Session(PathConstructor):
 					zscO.execute()
 					funcFile = NiftiImage(zscO.outputFileName)
 					# create mean, std and demeaned files
+					
 					mean_cmd = 'fslmaths %s -Tmean %s' % (funcFile, funcFile[:-7] + '_m.nii.gz')
 					std_cmd = 'fslmaths %s -Tstd %s' % (funcFile, funcFile[:-7] + '_std.nii.gz')
 					dm_cmd = 'fslmaths %s -Tmean -mul -1 -add %s %s' %(funcFile, funcFile, funcFile[:-7] + '_dm.nii.gz')
@@ -509,7 +510,7 @@ class Session(PathConstructor):
 				ifOf()
 			job_server.print_stats()
 		if self.parallelize and 'zscore' in operations:
-			# tryout parallel implementation - later, this should be abstracted out of course. 
+			# tryout parallel implementation - later, this should be abstracted out of course.
 			ppservers = ()
 			job_server = pp.Server(ppservers=ppservers)
 			self.logger.info("starting pp with", job_server.get_ncpus(), "workers for " + sys._getframe().f_code.co_name)

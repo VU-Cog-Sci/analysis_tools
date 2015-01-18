@@ -232,8 +232,8 @@ class EyeSignalOperator(Operator):
 			self.raw_pupil[self.raw_pupil<threshold_level] = 0
 		
 			# we do not want to start or end with a 0:
-			pupil_median_start = np.median(self.raw_pupil[:int(self.sample_rate*10)][self.raw_pupil[:int(self.sample_rate*10)]!=0])
-			pupil_median_end = np.median(self.raw_pupil[int(self.sample_rate*10):][self.raw_pupil[int(self.sample_rate*10):]!=0])
+			pupil_median_start = max(1000, np.median(self.raw_pupil[:int(self.sample_rate*10)][self.raw_pupil[:int(self.sample_rate*10)]!=0]))
+			pupil_median_end = max(1000, np.median(self.raw_pupil[int(self.sample_rate*10):][self.raw_pupil[int(self.sample_rate*10):]!=0]))
 			self.raw_pupil[:coalesce_period+1] = pupil_median_start
 			self.raw_pupil[-coalesce_period+1:] = pupil_median_end
 		
@@ -315,7 +315,14 @@ class EyeSignalOperator(Operator):
 				self.interpolated_pupil = np.ones(self.raw_pupil.shape[0])
 				self.interpolated_x = np.ones(self.raw_pupil.shape[0])
 				self.interpolated_y = np.ones(self.raw_pupil.shape[0])
-			
+		
+		# import matplotlib.pyplot as plt
+		# plt.figure()
+		# plt.plot(self.raw_pupil)
+		# plt.plot(self.interpolated_pupil)
+		# plt.show()
+		# shell()
+		
 	def interpolate_blinks2(self, lin_interpolation_points = [[-100],[100]]):
 		from Tools.other_scripts import functions_jw as myfuncs
 		self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
