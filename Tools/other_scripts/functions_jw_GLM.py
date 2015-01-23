@@ -34,27 +34,28 @@ class GeneralLinearModel(object):
 		# create raw regressors, and add them to self.raw_design_matrix:
 		for i, reg in enumerate(self.event_object):
 			if regressor_types[i] == 'stick':
-				self.add_stick_regressor(reg)
+				self.add_stick_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'box':
-				self.add_box_regressor(reg)
+				self.add_box_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'upramp':
-				self.add_upramp_regressor(reg)
+				self.add_upramp_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'downramp':
-				self.add_downramp_regressor(reg)
+				self.add_downramp_regressor(np.atleast_2d(reg))
 		
 		self.IRF_dt = IRF_dt
 		
 		# create IRF:
 		if IRF == 'pupil':
 			self.IRF = self.IRF_pupil(dur=IRF_params['dur'], s=IRF_params['s'], n=IRF_params['n'], tmax=IRF_params['tmax'])
-		if IRF == 'BOLD':
+		elif IRF == 'BOLD':
 			self.IRF = self.HRF(dur=IRF_params['dur'])
 		else:
 			self.IRF = IRF
 		
 		# convolve raw regressors with IRF to obtain the full design matrix:
 		self.convolve_with_IRF()
-		self.z_score()
+		self.demean()
+		# self.z_score()
 		
 	def resample_input_object(self):
 		"""resample_input_object takes a timeseries of data points and resamples them according to the ratio between sample duration and the new sample duration."""
@@ -64,6 +65,9 @@ class GeneralLinearModel(object):
 	def convolve_with_IRF(self):
 		"""convolve_wit_IRF convolves the designMatrix with the specified IRF (sampled according to resample_ratio)"""
 		
+		print
+		print len(self.IRF)
+		
 		self.design_matrix = np.zeros([len(self.raw_design_matrix)*len(self.IRF), self.timepoints.shape[0]])
 		i = 0
 		for reg in self.raw_design_matrix:
@@ -71,8 +75,14 @@ class GeneralLinearModel(object):
 				self.design_matrix[i,:] = (sp.signal.fftconvolve(reg, IRF, 'full'))[:-(IRF.shape[0]-1)]
 				i += 1
 	
+	def demean(self):
+		"""demeans design matrix"""
+		
+		for i in range(self.design_matrix.shape[0]):
+			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean())
+	
 	def z_score(self):
-		"""z scores design matrix"""
+		"""z-scores design matrix"""
 		
 		for i in range(self.design_matrix.shape[0]):
 			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean()) / self.design_matrix[i,:].std()
@@ -115,9 +125,9 @@ class GeneralLinearModel(object):
 		for event in regressor:
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
-			dur = sum((self.timepoints > start_time) * (self.timepoints < end_time))
-			height = np.linspace(event[2]/dur, event[2]/dur, dur)
-			regressor_values[(self.timepoints > start_time) * (self.timepoints < end_time)] = height
+			dur = end_time - start_time
+			height = event[2]
+			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	
 	def add_upramp_regressor(self, regressor):
@@ -126,11 +136,11 @@ class GeneralLinearModel(object):
 		"""
 		regressor_values = np.zeros(self.timepoints.shape[0])
 		for event in regressor:
-			start_time = event[0]
-			end_time = event[0]+event[1]
-			dur = sum((self.timepoints > start_time) * (self.timepoints < end_time))
+			start_time = np.floor(event[0]/self.new_sample_dur)
+			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
+			dur = end_time - start_time
 			height = np.linspace(0, (event[2]*2/dur), dur)
-			regressor_values[(self.timepoints > start_time) * (self.timepoints < end_time)] = height
+			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 		
 	def add_downramp_regressor(self, regressor):
@@ -139,11 +149,11 @@ class GeneralLinearModel(object):
 		"""
 		regressor_values = np.zeros(self.timepoints.shape[0])
 		for event in regressor:
-			start_time = event[0]
-			end_time = event[0]+event[1]
-			dur = sum((self.timepoints > start_time) * (self.timepoints < end_time))
+			start_time = np.floor(event[0]/self.new_sample_dur)
+			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
+			dur = end_time - start_time
 			height = np.linspace((event[2]*2/dur), 0, dur)
-			regressor_values[(self.timepoints > start_time) * (self.timepoints < end_time)] = height
+			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	
 	# --------------------------------------

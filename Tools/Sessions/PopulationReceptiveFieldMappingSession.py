@@ -32,6 +32,11 @@ from skimage.morphology import disk
 from lmfit import minimize, Minimizer, Parameters, Parameter, report_fit, report_errors
 
 
+def rotate_clockwise(matrix, degree=90):
+    # if degree not in [0, 90, 180, 270, 360]:
+        # raise error or just return nothing or original
+    return matrix if not degree else rotate_clockwise(zip(*matrix[::-1]), degree-90)
+
 def fitARDRidge(design_matrix, timeseries, n_iter = 100, compute_score=True):
 	"""fitARDRidge fits a design matrix to a given timeseries.
 	It computes the coefficients and returns these coefficients
@@ -84,6 +89,7 @@ def fitBayesianRidge_for_Dumoulin(design_matrix, timeseries, n_iter = 50, comput
 
 	return start_params, PRF, predicted_signal.sum(axis = 1)
 
+
 def fitElasticNetCV(design_matrix, timeseries, verbose = True, l1_ratio = [.1, .5, .7, .9, .95, .99, 1]):
 	"""fitBayesianRidge fits a design matrix to a given timeseries.
 	It computes the coefficients and returns these coefficients
@@ -130,6 +136,7 @@ def fitRidge_for_Dumoulin(design_matrix, timeseries, n_iter = 50, compute_score 
 	start_params['xo'], start_params['yo'] = maximum[1]/float(n_pixel_elements)*2-1, maximum[0]/float(n_pixel_elements)*2-1
 
 	return start_params, PRF, predicted_signal.sum(axis = 1)
+
 	
 def fitRidgeCV(design_matrix, timeseries, alphas = None):
 	"""fitRidgeCV fits a design matrix to a given timeseries using
@@ -155,6 +162,7 @@ def normalize_histogram(input_array, mask_array = None):
 
 
 def analyze_PRF_from_spatial_profile(spatial_profile_array, stats_data=[], upscale = 5, diagnostics_plot = False, contour_level = 0.9, voxel_no = 1, cond = cond, normalize_to = 'zero-one', fit_on='smoothed_betas',plotdir = []):
+
 	"""analyze_PRF_from_spatial_profile tries to fit a PRF 
 	to the spatial profile of spatial beta values from the ridge regression """
 	
@@ -586,6 +594,7 @@ class PRFModelRun(object):
 
 			samples_in_trial = (self.sample_times >= (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
 
+
 			if np.all([self.run.trial_times[i][0] != 'fix_no_stim', self.orientation_list[i] in np.radians(orientations)]):
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
 				pt.pass_through()
@@ -837,14 +846,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
 			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
 			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
-
 			psc_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
 			# prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
 			# res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
 
 			all_files = ['raw_file','mcf_file','sgtf_file','psc_file']	 # ,'res_file'
 			f = pl.figure(figsize = ((6,6)))
-
 			for i,p in enumerate(all_files):
 				s = f.add_subplot(len(all_files),1,i+1)
 				exec("pl.plot("+p+".data[:,mask_data][:,0])")
@@ -891,7 +898,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# 
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			tr = round(niiFile.rtime*1)/1000.0
-			with open (self.runFile(stage = 'processed/eye', run = r, extension = '.msg')) as inputFileHandle:
+			msg_file_name = subprocess.Popen('ls ' + os.path.join(self.runFolder(stage = 'processed/eye', run = r), '*.msg'), shell=True, stdout=PIPE).communicate()[0].split('\n')[0]
+			with open(msg_file_name) as inputFileHandle:
 				msg_file = inputFileHandle.read()
 
 
@@ -1082,7 +1090,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 			filename = self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' )
 			with open(filename) as f:
 				picklefile = pickle.load(f)
-
 			# get run start time
 			run_start_time_string = [e for e in picklefile['eventArray'][0] if e[:len('trial 0 phase 1')] == 'trial 0 phase 1']
 			run_start_time.append(float(run_start_time_string[0].split(' ')[-1]))
@@ -1095,6 +1102,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# 	run_duration.append(round(niiFile.rtime*1)/1000.0 * niiFile.timepoints)
 
 			# corrected_durations = np.cumsum(np.array(run_duration))
+
 
 			task_per_trial = np.array([picklefile['parameterArray'][i]['task'] for i in range(len(picklefile['parameterArray'])) ])
 			orientation_per_trial = np.array([picklefile['parameterArray'][i]['motion_direction'] for i in range(len(picklefile['parameterArray'])) ])
@@ -1707,8 +1715,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 				else:
 					pickle.dump({'tr_time_list' : self.tr_time_list, 'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
 
-
-
 	def stats_to_mask(self, mask_file_name, postFix = ['mcf', 'sgtf', 'prZ', 'res'], condition = 'PRF', task_condition = ['all'], threshold = 5.0):
 		"""stats_to_mask takes the stats from an initial fitting and converts it to a anatomical mask, and places it in the masks/anat folder"""
 		input_file = os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + mask_file_name + '_' + '_'.join(postFix) + '_' + task_condition[0] + '-' + condition + '.nii.gz')
@@ -1730,7 +1736,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for fitting of individual regions.
 		"""
 		# 
-
 		t = time.time()
 		self.logger.info('loading high res raw design matrix')
 		filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%0.2f_%dx%d_hrf.pickle'%(sample_duration,n_pixel_elements_raw,n_pixel_elements_raw)) 
@@ -1755,7 +1760,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		if 'Square' in self.project.projectName: self.stimulus_timings_square()
 		else: self.stimulus_timings_square_2()
-		
+
 		self.logger.info('loading fMRI data')
 		t = time.time()
 		# select valid regressors
@@ -1797,7 +1802,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.logger.info('calculating timings for PRF model fits')
 		# do the separation based on condition
 		# loop over tasks
-
 		estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/n_jobs)/141**2)*n_pixel_elements_raw**2)/60) * len(task_conditions)
 		self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
 		self.logger.info('estimated duration %dm per condition, %dm total' % (estimated_fit_duration/len(task_conditions),estimated_fit_duration))
@@ -2496,6 +2500,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			smoothed_data_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'smoothed_data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + this_condition + '-' + condition + '-' + str(n_pixel_elements_raw) + '.nii.gz'))
 
 
+
 	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 0.0, condition = 'PRF'):
 		"""docstring for results_to_surface"""
 		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/%s/'%condition), file_name + '.nii.gz'))
@@ -2528,6 +2533,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		anat_mask = os.path.join(self.stageFolder('processed/mri/'), 'masks', 'anat', anat_mask + '.nii.gz')
 		filename = mask_file + '_' + '_'.join(postFix + [task_condition]) + '-%s-%d'%(condition,n_pixel_elements)
+
 		if run_fits:
 			stats_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'corrs_' + filename + '.nii.gz')).data
 			spatial_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'coefs_' + filename + '.nii.gz')).data
@@ -2537,6 +2543,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			voxel_spatial_data_to_fit = spatial_data[:,stat_mask * anat_mask]
 			stats_data_to_fit = stats_data[:,stat_mask * anat_mask]
 			self.logger.info('starting fitting of prf shapes')
+
 			plotdir = self.stageFolder('processed/mri/') + 'figs/PRF_plots_%d/'%(n_pixel_elements)
 			if  os.path.isdir(plotdir): shutil.rmtree(plotdir); os.mkdir(plotdir)
 			else: os.mkdir(plotdir)
@@ -2662,6 +2669,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			rmtOp.execute()
 	
 	def mask_stats_to_hdf(self, condition = 'PRF', mask_file = 'cortex_dilated_mask_all', postFix = ['mcf','sgtf','prZ','res'], task_conditions = ['fix','all','color','sf','orient','speed'],n_pixel_elements=[]):
+
 		"""
 		Create an hdf5 file to populate with the stats and parameter estimates of the feat results
 		"""
@@ -2669,6 +2677,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# 
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF])]
+
 		# anatRoiFileNames = ['/home/shared/PRF_square/data/DVE/DVE_291014/processed/mri/masks/anat/rh.V1.nii.gz']
 		# anatRoiFileNames = [os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/%s.nii.gz'%mask_file))]
 
@@ -2679,12 +2688,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 			rois.append(NiftiImage(roi))
 			roinames.append(os.path.split(roi)[1][:-7])
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition),  condition  +'-'+ str(n_pixel_elements) +"_file.hdf5")
+
 		if os.path.isfile(self.hdf5_filename):
 			h5file = open_file(self.hdf5_filename, mode = "r+", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 		else:
 			h5file = open_file(self.hdf5_filename, mode = "w", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 		# 	os.system('rm ' + self.hdf5_filename)
 		self.logger.info('starting table file ' + self.hdf5_filename)
+
 		# else:
 		# 	self.logger.info('opening table file ' + self.hdf5_filename)
 		# 	h5file = open_file(self.hdf5_filename, mode = "a", title = run_type + " file")
@@ -2997,6 +3008,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				label = roi
 				s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
 				s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
+
 
 				# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
 

@@ -63,7 +63,7 @@ class EventDataOperator(ArrayOperator):
 
 class DeconvolutionOperator(EventDataOperator):
 	"""docstring for DeconvolutionOperator"""
-	def __init__(self, inputObject, eventObject, TR = 2.0, deconvolutionSampleDuration = 0.5, deconvolutionInterval = 12.0, run = True, **kwargs):
+	def __init__(self, inputObject, eventObject, TR=2.0, deconvolutionSampleDuration=0.5, deconvolutionInterval=12.0, deconvolution=True, run=True, **kwargs):
 		super(DeconvolutionOperator, self).__init__(inputObject, eventObject, TR, **kwargs)
 		
 		self.deconvolutionSampleDuration = deconvolutionSampleDuration
@@ -153,7 +153,7 @@ class DeconvolutionOperator(EventDataOperator):
 			design_matrix = self.designMatrix
 		else:
 			self.logger.error("To compute residuals, we need to calculate betas. Use runWithConvolvedNuisanceVectors or re-initialize with argument run = True")
-		self.residuals = self.workingDataArray - np.dot(design_matrix, betas)
+		self.residuals = self.workingDataArray - np.squeeze(np.dot(design_matrix, betas))
 		return np.array(self.residuals)
 	
 	def sse(self):

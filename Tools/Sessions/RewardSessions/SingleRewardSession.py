@@ -1301,7 +1301,6 @@ class SingleRewardSession(RewardSession):
 			b_end_times_t = (b_end_times[b_indices] - session_start_EL_time) 
 			blinks = np.array(b_start_times_t)
 			blink_times.append(((blinks + session_time) / self.sample_rate ))
-	
 
 			pupil = np.squeeze(self.ho.signal_during_period(time_period = [session_start_EL_time, session_stop_EL_time], alias = alias, signal = data_type, requested_eye = self.sampled_eye))
 			pupil_data.append((pupil - pupil.mean()) / pupil.std())
@@ -1309,7 +1308,7 @@ class SingleRewardSession(RewardSession):
 			this_run_events = []
 			for cond in conds:
 				this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
-			this_run_events = np.array(this_run_events) + session_time
+			this_run_events = np.array(this_run_events) + session_time / 1000.0
 			event_data.append(this_run_events)
 
 			session_time += session_stop_EL_time - session_start_EL_time
@@ -1394,7 +1393,7 @@ class SingleRewardSession(RewardSession):
 
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/eye/'), 'figs', alias + '.pdf'))
 
-	def deconvolve_pupil(self, analysis_sample_rate = 20, interval = [-0.5,10.0], data_type = 'pupil_bp'):
+	def deconvolve_pupil(self, analysis_sample_rate = 20, interval = [-0.5,7.5], data_type = 'pupil_bp'):
 		"""raw deconvolution, to see what happens when the fixation colour changes, 
 		and when the sound chimes."""
 
@@ -1425,6 +1424,91 @@ class SingleRewardSession(RewardSession):
 			h5_file.put("/%s/%s"%('deconvolve_pupil', 'time_points'), pd.Series(time_points))
 			h5_file.put("/%s/%s"%('deconvolve_pupil', 'dec_time_course'), pd.DataFrame(np.squeeze(do.deconvolvedTimeCoursesPerEventType).T))
 
+	def pupil_interval_analysis(self, analysis_sample_rate = 20, interval = [-0.5,10.0], data_type = 'pupil_bp', data_interval = [-0.5, 7.5]):
+
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+
+		reward_h5file = self.hdf5_file('reward')
+
+
+		self.events_and_signals_in_time(data_type = data_type )
+		cond_labels = ['blinks', 'fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		all_conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		all_event_data, blink_events = [], []
+		stimulus_itis_fix_trials, fix_itis_fix_trials = [], []
+		stimulus_itis_stimulus_trials, fix_itis_stimulus_trials = [], []
+
+		events_of_interest = [] # fix R and stim R trials
+
+		pupil_data = []
+
+		nr_runs = 0
+
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times')
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters')
+			
+			onsets_fix_reward_trials, raw_itis_of_fix_reward_trials, all_reward_itis_of_fix_reward_trials, fixation_reward_itis_fix_reward_trials, stimulus_reward_itis_fix_reward_trials = self.calculate_event_history_fix_reward(trial_times, parameter_data)
+			onsets_stim_reward_trials, raw_itis_of_stim_reward_trials, all_reward_itis_of_stim_reward_trials, fixation_reward_itis_stim_reward_trials, stimulus_reward_itis_stim_reward_trials = self.calculate_event_history_stim_reward(trial_times, parameter_data)
+
+			stimulus_itis_fix_trials.extend(stimulus_reward_itis_fix_reward_trials)
+			fix_itis_fix_trials.extend(fixation_reward_itis_fix_reward_trials)
+			stimulus_itis_stimulus_trials.extend(stimulus_reward_itis_stim_reward_trials)
+			fix_itis_stimulus_trials.extend(fixation_reward_itis_stim_reward_trials)
+
+			events_of_interest.append([onsets_fix_reward_trials + nr_runs * run_duration, onsets_stim_reward_trials + nr_runs * run_duration])
+
+			this_run_all_events = []
+			for cond in all_conds:
+				this_run_all_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_all_events = np.array(this_run_all_events) + nr_runs * run_duration
+			all_event_data.append(this_run_all_events)
+			
+			nr_runs += 1
+		event_data = [np.concatenate([e[i] for e in all_event_data]) for i in range(len(all_event_data[0]))]
+		events_of_interest = [np.array(np.round(np.concatenate([e[i] for e in events_of_interest]) * analysis_sample_rate), dtype = int) for i in range(2)]
+
+		stimulus_itis = [np.array(stimulus_itis_fix_trials), np.array(stimulus_itis_stimulus_trials)]
+		fix_itis = [np.array(fix_itis_fix_trials), np.array(fix_itis_stimulus_trials)]
+
+		# get residuals from earlier deconvolution
+		with pd.get_store(self.ho.inputObject) as h5_file:
+			residuals = np.array(h5_file.get("/%s/%s"%('deconvolve_pupil', 'residuals')))	
+
+		correlation_indices = [np.array([np.arange(data_interval[0] * analysis_sample_rate, data_interval[1] * analysis_sample_rate) + t for t in e], dtype = int) for e in events_of_interest]
+		correlation_timecourses = [residuals[ci] for ci in correlation_indices]
+		correlation_timecourses_no_zero = [(ci.T - ci[:,:abs(data_interval[0]*analysis_sample_rate)].mean(axis = 1)).T for ci in correlation_timecourses]
+
+		for ctnz, si, fi, lbl in zip(correlation_timecourses_no_zero, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
+			fix, stim = np.array([spearmanr(tc, fi) for tc in ctnz.T]), np.array([spearmanr(tc, si) for tc in ctnz.T])
+
+			f = pl.figure()
+			s = f.add_subplot(121)
+			s.plot(fix[:,0], 'b', label = 'corr with fix intervals')
+			s.plot(stim[:,0], 'g', label = 'corr with stim intervals')
+			pl.legend()
+			s = f.add_subplot(122)
+			s.plot(-np.log10(fix[:,1]), 'b', label = 'fix P')
+			s.plot(-np.log10(stim[:,1]), 'g', label = 'stim P')
+			pl.legend()
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_correlation_%s.pdf'%lbl))
+
+			with pd.get_store(self.ho.inputObject) as h5_file:
+				h5_file.put("/%s/%s"%('deconvolve_pupil', 'fixation_interval_correlation_%s'%lbl), pd.DataFrame(fix))
+				h5_file.put("/%s/%s"%('deconvolve_pupil', 'stimulus_interval_correlation_%s'%lbl), pd.DataFrame(stim))
+
+
+		# shell()
+
+		# self.ho.
+		reward_h5file.close()
 	# def deconvolve_pupil(self, sample_rate = 2000, postFix = ['mcf'], subsampled_sample_frequency = 5):
 	# 	# check out the duration of these runs, assuming they're all the same length.
 	# 	niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
