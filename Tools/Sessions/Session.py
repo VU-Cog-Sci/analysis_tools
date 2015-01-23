@@ -813,16 +813,15 @@ class Session(PathConstructor):
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
 			
-			if len(roi_wildcard.split('.')) > 1:
-				roi_wildcard = roi_wildcard.split('.')[1]
-
+			# if len(roi_wildcard.split('.')) > 1:
+			# 	roi_wildcard = roi_wildcard.split('.')[1]
 			roi_names = []
 			for roi_name in h5file.iter_nodes(where = '/' + this_run_group_name, classname = 'Group'):
 				if len(roi_name._v_name.split('.')) > 1:
 					hemi, area = roi_name._v_name.split('.')
 					if roi_wildcard == area:
 						roi_names.append(roi_name._v_name)
-				elif roi_wildcard == roi_name._v_name:
+				if roi_wildcard == roi_name._v_name:
 					roi_names.append(roi_name._v_name)
 			if len(roi_names) == 0:
 				self.logger.info('No rois corresponding to ' + roi_wildcard + ' in group ' + this_run_group_name)
@@ -837,6 +836,7 @@ class Session(PathConstructor):
 			thisRoi = h5file.get_node(where = '/' + this_run_group_name, name = roi_name, classname='Group')
 			all_roi_data.append( eval('thisRoi.' + data_type + '.read()') )
 		all_roi_data_np = np.hstack(all_roi_data).T
+
 		return all_roi_data_np
 	
 	def run_glm_on_hdf5(self, run_list = None, hdf5_file = None, data_type = 'hpf_data', analysis_type = 'per_trial', post_fix_for_text_file = ['all_trials'], functionalPostFix = ['mcf'], design = None, contrast_matrix = []):

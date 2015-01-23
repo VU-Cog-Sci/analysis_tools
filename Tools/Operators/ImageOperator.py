@@ -370,7 +370,6 @@ class Design(object):
 			if self.intermediate_signal.sum() > 0.0:
 				self.example_intermediate_signal = self.intermediate_signal
 				self.example_raw_design_signal = self.dpadded
-			# self.designMatrix[i,:] = 
 #		self.designMatrix = np.array([sp.convolve(ds, self.hrfKernel, 'full')[:-(self.hrfKernel.shape[0]-1)][::round(self.subSamplingRatio * self.rtime)] for ds in self.rawDesignMatrix]).T
 			
 	def configure(self, regressors, hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} ):
