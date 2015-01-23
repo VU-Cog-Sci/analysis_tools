@@ -237,7 +237,6 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
 					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
-
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					

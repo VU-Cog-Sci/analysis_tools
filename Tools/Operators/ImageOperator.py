@@ -341,7 +341,7 @@ def singleGamma(timepoints, a = 6, b = 0.9):
 
 class Design(object):
 	"""Design represents the design matrix of a given run"""
-	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 100):
+	def __init__(self, nrTimePoints, rtime, subSamplingRatio = 5):
 		self.nrTimePoints = nrTimePoints
 		self.rtime = rtime
 		self.subSamplingRatio = subSamplingRatio
@@ -366,9 +366,12 @@ class Design(object):
 		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
 		"""convolveWithHRF convolves the designMatrix with the specified HRF and build final regressors by resampling to TR times"""
 		self.hrfType = hrfType
+		if self.rtime > 1000:
+			self.rtime /= 1000
 		self.hrfKernel = eval(self.hrfType + '(np.arange(0,32,self.rtime/(self.subSamplingRatio)), **hrfParameters)')
 		if self.hrfKernel.shape[0] % 2 == 1:
 			self.hrfKernel = np.r_[self.hrfKernel, 0]
+		# self.hrfKernel/=self.hrfKernel.sum()
 		self.designMatrix = np.zeros([len(self.rawDesignMatrix), self.nrTimePoints])
 		for i, ds in enumerate(self.rawDesignMatrix):
 			kl = self.hrfKernel.shape[0]
@@ -380,7 +383,6 @@ class Design(object):
 			if self.intermediate_signal.sum() > 0.0:
 				self.example_intermediate_signal = self.intermediate_signal
 				self.example_raw_design_signal = self.dpadded
-			# self.designMatrix[i,:] = 
 #		self.designMatrix = np.array([sp.convolve(ds, self.hrfKernel, 'full')[:-(self.hrfKernel.shape[0]-1)][::round(self.subSamplingRatio * self.rtime)] for ds in self.rawDesignMatrix]).T
 			
 	def configure(self, regressors, hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} ):
