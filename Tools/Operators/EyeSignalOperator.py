@@ -397,11 +397,10 @@ class EyeSignalOperator(Operator):
 		self.bp_filt_pupil = sp.signal.filtfilt(blp, alp, self.hp_filt_pupil)
 
 		# we may also add a baseline variable which contains the baseine 
-		# that is subtracted from this signal during high-pass and thus bandpass filtering
+		# by doing 3rd order savitzky-golay filtering, with a width of ~100 s
 		# we dan use this baseline signal for correlations of phasic and tonic pupil responses, for example
-		hp_cof_sample = hp / (self.interpolated_pupil.shape[0] / self.sample_rate / 2)
-		bhp, ahp = sp.signal.butter(3, hp_cof_sample, btype='low')
-		self.baseline_filt_pupil = sp.signal.filtfilt(bhp, ahp, self.interpolated_pupil)
+		
+		self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
 
 	
 	def zscore_pupil(self):

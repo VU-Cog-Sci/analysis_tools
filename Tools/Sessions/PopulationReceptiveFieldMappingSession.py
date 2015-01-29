@@ -2884,7 +2884,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM_displacement' + roi + '.pdf'))
 			pl.close()
 	
-	def fit_diagnostics(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=0.0,rois = [], task_condition = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
+	def fit_diagnostics(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=0.0,rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
 		
 
 		for this_condition in task_conditions:
@@ -2922,7 +2922,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			# mask for voxel selection
 			if results_type == 'Lee_to_Dumoulin':
-				mask = [(stats[r][:,stats_frames['corr']]  > corr_threshold)  * (stats[r][:,stats_frames['-logp']] > logp_thresh )* (results[r][:,results_frames['SNR']] > SNR_thresh )* (results[r][:,results_frames['sd_gauss']] > sd_thresh) * (results[r][:,results_frames['amplitude']] < amp_thresh) *(results[r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
+				mask = [(stats[r][:,stats_frames['corr']]  > corr_threshold)  * 
+							(stats[r][:,stats_frames['-logp']] > logp_thresh ) * 
+							(results[r][:,results_frames['SNR']] > SNR_thresh ) * 
+							(results[r][:,results_frames['sd_gauss']] > sd_thresh) * 
+							(results[r][:,results_frames['amplitude']] < amp_thresh) *
+							(results[r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) *
+							(results[r][:,results_frames['ecc_gauss']] > ecc_thresh[0])   
+								for r in range(len(end_rois))]
 			else:
 				mask = [(stats[r][:,stats_frames['corr']] > corr_threshold) * (results[r][:,results_frames['sd_gauss']] >0.2) * (results[r][:,results_frames['sd_gauss']] < 10) * (results[r][:,results_frames['EV']] > 0.85) * (results[r][:,results_frames['n_regions']] < 5) for r in range(len(end_rois))]
 
@@ -2950,14 +2957,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 				f = pl.figure(figsize = (16,10))
 				variables = ['spearman_rho','rho_p_val','SNR','sd_gauss','ecc_gauss','amplitude_gauss','spearman_rho_masked','rho_p_val_masked','SNR_masked','sd_gauss_masked','ecc_gauss_masked','amplitude_gauss_masked']
-				thresholds = [corr_threshold,logp_thresh,SNR_thresh,sd_thresh,ecc_thresh,amp_thresh]
+				thresholds = [corr_threshold,logp_thresh,SNR_thresh,sd_thresh,ecc_thresh[1],amp_thresh]
 				x_lims = [[] for i in range(len(variables))]
 				y_lims = [[] for i in range(len(variables))]
 				labels = end_rois.keys()
 				for v, var in enumerate(variables):
 					s1 = f.add_subplot(2,len(variables)/2,v+1)
 					exec('s1.hist(%s,50,color=colors_for_bar[j])'%var)
-					if v < len(variables)/2:
+					if v < len(thresholds):
 						s1.axvline(thresholds[v],linestyle='--',color='k',linewidth=2)
 					simpleaxis(s1)
 					spine_shift(s1)
@@ -3070,12 +3077,27 @@ class PopulationReceptiveFieldMappingSession(Session):
 			all_results.append( [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ])
 			all_stats.append( [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ])
 
+			shell()
 			# mask for voxel selection
 			if results_type == 'Lee_to_Dumoulin':
 				if ci == 0:
-					mask = [ (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * (all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh )* (all_results[ci][r][:,results_frames['SNR']] > SNR_thresh )* (all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * (all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *(all_results[ci][r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
+					mask = [(all_stats[r][:,stats_frames['corr']]  > corr_threshold)  * 
+							(all_stats[r][:,stats_frames['-logp']] > logp_thresh ) * 
+							(all_results[r][:,results_frames['SNR']] > SNR_thresh ) * 
+							(all_results[r][:,results_frames['sd_gauss']] > sd_thresh) * 
+							(all_results[r][:,results_frames['amplitude']] < amp_thresh) *
+							(all_results[r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) *
+							(all_results[r][:,results_frames['ecc_gauss']] > ecc_thresh[0])   
+								for r in range(len(end_rois))]				
 				else:
-					mask = [ mask[r] * (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * (all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh )* (all_results[ci][r][:,results_frames['SNR']] > SNR_thresh )* (all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * (all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *(all_results[ci][r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
+					mask = [ mask[r] * (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * 
+							(all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh ) * 
+							(all_results[ci][r][:,results_frames['SNR']] > SNR_thresh ) * 
+							(all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * 
+							(all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *
+							(all_results[r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) *
+							(all_results[r][:,results_frames['ecc_gauss']] > ecc_thresh[0])   
+								for r in range(len(end_rois))]
 			else:
 				if ci == 0:
 					mask = [ (all_stats[ci][r][:,stats_frames['corr']] > corr_threshold) * (all_results[ci][r][:,results_frames['sd_gauss']] >0.2) * (all_results[ci][r][:,results_frames['sd_gauss']] < 10) * (all_results[ci][r][:,results_frames['EV']] > 0.85) * (all_results[ci][r][:,results_frames['n_regions']] < 5) for r in range(len(end_rois))]
