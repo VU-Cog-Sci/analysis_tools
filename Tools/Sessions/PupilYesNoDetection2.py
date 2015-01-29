@@ -105,7 +105,7 @@ class pupilPreprocessSession(object):
 		for alias in aliases:
 			self.ho.add_edf_file(os.path.join(self.base_directory, 'raw', alias + '.edf'))
 			self.ho.edf_message_data_to_hdf(alias=alias)
-			self.ho.edf_gaze_data_to_hdf(alias=alias, pupil_hp=0.1, pupil_lp=10.0)
+			self.ho.edf_gaze_data_to_hdf(alias=alias, pupil_hp=0.05, pupil_lp=10.0)
 	
 	def compute_omission_indices(self):
 		"""
@@ -1306,8 +1306,11 @@ class pupilAnalysesAcross(object):
 		self.error = -np.array(self.parameters_joined['correct'], dtype=bool)
 		
 		self.bpd = np.array(self.parameters_joined['bpd_lp'])
-		# self.ppr = np.array(self.parameters_joined['ppr_mean_lp'])
 		self.ppr = np.array(self.parameters_joined['ppr_mean_lp']) - self.bpd
+		
+		
+		# self.ppr = np.array(self.parameters_joined['ppr_mean_lp'])
+		
 		
 		self.subj_idx = np.concatenate(np.array([np.repeat(i, sum(self.parameters_joined['subject'] == self.subjects[i])) for i in range(len(self.subjects))]))
 		
@@ -1315,10 +1318,6 @@ class pupilAnalysesAcross(object):
 	
 	
 	def behavior(self):
-		
-		
-		
-		# if self.experiment == 1:
 		
 		MEAN_d_prime = []
 		MEAN_criterion = []
@@ -2250,11 +2249,15 @@ class pupilAnalysesAcross(object):
 		'rt' : pd.Series(np.array(self.parameters_joined['rt'])),
 		'difficulty' : pd.Series(np.array(self.parameters_joined['difficulty'], dtype=int)),
 		'drug' : pd.Series(drug, dtype=int),
-		# 'pupil' : pd.Series(np.array(self.ppr)),
-		# 'pupil_b' : pd.Series(np.array(self.bpd)),
+		'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_b' : pd.Series(np.array(self.bpd)),
 		}
 		data_accuracy = pd.DataFrame(d)
 		data_accuracy.to_csv(os.path.join(self.project_directory, 'data_accuracy.csv'))
+		
+		
+		
+		
 		
 		# d = {
 		# 'subj_idx' : pd.Series(self.subj_idx),

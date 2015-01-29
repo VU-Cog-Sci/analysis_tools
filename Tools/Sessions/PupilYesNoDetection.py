@@ -353,9 +353,9 @@ class pupilPreprocessSession(object):
 		if self.subject.initials == 'EP':
 			trs = [252, 255, 258, 264, 255, 257, 255, 258, 257, 254, 247,]
 		if self.subject.initials == 'JG':
-			trs = [252, 269, 274, 253, 257, 260, 256, 250, 254, 260, 260, 260, 251,]
+			trs = [252, 269, 274, 253, 257, 260, 256, 250, 254, 260, 260, 251,]
 		if self.subject.initials == 'LH':
-			trs = [264, 300, 300, 294, 144, 251, 260, 263, 253, 256, 260,]
+			trs = [264, 300, 300, 294, 251, 260, 263, 253, 256, 260,]
 		if self.subject.initials == 'LP':
 			trs = [249, 252, 249, 259, 260, 261, 262, 256, 256, 253, 255, 257,]
 		if self.subject.initials == 'MG':
@@ -370,25 +370,26 @@ class pupilPreprocessSession(object):
 		print 'len trigger nifti = {}'.format(nr_trs_nifti)
 		print
 		
-		shell()
+		if nr_trs_nifti - len(trigger_timings) == -1: # this is the case for the last run of subjects EP... I don't understand this
+			trigger_timings = trigger_timings[:-1]
 		
 		# create pupil timeseries in fMRI tr resolution:
-		# pupil = np.zeros((6, nr_trs_nifti))
-		# pupil[:,:] = np.NaN
-		# try:
-		# 	pupil[0,0:len(trigger_timings)] = np.array([np.mean(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-		# except:
-		# 	shell()
-		# pupil[1,:len(trigger_timings)] = np.array([np.max(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-		# pupil[2,:len(trigger_timings)] = np.array([np.mean(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-		# pupil[3,:len(trigger_timings)] = np.array([np.max(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-		# pupil[4,:len(trigger_timings)] = np.array([np.mean(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-		# pupil[5,:len(trigger_timings)] = np.array([np.max(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+		pupil = np.zeros((6, nr_trs_nifti))
+		pupil[:,:] = np.NaN
+		try:
+			pupil[0,:len(trigger_timings)] = np.array([np.mean(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[1,:len(trigger_timings)] = np.array([np.max(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[2,:len(trigger_timings)] = np.array([np.mean(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[3,:len(trigger_timings)] = np.array([np.max(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[4,:len(trigger_timings)] = np.array([np.mean(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[5,:len(trigger_timings)] = np.array([np.max(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+		except ValueError:
+			shell()
+		
+		# save:
+		self.ho.data_frame_to_hdf(self.alias, 'pupil_BOLD_regressors', pd.DataFrame(pupil))
 		#
-		# # save:
-		# self.ho.data_frame_to_hdf(self.alias, 'pupil_BOLD_regressors', pd.DataFrame(pupil))
-		#
-	def process_runs(self, alias):
+	def process_runs(self, alias, create_pupil_BOLD_regressor=False):
 		print 'subject {}; {}'.format(self.subject.initials, alias)
 		print '##############################'
 		
@@ -431,11 +432,11 @@ class pupilPreprocessSession(object):
 		self.pupil_zscore()
 		self.create_timelocked_arrays()
 		
-		if self.version == 3:
+		if create_pupil_BOLD_regressor:
 			self.create_pupil_BOLD_regressor()
 		
 	
-	def process_across_runs(self, aliases):
+	def process_across_runs(self, aliases, create_pupil_BOLD_regressor=False):
 		
 		# load data:
 		parameters = []
@@ -455,7 +456,7 @@ class pupilPreprocessSession(object):
 			if self.experiment == 1:
 				feedback_locked_array_lp.append(self.ho.read_session_data(alias, 'time_locked_feedback_lp'))
 				feedback_locked_array_bp.append(self.ho.read_session_data(alias, 'time_locked_feedback_bp'))
-			if self.version == 3:
+			if create_pupil_BOLD_regressor:
 				pupil_BOLD_regressors.append(np.array(self.ho.read_session_data(alias, 'pupil_BOLD_regressors')))
 		
 		# join over runs:
@@ -467,7 +468,7 @@ class pupilPreprocessSession(object):
 		if self.experiment == 1:
 			feedback_locked_array_lp_joined = np.array(pd.concat(feedback_locked_array_lp))
 			feedback_locked_array_bp_joined = np.array(pd.concat(feedback_locked_array_bp))
-		if self.version == 3:
+		if create_pupil_BOLD_regressor:
 			pupil_BOLD_regressors_joined = np.hstack(pupil_BOLD_regressors)
 			np.save(os.path.join(self.project_directory, 'data', self.subject.initials, 'pupil_BOLD_regressors'), pupil_BOLD_regressors_joined)
 		
@@ -1382,7 +1383,6 @@ class pupilAnalysesAcross(object):
 		# RT histograms:
 		# --------------
 		
-		shell()
 		x_grid = [0.5, 3.5, 100]
 		c0_pdf, c1_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf = behavior.rt_kernel_densities(x_grid=x_grid, bandwidth=0.07)
 		
@@ -1394,8 +1394,6 @@ class pupilAnalysesAcross(object):
 		fa = np.vstack(c1_error_pdf)
 		
 		step = pd.Series(np.linspace(x_grid[0], x_grid[1], x_grid[2]), name='rt (s)')
-		
-		shell()
 		
 		# Make the plt.plot
 		fig = plt.figure(figsize=(4, 5))
@@ -1416,9 +1414,7 @@ class pupilAnalysesAcross(object):
 		sns.despine(offset=10, trim=True)
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'rt_hists.pdf'))
-		
-		
-		[np.median(df.rt[df.subj_idx==i]) for i in range(self.nr_subjects)]
+
 		
 	def behavior_two_conditions(self):
 		
@@ -1667,7 +1663,7 @@ class pupilAnalysesAcross(object):
 		bar_width = 0.6   # the width of the bars
 		spacing = [0, 0, 0, 0]
 		
-		sns.set_style("white")
+		sns.set_style("ticks")
 		
 		# FIGURE 1
 		p_values = np.array([myfuncs.permutationTest(ppr_hit, ppr_miss)[1], myfuncs.permutationTest(ppr_fa, ppr_cr)[1]])
@@ -2036,8 +2032,6 @@ class pupilAnalysesAcross(object):
 
 	def drift_diffusion(self):
 		
-		shell()
-		
 		# data:
 		d = {
 		'subj_idx' : pd.Series(self.subj_idx)+18,
@@ -2063,9 +2057,9 @@ class pupilAnalysesAcross(object):
 	
 	def grand_average_pupil_response(self,):
 		
-		shell()
+		# shell()
 		
-		nr_runs = [12,12,16,11,13,11,12,12]
+		nr_runs = [12,12,16,11,13,11,12,12,12]
 		
 		kernel_cue_low = []
 		kernel_cue_high = []

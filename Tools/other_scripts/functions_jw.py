@@ -273,7 +273,7 @@ def pupil_scalar_lin_projection(data, time_start, time_end, template):
 	pupil_scalars = np.array([ np.dot(template, data[i,time_start:time_end])/np.dot(template,template) for i in range(data.shape[0])])
 	return pupil_scalars
 
-def kde_sklearn(self, x, x_grid, bandwidth=0.2, **kwargs):
+def kde_sklearn(x, x_grid, bandwidth=0.2, **kwargs):
 	"""Kernel Density Estimation with Scikit-learn"""
 	
 	kde_skl = KernelDensity(bandwidth=bandwidth, **kwargs)
@@ -534,10 +534,70 @@ def pcf3(X,Y,Z):
 	return [(rxy_z, rxz_y, ryz_x)]
 
 
+import rpy2.robjects as robjects
+from rpy2.robjects import pandas2ri
+pandas2ri.activate()
+import pandas.rpy.common as com
+ 
+def rm_ANOVA(df):
+	
+	"""
+	Perform a repeated measures ANOVA using Rpy2 with a pandas DataFrame as input.
 
+	Parameters
+	----------
+	df : pandas DataFrame
+	                The DataFrame should have the factors to test as columns and the
+	                corresponding data of each subject per row. The first column should
+	                contain the subject no.s
+
+	Returns
+	-------
+	anova_tables : list
+	                A list containing pandas DataFrames for each tested effect
+
+	Example
+	--------
+	The input DataFrame should have a structure like this:
+
+	+-------------+------------+----------+----------+
+	| subject_nr  | var 1      | var 2    | var N    |
+	+=============+============+==========+==========+
+	| 1           | 334.5      | 450.6    | ...      |
+	+-------------+------------+----------+----------+
+	| 2           | 545        | 354      | ...      |
+	+-------------+------------+----------+----------+
+	| ...         | ...        | ...      | ...      |
+	+-------------+------------+----------+----------+
+	"""
+	
+	
+	# Convert grouping var to vector for R (int types screw up analysis)
+	df[df.columns[0]] = df[df.columns[0]].astype(object)
+	
+	# Get ready to fire data at R
+	r_long_table = com.convert_to_r_dataframe(df)
+
+	# Get independent vars. Assume [0] is subject_nr and [-1] is dependent var, so leave away
+	factors = "*".join(df.columns[2:])
+
+	# Specify the LM forumula
+	formula = robjects.r("as.formula(col2 ~ ({0}) + Error(col1/({0})))".format(factors))
+
+	# Perform the analysis and get the summary of it
+	aov_analysis = robjects.r["aov"](formula, data=r_long_table)
+	anova_summary = robjects.r["summary"](aov_analysis)
+
+	# Convert R dataframes back to pandas.DataFrames and put them in a list
+	anova_tables = []
+	for entry in anova_summary:
+		for table in entry:
+			anova_tables.append(com.convert_robj(table))
+	
+	# Return all 
+	return anova_tables
 		
 		
-
 def pupil_IRF(timepoints, s=1.0/(10**26), n=10.1, tmax=930):
 
 	"""
@@ -1299,16 +1359,18 @@ class behavior(object):
 		if split_by:
 			split_ind = [np.array(eval('self.data.' + split_by) == split_target)]
 		else:
-			split_ind = [np.ones(len(self.data), dtype=bool)]
+			split_ind = np.ones(len(self.data), dtype=bool)
 		
 		x_grid = np.linspace(x_grid[0], x_grid[1], x_grid[2])
 		
-		c0_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c0_correct_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c0_error_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_correct_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_error_pdf = [general().kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# shell()
+		
+		c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c0_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c1_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c1_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
 		
 		return (c0_pdf, c1_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf)
 			
