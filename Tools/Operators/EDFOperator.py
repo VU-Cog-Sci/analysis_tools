@@ -66,7 +66,7 @@ class EDFOperator( Operator ):
 		
 		# optimize this so that it doesn't delete the periods in the float time, for example.
 		# first clean out those C and R occurrences. No letters allowed.
-		gaze_string = re.sub(re.compile('[A-Z]*'), '', gaze_string)
+		gaze_string = re.sub(re.compile('[A-Z]+'), '', gaze_string)
 		gaze_string = re.sub(re.compile('\t+\.+'), '', gaze_string)
 		# # check for these really weird character shit in the final columns of the output.
 		# self.workingStringClean = re.sub(re.compile('C.'), '', self.workingStringClean)
@@ -352,7 +352,7 @@ class EDFOperator( Operator ):
 		blink_strings = re.findall(re.compile(blink_re), self.message_string)
 		
 		if len(saccade_strings) > 0:
-			self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[7])} for e in saccade_strings]
+			self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[8])} for e in saccade_strings]
 			self.fixations_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fix_strings]
 			self.blinks_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blink_strings]
 		
