@@ -2884,7 +2884,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs/v1_45*45_noGLM_displacement' + roi + '.pdf'))
 			pl.close()
 	
-	def fit_diagnostics(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=0.0,rois = [], task_condition = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
+	def fit_diagnostics(self, hists = False, eccen_surf_corr = True,condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=[0.0,100],rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
 		
 
 		for this_condition in task_conditions:
@@ -2922,7 +2922,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			# mask for voxel selection
 			if results_type == 'Lee_to_Dumoulin':
-				mask = [(stats[r][:,stats_frames['corr']]  > corr_threshold)  * (stats[r][:,stats_frames['-logp']] > logp_thresh )* (results[r][:,results_frames['SNR']] > SNR_thresh )* (results[r][:,results_frames['sd_gauss']] > sd_thresh) * (results[r][:,results_frames['amplitude']] < amp_thresh) *(results[r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
+				mask = [(stats[r][:,stats_frames['corr']]  > corr_threshold)  * (stats[r][:,stats_frames['-logp']] > logp_thresh )* (results[r][:,results_frames['SNR']] > SNR_thresh )* (results[r][:,results_frames['sd_gauss']] > sd_thresh) * (results[r][:,results_frames['amplitude']] < amp_thresh) *(results[r][:,results_frames['ecc_gauss']] > ecc_thresh[0])*(results[r][:,results_frames['ecc_gauss']] < ecc_thresh[1])   for r in range(len(end_rois))]
 			else:
 				mask = [(stats[r][:,stats_frames['corr']] > corr_threshold) * (results[r][:,results_frames['sd_gauss']] >0.2) * (results[r][:,results_frames['sd_gauss']] < 10) * (results[r][:,results_frames['EV']] > 0.85) * (results[r][:,results_frames['n_regions']] < 5) for r in range(len(end_rois))]
 
@@ -2932,109 +2932,110 @@ class PopulationReceptiveFieldMappingSession(Session):
 			colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np .linspace(0.0,0.2,len(end_rois))][::-1]
 			colors_for_bar = ['#%02x%02x%02x' % tuple((np.array(c)*255).astype(int)) for c in colors ]#['#e5cf67','#2cac44','#2cac44','#2cac44']
 
-			for j, roi in enumerate(end_rois.keys()):	
-			## stats and results histograms
-				spearman_rho = stats[j][ :,stats_frames['corr']] 
-				rho_p_val =stats[j][ :,stats_frames['-logp']]  
-				SNR =results[j][ :,results_frames['SNR']]  
-				sd_gauss = results[j][ :,results_frames['sd_gauss']] 
-				ecc_gauss =results[j][ :,results_frames['ecc_gauss']] 
-				amplitude_gauss =results[j][ :,results_frames['amplitude']]
+			if hists:
+				for j, roi in enumerate(end_rois.keys()):	
+				## stats and results histograms
+					spearman_rho = stats[j][ :,stats_frames['corr']] 
+					rho_p_val =stats[j][ :,stats_frames['-logp']]  
+					SNR =results[j][ :,results_frames['SNR']]  
+					sd_gauss = results[j][ :,results_frames['sd_gauss']] 
+					ecc_gauss =results[j][ :,results_frames['ecc_gauss']] 
+					amplitude_gauss =results[j][ :,results_frames['amplitude']]
 
-				spearman_rho_masked = stats[j][ mask[j],stats_frames['corr']] 
-				rho_p_val_masked = stats[j][ mask[j],stats_frames['-logp']]
-				SNR_masked = results[j][ mask[j],results_frames['SNR']] 
-				sd_gauss_masked =  results[j][ mask[j],results_frames['sd_gauss']] 
-				ecc_gauss_masked =  results[j][ mask[j],results_frames['ecc_gauss']] 
-				amplitude_gauss_masked =  results[j][ mask[j],results_frames['amplitude']] 
+					spearman_rho_masked = stats[j][ mask[j],stats_frames['corr']] 
+					rho_p_val_masked = stats[j][ mask[j],stats_frames['-logp']]
+					SNR_masked = results[j][ mask[j],results_frames['SNR']] 
+					sd_gauss_masked =  results[j][ mask[j],results_frames['sd_gauss']] 
+					ecc_gauss_masked =  results[j][ mask[j],results_frames['ecc_gauss']] 
+					amplitude_gauss_masked =  results[j][ mask[j],results_frames['amplitude']] 
 
-				f = pl.figure(figsize = (16,10))
-				variables = ['spearman_rho','rho_p_val','SNR','sd_gauss','ecc_gauss','amplitude_gauss','spearman_rho_masked','rho_p_val_masked','SNR_masked','sd_gauss_masked','ecc_gauss_masked','amplitude_gauss_masked']
-				thresholds = [corr_threshold,logp_thresh,SNR_thresh,sd_thresh,ecc_thresh,amp_thresh]
-				x_lims = [[] for i in range(len(variables))]
-				y_lims = [[] for i in range(len(variables))]
-				labels = end_rois.keys()
-				for v, var in enumerate(variables):
-					s1 = f.add_subplot(2,len(variables)/2,v+1)
-					exec('s1.hist(%s,50,color=colors_for_bar[j])'%var)
-					if v < len(variables)/2:
-						s1.axvline(thresholds[v],linestyle='--',color='k',linewidth=2)
-					simpleaxis(s1)
-					spine_shift(s1)
-					s1.set_xlabel(var)
-					s1.set_ylabel('#')
-				pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'results_hists_%s_%s_%d.pdf'%(roi,this_condition,n_pixel_elements )))
-				pl.close('all')
+					f = pl.figure(figsize = (16,10))
+					variables = ['spearman_rho','rho_p_val','SNR','sd_gauss','ecc_gauss','amplitude_gauss','spearman_rho_masked','rho_p_val_masked','SNR_masked','sd_gauss_masked','ecc_gauss_masked','amplitude_gauss_masked']
+					thresholds = [corr_threshold,logp_thresh,SNR_thresh,sd_thresh,ecc_thresh[1],amp_thresh]
+					x_lims = [[] for i in range(len(variables))]
+					y_lims = [[] for i in range(len(variables))]
+					labels = end_rois.keys()
+					for v, var in enumerate(variables):
+						s1 = f.add_subplot(2,len(variables)/2,v+1)
+						exec('s1.hist(%s,50,color=colors_for_bar[j])'%var)
+						if v < len(variables)/2:
+							s1.axvline(thresholds[v],linestyle='--',color='k',linewidth=2)
+						simpleaxis(s1)
+						spine_shift(s1)
+						s1.set_xlabel(var)
+						s1.set_ylabel('#')
+					pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'results_hists_%s_%s_%d.pdf'%(roi,this_condition,n_pixel_elements )))
+					pl.close('all')
 
 			## eccen-surf correlation plot
+			if eccen_surf_corr:
+				eccen_bins = np.array([[i,i+1] for i in range(int(ecc_thresh[1]))])
+				eccen_x = np.arange(np.mean(eccen_bins[0]),np.mean(eccen_bins[-1])+1,eccen_bins[0][1]-eccen_bins[0][0])
 
-			eccen_bins = np.array([[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11] ])
-			eccen_x = np.arange(np.mean(eccen_bins[0]),np.mean(eccen_bins[-1])+1,eccen_bins[0][1]-eccen_bins[0][0])
+				mean_per_bin = []
+				sd_per_bin = []
+				for j, roi in enumerate(end_rois.keys()):
+					mean_per_bin.append([])
+					sd_per_bin.append([])
+					for b in range(len(eccen_bins)):
 
-			mean_per_bin = []
-			sd_per_bin = []
-			for j, roi in enumerate(end_rois.keys()):
-				mean_per_bin.append([])
-				sd_per_bin.append([])
-				for b in range(len(eccen_bins)):
+						data = results[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,results_frames['sd_gauss']] 
+						weights = stats[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,stats_frames['corr']] 
 
-					data = results[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,results_frames['sd_gauss']] 
-					weights = stats[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,stats_frames['corr']] 
-
-					if data != []:
-						mean_per_bin[j].append( np.average( data,weights = weights ) )					
-						sd_per_bin[j].append( np.std( data )/np.sqrt(len(data)) )
-					else:
-						mean_per_bin[j].append( np.nan )
-						sd_per_bin[j].append( np.nan)
-
-
-			f2 = pl.figure(figsize = (8,8))
-			s2 = f2.add_subplot(1,1,1)
-			for j, roi in enumerate(end_rois.keys()):			
-				
-				from scipy.stats.stats import pearsonr,spearmanr
-				[r,p] = pearsonr(eccen_x[np.array(mean_per_bin[j])>0],np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0])
-				# [r,p] = pearsonr(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']])
-
-				# fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']], 1,w=stats[j][mask[j],stats_frames['corr']])
-				fit = polyfit(eccen_x[np.array(mean_per_bin[j])>0], np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0], 1)
-				fit_fn = poly1d(fit)
-
-				# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
-				s2.plot(eccen_x,mean_per_bin[j],c = colors[j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
-				s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=colors[j],alpha=0.15)
-				# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
-				label = roi
-				s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
-				s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
+						if data != []:
+							mean_per_bin[j].append( np.average( data,weights = weights ) )					
+							sd_per_bin[j].append( np.std( data )/np.sqrt(len(data)) )
+						else:
+							mean_per_bin[j].append( np.nan )
+							sd_per_bin[j].append( np.nan)
 
 
-				# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+				f2 = pl.figure(figsize = (8,8))
+				s2 = f2.add_subplot(1,1,1)
+				for j, roi in enumerate(end_rois.keys()):			
+					
+					from scipy.stats.stats import pearsonr,spearmanr
+					# [r,p] = pearsonr(eccen_x[np.array(mean_per_bin[j])>0],np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0])
+					[r,p] = pearsonr(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']])
 
-				leg = s2.legend(fancybox = True, loc = 'best')
-				leg.get_frame().set_alpha(0.5)
-				if leg:
-					for t in leg.get_texts():
-					    t.set_fontsize('large')    # the legend text fontsize
-					for l in leg.get_lines():
-					    l.set_linewidth(3.5)  # the legend line width
+					fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']], 1,w=stats[j][mask[j],stats_frames['corr']])
+					# fit = polyfit(eccen_x[np.array(mean_per_bin[j])>0], np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0], 1)
+					fit_fn = poly1d(fit)
 
-				simpleaxis(s2)
-				spine_shift(s2)
-				s2.set_ylim([0,15])
-				s2.set_xlabel('pRF eccentricity')
-				s2.set_ylabel('pRF size (sd)')
-				s2.set_yticks(np.arange(15))
+					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+					s2.plot(eccen_x,mean_per_bin[j],c = colors[j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
+					s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=colors[j],alpha=0.15)
+					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
+					label = roi
+					s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
+					s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
 
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'eccen_surf_cor_%s_%d_%s.pdf'%(this_condition,n_pixel_elements,maskfile)))
-		
+
+					# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+
+					leg = s2.legend(fancybox = True, loc = 'best')
+					leg.get_frame().set_alpha(0.5)
+					if leg:
+						for t in leg.get_texts():
+						    t.set_fontsize('large')    # the legend text fontsize
+						for l in leg.get_lines():
+						    l.set_linewidth(3.5)  # the legend line width
+
+					simpleaxis(s2)
+					spine_shift(s2)
+					s2.set_ylim([0,15])
+					s2.set_xlabel('pRF eccentricity')
+					s2.set_ylabel('pRF size (sd)')
+					s2.set_yticks(np.arange(15))
+
+				pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'eccen_surf_cor_%s_%d_%s.pdf'%(this_condition,n_pixel_elements,maskfile)))
+			
 	
-	def condition_comparison(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=0.0,rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
+	def condition_comparison(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=[0.0,100],rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
 	# 
 		
 		if results_type == 'Lee_to_Dumoulin':
-			results_frames = {'ecc_gauss':0,'sd_gauss':1,'SNR':2,'amplitude':3} 
+			results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
 		else:
 			results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14,'n_regions':15} 
 		stats_frames = {'corr': 0, '-logp': 1}
@@ -3073,7 +3074,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# mask for voxel selection
 			if results_type == 'Lee_to_Dumoulin':
 				if ci == 0:
-					mask = [ (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * (all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh )* (all_results[ci][r][:,results_frames['SNR']] > SNR_thresh )* (all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * (all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *(all_results[ci][r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
+					mask = [ (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * (all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh )* (all_results[ci][r][:,results_frames['SNR']] > SNR_thresh )* (all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * (all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *(all_results[ci][r][:,results_frames['ecc_gauss']] > ecc_thresh[0])*(all_results[ci][r][:,results_frames['ecc_gauss']] < ecc_thresh[1])   for r in range(len(end_rois))]
 				else:
 					mask = [ mask[r] * (all_stats[ci][r][:,stats_frames['corr']]  > corr_threshold)  * (all_stats[ci][r][:,stats_frames['-logp']] > logp_thresh )* (all_results[ci][r][:,results_frames['SNR']] > SNR_thresh )* (all_results[ci][r][:,results_frames['sd_gauss']] > sd_thresh) * (all_results[ci][r][:,results_frames['amplitude']] < amp_thresh) *(all_results[ci][r][:,results_frames['ecc_gauss']] < ecc_thresh)   for r in range(len(end_rois))]
 			else:
@@ -3098,7 +3099,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 				plot(all_results[this_comp[0]][j][mask[j],results_frames['sd_gauss']],all_results[this_comp[1]][j][mask[j],results_frames['sd_gauss']],'.')
 				plot(s.get_xlim(), s.get_ylim(), ls="--", c=".3")
 
-				[t,p] = stats.ttest_ind(all_results[this_comp[0]][j][mask[j],results_frames['sd_gauss']],all_results[this_comp[1]][j][mask[j],results_frames['sd_gauss']])
+				[t,p] = stats.ttest_1samp(all_results[this_comp[0]][j][mask[j],results_frames['sd_gauss']]-all_results[this_comp[1]][j][mask[j],results_frames['sd_gauss']],0)
+				# [t,p] = stats.ttest_ind(all_results[this_comp[0]][j][mask[j],results_frames['sd_gauss']],all_results[this_comp[1]][j][mask[j],results_frames['sd_gauss']])
 				mean_size_0 = np.mean(all_results[this_comp[0]][j][mask[j],results_frames['sd_gauss']]) 
 				mean_size_1 = np.mean(all_results[this_comp[1]][j][mask[j],results_frames['sd_gauss']])
 
