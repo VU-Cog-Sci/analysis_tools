@@ -21,6 +21,9 @@ import pickle
 from scipy.stats import *
 import pandas as pd
 import os
+import seaborn as sn
+from RL_model import RL_model
+from lmfit import minimize, Minimizer, Parameters, Parameter, report_fit, report_errors, fit_report
 
 class SingleRewardSession(RewardSession):
 	"""
@@ -1165,7 +1168,8 @@ class SingleRewardSession(RewardSession):
 			nuisance_design.configure(np.array([np.hstack(blink_events)]))
 			deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1], run = False)
 			deco.runWithConvolvedNuisanceVectors(nuisance_design.designMatrix.T)
-			# deco.residuals = deco.residuals()
+			deco.residuals()
+			residuals = deco.residuals
 			# shell()
 			for i in range(0, deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[0]):
 				time_signals.append(deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze())
@@ -1247,10 +1251,10 @@ class SingleRewardSession(RewardSession):
 		reward_h5file.close()
 		mapper_h5file.close()
 		
-		pl.draw()
+		# pl.draw()
 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type + '_' + data_type + '.pdf'))
-		shell()
-		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), np.array(deco_per_run)]
+		# shell()
+		return [roi + '_' + mask_type + '_' + mask_direction + '_' + analysis_type, event_data, timeseries, np.array(time_signals), np.array(deco_per_run), residuals]
 	
 	def prepare_for_pupil(self):
 		for r in [self.runList[i] for i in self.conditionDict['reward']]:
@@ -1424,7 +1428,7 @@ class SingleRewardSession(RewardSession):
 			h5_file.put("/%s/%s"%('deconvolve_pupil', 'time_points'), pd.Series(time_points))
 			h5_file.put("/%s/%s"%('deconvolve_pupil', 'dec_time_course'), pd.DataFrame(np.squeeze(do.deconvolvedTimeCoursesPerEventType).T))
 
-	def pupil_interval_analysis(self, analysis_sample_rate = 20, interval = [-0.5,10.0], data_type = 'pupil_bp', data_interval = [-0.5, 7.5]):
+	def pupil_interval_analysis(self, analysis_sample_rate = 20, interval = [-0.5,7.5], data_type = 'pupil_bp', data_interval = [-0.5, 7.5]):
 
 		# check out the duration of these runs, assuming they're all the same length.
 		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
@@ -1482,11 +1486,14 @@ class SingleRewardSession(RewardSession):
 		with pd.get_store(self.ho.inputObject) as h5_file:
 			residuals = np.array(h5_file.get("/%s/%s"%('deconvolve_pupil', 'residuals')))	
 
+		timepoints = np.arange(data_interval[0] * analysis_sample_rate, data_interval[1] * analysis_sample_rate)
 		correlation_indices = [np.array([np.arange(data_interval[0] * analysis_sample_rate, data_interval[1] * analysis_sample_rate) + t for t in e], dtype = int) for e in events_of_interest]
 		correlation_timecourses = [residuals[ci] for ci in correlation_indices]
-		correlation_timecourses_no_zero = [(ci.T - ci[:,:abs(data_interval[0]*analysis_sample_rate)].mean(axis = 1)).T for ci in correlation_timecourses]
+		# correlation_timecourses_no_zero = [(ci.T - ci[:,:abs(data_interval[0]*analysis_sample_rate)].mean(axis = 1)).T for ci in correlation_timecourses]
+		correlation_timecourses_no_zero = [(ci.T - ci[:,timepoints<0].mean(axis = 1)).T for ci in correlation_timecourses]
 
-		for ctnz, si, fi, lbl in zip(correlation_timecourses_no_zero, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
+		# for ctnz, si, fi, lbl in zip(correlation_timecourses_no_zero, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
+		for ctnz, si, fi, lbl in zip(correlation_timecourses, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
 			fix, stim = np.array([spearmanr(tc, fi) for tc in ctnz.T]), np.array([spearmanr(tc, si) for tc in ctnz.T])
 
 			f = pl.figure()
@@ -1509,88 +1516,103 @@ class SingleRewardSession(RewardSession):
 
 		# self.ho.
 		reward_h5file.close()
-	# def deconvolve_pupil(self, sample_rate = 2000, postFix = ['mcf'], subsampled_sample_frequency = 5):
-	# 	# check out the duration of these runs, assuming they're all the same length.
-	# 	niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
-	# 	tr, nr_trs = niiFile.rtime, niiFile.timepoints
-	# 	run_duration = tr * nr_trs
-		
-	# 	conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
-	# 	cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
-		
-	# 	reward_h5file = self.hdf5_file('reward')
-	# 	event_data = []
-	# 	pupil_data = []
-	# 	nr_runs = 0
-	# 	for r in [self.runList[i] for i in self.conditionDict['reward']]:
-	# 		this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = r, postFix = postFix))[1]
-	# 		try:
-	# 			thisRunGroup = reward_h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
-	# 			self.logger.info('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' already in ' + self.hdf5_filename)
-	# 		except NoSuchNodeError:
-	# 			# import actual data
-	# 			self.logger.error('data file ' + self.runFile(stage = 'processed/mri', run = r, postFix = postFix) + ' does not contain ' + this_run_group_name + '. Exiting.')
-	# 			return
-			
-	# 		timings = thisRunGroup.trial_times.read()
-	# 		experiment_start_time = (timings['trial_phase_timestamps'][0,0,0] / 1000.0)
-	# 		pupil_data_this_run = thisRunGroup.filtered_pupil_zscore.read()
-	# 		subsampled_pupil_data_this_run = pupil_data_this_run[pupil_data_this_run[:,0]>experiment_start_time, 1][0:(run_duration*sample_rate):(sample_rate/subsampled_sample_frequency)]
-	# 		pupil_data.append(subsampled_pupil_data_this_run)
-	# 		this_run_events = []
-	# 		for cond in conds:
-	# 			this_run_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
-	# 		this_run_events = np.array(this_run_events) + nr_runs * run_duration
-	# 		event_data.append(this_run_events)
-	# 		nr_runs += 1
-		
-	# 	event_data_per_run = event_data
-		
-	# 	pupil_data_per_run = pupil_data
-	# 	pupil_data = np.hstack(pupil_data)
-	# 	# event_data = np.hstack(event_data)
-	# 	event_data = [np.concatenate([e[i] for e in event_data]) for i in range(len(event_data[0]))]
-		
-	# 	fig = pl.figure(figsize = (9, 5))
-	# 	s = fig.add_subplot(111)
-	# 	s.axhline(0, -10, 30, linewidth = 0.25)
-		
-	# 	time_signals = []
-	# 	interval = [0.0,16.0]
-			
-	# 	deco = DeconvolutionOperator(inputObject = pupil_data, eventObject = event_data[:], TR = 1.0/subsampled_sample_frequency, deconvolutionSampleDuration = 1.0/subsampled_sample_frequency, deconvolutionInterval = interval[1])
-	# 	for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
-	# 		pl.plot(np.linspace(interval[0],interval[1],deco.deconvolvedTimeCoursesPerEventType.shape[1]), deco.deconvolvedTimeCoursesPerEventType[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
-	# 		time_signals.append(deco.deconvolvedTimeCoursesPerEventType[i])
-	# 	shell()
-	# 	s.set_title('deconvolution pupil')
-	# 	deco_per_run = []
-	# 	for i, pd in enumerate(pupil_data_per_run):
-	# 		event_data_this_run = event_data_per_run[i] - i * run_duration
-	# 		deco = DeconvolutionOperator(inputObject = pd, eventObject = event_data_per_run[i], TR = 1.0/subsampled_sample_frequency, deconvolutionSampleDuration = 1.0/subsampled_sample_frequency, deconvolutionInterval = interval[1])
-	# 		deco_per_run.append(deco.deconvolvedTimeCoursesPerEventType)
-	# 	deco_per_run = np.array(deco_per_run)
-	# 	mean_deco = deco_per_run.mean(axis = 0)
-	# 	std_deco = 1.96 * deco_per_run.std(axis = 0) / sqrt(len(pupil_data_per_run))
-	# 	for i in range(0, mean_deco.shape[0]):
-	# 		# pl.plot(np.linspace(interval[0],interval[1],mean_deco.shape[1]), mean_deco[i], ['b','b','g','g'][i], alpha = [0.5, 1.0, 0.5, 1.0][i], label = cond_labels[i])
-	# 		s.fill_between(np.linspace(interval[0],interval[1],mean_deco.shape[1]), time_signals[i] + std_deco[i], time_signals[i] - std_deco[i], color = ['b','b','g','g'][i], alpha = 0.3 * [0.5, 1.0, 0.5, 1.0][i])
-		
-	# 	s.set_xlabel('time [s]')
-	# 	s.set_ylabel('Z')
-	# 	s.set_xlim([interval[0]-1.5, interval[1]+1.5])
-	# 	leg = s.legend(fancybox = True)
-	# 	leg.get_frame().set_alpha(0.5)
-	# 	if leg:
-	# 		for t in leg.get_texts():
-	# 		    t.set_fontsize('small')    # the legend text fontsize
-	# 		for l in leg.get_lines():
-	# 		    l.set_linewidth(3.5)  # the legend line width
-		
-	# 	pl.draw()
-	# 	pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), 'pupil_deconvolution.pdf'))
-	# 	reward_h5file.close()
 	
+	def roi_interval_analysis_as_pupil(self, analysis_sample_rate = 1.333, interval = [-2.5,12.5], roi = 'V1', contrast = 'center_Z_pos', data_type = 'residuals', data_interval = [-2.5, 12.5]):
+
+		# check out the duration of these runs, assuming they're all the same length.
+		niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]))
+		tr, nr_trs = niiFile.rtime, niiFile.timepoints
+		run_duration = tr * nr_trs
+
+		reward_h5file = self.hdf5_file('reward')
+
+
+		self.events_and_signals_in_time(data_type = 'pupil_bp')
+		cond_labels = ['blinks', 'fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		all_conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+		all_event_data, blink_events = [], []
+		stimulus_itis_fix_trials, fix_itis_fix_trials = [], []
+		stimulus_itis_stimulus_trials, fix_itis_stimulus_trials = [], []
+
+		events_of_interest = [] # fix R and stim R trials
+
+		pupil_data = []
+
+		nr_runs = 0
+
+		for r in [self.runList[i] for i in self.conditionDict['reward']]:
+			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['blinks']))
+			this_blink_events[:,0] += nr_runs * run_duration
+			blink_events.append(this_blink_events)
+			
+			trial_times = self.run_data_from_hdf(reward_h5file, r, 'trial_times')
+			parameter_data = self.run_data_from_hdf(reward_h5file, r, 'trial_parameters')
+			
+			onsets_fix_reward_trials, raw_itis_of_fix_reward_trials, all_reward_itis_of_fix_reward_trials, fixation_reward_itis_fix_reward_trials, stimulus_reward_itis_fix_reward_trials = self.calculate_event_history_fix_reward(trial_times, parameter_data)
+			onsets_stim_reward_trials, raw_itis_of_stim_reward_trials, all_reward_itis_of_stim_reward_trials, fixation_reward_itis_stim_reward_trials, stimulus_reward_itis_stim_reward_trials = self.calculate_event_history_stim_reward(trial_times, parameter_data)
+
+			stimulus_itis_fix_trials.extend(stimulus_reward_itis_fix_reward_trials)
+			fix_itis_fix_trials.extend(fixation_reward_itis_fix_reward_trials)
+			stimulus_itis_stimulus_trials.extend(stimulus_reward_itis_stim_reward_trials)
+			fix_itis_stimulus_trials.extend(fixation_reward_itis_stim_reward_trials)
+
+			events_of_interest.append([onsets_fix_reward_trials + nr_runs * run_duration, onsets_stim_reward_trials + nr_runs * run_duration])
+
+			this_run_all_events = []
+			for cond in all_conds:
+				this_run_all_events.append(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = [cond]))[:-1,0])	# toss out last trial of each type to make sure there are no strange spill-over effects
+			this_run_all_events = np.array(this_run_all_events) + nr_runs * run_duration
+			all_event_data.append(this_run_all_events)
+			
+			nr_runs += 1
+		event_data = [np.concatenate([e[i] for e in all_event_data]) for i in range(len(all_event_data[0]))]
+		events_of_interest = [np.array(np.round(np.concatenate([e[i] for e in events_of_interest]) * analysis_sample_rate), dtype = int) for i in range(2)]
+
+		stimulus_itis = [np.array(stimulus_itis_fix_trials), np.array(stimulus_itis_stimulus_trials)]
+		fix_itis = [np.array(fix_itis_fix_trials), np.array(fix_itis_stimulus_trials)]
+
+		reward_h5file.close()
+		# get residuals from earlier deconvolution
+		with pd.get_store(self.hdf5_filename) as h5_file:
+			# shell()
+			node = h5_file.get_node('deconvolution_results_mean_psc_hpf_data')
+			residuals = eval('np.squeeze(np.array(node.' + roi + '_' + contrast + '_' + 'deconvolution_mean_residuals_psc_hpf_data))')
+			# residuals = np.array(h5_file.get("/%s/%s"%('deconvolution_results_mean_psc_hpf_data', roi + '_' + contrast + '_' + 'deconvolution_mean_residuals_psc_hpf_data')))
+		# shell()
+
+		correlation_indices = [np.array([np.arange(data_interval[0] * analysis_sample_rate, data_interval[1] * analysis_sample_rate) + t for t in e], dtype = int) for e in events_of_interest]
+		
+		timepoints = np.arange(data_interval[0] * analysis_sample_rate, data_interval[1] * analysis_sample_rate)
+		correlation_timecourses = [residuals[ci] for ci in correlation_indices]
+		# correlation_timecourses_no_zero = [(ci.T - ci[:,:abs(data_interval[0]*analysis_sample_rate)].mean(axis = 1)).T for ci in correlation_timecourses]
+		correlation_timecourses_no_zero = [(ci.T - ci[:,timepoints<0].mean(axis = 1)).T for ci in correlation_timecourses]
+
+		# for ctnz, si, fi, lbl in zip(correlation_timecourses_no_zero, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
+		for ctnz, si, fi, lbl in zip(correlation_timecourses, stimulus_itis, fix_itis, ['fix', 'stim']): # fix trial timecourses, stimulus trial timecourses
+			fix, stim = np.array([spearmanr(tc, fi) for tc in ctnz.T]), np.array([spearmanr(tc, si) for tc in ctnz.T])
+
+			f = pl.figure()
+			s = f.add_subplot(121)
+			s.plot(fix[:,0], 'b', label = 'corr with fix intervals')
+			s.plot(stim[:,0], 'g', label = 'corr with stim intervals')
+			pl.legend()
+			s = f.add_subplot(122)
+			s.plot(-np.log10(fix[:,1]), 'b', label = 'fix P')
+			s.plot(-np.log10(stim[:,1]), 'g', label = 'stim P')
+			pl.legend()
+			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + contrast + '_' + 'correlation_%s.pdf'%lbl))
+
+			with pd.get_store(self.hdf5_filename) as h5_file:
+				h5_file.put("/%s/%s"%('deconvolution_results_mean_psc_hpf_data', roi + '_' + contrast + '_' + 'fixation_interval_correlation_%s'%lbl), pd.DataFrame(fix))
+				h5_file.put("/%s/%s"%('deconvolution_results_mean_psc_hpf_data', roi + '_' + contrast + '_' + 'stimulus_interval_correlation_%s'%lbl), pd.DataFrame(stim))
+
+
+	def interval_analysis_as_pupil(self, rois = ['V1', 'V2', 'V3']):
+		for r in rois:
+			for sig in ['center_Z_pos','center_Z_neg']:
+				self.roi_interval_analysis_as_pupil(analysis_sample_rate = 1.333, interval = [-1.5, 15.0], roi = r, contrast = sig, data_type = 'residuals', data_interval = [-1.5, 15.0])
+
+
 	def deconvolve(self, threshold = 3.0, rois = ['V1', 'V2', 'V3', 'V3AB', 'V4'], analysis_type = 'deconvolution', signal_type = 'mean', data_type = 'psc_hpf_data'):
 		results = []
 		# neg_threshold = -1.0 * thres
@@ -1618,11 +1640,15 @@ class SingleRewardSession(RewardSession):
 			try:
 				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_' + data_type)
 				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
-				# reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_per_run_' + data_type)
+				reward_h5file.remove_node(where = thisRunGroup, name = r[0] + '_' + signal_type + '_residuals_' + data_type)
 			except NoSuchNodeError:
 				pass
-			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-2], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-1], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			self.logger.info('deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-3], 'deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			self.logger.info('per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-2], 'per-run deconvolution timecourses results for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			self.logger.info('deconvolution residuals for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+			reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_residuals_' + data_type, np.array(r[-1]), 'deconvolution residuals for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 		reward_h5file.close()
 	
 	def whole_brain_deconvolution(self, deco = True, average_intervals = [[3.5,12],[2,7]], to_surf = True):
@@ -4157,7 +4183,278 @@ class SingleRewardSession(RewardSession):
 			self.deconvolve_and_regress_trials_roi(roi, threshold = -threshold, mask_type = 'center_Z', mask_direction = 'neg', signal_type = signal_type, data_type = data_type)
 	
 	
-	def trial_history_from_per_trial_glm_results_roi(self, roi = 'V1', mask_type = 'center_Z', mask_direction = 'pos', plots = True):
+	# def trial_history_from_per_trial_glm_results_roi(self, roi = 'V1', mask_type = 'center_Z', mask_direction = 'pos', plots = True):
+	# 	"""docstring for trial_history_from_per_trial_glm_results"""
+	# 	# set up the right reward file
+	# 	reward_h5file = self.hdf5_file('reward')
+	# 	reward_h5file.close()
+	# 	with pd.get_store(self.hdf5_filename) as h5_file:
+	# 		trials = h5_file["/per_trial_glm_results/%s"% roi + '_' + mask_type + '_' + mask_direction + '_' + 'psc_hpf_data']
+		
+	# 	conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+	# 	cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		
+	# 	shell()
+	# 	time_order = np.argsort(trials.event_times)
+	# 	time_ordered_trials = trials.iloc[time_order]
+		
+	# 	time_ordered_trials['intertrial_intervals'] = np.r_[0,np.diff(np.array(time_ordered_trials.event_times))]
+		
+	# 	fix_rewards = np.array(time_ordered_trials.event_types) == 1
+	# 	stim_rewards = np.array(time_ordered_trials.event_types) == 3
+	# 	stim_norewards = np.array(time_ordered_trials.event_types) == 2
+	# 	reward_times = np.array(time_ordered_trials[fix_rewards + stim_rewards].event_times)
+		
+	# 	time_ordered_trials['reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards + stim_rewards].event_times - t)[(time_ordered_trials[fix_rewards + stim_rewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
+	# 	time_ordered_trials['fix_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards].event_times - t)[(time_ordered_trials[fix_rewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
+	# 	time_ordered_trials['stim_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_rewards].event_times - t)[(time_ordered_trials[stim_rewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
+	# 	time_ordered_trials['stim_noreward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_norewards].event_times - t)[(time_ordered_trials[stim_norewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
+		
+	# 	# time_ordered_trials['reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards + stim_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])
+	# 	# time_ordered_trials['fix_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])
+	# 	# time_ordered_trials['stim_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])		
+		
+	# 	with pd.get_store(self.hdf5_filename) as h5_file:
+	# 		h5_file.put("/per_trial_glm_results_ordered/%s"% roi + '_' + mask_type + '_' + mask_direction, time_ordered_trials)
+		
+	# 	if plots:
+	# 		smooth_width = 100
+			
+	# 		def smooth(values, indices):
+	# 			valids = -np.isnan(values) * -np.isnan(indices)
+	# 			sm_values = np.array(values[valids], dtype = float)[np.array(indices[valids], dtype = int)]
+	# 			return np.convolve( sm_values, np.ones((smooth_width))/float(smooth_width), 'valid' )
+			
+	# 		f = pl.figure(figsize = (9,4))
+	# 		s = f.add_subplot(1,2,1)
+	# 		s.set_title(roi + ' ' + 'reward')
+			
+	# 		pl.plot(np.log(time_ordered_trials[fix_rewards].fix_reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'ro', label = 'fix_reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
+	# 		pl.plot(np.log(time_ordered_trials[fix_rewards].stim_reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'bo', label = 'stim_reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
+	# 		# pl.plot(np.log(time_ordered_trials[fix_rewards].reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'go', label = 'reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
+			
+	# 		pl.plot(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'rv', label = 'fix_reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
+	# 		pl.plot(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'bv', label = 'stim_reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
+	# 		# pl.plot(np.log(time_ordered_trials[stim_rewards].reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'gv', label = 'reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
+			
+			
+	# 		pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_fix_reward_reward', alpha = 0.75)
+	# 		pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_fix_reward_reward', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_fix_reward_reward', alpha = 0.75)
+			
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_reward', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_reward', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_reward', alpha = 0.75)
+			
+	# 		# shell()
+			
+	# 		s.set_xlabel('interval duration')
+	# 		s.set_ylabel('betas')
+	# 		# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
+	# 		leg = s.legend(fancybox = True)
+	# 		leg.get_frame().set_alpha(0.5)
+	# 		if leg:
+	# 			for t in leg.get_texts():
+	# 			    t.set_fontsize('small')    # the legend text fontsize
+	# 			for l in leg.get_lines():
+	# 			    l.set_linewidth(3.5)  # the legend line width
+	# 		simpleaxis(s)
+	# 		spine_shift(s)
+	# 		s.set_ylim([-2,2])
+			
+	# 		s = f.add_subplot(1,2,2)
+	# 		s.set_title(roi + ' ' + 'stimulus')
+			
+	# 		# shell() 
+	# 		pl.plot(np.log(time_ordered_trials[stim_norewards].fix_reward_intervals), time_ordered_trials[stim_norewards].stim_betas, 'ro', label = 'fix_reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
+	# 		pl.plot(np.log(time_ordered_trials[stim_norewards].stim_reward_intervals), time_ordered_trials[stim_norewards].stim_betas, 'bo', label = 'stim_reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
+	# 		# pl.plot(np.log(time_ordered_trials[stim_norewards].reward_intervals), time_ordered_trials[fix_rewards].stim_betas, 'go', label = 'reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
+			
+	# 		pl.plot(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'rv', label = 'fix_reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
+	# 		pl.plot(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'bv', label = 'stim_reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
+	# 		# pl.plot(np.log(time_ordered_trials[stim_rewards].reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'gv', label = 'reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
+			
+	# 		pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_stim_noreward_stim', alpha = 0.75)
+	# 		pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_stim_noreward_stim', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_stim_noreward_stim', alpha = 0.75)
+			
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_stim', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_stim', alpha = 0.75)
+	# 		# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_stim', alpha = 0.75)
+			
+	# 		s.set_xlabel('interval duration')
+	# 		s.set_ylabel('betas')
+	# 		# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
+	# 		leg = s.legend(fancybox = True)
+	# 		leg.get_frame().set_alpha(0.5)
+	# 		if leg:
+	# 			for t in leg.get_texts():
+	# 			    t.set_fontsize('small')    # the legend text fontsize
+	# 			for l in leg.get_lines():
+	# 			    l.set_linewidth(3.5)  # the legend line width
+	# 		simpleaxis(s)
+	# 		spine_shift(s)
+	# 		s.set_ylim([-2,2])
+			
+	# 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_interval_beta_correlations.pdf'))
+			
+	# 		# def simulate_run(alphas, beta, stimuli, reward_history, V0 = 0.0):
+	# 		# 	V = alphas * V0
+	# 		# 	Vs = np.zeros((reward_history.shape[0], alphas.shape[0] * 2 + 1))
+	# 		# 	for i in range(reward_history.shape[0]):
+	# 		# 		dV = [alpha * beta * (stimuli[i,j]*reward_history[i] - V[j]) for j, alpha in enumerate(alphas)]
+	# 		# 		V = V + dV
+	# 		# 		Vs[i] = r_[V[0]-V[1], V, dV]
+	# 		# 	return Vs
+			
+	# 		def simulate_run(alphas, beta, stimuli, reward_history, ss = 2.0, V0 = 0.0):
+	# 			V = alphas * V0
+	# 			Vs = np.zeros((reward_history.shape[0], alphas.shape[0] * 2 + 1))
+	# 			for i in range(reward_history.shape[0]):
+	# 				dV = [
+	# 					alphas[0] * beta * ((ss*stimuli[i,0] - 1.0)*reward_history[i] - V[0]),
+	# 					alphas[1] * beta * (stimuli[i,1]*reward_history[i] - V[1])
+	# 				]
+	# 				V = V + dV
+	# 				Vs[i] = r_[V[0]-V[1], V, dV]
+	# 			return Vs
+
+	# 		def simulate_simple_run(time_scale_p, alpha_SR, alpha_SNR, alpha_FR, SR_trials, SNR_trials, FR_trials, V0 = 0.0):
+	# 			input = np.sum(np.array([alpha_SR * SR_trials, alpha_FR * FR_trials, alpha_SNR * SNR_trials]), axis = 0)
+	# 			Vs = np.zeros(SR_trials.shape)
+	# 			dVs = np.zeros(SR_trials.shape)
+	# 			V = 0
+	# 			for i in range(SR_trials.shape[0]):
+	# 				dV = input[i] - V
+	# 				V = V + time_scale_p * dV
+	# 				Vs[i] = V
+	# 				dVs[i] = dV
+	# 			return Vs, dVs
+
+	# 		lrs = np.array([0.0625, 0.0625])
+			
+
+
+	# 		def fit(stim_rewards, stim_norewards, fix_rewards, betas):
+	# 			""""""
+	# 			start_params, min_params, max_params = {}, {}, {}
+
+	# 			start_params['time_scale_p'] = 0.1
+	# 			start_params['alpha_SR'], start_params['alpha_SNR'], start_params['alpha_FR'] = -1.0, 0.5, 0.5
+
+	# 			min_params['time_scale_p'] = 0.001
+	# 			min_params['alpha_SR'], min_params['alpha_SNR'], min_params['alpha_FR'] = -3.0, 0.0, 0.0
+
+	# 			max_params['time_scale_p'] = 0.9
+	# 			max_params['alpha_SR'], max_params['alpha_SNR'], max_params['alpha_FR'] = -0.0, 1.5, 1.5
+
+	# 			params = Parameters()
+	# 			for p in start_params.iterkeys():
+	# 				params.add(p, value = start_params[p], min = min_params[p], max = max_params[p])
+
+	# 			def residual(params, stim_rewards, stim_norewards, fix_rewards):
+	# 				return simulate_simple_run(params['time_scale_p'], params['alpha_SR'], params['alpha_SNR'],params['alpha_FR'],stim_rewards, stim_norewards, fix_rewards) - betas
+
+	# 			minim = Minimizer(residual, params, fcn_args=(), fcn_kws={'stim_rewards':stim_rewards, 'stim_norewards':stim_norewards, 'fix_rewards':fix_rewards, })
+	# 			minim.fmin()
+
+
+	# 		# experiment 1
+	# 		stim_trials = np.array(stim_rewards + stim_norewards, dtype = int)
+	# 		fix_trials = np.array(-np.array(stim_trials, dtype = bool), dtype = int)
+	# 		reward_trials = np.array(fix_rewards + stim_rewards, dtype = int)
+			
+	# 		lrs = np.linspace(0.15,0.6,20)
+	# 		sss = np.linspace(0.5,2.5,12)
+	# 		beta = 1.0
+	# 		corr_res = np.zeros((20,12,5))
+	# 		llmax, ssmax = 0, 0
+	# 		for k, ll in enumerate(lrs):
+	# 			for j, ss in enumerate(sss):
+	# 				rwtc = simulate_run(np.array([ll, ll]), beta, np.vstack((stim_trials, fix_trials)).T, reward_trials, ss = ss )
+	# 				corr_res[k,j,:] = np.array([spearmanr(rwtc[fix_rewards+stim_rewards,i], time_ordered_trials[fix_rewards+stim_rewards].reward_betas)[0] for i in range(5)])
+	# 				if corr_res[k,j,0] == np.max(corr_res[:,:,0]):
+	# 					llmax, ssmax = ll, ss
+	# 		print llmax, ssmax
+			
+	# 		a1 = simulate_run(np.array([llmax, llmax]), beta, np.vstack((stim_trials, fix_trials)).T, reward_trials, ss = ssmax )
+			
+	# 		f = pl.figure(figsize = (9,9))
+	# 		s = f.add_subplot(2,1,1)
+	# 		for i in range(5):
+	# 			s.set_title('RW timecourse %1.2f, %1.2f'%(llmax, ssmax))
+	# 			pl.plot(a1[:,i], ['r','g','b','m','c'][i], label = '', alpha = 0.825, linewidth = 2.0)
+	# 		simpleaxis(s)
+	# 		spine_shift(s)
+	# 		s.set_xlabel('trials')
+	# 		s.set_ylabel('RW values')
+			
+	# 		s = f.add_subplot(2,4,8)
+	# 		s.set_title('correlations')
+	# 		for j, ss in enumerate(np.linspace(0.5,6,12)+1):
+	# 			pl.plot(lrs, corr_res[:,j,0], 'r',  label = '', alpha = 0.25, lw = ss)
+	# 			pl.plot(lrs, corr_res[:,j,1], 'g',  label = '', alpha = 0.25, lw = ss)
+	# 			pl.plot(lrs, corr_res[:,j,2], 'b',  label = '', alpha = 0.25, lw = ss)
+	# 			pl.plot(lrs, corr_res[:,j,3], 'c',  label = '', alpha = 0.25, lw = ss)
+	# 			pl.plot(lrs, corr_res[:,j,4], 'm',  label = '', alpha = 0.25, lw = ss)
+			
+	# 		simpleaxis(s)
+	# 		spine_shift(s)
+	# 		# s.set_ylim([-0.2,0.2])
+	
+	# 		s.set_ylabel('correlation')
+	# 		s.set_xlabel('Learning rate')
+			
+	# 		for i, tr in enumerate([fix_rewards, stim_rewards, fix_rewards+stim_rewards]):
+	# 			s = f.add_subplot(2,4,i+5)
+	# 			s.set_title(roi + ' ' + ['fix', 'stim', 'fix+stim'][i] + ' ' + 'reward')
+			
+	# 			pl.plot(a1[tr,0], time_ordered_trials[tr].reward_betas, 'ro', label = '', alpha = 0.125, ms = 4.0)
+	# 			pl.plot(a1[tr,1], time_ordered_trials[tr].reward_betas, 'go', label = '', alpha = 0.125, ms = 4.0)
+	# 			pl.plot(a1[tr,2], time_ordered_trials[tr].reward_betas, 'bo', label = '', alpha = 0.125, ms = 4.0)
+	# 			pl.plot(a1[tr,3], time_ordered_trials[tr].reward_betas, 'co', label = '', alpha = 0.125, ms = 4.0)
+	# 			pl.plot(a1[tr,4], time_ordered_trials[tr].reward_betas, 'mo', label = '', alpha = 0.125, ms = 4.0)
+			
+	# 			smooth_width = 20
+	# 			pl.plot(smooth(a1[tr,0], np.argsort(a1[tr,0])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,0])) , 'r', label = 'diff_V', alpha = 0.825, linewidth = 2.0)
+	# 			pl.plot(smooth(a1[tr,1], np.argsort(a1[tr,1])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,1])) , 'g', label = 'V0', alpha = 0.825, linewidth = 2.0)
+	# 			pl.plot(smooth(a1[tr,2], np.argsort(a1[tr,2])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,2])) , 'b', label = 'V1', alpha = 0.825, linewidth = 2.0)
+	# 			pl.plot(smooth(a1[tr,3], np.argsort(a1[tr,3])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,3])) , 'c', label = 'dV0', alpha = 0.825, linewidth = 2.0)
+	# 			pl.plot(smooth(a1[tr,4], np.argsort(a1[tr,4])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,4])) , 'm', label = 'dV1', alpha = 0.825, linewidth = 2.0)
+			
+			
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_fix_reward_reward', alpha = 0.75)
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_fix_reward_reward', alpha = 0.75)
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_fix_reward_reward', alpha = 0.75)
+			
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_reward', alpha = 0.75)
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_reward', alpha = 0.75)
+	# 			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_reward', alpha = 0.75)
+			
+	# 			# shell()
+	# 			simpleaxis(s)
+	# 			spine_shift(s)
+	# 			# s.set_ylim([-0.2,0.2])
+		
+	# 			s.set_ylabel('betas')
+	# 			s.set_xlabel('RW_a')
+			
+	# 			if i == 1:
+	# 			# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
+			
+	# 				leg = s.legend(fancybox = True)
+	# 				leg.get_frame().set_alpha(0.5)
+	# 				if leg:
+	# 					for t in leg.get_texts():
+	# 					    t.set_fontsize('small')    # the legend text fontsize
+	# 					for l in leg.get_lines():
+	# 					    l.set_linewidth(3.5)  # the legend line width
+			
+			
+	# 		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_interval_beta_correlations_RW.pdf'))
+	# 	shell()
+
+	def trial_history_from_per_trial_glm_results_roi(self, roi = 'V1', mask_type = 'center_Z', mask_direction = 'pos', fit_variable = 'V', which_betas = 'reward'):
 		"""docstring for trial_history_from_per_trial_glm_results"""
 		# set up the right reward file
 		reward_h5file = self.hdf5_file('reward')
@@ -4168,14 +4465,24 @@ class SingleRewardSession(RewardSession):
 		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
 		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
 		
+		# shell()
 		time_order = np.argsort(trials.event_times)
-		time_ordered_trials = trials.irow(time_order)
+		time_ordered_trials = trials.iloc[time_order]
 		
 		time_ordered_trials['intertrial_intervals'] = np.r_[0,np.diff(np.array(time_ordered_trials.event_times))]
 		
+		max_timepoint = np.max(time_ordered_trials.event_times) + 100
+
+		fix_rewards_sample_points, stim_rewards_sample_points, stim_norewards_sample_points = np.zeros(max_timepoint), np.zeros(max_timepoint), np.zeros(max_timepoint)
+
+		fix_rewards_sample_points[np.array(time_ordered_trials.event_times[np.array(time_ordered_trials.event_types) == 1])] = True
+		stim_rewards_sample_points[np.array(time_ordered_trials.event_times[np.array(time_ordered_trials.event_types) == 3])] = True
+		stim_norewards_sample_points[np.array(time_ordered_trials.event_times[np.array(time_ordered_trials.event_types) == 2])] = True
+
 		fix_rewards = np.array(time_ordered_trials.event_types) == 1
 		stim_rewards = np.array(time_ordered_trials.event_types) == 3
 		stim_norewards = np.array(time_ordered_trials.event_types) == 2
+		fix_norewards = np.array(time_ordered_trials.event_types) == 0
 		reward_times = np.array(time_ordered_trials[fix_rewards + stim_rewards].event_times)
 		
 		time_ordered_trials['reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards + stim_rewards].event_times - t)[(time_ordered_trials[fix_rewards + stim_rewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
@@ -4183,216 +4490,114 @@ class SingleRewardSession(RewardSession):
 		time_ordered_trials['stim_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_rewards].event_times - t)[(time_ordered_trials[stim_rewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
 		time_ordered_trials['stim_noreward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_norewards].event_times - t)[(time_ordered_trials[stim_norewards].event_times - t) < 0])) for t in np.array(time_ordered_trials.event_times)])
 		
-		# time_ordered_trials['reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards + stim_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])
-		# time_ordered_trials['fix_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[fix_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])
-		# time_ordered_trials['stim_reward_intervals'] = np.array([np.abs(np.max((time_ordered_trials[stim_rewards].event_times - t))) for t in np.array(time_ordered_trials.event_times)])		
 		
 		with pd.get_store(self.hdf5_filename) as h5_file:
 			h5_file.put("/per_trial_glm_results_ordered/%s"% roi + '_' + mask_type + '_' + mask_direction, time_ordered_trials)
 		
-		if plots:
-			smooth_width = 100
-			
-			def smooth(values, indices):
-				valids = -np.isnan(values) * -np.isnan(indices)
-				sm_values = np.array(values[valids], dtype = float)[np.array(indices[valids], dtype = int)]
-				return np.convolve( sm_values, np.ones((smooth_width))/float(smooth_width), 'valid' )
-			
-			f = pl.figure(figsize = (9,4))
-			s = f.add_subplot(1,2,1)
-			s.set_title(roi + ' ' + 'reward')
-			
-			pl.plot(np.log(time_ordered_trials[fix_rewards].fix_reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'ro', label = 'fix_reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
-			pl.plot(np.log(time_ordered_trials[fix_rewards].stim_reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'bo', label = 'stim_reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
-			# pl.plot(np.log(time_ordered_trials[fix_rewards].reward_intervals), time_ordered_trials[fix_rewards].reward_betas, 'go', label = 'reward_int_fix_reward_reward', alpha = 0.125, ms = 2.0)
-			
-			pl.plot(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'rv', label = 'fix_reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
-			pl.plot(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'bv', label = 'stim_reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
-			# pl.plot(np.log(time_ordered_trials[stim_rewards].reward_intervals), time_ordered_trials[stim_rewards].reward_betas, 'gv', label = 'reward_int_stim_reward_reward', alpha = 0.125, ms = 2.0)
-			
-			
-			pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_fix_reward_reward', alpha = 0.75)
-			pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_fix_reward_reward', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_fix_reward_reward', alpha = 0.75)
-			
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_reward', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_reward', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_reward', alpha = 0.75)
-			
-			# shell()
-			
-			s.set_xlabel('interval duration')
-			s.set_ylabel('betas')
-			# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
-			leg = s.legend(fancybox = True)
-			leg.get_frame().set_alpha(0.5)
-			if leg:
-				for t in leg.get_texts():
-				    t.set_fontsize('small')    # the legend text fontsize
-				for l in leg.get_lines():
-				    l.set_linewidth(3.5)  # the legend line width
-			simpleaxis(s)
-			spine_shift(s)
-			s.set_ylim([-2,2])
-			
-			s = f.add_subplot(1,2,2)
-			s.set_title(roi + ' ' + 'stimulus')
-			
-			# shell() 
-			pl.plot(np.log(time_ordered_trials[stim_norewards].fix_reward_intervals), time_ordered_trials[stim_norewards].stim_betas, 'ro', label = 'fix_reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
-			pl.plot(np.log(time_ordered_trials[stim_norewards].stim_reward_intervals), time_ordered_trials[stim_norewards].stim_betas, 'bo', label = 'stim_reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
-			# pl.plot(np.log(time_ordered_trials[stim_norewards].reward_intervals), time_ordered_trials[fix_rewards].stim_betas, 'go', label = 'reward_int_stim_noreward_stim', alpha = 0.125, ms = 2.0)
-			
-			pl.plot(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'rv', label = 'fix_reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
-			pl.plot(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'bv', label = 'stim_reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
-			# pl.plot(np.log(time_ordered_trials[stim_rewards].reward_intervals), time_ordered_trials[stim_rewards].stim_betas, 'gv', label = 'reward_int_stim_reward_stim', alpha = 0.125, ms = 2.0)
-			
-			pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_stim_noreward_stim', alpha = 0.75)
-			pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_stim_noreward_stim', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_norewards+stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_norewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_stim_noreward_stim', alpha = 0.75)
-			
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_stim', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_stim', alpha = 0.75)
-			# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].stim_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_stim', alpha = 0.75)
-			
-			s.set_xlabel('interval duration')
-			s.set_ylabel('betas')
-			# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
-			leg = s.legend(fancybox = True)
-			leg.get_frame().set_alpha(0.5)
-			if leg:
-				for t in leg.get_texts():
-				    t.set_fontsize('small')    # the legend text fontsize
-				for l in leg.get_lines():
-				    l.set_linewidth(3.5)  # the legend line width
-			simpleaxis(s)
-			spine_shift(s)
-			s.set_ylim([-2,2])
-			
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_interval_beta_correlations.pdf'))
-			
-			# def simulate_run(alphas, beta, stimuli, reward_history, V0 = 0.0):
-			# 	V = alphas * V0
-			# 	Vs = np.zeros((reward_history.shape[0], alphas.shape[0] * 2 + 1))
-			# 	for i in range(reward_history.shape[0]):
-			# 		dV = [alpha * beta * (stimuli[i,j]*reward_history[i] - V[j]) for j, alpha in enumerate(alphas)]
-			# 		V = V + dV
-			# 		Vs[i] = r_[V[0]-V[1], V, dV]
-			# 	return Vs
-			
-			def simulate_run(alphas, beta, stimuli, reward_history, ss = 2.0, V0 = 0.0):
-				V = alphas * V0
-				Vs = np.zeros((reward_history.shape[0], alphas.shape[0] * 2 + 1))
-				for i in range(reward_history.shape[0]):
-					dV = [
-						alphas[0] * beta * ((ss*stimuli[i,0] - 1.0)*reward_history[i] - V[0]),
-						alphas[1] * beta * (stimuli[i,1]*reward_history[i] - V[1])
-					]
-					V = V + dV
-					Vs[i] = r_[V[0]-V[1], V, dV]
-				return Vs
-			
-			lrs = np.array([0.0625, 0.0625])
-			
-			# experiment 1
-			stim_trials = np.array(stim_rewards + stim_norewards, dtype = int)
-			fix_trials = np.array(-np.array(stim_trials, dtype = bool), dtype = int)
-			reward_trials = np.array(fix_rewards + stim_rewards, dtype = int)
-			
-			lrs = np.linspace(0.15,0.6,20)
-			sss = np.linspace(0.5,2.5,12)
-			beta = 1.0
-			corr_res = np.zeros((20,12,5))
-			llmax, ssmax = 0, 0
-			for k, ll in enumerate(lrs):
-				for j, ss in enumerate(sss):
-					rwtc = simulate_run(np.array([ll, ll]), beta, np.vstack((stim_trials, fix_trials)).T, reward_trials, ss = ss )
-					corr_res[k,j,:] = np.array([spearmanr(rwtc[fix_rewards+stim_rewards,i], time_ordered_trials[fix_rewards+stim_rewards].reward_betas)[0] for i in range(5)])
-					if corr_res[k,j,0] == np.max(corr_res[:,:,0]):
-						llmax, ssmax = ll, ss
-			print llmax, ssmax
-			
-			a1 = simulate_run(np.array([llmax, llmax]), beta, np.vstack((stim_trials, fix_trials)).T, reward_trials, ss = ssmax )
-			
-			f = pl.figure(figsize = (9,9))
-			s = f.add_subplot(2,1,1)
-			for i in range(5):
-				s.set_title('RW timecourse %1.2f, %1.2f'%(llmax, ssmax))
-				pl.plot(a1[:,i], ['r','g','b','m','c'][i], label = '', alpha = 0.825, linewidth = 2.0)
-			simpleaxis(s)
-			spine_shift(s)
-			s.set_xlabel('trials')
-			s.set_ylabel('RW values')
-			
-			s = f.add_subplot(2,4,8)
-			s.set_title('correlations')
-			for j, ss in enumerate(np.linspace(0.5,6,12)+1):
-				pl.plot(lrs, corr_res[:,j,0], 'r',  label = '', alpha = 0.25, lw = ss)
-				pl.plot(lrs, corr_res[:,j,1], 'g',  label = '', alpha = 0.25, lw = ss)
-				pl.plot(lrs, corr_res[:,j,2], 'b',  label = '', alpha = 0.25, lw = ss)
-				pl.plot(lrs, corr_res[:,j,3], 'c',  label = '', alpha = 0.25, lw = ss)
-				pl.plot(lrs, corr_res[:,j,4], 'm',  label = '', alpha = 0.25, lw = ss)
-			
-			simpleaxis(s)
-			spine_shift(s)
-			# s.set_ylim([-0.2,0.2])
-	
-			s.set_ylabel('correlation')
-			s.set_xlabel('Learning rate')
-			
-			for i, tr in enumerate([fix_rewards, stim_rewards, fix_rewards+stim_rewards]):
-				s = f.add_subplot(2,4,i+5)
-				s.set_title(roi + ' ' + ['fix', 'stim', 'fix+stim'][i] + ' ' + 'reward')
-			
-				pl.plot(a1[tr,0], time_ordered_trials[tr].reward_betas, 'ro', label = '', alpha = 0.125, ms = 4.0)
-				pl.plot(a1[tr,1], time_ordered_trials[tr].reward_betas, 'go', label = '', alpha = 0.125, ms = 4.0)
-				pl.plot(a1[tr,2], time_ordered_trials[tr].reward_betas, 'bo', label = '', alpha = 0.125, ms = 4.0)
-				pl.plot(a1[tr,3], time_ordered_trials[tr].reward_betas, 'co', label = '', alpha = 0.125, ms = 4.0)
-				pl.plot(a1[tr,4], time_ordered_trials[tr].reward_betas, 'mo', label = '', alpha = 0.125, ms = 4.0)
-			
-				smooth_width = 20
-				pl.plot(smooth(a1[tr,0], np.argsort(a1[tr,0])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,0])) , 'r', label = 'diff_V', alpha = 0.825, linewidth = 2.0)
-				pl.plot(smooth(a1[tr,1], np.argsort(a1[tr,1])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,1])) , 'g', label = 'V0', alpha = 0.825, linewidth = 2.0)
-				pl.plot(smooth(a1[tr,2], np.argsort(a1[tr,2])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,2])) , 'b', label = 'V1', alpha = 0.825, linewidth = 2.0)
-				pl.plot(smooth(a1[tr,3], np.argsort(a1[tr,3])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,3])) , 'c', label = 'dV0', alpha = 0.825, linewidth = 2.0)
-				pl.plot(smooth(a1[tr,4], np.argsort(a1[tr,4])), smooth(time_ordered_trials[tr].reward_betas, np.argsort(a1[tr,4])) , 'm', label = 'dV1', alpha = 0.825, linewidth = 2.0)
-			
-			
-				# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].fix_reward_intervals)), 'r', label = 'fix_reward_int_fix_reward_reward', alpha = 0.75)
-				# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].stim_reward_intervals)), 'b', label = 'stim_reward_int_fix_reward_reward', alpha = 0.75)
-				# pl.plot(smooth(np.log(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals), np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), smooth(time_ordered_trials[fix_rewards+stim_rewards].reward_betas, np.argsort(time_ordered_trials[fix_rewards+stim_rewards].reward_intervals)), 'g', label = 'reward_int_fix_reward_reward', alpha = 0.75)
-			
-				# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].fix_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].fix_reward_intervals)), 'r--', label = 'fix_reward_int_stim_reward_reward', alpha = 0.75)
-				# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].stim_reward_intervals), np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].stim_reward_intervals)), 'b--', label = 'stim_reward_int_stim_reward_reward', alpha = 0.75)
-				# pl.plot(smooth(np.log(time_ordered_trials[stim_rewards].reward_intervals), np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), smooth(time_ordered_trials[stim_rewards].reward_betas, np.argsort(time_ordered_trials[stim_rewards].reward_intervals)), 'g--', label = 'reward_int_stim_reward_reward', alpha = 0.75)
-			
-				# shell()
-				simpleaxis(s)
-				spine_shift(s)
-				# s.set_ylim([-0.2,0.2])
+
+
+
+		def fit(RL, betas, which_var = 1, integration_window_length = 5):
+			""""""
+			start_params, min_params, max_params = {}, {}, {}
+
+			start_params['time_scale_p'] = 0.005
+			start_params['alpha_SR'], start_params['alpha_SNR'], start_params['alpha_FR'] = 0.0, 0.0, 0.0
+
+			min_params['time_scale_p'] = 0.00025
+			min_params['alpha_SR'], min_params['alpha_SNR'], min_params['alpha_FR'] = -30.0, -30.0, -30.0
+
+			max_params['time_scale_p'] = 0.05
+			max_params['alpha_SR'], max_params['alpha_SNR'], max_params['alpha_FR'] = 30.0, 30.0, 30.0
+
+			params = Parameters()
+			for p in start_params.iterkeys():
+				params.add(p, value = start_params[p], min = min_params[p], max = max_params[p])
+
+			# residual based on params
+			def residual(params, RL, which_var = which_var, integration_window_length = integration_window_length):
+				return RL.simulate_results_for_fit(params = params, which_var = which_var, integration_window_length = integration_window_length) - betas
+
+			minim = Minimizer(residual, params, fcn_args=(), fcn_kws={'RL':RL, 'which_var':which_var, 'integration_window_length':integration_window_length, })
+			# minim.lbfgsb(maxfun = 10000)
+			minim.fmin(maxfun = 100000)
+			return minim
+
+		RL = RL_model(stim_rewards_sample_points, stim_norewards_sample_points, fix_rewards_sample_points)
+
+		if which_betas == 'stim':
+			betas = time_ordered_trials.stim_betas[-fix_norewards]
+		elif which_betas == 'reward':
+			betas = time_ordered_trials.reward_betas[-fix_norewards]
+
+		which_var_dict = {'V':0, 'dV':1}
+		betas = np.array(betas)/np.std(betas)
+
+		minim = fit(RL, betas = betas, which_var = which_var_dict[fit_variable], integration_window_length = 5)
+		simulation = RL.simulate_run(minim.params)
+		corr_sim = RL.simulate_results_for_fit(minim.params, which_var = which_var_dict[fit_variable], integration_window_length = 5)
+
+		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable+'\n' + fit_report(minim.params))
+		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable + ' spearmanr correlation and stats between betas and model: %3.3f, p: %3.3f' %spearmanr(betas, corr_sim))
+		# shell()
 		
-				s.set_ylabel('betas')
-				s.set_xlabel('RW_a')
-			
-				if i == 1:
-				# s.set_xlim([interval[0]-1.5, interval[1] + 1.5])
-			
-					leg = s.legend(fancybox = True)
-					leg.get_frame().set_alpha(0.5)
-					if leg:
-						for t in leg.get_texts():
-						    t.set_fontsize('small')    # the legend text fontsize
-						for l in leg.get_lines():
-						    l.set_linewidth(3.5)  # the legend line width
-			
-			
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_interval_beta_correlations_RW.pdf'))
-	
-	def trial_history_from_per_trial_glm_results(self, rois = ['V1',], mask_type = 'center_Z'): #   'V2', 'V3', 'V3AB', 'V4'
+		f = pl.figure(figsize = (9,8))
+		s = f.add_subplot(2,1,1)
+		s.set_title(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable)
+		pl.plot(np.array(betas), 'b', label = 'simulation correlation %3.3f, p: %3.3f' %spearmanr(betas, corr_sim), alpha = 0.825, linewidth = 2.0)
+		pl.plot(corr_sim, 'r', label = 'simulation', alpha = 0.425, linewidth = 2.0)
+		# pl.plot(simulation[1-which_var_dict[fit_variable]], 'g', label = 'simulation', alpha = 0.425, linewidth = 2.0)
+		leg = s.legend(fancybox = True)
+		leg.get_frame().set_alpha(0.5)
+		if leg:
+			for t in leg.get_texts():
+			    t.set_fontsize('small')    # the legend text fontsize
+			for l in leg.get_lines():
+			    l.set_linewidth(3.5)  # the legend line width
+		simpleaxis(s)
+		spine_shift(s)
+		s.set_xlabel('trials')
+		# shell()
+
+		correlation_data = pd.DataFrame([betas, corr_sim], index = ['betas','simulation']).T
+
+		s = f.add_subplot(2,1,2)
+		# sn.set_style("ticks")
+		s.set_title(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable)
+		# sn.despine(offset=10, trim=True, ax = s)
+		# sn.lmplot('simulation','betas', correlation_data, ax = s)
+		pl.plot(betas, corr_sim, 'bo', label = 'correlation %3.3f, p: %3.3f' %spearmanr(betas, corr_sim), alpha = 0.25, ms = 2.0)
+		# pl.plot(simulation[0], 'r', label = 'simulation', alpha = 0.425, linewidth = 2.0)
+		# pl.plot(simulation[0], 'g', label = 'simulation', alpha = 0.425, linewidth = 2.0)
+		s.set_xlabel('betas')
+		s.set_ylabel('simulation values')
+		simpleaxis(s)
+		spine_shift(s)
+
+
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable + '_interval_beta_correlations_simple_model.pdf'))
+
+		reported_values = [p.value for p in minim.params.values()]
+		reported_labels = [p.name for p in minim.params.values()]
+		reported_values.extend(spearmanr(betas, corr_sim))
+		reported_labels.extend(('spearmanr_R', 'spearmanr_p'))
+
+		return roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable , pd.Series(reported_values, index = reported_labels)
+
+
+	def trial_history_from_per_trial_glm_results(self, rois = ['V1','V2','V3',], mask_type = 'center_Z'): #   'V2', 'V3', 'V3AB', 'V4'
 		"""docstring for trial_history_from_per_trial_glm_results_roi"""
+		results = []
 		for roi in rois:
-			self.trial_history_from_per_trial_glm_results_roi(roi, mask_type = mask_type, mask_direction = 'pos')
-			self.trial_history_from_per_trial_glm_results_roi(roi, mask_type = mask_type, mask_direction = 'neg')
+			for fit_var in ['V', 'dV']:
+				for which_beta in ['stim', 'reward']:
+					results.append(self.trial_history_from_per_trial_glm_results_roi(roi, mask_type = mask_type, mask_direction = 'pos', fit_variable = fit_var, which_betas = which_beta))
+					results.append(self.trial_history_from_per_trial_glm_results_roi(roi, mask_type = mask_type, mask_direction = 'neg', fit_variable = fit_var, which_betas = which_beta))
+		
+		with pd.get_store(self.hdf5_filename) as h5_file:
+			h5_file.put("/per_trial_glm_results_simulated", pd.DataFrame(dict(results)))
+		# shell()
+		# pl.show()
 
 	def deconvolve_and_regress_trials_roi_no_stim(self, roi, threshold = 3.5, mask_type = 'center_Z', mask_direction = 'pos', signal_type = 'mean', data_type = 'psc_hpf_data'):
 		"""
