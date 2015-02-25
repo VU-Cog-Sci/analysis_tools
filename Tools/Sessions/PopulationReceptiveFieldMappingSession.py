@@ -11,6 +11,7 @@ from ..Sessions import *
 from ..Operators.ArrayOperator import *
 from ..Operators.EyeOperator import *
 from ..Operators.PhysioOperator import *
+from ..Operators.CommandLineOperator import *
 
 from pylab import *
 import numpy as np
@@ -31,6 +32,70 @@ from sklearn.linear_model import ARDRegression, BayesianRidge, Ridge, RidgeCV, E
 from skimage.morphology import disk
 from lmfit import minimize, Minimizer, Parameters, Parameter, report_fit, report_errors
 
+class EyeFromfMRISession(object):
+	"""eyePreprocessing"""
+	def __init__(self, subject, experiment_name,  project_directory, loggingLevel = logging.DEBUG, sample_rate_new = 50):
+		self.subject = subject
+		self.experiment_name = experiment_name
+		# self.experiment = experiment_nr
+		# self.version = version
+		try:
+			os.mkdir(os.path.join(project_directory, experiment_name))
+			os.mkdir(os.path.join(project_directory, experiment_name, self.subject.initials))
+		except OSError:
+			pass
+		self.project_directory = project_directory
+		self.base_directory = os.path.join(self.project_directory, self.experiment_name, self.subject.initials)
+		self.create_folder_hierarchy()
+		self.hdf5_filename = os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')
+		self.ho = HDFEyeOperator.HDFEyeOperator(self.hdf5_filename)
+		self.velocity_profile_duration = self.signal_profile_duration = 100
+		self.loggingLevel = loggingLevel
+		self.logger = logging.getLogger(self.__class__.__name__)
+		self.logger.setLevel(self.loggingLevel)
+		addLoggingHandler(logging.handlers.TimedRotatingFileHandler(os.path.join(self.base_directory, 'log', 'sessionLogFile.log'), when='H', delay=2, backupCount=10), loggingLevel=self.loggingLevel)
+		loggingLevelSetup()
+		for handler in logging_handlers:
+			self.logger.addHandler(handler)
+		
+		self.logger.info('starting analysis in ' + self.base_directory)
+		self.sample_rate_new = int(sample_rate_new)
+		self.downsample_rate = int(1000 / sample_rate_new)
+		
+	def create_folder_hierarchy(self):
+		"""createFolderHierarchy does... guess what."""
+		this_dir = self.project_directory
+		for d in [self.experiment_name, self.subject.initials]:
+			try:
+				this_dir = os.path.join(this_dir, d)
+				os.mkdir(this_dir)
+			except OSError:
+				pass
+
+		for p in ['raw',
+		 'processed',
+		 'figs',
+		 'log']:
+			try:
+				os.mkdir(os.path.join(self.base_directory, p))
+			except OSError:
+				pass
+	
+	def delete_hdf5(self):
+		os.system('rm {}'.format(os.path.join(self.base_directory, 'processed', self.subject.initials + '.hdf5')))
+	
+	def import_raw_data(self, edf_files, aliases):
+		"""import_raw_data loops across edf_files and their respective aliases and copies and renames them into the raw directory."""
+		for (edf_file, alias,) in zip(edf_files, aliases):
+			self.logger.info('importing file ' + edf_file + ' as ' + alias)
+			ExecCommandLine('cp "' + edf_file + '" "' + os.path.join(self.base_directory, 'raw', alias + '.edf"'))
+	
+	def import_all_data(self, aliases):
+		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """
+		for alias in aliases:
+			self.ho.add_edf_file(os.path.join(self.base_directory, 'raw', alias + '.edf'))
+			self.ho.edf_message_data_to_hdf(alias=alias)
+			self.ho.edf_gaze_data_to_hdf(alias=alias)
 
 def rotate_clockwise(matrix, degree=90):
     # if degree not in [0, 90, 180, 270, 360]:
@@ -609,10 +674,9 @@ class PRFModelRun(object):
 					pl.savefig(save_images_to_file + '_' + str(i) + '.pdf')
 
 def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_elements_full=[], max_eccentricity = 1,ssr = 20,plotbool=False,
-			hrf_shape='doubleGamma',plotdir=[],voxno=[],dm_for_BR = [], raw_dm_valid_regressors = [],full_dm_valid_regressors = [],slice_no=[],corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,DoG=True,randint=1):
+			hrf_shape='doubleGamma',plotdir=[],voxno=[],dm_for_BR = [], raw_dm_valid_regressors = [],full_dm_valid_regressors = [],slice_no=[],corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,DoG=True,randint=True,roi='unkown_roi',variance_per_point=[]):
 	""""""
 
-	# shell()
 	## initiate search space with Ridge prefit:
 	Ridge_start_params, BR_PRF, BR_predicted = fitRidge_for_Dumoulin(dm_for_BR, time_course,valid_regressors=full_dm_valid_regressors,n_pixel_elements=n_pixel_elements_full,alpha=1e14)
 
@@ -643,6 +707,8 @@ def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_ele
 	baseline_se = np.std(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):]) / np.sqrt(len(time_course)/n_orientations)
 	time_course_se = np.std(time_course[:int(len(time_course)/n_orientations*(n_orientations-1))]) / np.sqrt(len(time_course)/n_orientations*(n_orientations-1))
 	SNR=time_course_se/baseline_se
+
+	# SSR
 
 	# add empty periods between trials both in data and dm in order to let the 
 	tr_per_trial = len(time_course)/n_orientations
@@ -697,15 +763,29 @@ def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_ele
 	for i in range(n_orientations):
 		trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
 
-	# setup results:
+	## EVALUATE FIT QUALITY
+	stats = {}
+	stats['spearman'] = spearmanr(trimmed_time_course,trimmed_mp)[0]
+	stats['pearson'] = pearsonr(trimmed_time_course,trimmed_mp)[0]
+	stats['pearson_squared'] = stats['pearson']**2
+	stats['RSS'] = np.sum((trimmed_time_course - trimmed_mp)**2)
+	stats['r_squared'] = 1 - stats['RSS']/np.sum((trimmed_time_course - np.mean(trimmed_time_course)) ** 2) 
+	stats['chi_squared'] =  np.sum((trimmed_time_course - trimmed_mp)**2/variance_per_point)
+	stats['kendalls_tau'] = kendalltau(trimmed_time_course,trimmed_mp)[0]
+
+
+	## REPORT FIT PARAMETERS
 	results={}
 	for key in params.keys():
 		results[key] = params[key].value
-	srp = list(spearmanr(trimmed_time_course, trimmed_mp))
-	srp = [srp[0], -np.log10(srp[1])]
+
 	results['ecc'] = np.linalg.norm([params['xo'].value,params['yo'].value]) * 27.0/2.0
 	results['sd'] = np.mean([params['sigma_x'].value * params['sigmas_ratio'].value,params['sigma_x'].value])/2  * 27.0
 	results['SNR'] = SNR
+	results['polar'] = np.arctan2(params['yo'].value,params['xo'].value)
+	results['real'] = np.cos(results['polar'])*stats['pearson_squared']
+	results['imag'] = np.sin(results['polar'])*stats['pearson_squared']
+
 	if DoG:
 		results['amplitude'] = params['amplitude1'].value
 		PRF = g.Difference_of_Gaussians(params['amplitude1'].value,params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude2'].value,params['size_ratio'].value)
@@ -713,8 +793,12 @@ def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_ele
 		results['amplitude'] = params['amplitude'].value
 		PRF = g.twoD_Gaussian(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value)
 
+	## PLOT
+	plot_dir = os.path.join(plotdir, '%s'%roi)
+	if (not os.path.isdir(plot_dir)) * plotbool: os.mkdir(plot_dir)
+
 	# if plotbool * (plotdir != []) * (srp[0] >= corr_threshold)*(srp[1] >= logp_thresh)*(SNR >= SNR_thresh)*(results['sd'] >= sd_thresh) * (results['ecc']<= ecc_thresh) * (results['amplitude'] <= amp_thresh):
-	if plotbool * (plotdir != [])*(randint==1):
+	if plotbool * (plot_dir != [])  * (results['ecc'] < 4):#* randint
 
 		f=pl.figure(figsize = (16,7))
 		s = f.add_subplot(241)
@@ -726,10 +810,17 @@ def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_ele
 		imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
 		clim(0,1)
 		if DoG:
-			s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \np-val: %.2f \nr-val: %.2f \n sigmas_ratio: %.2f \n SNR: %.2f \n amp1: %.5f \n amp2: %.5f' %(results['sd'],results['ecc'],srp[1],srp[0],params['sigmas_ratio'].value,results['SNR'],params['amplitude1'].value,params['amplitude2'].value),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
-		else:
-			s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \np-val: %.2f \nr-val: %.2f \n sigmas_ratio: %.2f \n SNR: %.2f \n amplitude: %.5f' %(results['sd'],results['ecc'],srp[1],srp[0],params['sigmas_ratio'].value,results['SNR'],results['amplitude']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+			s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \n polar: %.2f \n sigmas_ratio: %.2f \n amp1: %.5f \n amp2: %.5f' %(results['sd'],results['ecc'],results['polar'],params['sigmas_ratio'].value,params['amplitude1'].value,params['amplitude2'].value),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+		# else:
+			# s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'pixel_elements: %d \nsize (sd): %.2f \necc: %.2f \np-val: %.2f \nr-val: %.2f \n sigmas_ratio: %.2f \n SNR: %.2f \n amplitude: %.5f' %(n_pixel_elements_raw,results['sd'],results['ecc'],srp[1],srp[0],params['sigmas_ratio'].value,results['SNR'],results['amplitude']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
 		pl.axis('off')
+
+		s = f.add_subplot(2,4,6)
+		imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
+		clim(0,1)
+		s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'spearman r: %.2f \npearson r: %.2f \nkendalls tau: %.2f \nchi squared: %.2f \nr squared: %.2f \n RSS: %.2f \n SNR: %.2f' %(stats['spearman'],stats['pearson'],stats['kendalls_tau'],stats['chi_squared'],stats['r_squared'],stats['RSS'],results['SNR']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+		pl.axis('off')
+
 		s = f.add_subplot(245)
 		pl.imshow(BR_PRF,interpolation='nearest',cmap=cm.coolwarm)
 		pl.axis('off')
@@ -754,10 +845,11 @@ def Dumoulin_fit(time_course, design_matrix, n_pixel_elements_raw=[],n_pixel_ele
 		pl.tick_params(labelsize=18)
 		s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
 
-		pl.savefig(os.path.join(plotdir + 'vox_%d_%d_%d.pdf'%(slice_no,voxno,n_pixel_elements_raw)))
+		pl.savefig(os.path.join(plot_dir, 'vox_%d_%d_%d.pdf'%(slice_no,voxno,n_pixel_elements_raw)))
 		pl.close()
 
-	return results.values(), PRF.ravel(), srp
+	# stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
+	return results.values(), PRF.ravel(), stats.values()
 
 class gpf(object):
 	def __init__(self, design_matrix, max_eccentricity, n_pixel_elements, ssr,rtime=1.5,mean_max=1,add_empty_trs=0,tr_per_trial=0,n_orientations=9):
@@ -837,6 +929,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	"""
 	Class for population receptive field mapping sessions analysis.
 	"""
+	
 	def preprocessing_evaluation(self):
 
 		mask = 'rh.V1'
@@ -860,6 +953,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				pl.title(p,fontsize=14)
 			k+=1
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'preprocessing_evaluation_run_%d.pdf'%k))
+
 
 
 	def resample_epis(self, condition = 'PRF'):
@@ -918,14 +1012,15 @@ class PopulationReceptiveFieldMappingSession(Session):
 				self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'length':float(e[8]),'peak_velocity':float(e[9])} for e in saccade_strings]
 				self.fixations_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fix_strings]
 				self.blinks_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blink_strings]
-			
+
+
 				self.saccade_type_dictionary = np.dtype([(s , np.array(self.saccades_from_message_file[0][s]).dtype) for s in self.saccades_from_message_file[0].keys()])
 				self.fixation_type_dictionary = np.dtype([(s , np.array(self.fixations_from_message_file[0][s]).dtype) for s in self.fixations_from_message_file[0].keys()])
 				if len(self.blinks_from_message_file) > 0:
 					self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
 			eye_blinks = [[((self.blinks_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.blinks_from_message_file[i]['duration']/1000,1] for i in range(len(self.blinks_from_message_file)) if (self.blinks_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000)]
 			saccades = [[((self.saccades_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.saccades_from_message_file[i]['duration']/1000,1] for i in range(len(self.saccades_from_message_file)) if np.all([(self.saccades_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000), (self.saccades_from_message_file[i]['length'] > length_thresh)]) ]
-		
+	
 			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']), np.array(eye_blinks), fmt = '%3.2f', delimiter = '\t')
 			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
 			
@@ -967,7 +1062,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	def create_combined_label_mask(self):
 
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.any(['lh' in anRF,'rh' in anRF])]
+		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
 		rois_combined = zeros((29,96,96)).astype('bool')
 		for this_roi in anatRoiFileNames:
 			rois_combined += NiftiImage(this_roi).data.astype('bool')
@@ -1018,7 +1113,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		run_start_time = []
 		exp_end_time = []
 		fig = pl.figure(figsize=(12,6))	
-		# f2 = pl.figure(figsize==(12,8))
+		f2 = pl.figure(figsize=(12,8))
 		for ri, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			filename = self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' )
 			with open(filename) as f:
@@ -1046,8 +1141,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			trial_starts = []
 			trial_start_string = [[e for e in picklefile['eventArray'][i] if 'phase 1' in e ] for i in range(len(picklefile['eventArray'])) ]
 			trial_starts = [ float(ts[0].split(' ')[-1])-run_start_time[ri] for ts in trial_start_string ]
-			trial_starts.append(float(trial_start_string[0].split(' ')[-1]))
-
+			# trial_starts.append(float(trial_start_string[0][0].split(' ')[-1]))
 
 			rounded_start_times = (np.round(trial_starts,1)*10).astype(int)
 			start_times_array = np.zeros(np.max(rounded_start_times)+1)
@@ -1056,13 +1150,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 			rounded_pulses = (np.round(t_pulse,1)*10).astype(int)
 			t_pulse_array = np.zeros(np.max(rounded_pulses)+1)
 			t_pulse_array[rounded_pulses]=1
-			plot(t_pulse_array,'b')
-			plot(start_times_array,'r')
-			ylim(0,2)
-
+			
+			s1 = fig.add_subplot(len(self.conditionDict['PRF']),1,ri)
+			s1.plot(t_pulse_array,'b')
+			s1.plot(start_times_array,'r')
+			s1.set_ylim(0,2)
 
 			s2 = f2.add_subplot(len(self.conditionDict['PRF']),1,ri)
-
 			num_ts = t_pulse.size
 			niftiImage =  NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			num_trs = niftiImage.getTimepoints()
@@ -1074,12 +1168,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 				print '!!!! ERROR !!!!! \n In run %d, num_trs (%d) != num_ts (%d)'%(ri,num_trs,num_ts)
 				print 'exp ended at %d, last t-pulse was at %d'%(exp_end_time[ri],t_pulse[-1]) 
 
-			s = fig.add_subplot(len(self.conditionDict['PRF']),1,ri)
-			pl.hist(np.diff(t_pulse),color='#c94545')
+			# s = fig.add_subplot(len(self.conditionDict['PRF']),1,ri)
+			s2.hist(np.diff(t_pulse),color='#c94545')
 			# pl.xlim(0,15)
-			simpleaxis(s)
-			spine_shift(s)
-		pl.savefig(os.path.join(self.stageFolder('processed/mri/figs/'),'check_t_pulses.pdf'))
+			simpleaxis(s2)
+			spine_shift(s2)
+		fig.savefig(os.path.join(self.stageFolder('processed/mri/figs/'),'check_t_pulses.pdf'))
+		f2.savefig(os.path.join(self.stageFolder('processed/mri/figs/'),'check_t_pulses_2.pdf'))
 
 	def stimulus_timings_square(self, stimulus_correction = 0):
 
@@ -1354,7 +1449,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# mcf = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' ))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			instruct_times = [[[tt[1] - 3.0, 3.0, 1.0]] for tt in r.trial_times]
+			instruct_times = [[[tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]
 			# instruct_times = instruct_times.reshape((1,instruct_times.shape[0], instruct_times.shape[-1]))
 
 			# trial_onset_times = [[[tt[1], 0.5, 1.0]] for tt in r.trial_times]
@@ -1369,7 +1464,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				rtime = nii_file.rtime
 			run_design = Design(nii_file.timepoints, rtime, subSamplingRatio = 10)
 			# run_design.configure(np.vstack([instruct_times, blink_times_list]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
-			run_design.configure(instruct_times, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
+			run_design.configure(blink_times_list, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
 			# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf.T, physio]).T)
 			joined_design_matrix = np.mat(run_design.designMatrix).T
 
@@ -1575,11 +1670,140 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			bar_width = 0.1
 			# bar_width = 1/(0.64*float(n_pixel_elements))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = TR, n_pixel_elements = n_pixel_elements, sample_duration = 0.01, bar_width = bar_width)
-			
+			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = TR, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = bar_width)
+			# np.arange(0, self.n_TRs * self.TR, self.sample_duration)
 			self.logger.info('simulating run %d experiment of %d pixel elements and %1.2f s sample_duration'%(i+1,n_pixel_elements, sample_duration))
 			mr.simulate_run( orientations )
+		
+			# add instruction to dm
+			add_instruction_to_dm = True
+			if add_instruction_to_dm:
+				fixation_size = 0.5
+				instruct_size = [6.6,0.7] # horizontal and vertical visual degrees
+				instruct_duration = 1.5
+				degree_per_pix_element = 27/float(n_pixel_elements)
+				instruct_times = ((np.array(r.trial_times)[:,1].astype('float32') - instruct_duration) / sample_duration)
+				instruct_times = instruct_times[instruct_times>0]
+				if not convolve:
+					for instruct_time in instruct_times:
+						mr.run_matrix[int(instruct_time):int(instruct_time+instruct_duration/sample_duration),int(round(n_pixel_elements/2.0)):int(round(n_pixel_elements/2.0+(instruct_size[1]/2.0/degree_per_pix_element))),int(round(n_pixel_elements/2.0-(instruct_size[0]/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(instruct_size[0]/2.0/degree_per_pix_element)))] = 1.0
+				
+					mr.run_matrix[:,int(round(n_pixel_elements/2.0-(fixation_size/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(fixation_size/2.0/degree_per_pix_element))),int(round(n_pixel_elements/2.0-(fixation_size/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(fixation_size/2.0/degree_per_pix_element)))] = 1.0
 
+			shift_dm_with_gaze = False
+			if shift_dm_with_gaze:
+				## SHIFT DM ALONG WITH GAZE POSITION:
+				eye_home = '/home/shared/PRF/PRF_eye_analysis/'
+				hdf5_filename = os.path.join(eye_home,self.subject.initials,'processed',self.subject.initials+ '.hdf5')
+				h5file = open_file(hdf5_filename, mode = "r", title = self.subject.initials)
+				this_run_group_name = 'PRF_run_%s'%(i+1)
+				thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
+				xy_data = h5file.get_node(where='/'+this_run_group_name+'/block_0',name='block0_values',classname='Array').read()
+				tabel_names = h5file.get_node(where='/'+this_run_group_name+'/block_0',name='block0_items',classname='Array').read()
+				x_data = xy_data[:,np.where(tabel_names=='R_gaze_x')].ravel()#[np.arange(0,len(xy_data),sample_duration*1000).astype(int)]
+				y_data = xy_data[:,np.where(tabel_names=='R_gaze_y')].ravel()#[np.arange(0,len(xy_data),sample_duration*1000).astype(int)]
+
+				eye_sample_dur = 0.001
+				nr_dummy_scans = 6
+				nifti_start_delay = nr_dummy_scans*TR
+				nifti_start_delay_samples = int(nifti_start_delay / eye_sample_dur)
+
+				x_data = x_data[nifti_start_delay_samples:]
+				y_data = y_data[nifti_start_delay_samples:]
+
+				instruct_samples = np.zeros(len(x_data)).astype('bool')
+				stimulus_samples = np.zeros(len(x_data)).astype('bool')
+				for instruct_time in instruct_times:
+					instruct_samples[int(instruct_time):int(instruct_time+instruct_duration/sample_duration)] = True
+				stim_start_times = ((np.array(r.trial_times)[:,1].astype('float32')) / sample_duration)
+				stim_end_times = ((np.array(r.trial_times)[:,2].astype('float32')) / sample_duration)
+				for stim_start,stim_end in zip(stim_start_times,stim_end_times): 
+						stimulus_samples[int(stim_start):int(stim_end)] = True
+
+				# detrend_eye_data
+				screen_size = [1920,1200]
+				n_samples = 10/eye_sample_dur
+				x_data_without_zeros = copy(x_data)
+				# x_data_without_zeros[x_data_without_zeros==0.0] = screen_size[0]/2.0
+				x_data_without_zeros[(x_data_without_zeros<(np.median(x_data)*(1-0.16*1200/1920)))+(x_data_without_zeros>(np.median(x_data)*(1+0.16*1200/1920)))] = screen_size[0]/2.0
+				y_data_without_zeros = copy(y_data)
+				# y_data_without_zeros[y_data_without_zeros==0.0] = screen_size[1]/2.0
+				y_data_without_zeros[(y_data_without_zeros<(np.median(y_data)*(1-0.16)))+(y_data_without_zeros>(np.median(y_data)*(1+0.16)))] = screen_size[1]/2.0
+
+				# pl.hist(x_data,100,alpha=0.5)
+				# pl.hist(x_data_without_zeros,100,alpha=0.5)
+				# pl.axvline(np.median(x_data),linestyle='--',color='r',linewidth=2)
+
+				# pl.axvline(np.median(x_data)*(1-0.16*1200/1920),linestyle='--',color='k',linewidth=2)
+				# pl.axvline(np.median(x_data)*(1+0.16*1200/1920),linestyle='--',color='k',linewidth=2)
+
+				x_data_detrended = np.ravel([(x_data_without_zeros[t*n_samples:(t+1)*n_samples] - np.median(x_data_without_zeros[t*n_samples:(t+1)*n_samples]) + screen_size[0]/2) for t in range(int(x_data_without_zeros.shape[0]/n_samples))])
+				x_data_detrended = np.hstack([x_data_detrended,x_data_without_zeros[int(int(x_data_without_zeros.shape[0]/n_samples)*n_samples):] - np.median(x_data_without_zeros[int(int(x_data_without_zeros.shape[0]/n_samples)*n_samples):]) + screen_size[0]/2])
+				y_data_detrended = np.ravel([(y_data_without_zeros[t*n_samples:(t+1)*n_samples] - np.median(y_data_without_zeros[t*n_samples:(t+1)*n_samples]) + screen_size[1]/2) for t in range(int(y_data_without_zeros.shape[0]/n_samples))])
+				y_data_detrended = np.hstack([y_data_detrended,y_data_without_zeros[int(int(y_data_without_zeros.shape[0]/n_samples)*n_samples):] - np.median(y_data_without_zeros[int(int(y_data_without_zeros.shape[0]/n_samples)*n_samples):]) + screen_size[1]/2])
+				
+				n_samples_in_tr = int(round(TR/eye_sample_dur))
+				x_data_per_TR = np.ravel([np.tile(np.median(x_data_detrended[t*n_samples_in_tr:(t+1)*n_samples_in_tr]),n_samples_in_tr) for t in range(int(x_data_detrended.shape[0]/n_samples_in_tr))])
+				x_data_per_TR = np.hstack([x_data_per_TR, np.tile(np.median(x_data_detrended[int(int(x_data_detrended.shape[0]/n_samples_in_tr)*n_samples_in_tr):]),len(x_data_detrended)-int(int(x_data_detrended.shape[0]/n_samples_in_tr)*n_samples_in_tr))])
+				y_data_per_TR = np.ravel([np.tile(np.median(y_data_detrended[t*n_samples_in_tr:(t+1)*n_samples_in_tr]),n_samples_in_tr) for t in range(int(y_data_detrended.shape[0]/n_samples_in_tr))])
+				y_data_per_TR = np.hstack([y_data_per_TR, np.tile(np.median(y_data_detrended[int(int(y_data_detrended.shape[0]/n_samples_in_tr)*n_samples_in_tr):]),len(y_data_detrended)-int(int(y_data_detrended.shape[0]/n_samples_in_tr)*n_samples_in_tr))])
+
+				x_data_per_TR = x_data_per_TR[np.arange(0,len(x_data_per_TR),sample_duration*1000).astype(int)]
+				y_data_per_TR = y_data_per_TR[np.arange(0,len(y_data_per_TR),sample_duration*1000).astype(int)]
+
+				plot_eye_data = True
+				if plot_eye_data:
+					f = pl.figure(figsize=(screen_size[0]/150.0,screen_size[1]/150.0))
+					s = f.add_subplot(111)
+					# pl.plot(x_data,y_data,'.k',alpha=0.01,label='raw data')
+					# pl.plot(x_data_detrended,y_data_detrended,'o',alpha=0.2,label='raw data')
+					pl.plot(x_data_detrended[instruct_samples],y_data_detrended[instruct_samples],'.r',alpha=0.2,label='during instruction')
+					pl.plot(x_data_detrended[stimulus_samples],y_data_detrended[stimulus_samples],'.g',alpha=0.2,label='during stimulus')
+					pl.plot(x_data_detrended[(stimulus_samples==False)*(instruct_samples==False)],y_data_detrended[(stimulus_samples==False)*(instruct_samples==False)],'.b',alpha=0.2,label='other')
+					pl.plot(screen_size[0]/2.0,screen_size[1]/2.0,'w',marker='*',label='centre of screen')
+					pl.plot(x_data_per_TR,y_data_per_TR,'.k',label='median per tr')
+
+					# pl.plot(np.median(x_data),np.median(y_data),'.w',label='median raw')
+					simpleaxis(s)
+					spine_shift(s)
+					pl.ylim(0,screen_size[1])
+					pl.xlim(0,screen_size[0])
+					pl.xlabel('screen x-position (pixels)')
+					pl.ylabel('screen y-position (pixels)')
+					leg = s.legend(fancybox = True, loc = 'best')
+					leg.get_frame().set_alpha(0.5)
+					if leg:
+						for t in leg.get_texts():
+						    t.set_fontsize('large')    # the legend text fontsize
+						for l in leg.get_lines():
+						    l.set_linewidth(3.5)  # the legend line width
+					pl.savefig( os.path.join(eye_home,self.subject.initials,'figs','eye_position_run_%s.pdf'%(i+1)))
+					pl.close('all')
+
+				shift_x =  np.round(x_data_per_TR/screen_size[0] * n_pixel_elements -n_pixel_elements/2.0).astype(int)
+				shift_y =  np.round(y_data_per_TR/screen_size[1] * n_pixel_elements -n_pixel_elements/2.0).astype(int)
+
+				shifted_dm = np.zeros_like(mr.run_matrix)
+				for t in range(len(shifted_dm)):
+
+					if (shift_x[t] > 0) * (shift_y[t] > 0):
+						shifted_dm[t,:-shift_x[t],:-shift_y[t]] = mr.run_matrix[t,shift_x[t]:,shift_y[t]:]
+					elif (shift_x[t] < 0) * (shift_y[t] > 0):
+						shifted_dm[t,-shift_x[t]:,:-shift_y[t]] = mr.run_matrix[t,:shift_x[t],shift_y[t]:]
+					elif (shift_x[t] > 0) * (shift_y[t] < 0):
+						shifted_dm[t,:-shift_x[t],-shift_y[t]:] = mr.run_matrix[t,shift_x[t]:,:shift_y[t]]
+					elif (shift_x[t] < 0) * (shift_y[t] < 0):
+						shifted_dm[t,-shift_x[t]:,-shift_y[t]:] = mr.run_matrix[t,:shift_x[t],:shift_y[t]]
+					elif (shift_x[t] == 0) * (shift_y[t] > 0):
+						shifted_dm[t,:,:-shift_y[t]] = mr.run_matrix[t,:,shift_y[t]:]
+					elif (shift_x[t] == 0) * (shift_y[t] < 0):
+						shifted_dm[t,:,-shift_y[t]:] = mr.run_matrix[t,:,:shift_y[t]]
+					elif (shift_x[t] > 0) * (shift_y[t] == 0):
+						shifted_dm[t,:-shift_x[t],:] = mr.run_matrix[t,shift_x[t]:,:]
+					elif (shift_x[t] < 0) * (shift_y[t] == 0):
+						shifted_dm[t,-shift_x[t]:,:] = mr.run_matrix[t,:shift_x[t],:]
+
+				mr.run_matrix = shifted_dm
 			
 			analyze_dm=False
 			if analyze_dm:
@@ -1726,7 +1950,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def fit_PRF(self, n_pixel_elements_raw = 30,n_pixel_elements_full = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], 
 				condition = 'PRF', sample_duration = 0.05, save_all_data = True, orientations = [0,45,90,135,180,225,270,315],
-				delve_deeper=False,method='new',corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,plotbool=False): # cortex_dilated_mask
+				delve_deeper=False,method='new',corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,plotbool=False,convert_to_surf=True): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
 		fit_PRF uses a parallel joblib implementation of the Bayesian Ridge Regression from sklearn
@@ -1804,10 +2028,31 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# loop over tasks
 		estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/n_jobs)/141**2)*n_pixel_elements_raw**2)/60) * len(task_conditions)
 		self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
-		self.logger.info('estimated duration %dm per condition, %dm total' % (estimated_fit_duration/len(task_conditions),estimated_fit_duration))
+		self.logger.info('estimated duration with 20 processes: %dm per condition, %dm total' % (estimated_fit_duration/len(task_conditions),estimated_fit_duration))
+
+
+		# figure out roi label per voxel
+		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
+
+		# find out roi name per voxel
+		roi_names = np.zeros_like(slices_in_full).astype('string')
+		for this_roi in anatRoiFileNames:
+			roi_nifti = NiftiImage(this_roi).data.astype('bool')
+			roi_names[roi_nifti] = (this_roi.split('/')[-1]).split('.')[1]
+
+		roi_names[roi_names=='0.0'] = 'unkown_roi'
+		roi_names = roi_names[cortex_mask]
+
+		roi_count = {}
+		for roi in np.unique(roi_names):
+			roi_count[roi] = np.size(roi_names[roi_names==roi]) 
 
 		for this_condition in task_conditions:
 
+			plotdir = os.path.join(self.stageFolder('processed/mri/figs'), 'PRF_plots_%s_%s_%s'%(mask_file_name,n_pixel_elements_raw,this_condition))
+			if os.path.isdir(plotdir)*plotbool: shutil.rmtree(plotdir); os.mkdir(plotdir)
+			elif (not os.path.isdir(plotdir))*plotbool: os.mkdir(plotdir)
 			self.logger.info('Now fitting condition %s'%this_condition)
 
 			if method == 'old':
@@ -1837,26 +2082,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 			elif method == 'new':
 
 				orientations.append('fix_no_stim')
-				dilate_width = 5 # trs after stimulus disappearance to include in trial		
+				instruction_duration = 1.5
+				dilate_width = 5 + instruction_duration/self.TR # trs after stimulus disappearance to include in trial		
 				trial_duration = r.trial_duration
 				trs_in_trial = round(trial_duration/self.TR)
 				add_time_for_previous_runs = 0
 				trial_start_times = [];trial_names=[];saccades=[];trial_orientations=[]
 				for j, r in enumerate([self.runList[k] for k in self.conditionDict['PRF']]):
 					this_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
-					trial_start_times.append(np.array(r.trial_times)[:,1].astype('float32') + add_time_for_previous_runs)
+					trial_start_times.append(np.array(r.trial_times)[:,1].astype('float32') + add_time_for_previous_runs - instruction_duration)
 					trial_names.append(np.array(r.trial_times)[:,0])
 					trial_orientations.append(np.array(r.trial_times)[:,4].astype('float32'))
 					saccades.append(np.array(r.trial_times)[:,3]=='False')
 					add_time_for_previous_runs += self.TR * this_nii_file.timepoints
 				trial_names = np.ravel(np.array(trial_names))[:-1] # cutoff last and first trial because we want to be able to include *pad_trs_4_smooth* trs before and after trial
-				# trial_names = np.ravel(np.array(trial_names))
-				if this_condition == 'all':
+	 			if this_condition == 'all':
 					trial_names[trial_names!='fix_no_stim'] = 'all'
-				# trial_start_times = np.ravel(np.array(trial_start_times))
-				# saccades = np.ravel(np.array(saccades))
-				# trial_orientations = np.ravel(np.array(trial_orientations)).astype(int)
-	 			trial_start_times = np.ravel(np.array(trial_start_times))[:-1]
+	 			trial_start_times = np.ravel(np.array(trial_start_times))[:-1]		
 				saccades = np.ravel(np.array(saccades))[:-1]
 				trial_orientations = np.ravel(np.array(trial_orientations))[:-1].astype(int)
 				extended_period = int(trs_in_trial+dilate_width) 
@@ -1870,9 +2112,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# set up empty arrays for saving the data
 			all_coefs = np.zeros([int(raw_dm_valid_regressors.sum())] + list(cortex_mask.shape))
 			all_full_coefs = np.zeros([n_pixel_elements_raw**2] + list(cortex_mask.shape))
-			all_corrs = np.zeros([2] + list(cortex_mask.shape))
+			all_corrs = np.zeros([7] + list(cortex_mask.shape))
 			all_raw_data = np.zeros([z_data.shape[0]] + list(cortex_mask.shape))
-			all_results = np.zeros([13] + list(cortex_mask.shape))
+			all_results = np.zeros([16] + list(cortex_mask.shape))
 
 			# all_data = np.zeros([selected_tr_times.sum()] + list(cortex_mask.shape))
 			# all_predicted=[]
@@ -1880,12 +2122,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			total_elapsed_time = 0
 			# run through slices, each slice having a certain timing
 			dm_k = 0
-
-			plotdir = self.stageFolder('processed/mri/') + 'figs/PRF_plots_%d_%s_%s/'%(n_pixel_elements_raw,mask_file_name,this_condition)
-			if  os.path.isdir(plotdir): shutil.rmtree(plotdir); os.mkdir(plotdir)
-			else: os.mkdir(plotdir)
-
-			
+		
 			for sl in np.arange(cortex_mask.shape[0]):
 				voxels_in_this_slice = (slices == sl)
 				voxels_in_this_slice_in_full = (slices_in_full == sl)
@@ -1894,6 +2131,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					start_fit = time.time()
 					these_tr_times = self.tr_time_list + sl * (self.TR / float(cortex_mask.shape[0])) # was shape[1], but didn't make sense, so changed to shape[0] (amount of slices instead of voxels)
 					these_voxels = z_data[:,voxels_in_this_slice].T
+					these_roi_names = roi_names[voxels_in_this_slice]
 					# closest sample in designmatrix
 					if method == 'old':
 						these_samples = np.array([np.argmin(np.abs(self.sample_time_list - (t))) for t in these_tr_times[selected_tr_times]]) 
@@ -2008,6 +2246,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 						all_resampled_moving_average_data = []
 						# all_smoothed_data = []
 						all_resampled_smoothed_data = []
+						all_variance_per_point = []
 
 						for i, orient in enumerate(orientations):
 							
@@ -2030,7 +2269,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 							# interpolate and resample data (interpolation goes through every data point. This ensures that the data jitter is corrected for. However, 
 							# as all trials are quite different, this results in very high frequency noise. Resample takes care of this by filtering the data to contain only frequencies
 							# that can be expected at the sample rate dictated by the new amount of samples (extended_period))
-
+							
+							variance_per_point = [np.std(np.reshape(data,(trials_this_dir,-1)),axis=0) for data in concatenated_data]
 							interp1d_data = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.linspace(sorted_tr_times[0],sorted_tr_times[-1],len(sorted_data[0]))) for s in sorted_data ])
 							resampled_interp1d_data=resample(interp1d_data,extended_period,axis=1)
 
@@ -2053,6 +2293,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 								all_interpolated_data.append(interp1d_data)
 								all_moving_average_data.append(moving_average)
 								# all_smoothed_data.append(smoothed_data)
+							all_variance_per_point.append(variance_per_point)
 							all_resampled_interpolated_data.append(resampled_interp1d_data)
 							all_resampled_moving_average_data.append(resampled_moving_average)
 							# all_resampled_smoothed_data.append(resampled_smoothed_data)
@@ -2067,6 +2308,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 							all_moving_average_data = np.reshape(np.swapaxes(np.array(all_moving_average_data),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_smoothed_data = np.reshape(np.swapaxes(np.array(all_smoothed_data),0,1),(voxels_in_this_slice.sum(),-1))
 						# all_resampled_smoothed_data = np.reshape(np.swapaxes(np.array(all_resampled_smoothed_data),0,1),(voxels_in_this_slice.sum(),-1))
+						all_variance_per_point = np.reshape(np.swapaxes(np.array(all_variance_per_point),0,1),(voxels_in_this_slice.sum(),-1))
 						all_resampled_interpolated_data = np.reshape(np.swapaxes(np.array(all_resampled_interpolated_data),0,1),(voxels_in_this_slice.sum(),-1))
 						all_resampled_moving_average_data = np.reshape(np.swapaxes(np.array(all_resampled_moving_average_data),0,1),(voxels_in_this_slice.sum(),-1))
 
@@ -2439,11 +2681,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 						if technique == 'Lee':
 							res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(all_dm, vox_timeseries) for vox_timeseries in all_resampled_moving_average_data)
 						elif technique == 'Lee_to_Dumoulin':
-							randints_for_plot = np.random.randint(4,size=np.shape(all_resampled_moving_average_data)[0])
+							# randints_for_plot = np.random.randint(10,size=np.shape(all_resampled_moving_average_data)[0])
+							randints_for_plot = [(np.random.randint(roi_count[these_roi_names[voxno]])<100) for voxno in range(voxels_in_this_slice.sum())]
+
 							# res = []
 							# for voxno in range(voxels_in_this_slice.sum()):
-								# res.append(Dumoulin_fit(time_course=all_resampled_interpolated_data[voxno,:], design_matrix=raw_dm_for_dumoulin,plotbool=plotbool, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold=corr_threshold,SNR_thresh=SNR_thresh,randint=randints_for_plot[voxno]))
-							res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
+								# res.append(Dumoulin_fit(time_course=all_resampled_interpolated_data[voxno,:], design_matrix=raw_dm_for_dumoulin,plotbool=plotbool, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold=corr_threshold,SNR_thresh=SNR_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],variance_per_point = all_variance_per_point[voxno]))
+							res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],variance_per_point = all_variance_per_point[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
 
 					elif method == 'old':
 						res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
@@ -2499,13 +2743,96 @@ class PopulationReceptiveFieldMappingSession(Session):
 			smoothed_data_nii_file.header = mask_file.header
 			smoothed_data_nii_file.save(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'smoothed_data_' + mask_file_name + '_' + '_'.join(postFix) + '_' + this_condition + '-' + condition + '-' + str(n_pixel_elements_raw) + '.nii.gz'))
 
+			if convert_to_surf:
+				results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'eccen':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+				# stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
+				stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 
+				filename  = mask_file_name + '_' + '_'.join(postFix + [this_condition]) + '-%s-%d'%(condition,n_pixel_elements_raw)
+
+				for sm in [0,2,4]: # different smoothing values.
+					# reproject the original stats
+					self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_r_squared':stats_frames['pearson_squared']}, smooth = sm, condition = 'PRF')
+					# and the spatial values
+					self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm), frames = {'_polar':results_frames['polar'],'_eccen':results_frames['eccen'], '_real':results_frames['real'], '_imag':results_frames['imag'] }, smooth = sm, condition = 'PRF')
+					
+					# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+					self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), 'results_' + filename + '_' + str(sm) ))
+
+					self.makeTiffsFromCondition(condition='PRF',results_file = 'results_' + filename + '_' + str(sm) + '_', exit_when_ready=1)
+
+	def convert_to_surf(self,mask_file='cortex',postFix = ['mcf','sgtf','psc','res'],task_conditions=['fix','orient','speed'],n_pixel_elements=101):
+	
+		for condition in task_conditions:
+			filename =  mask_file + '_' + '_'.join(postFix)+ '_' + str(condition) + '-PRF' +'-'+ str(n_pixel_elements)
+			results = NiftiImage(self.stageFolder('processed/mri/PRF/results_'+filename+ '.nii.gz')).data
+			stats = NiftiImage(self.stageFolder('processed/mri/PRF/corrs_'+filename+ '.nii.gz')).data
+			
+			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+			# results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
+			# stats_frames = {'corr': 0, '-logp': 1}
+			stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
+
+			# polar = np.reshape(np.arctan2(results[results_frames['yo'],:,:,:],results[results_frames['xo'],:,:,:]),results[0].shape)
+			# real = np.reshape(np.array([math.cos(p) for p in results[results_frames['polar']].ravel()]) * stats[stats_frames['pearson_squared'],:,:,:].ravel(),results[0].shape)
+			# imag = np.reshape(np.array([math.sin(p) for p in results[results_frames['polar']].ravel()]) * stats[stats_frames['pearson_squared'],:,:,:].ravel(),results[0].shape)
+
+			# results[results_frames['imag']] = imag
+			# results[results_frames['real']] = real
+
+			# # # polar = polar[np.newaxis,...]
+			# # real = real[np.newaxis,...]
+			# # imag = imag[np.newaxis,...]
+
+			# # # results = np.vstack([polar,real,imag,results])
+			# # all_results = [results[results_frames['sigmas_ratio']],polar,results[results_frames['sigma_x']],results[results_frames['ecc_gauss']],results[results_frames['xo']],results[results_frames['yo']],results[results_frames['size_ratio']],
+			# # 	imag,results[results_frames['SNR']],results[results_frames['amplitude']],results[results_frames['sd_gauss']],real,results[results_frames['theta']],results[results_frames['amplitude']],results[results_frames['delta_amplitude']],results[results_frames['amplitude2']]]
+			# # # results_frames = {'polar':0,'real':1,'imag':2,'sigmas_ratio':3,'sigma_x':4,'ecc_gauss':5,'xo':6,'yo':7,'size_ratio':8,'SNR':9,'amplitude':10,'sd_gauss':11,'theta':12,'amplitude':13,'delta_amplitude':14,'amplitude2':15}
+			# # # results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+
+			# all_res_file = NiftiImage(np.array(results))
+			# all_res_file.header = NiftiImage(self.stageFolder('processed/mri/PRF/results_'+filename+ '.nii.gz')).header
+			# all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'results_' + filename+ '.nii.gz' ))	
+
+		for sm in [0,3,5]: # different smoothing values.
+			# reproject the original stats
+			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm)+ '_', frames = {'_f':stats_frames['pearson_squared']}, smooth = sm, condition = 'PRF')
+			# and the spatial values
+			self.results_to_surface(file_name = 'results_' + filename, output_file_name = 'results_' + filename + '_' + str(sm)+ '_', frames = {'_polar':results_frames['polar'],'_eccen':results_frames['ecc_gauss'], '_real':results_frames['real'], '_imag':results_frames['imag'] }, smooth = sm, condition = 'PRF')
+			
+			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
+			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), 'results_' + filename + '_' + str(sm) + '_' ))
+
+			self.makeTiffsFromCondition(condition='PRF',results_file = 'results_' + filename+ '_' + str(sm) + '_', exit_when_ready=1)
+
+	def labels_to_annot(self,output_file_name = 'all_labels'):
+		
+		#setup prerequisites
+		label_dir = '/home/fs_subjects/%s/label/retmap_PRF'%self.subject.standardFSID
+		base_label_dir = '/'.join(label_dir.split('/')[:-1])
+		for hemi in ['lh','rh']:
+			if os.path.isfile(os.path.join(label_dir,hemi + '.' + output_file_name + '.annot')): 
+				os.remove(os.path.join(label_dir,hemi + '.' + output_file_name + '.annot'))
+			if os.path.isfile(os.path.join(base_label_dir,hemi + '.' + output_file_name + '.annot')): 
+					os.remove(os.path.join(base_label_dir,hemi + '.' + output_file_name + '.annot'))
+
+		# create annotation file
+		laO = LabelsToAnnotationOperator(inputObject = label_dir)
+		laO.configure(subjectID = self.subject.standardFSID ,outputFileName = output_file_name)
+		laO.execute()
+
+		# move files to label dir
+
+		for hemi in ['lh','rh']:
+			while not os.path.isfile(os.path.join(base_label_dir, hemi + '.' + output_file_name + '.annot')):
+				pass
+			shutil.move(os.path.join(base_label_dir,hemi + '.' + output_file_name + '.annot'),os.path.join(label_dir,hemi + '.' + output_file_name + '.annot'))
 
 	def results_to_surface(self, file_name = 'corrs_cortex', output_file_name = 'polar', frames = {'_f':1}, smooth = 0.0, condition = 'PRF'):
 		"""docstring for results_to_surface"""
 		vsO = VolToSurfOperator(inputObject = os.path.join(self.stageFolder('processed/mri/%s/'%condition), file_name + '.nii.gz'))
 		ofn = os.path.join(self.stageFolder('processed/mri/%s/surf/'%condition), output_file_name )
-		vsO.configure(frames = frames, hemispheres = None, register = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = smooth, surfType = 'paint'  )
+		vsO.configure(outputFileName = ofn, threshold = 0.5, surfSmoothingFWHM = smooth, surfType = 'paint'  )
 		vsO.execute()
 	
 	def mask_results_to_surface(self, stat_file = '', value_file= '', threshold = 5.0, stat_frame = 1, fill_value = -3.15):
@@ -2676,7 +3003,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		
 		# 
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF])]
+		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
 
 		# anatRoiFileNames = ['/home/shared/PRF_square/data/DVE/DVE_291014/processed/mri/masks/anat/rh.V1.nii.gz']
 		# anatRoiFileNames = [os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat/%s.nii.gz'%mask_file))]
@@ -2717,7 +3044,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# 	Now, take different stat masks based on the run_type
 		# 	"""
 	
-			for res_type in ['results', 'coefs', 'corrs']:
+			for res_type in ['results', 'corrs']:# 'coefs',
 				filename = mask_file + '_' + '_'.join(postFix + [c]) + '-' + condition 
 				stat_files.update({c+'_'+res_type: os.path.join(self.stageFolder('processed/mri/%s'%condition), res_type + '_' + filename +'-'+ str(n_pixel_elements)+ '.nii.gz')})
 		
@@ -2742,12 +3069,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 					h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 				except NoSuchNodeError:
 					h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
-		
+
+		group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+		if not os.path.isdir(group_dir): os.mkdir(group_dir)
+		group_data_dir = os.path.join(group_dir,'data')
+		if not os.path.isdir(group_data_dir): os.mkdir(group_data_dir)
+		if os.path.isfile(os.path.join(group_data_dir,self.project.subject.initials + '.hdf5')): os.remove(os.path.join(group_data_dir,self.project.subject.initials + '.hdf5'))
+		h5file.copyFile(os.path.join(group_data_dir,self.project.subject.initials + '.hdf5'))
+
 		h5file.close()
 
 	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.6]):
 		self.logger.info('starting prf data correlations from region %s'%roi)
-		results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11, 'sd_gauss':12,'sd_surf':13} 
+		results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition  +'-'+ str(n_pixel_elements) +"_file")
@@ -2885,167 +3219,414 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.close()
 	
 
-	def fit_diagnostics(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=0.0,rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
+
+	def fit_diagnostics(self, condition = 'PRF', sd_thresh=0.0,ecc_thresh=0.0, task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[],hists=True,eccen_surf=True,weight_data = False,threshold=True,grouplvl=False,weigh_on='pearson_squared'):
+
+
+		# for weigh_on in ['pearson','spearman','pearson_squared','kendalls_tau','r_squared']:
+			# for mean_thresh in np.arange(0,3,0.25): 
+
+		all_results = {}
+		all_stats = {}
+		mask=[]
+
+
+		plotdir = self.stageFolder( stage = 'processed/mri/figs/fit_diagnostics')
+		if not os.path.isdir(plotdir): os.mkdir(plotdir)
 
 		for this_condition in task_conditions:
-			all_results = []
-			all_stats = []
-			self.logger.info('reading data')
+
+			all_results[this_condition] = []
+			all_stats[this_condition] = []
+
 
 			if results_type == 'Lee_to_Dumoulin':
-				results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
+				# results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
+				results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
 			else:
 				results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14,'n_regions':15} 
-			stats_frames = {'corr': 0, '-logp': 1}
+			# stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
+			stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 
-			self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition  +'-'+ str(n_pixel_elements) +"_file.hdf5")
-			h5file = open_file(self.hdf5_filename, mode = "r", title = condition  +'-'+ str(n_pixel_elements) +"_file")
-			
-			# combine rois
-			if maskfile == 'early_visual':
-				end_rois = {'V1':0,'V2':1,'V3':2,'V4':3}
-				# roi_comb = {0:['V1'],1:['V2v','V2d'],2:['V3v','V3d'],3:['V4']}
-				roi_comb = {0:['V1'],1:['V2'],2:['V3'],3:['V4']}
-			elif np.any([maskfile == 'foveal']):
-				end_rois = {'v1':0}
-				roi_comb = {0:['V1']}
-			elif maskfile == 'combined_labels':
-				end_rois = {'v1':0,'v2':1,'v3':2,'v4':3,'v7':4,'LO':5,'VO':6,'TO':7,'IPS':8}
-				roi_comb = {0:['v1'],1:['v2v','v2d'],2:['v3v','v3d'],3:['v4'],4:['v7'],5:['LO1','LO2'],6:['VO1','VO2'],7:['TO1','TO2'],8:['IPS1','IPS2']}
+			if grouplvl:
+				group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+				group_data_dir = os.path.join(group_dir,'data')
+				self.hdf5_filename = os.path.join(group_data_dir,'all_subjects.hdf5')
+				h5file = open_file(self.hdf5_filename, mode = "r", title = 'all_subjects')
+				group_plot_dir = os.path.join(group_dir,'plots')
+				if not os.path.isdir(group_plot_dir): os.mkdir(group_plot_dir)
 			else:
-				end_rois = {rois:0}
-				roi_comb = {0:[rois]}
+				self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition  +'-'+ str(n_pixel_elements) +"_file.hdf5")
+				h5file = open_file(self.hdf5_filename, mode = "r", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 
 
-			results = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
-			stats = [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ]
-			
-			# mask for voxel selection
-			if results_type == 'Lee_to_Dumoulin':
-				mask = [(stats[r][:,stats_frames['corr']]  > corr_threshold)  * 
-							(stats[r][:,stats_frames['-logp']] > logp_thresh ) * 
-							(results[r][:,results_frames['SNR']] > SNR_thresh ) * 
-							(results[r][:,results_frames['sd_gauss']] > sd_thresh) * 
-							(results[r][:,results_frames['amplitude']] < amp_thresh) *
-							(results[r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) *
-							(results[r][:,results_frames['ecc_gauss']] > ecc_thresh[0])   
-								for r in range(len(end_rois))]
+			# early_visual = {'V1':['V1','v1','V2d','V3d','V2v','V3v']}
+			early_visual = {'V1':['V1','v1'],'V2':['V2d','V2v','v2d','v2v'],'V3':['V3d','v3d','V3v','v3v']}			# dorsal_stream = {'v3ab':['v3ab'],'v7':['v7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4'],'MT':['MT'],'TO1':['TO1'],'TO2':['TO2']}
+			dorsal_stream = {'V3AB':['v3ab','V3AB'],'MT':['MT','TO1','TO2'],'IPS':['v7','V7','IPS0','IPS','IPS1','IPS2','IPS3','IPS4']}#'IPS0':['V7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4']}#'IPS':['V7','IPS1','IPS2','IPS3','IPS4'],'v7':['v7']}
+			ventral_stream = {'V4':['v4','V4'],'LO':['LO1','LO2'],'VO':['VO','VO1','VO2']}
+			frontal_visual = {'frontal':['FEF','FSUP','PRINF','PRCSUP','FRSUP','PRSUP1','PRSUP2'],'parietal':['POC','POC1','POC2','POC3','POC4','POCSUP']}
 
-			else:
-				mask = [(stats[r][:,stats_frames['corr']] > corr_threshold) * (results[r][:,results_frames['sd_gauss']] >0.2) * (results[r][:,results_frames['sd_gauss']] < 10) * (results[r][:,results_frames['EV']] > 0.85) * (results[r][:,results_frames['n_regions']] < 5) for r in range(len(end_rois))]
+			# early_visual = {'V1':['V1'],'V2':['V2d','V2v'],'V3':['V3d','V3v']}			# dorsal_stream = {'v3ab':['v3ab'],'v7':['v7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4'],'MT':['MT'],'TO1':['TO1'],'TO2':['TO2']}
+			# dorsal_stream = {'V3AB':['V3AB'],'MT':['MT','TO1','TO2'],'IPS':['IPS1','IPS2','IPS3','IPS4']}
+			# ventral_stream = {'V4':['V4'],'LO':['LO1','LO2']}#,'VO':['VO','VO1','VO2']}			# frontal_visual = {'frontal':['FEF','FSUP','PRINF','PRCSUP']}#,'parietal':['POC','POCSUP']}
 
-			self.logger.info('generating fit evaluation plots')
-			
-			import colorsys
-			colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np .linspace(0.0,0.2,len(end_rois))][::-1]
-			colors_for_bar = ['#%02x%02x%02x' % tuple((np.array(c)*255).astype(int)) for c in colors ]#['#e5cf67','#2cac44','#2cac44','#2cac44']
+			roi_groups = ['early_visual','dorsal_stream','ventral_stream','frontal_visual']
 
-			for j, roi in enumerate(end_rois.keys()):	
-			## stats and results histograms
-				spearman_rho = stats[j][ :,stats_frames['corr']] 
-				rho_p_val =stats[j][ :,stats_frames['-logp']]  
-				SNR =results[j][ :,results_frames['SNR']]  
-				sd_gauss = results[j][ :,results_frames['sd_gauss']] 
-				ecc_gauss =results[j][ :,results_frames['ecc_gauss']] 
-				amplitude_gauss =results[j][ :,results_frames['amplitude']]
+			# all_areas = ['v1','v2d','v2v','v3ab','v3d','v3v','v4','v7','VO','VO1','VO2','FEF','IPS1','IPS2','IPS3','IPS4','LO1','LO2','MT','TO1','TO2','FSUP','POC','POCSUP','PRCSUP','PRINF']
+			all_roi_names = []
+			all_roi_colors = []
 
-				spearman_rho_masked = stats[j][ mask[j],stats_frames['corr']] 
-				rho_p_val_masked = stats[j][ mask[j],stats_frames['-logp']]
-				SNR_masked = results[j][ mask[j],results_frames['SNR']] 
-				sd_gauss_masked =  results[j][ mask[j],results_frames['sd_gauss']] 
-				ecc_gauss_masked =  results[j][ mask[j],results_frames['ecc_gauss']] 
-				amplitude_gauss_masked =  results[j][ mask[j],results_frames['amplitude']] 
 
-				f = pl.figure(figsize = (16,10))
-				variables = ['spearman_rho','rho_p_val','SNR','sd_gauss','ecc_gauss','amplitude_gauss','spearman_rho_masked','rho_p_val_masked','SNR_masked','sd_gauss_masked','ecc_gauss_masked','amplitude_gauss_masked']
-				thresholds = [corr_threshold,logp_thresh,SNR_thresh,sd_thresh,ecc_thresh[1],amp_thresh]
-				x_lims = [[] for i in range(len(variables))]
-				y_lims = [[] for i in range(len(variables))]
-				labels = end_rois.keys()
-				for v, var in enumerate(variables):
-					s1 = f.add_subplot(2,len(variables)/2,v+1)
-					exec('s1.hist(%s,50,color=colors_for_bar[j])'%var)
-					if v < len(thresholds):
-						s1.axvline(thresholds[v],linestyle='--',color='k',linewidth=2)
-					simpleaxis(s1)
-					spine_shift(s1)
-					s1.set_xlabel(var)
-					s1.set_ylabel('#')
-				pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'results_hists_%s_%s_%d.pdf'%(roi,this_condition,n_pixel_elements )))
-				pl.close('all')
+			for rgi,roi_group in enumerate(roi_groups):
+				
+				roi_names = []
+				roi_colors = []
+				results = []
+				stats = []
+				for ri in eval(roi_group).keys():
+					this_roi_results = []
+					this_roi_stats = []
+					for rci in eval(roi_group)[ri]:
+						if (self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_results') != None) :
+							this_roi_results.extend(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_results'))
+							this_roi_stats.extend(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_corrs'))
+					if len(this_roi_results) > 0:
+						roi_names.append(ri)
+					results.append(np.squeeze(this_roi_results))
+					stats.append(np.squeeze(this_roi_stats))
+				all_roi_names.append(roi_names)
 
-			## eccen-surf correlation plot
-			if eccen_surf_corr:
-				eccen_bins = np.array([[i,i+1] for i in range(int(ecc_thresh[1]))])
-				eccen_x = np.arange(np.mean(eccen_bins[0]),np.mean(eccen_bins[-1])+1,eccen_bins[0][1]-eccen_bins[0][0])
+				all_results[this_condition].append(results)
+				all_stats[this_condition].append(stats)
 
-				mean_per_bin = []
-				sd_per_bin = []
-				for j, roi in enumerate(end_rois.keys()):
-					mean_per_bin.append([])
-					sd_per_bin.append([])
-					for b in range(len(eccen_bins)):
+				if rgi == 0:
+					mean_thresh = 2
+				else:
+					mean_thresh = 2
+				
+				if results_type == 'Lee_to_Dumoulin':
+					if threshold:
+						r_squared_threshold = [np.median(all_stats['fix'][rgi][r][:,stats_frames[weigh_on]]) * mean_thresh for r in range(len(all_roi_names[rgi]))]
+						# logp_thresh= [np.mean(all_stats['fix'][rgi][r][:,stats_frames['-logp']])* mean_thresh for r in range(len(all_roi_names[rgi]))]
+						# SNR_thresh= [np.mean(all_results['fix'][rgi][r][:,results_frames['SNR']] )* mean_thresh for r in range(len(all_roi_names[rgi]))]
+						# amp_thresh= [np.mean(all_results['fix'][rgi][r][:,results_frames['amplitude']])* mean_thresh for r in range(len(all_roi_names[rgi]))]
 
-						data = results[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,results_frames['sd_gauss']] 
-						weights = stats[j][ mask[j] * (results[j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (results[j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) ,stats_frames['corr']] 
+						mask.append([(all_stats['fix'][rgi][r][:,stats_frames[weigh_on]]  > r_squared_threshold[r] )  
+									# *(all_stats['fix'][rgi][r][:,stats_frames['']] > logp_thresh[r] ) 
+									# *(all_results['fix'][rgi][r][:,results_frames['SNR']] > SNR_thresh[r] )  
+									# *(all_results['fix'][rgi][r][:,results_frames['sd_gauss']] > sd_thresh) 
+									# *(all_results['fix'][rgi][r][:,results_frames['amplitude']] < amp_thresh[r]) 
+									# *(all_results['fix'][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) 
+									# *(all_results['fix'][rgi][r][:,results_frames['ecc_gauss']] > ecc_thresh[0])   
+										for r in range(len(all_roi_names[rgi]))])
+					else:
+						mask.append([(all_stats['fix'][rgi][r][:,0] > 0) for r in range(len(all_roi_names[rgi]))])
+				else:
+					mask = [(all_stats['fix'][rgi][r][:,stats_frames['corr']] > corr_threshold) * 
+								(all_results['fix'][rgi][r][:,results_frames['sd_gauss']] >0.2) * 
+								(all_results['fix'][rgi][r][:,results_frames['sd_gauss']] < 10) * 
+								(all_results['fix'][rgi][r][:,results_frames['EV']] > 0.85) * 
+								(all_results['fix'][rgi][r][:,results_frames['n_regions']] < 5) 
+									for r in range(len(all_roi_names[rgi]))]
 
-						if data != []:
-							mean_per_bin[j].append( np.average( data,weights = weights ) )					
-							sd_per_bin[j].append( np.std( data )/np.sqrt(len(data)) )
+				import colorsys
+				roi_colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np.linspace(0.0,0.5,len(all_roi_names[rgi]))][::-1]
+				all_roi_colors.append(roi_colors)
+				# colors_for_bar = ['#%02x%02x%02x' % tuple((np.array(c)*255).astype(int)) for c in colors ]#['#e5cf67','#2cac44','#2cac44','#2cac44']
+
+				if hists*this_condition == 'fix':
+					self.logger.info('generating histogram evaluation plots for roi group %s'%(roi_group))
+
+					f = pl.figure(figsize = (16,10))
+					for j, roi in enumerate(all_roi_names[rgi]):
+					## stats and results histograms
+						spearman_rho = all_stats[this_condition][rgi][j][ :,stats_frames['corr']] 
+						rho_p_val =all_stats[this_condition][rgi][j][ :,stats_frames['-logp']]  
+						SNR =all_results[this_condition][rgi][j][ :,results_frames['SNR']]  
+						sd_gauss = all_results[this_condition][rgi][j][ :,results_frames['sd_gauss']] 
+						ecc_gauss =all_results[this_condition][rgi][j][ :,results_frames['ecc_gauss']] 
+						amplitude_gauss =all_results[this_condition][rgi][j][ :,results_frames['amplitude']]
+
+						spearman_rho_masked = all_stats[this_condition][rgi][j][ mask[rgi][j],stats_frames['corr']] 
+						rho_p_val_masked = all_stats[this_condition][rgi][j][ mask[rgi][j],stats_frames['-logp']]
+						SNR_masked = all_results[this_condition][rgi][j][ mask[rgi][j],results_frames['SNR']] 
+						sd_gauss_masked =  all_results[this_condition][rgi][j][ mask[rgi][j],results_frames['sd_gauss']] 
+						ecc_gauss_masked =  all_results[this_condition][rgi][j][ mask[rgi][j],results_frames['ecc_gauss']] 
+						amplitude_gauss_masked =  all_results[this_condition][rgi][j][ mask[rgi][j],results_frames['amplitude']] 
+
+						variables = ['spearman_rho','rho_p_val','SNR','sd_gauss','ecc_gauss','amplitude_gauss']#,'spearman_rho_masked','rho_p_val_masked','SNR_masked','sd_gauss_masked','ecc_gauss_masked','amplitude_gauss_masked']
+						thresholds = [corr_threshold[j],logp_thresh[j],SNR_thresh[j],sd_thresh,ecc_thresh[1],amp_thresh[j]]
+						x_lims = [[] for i in range(len(variables))]
+						y_lims = [[] for i in range(len(variables))]
+						x_lims = [[0,1.0],[0,40],[0,2],[0,20],[0,20],[0,0.3]]
+						k=0
+						s1 = f.add_subplot(len(all_roi_names[rgi]),len(variables)+1,len(variables)*j+j+1)
+						s1.text(0.5,0.5,roi,fontsize=14)
+						axis('off')
+						for v, var in enumerate(variables):
+							k+=1	
+							s1 = f.add_subplot(len(all_roi_names[rgi]),len(variables)+1,k+len(variables)*j+j+1)
+							# s1 = f.add_subplot(2,len(variables)/2,v+1)
+							if var != 'amplitude_gauss':
+								exec('s1.hist(%s,50,color="r")'%var)
+								exec('s1.hist(%s_masked,50,color="g")'%var)
+
+							else:
+								exec('s1.hist(%s,2000,color="r")'%var)
+								exec('s1.hist(%s_masked,2000,color="g")'%var)
+
+							# exec('s1.hist(%s,50,color=colors_for_bar[j])'%var)
+							if v < len(thresholds):
+								s1.axvline(thresholds[v],linestyle='--',color='k',linewidth=2)
+							simpleaxis(s1)
+							spine_shift(s1)
+							s1.set_xlim(x_lims[v])
+							s1.set_xlabel(var)
+							s1.set_ylabel('#')
+					if grouplvl:
+						pl.savefig(os.path.join(group_plot_dir,'results_hists_%s_%s_%d.pdf'%(roi_group,this_condition,n_pixel_elements )))
+					else:
+						pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/fit_diagnostics'), 'results_hists_%s_%s_%d.pdf'%(roi_group,this_condition,n_pixel_elements )))
+					pl.close(f)
+
+			result_types = ['sd_gauss']#['size_ratio','sd_gauss','abs_center_sd_diff','abs_surround_sd_diff','abs_ecc_diff', 'ecc_gauss','rel_center_sd_diff','rel_surround_sd_diff','rel_ecc_diff']
+			for result in result_types:
+				if len(roi_groups)==4:
+					f2 = pl.figure(figsize = (12,12))
+				else:
+					f2 = pl.figure(figsize = (4*len(roi_groups),4))
+
+				for rgi,roi_group in enumerate(roi_groups):
+
+					## eccen-surf correlation plot
+					if eccen_surf:
+						eccen_bins = np.array([[i,i+1] for i in range(int(ecc_thresh[1]))])
+						# eccen_bins = np.array([[i,i+2] for i in np.arange(0,int(ecc_thresh[1]),2)])
+						eccen_x = np.arange(np.mean(eccen_bins[0]),np.mean(eccen_bins[-1])+1,eccen_bins[0][1]-eccen_bins[0][0])
+
+						mean_per_bin = []
+						sd_per_bin = []
+						for j, roi in enumerate(all_roi_names[rgi]):
+							mean_per_bin.append([])
+							sd_per_bin.append([])
+							for b in range(len(eccen_bins)):
+
+								if result == 'abs_center_sd_diff':
+									data = (all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									- all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']])
+								elif result == 'rel_center_sd_diff':
+									data = (np.log(all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									/ all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']]))
+								elif result == 'abs_surround_sd_diff':
+									data = ((all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									* all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['size_ratio']])
+									- (all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									* all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['size_ratio']]))
+								elif result == 'rel_surround_sd_diff':
+									data = (np.log((all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									* all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['size_ratio']])
+									/ (all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['sd_gauss']] 
+									* all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['size_ratio']])))
+								elif result == 'abs_ecc_diff':
+									data = (all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']] 
+									- all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']])
+								elif result == 'rel_ecc_diff':
+									data = (np.log(all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']] 
+									/ all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']]))
+								else:
+									data = all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames[result]] 
+
+								weights = all_stats[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , stats_frames[weigh_on]]
+
+
+								if data != []:
+									if weight_data:
+										mean_per_bin[j].append( np.average( data,weights = weights ) )	
+									else:
+										mean_per_bin[j].append( np.average( data ) )					
+									sd_per_bin[j].append( np.std( data )/np.sqrt(len(data)) )
+								else:
+									mean_per_bin[j].append( np.nan )
+									sd_per_bin[j].append( np.nan)
+
+						if len(roi_groups)==4:
+							s2 = f2.add_subplot(2,2,rgi+1)
 						else:
-							mean_per_bin[j].append( np.nan )
-							sd_per_bin[j].append( np.nan)
+							s2 = f2.add_subplot(1,len(roi_groups),rgi+1)
 
+						pl.title(roi_group)
+						for j, roi in enumerate(all_roi_names[rgi]):			
+							
+							from scipy.stats.stats import pearsonr,spearmanr
+							# [r,p] = pearsonr(eccen_x[np.array(mean_per_bin[j])>0],np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0])
+							# [r,p] = spearmanr(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']])
 
-				f2 = pl.figure(figsize = (8,8))
-				s2 = f2.add_subplot(1,1,1)
-				for j, roi in enumerate(end_rois.keys()):			
-					
-					from scipy.stats.stats import pearsonr,spearmanr
-					# [r,p] = pearsonr(eccen_x[np.array(mean_per_bin[j])>0],np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0])
-					[r,p] = pearsonr(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']])
+							import statsmodels
 
-					fit = polyfit(results[j][mask[j],results_frames['ecc_gauss']], results[j][mask[j],results_frames['sd_gauss']], 1,w=stats[j][mask[j],stats_frames['corr']])
-					# fit = polyfit(eccen_x[np.array(mean_per_bin[j])>0], np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0], 1)
-					fit_fn = poly1d(fit)
+							if weight_data:
+								weights = all_stats[this_condition][rgi][j][mask[rgi][j],stats_frames[weigh_on]]#* all_results[this_condition][rgi][j][mask[rgi][j],results_frames['SNR']]
+							else:
+								weights = np.ones(shape(all_results[this_condition][rgi][j][mask[rgi][j],stats_frames[weigh_on]]))
 
-					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
-					s2.plot(eccen_x,mean_per_bin[j],c = colors[j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
-					s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=colors[j],alpha=0.15)
-					# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
-					label = roi
-					s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
-					s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
+							if result == 'abs_center_sd_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]-all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']], 1, w= weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]-all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']]]).T, weights = weights ).corrcoef[0,1]
+							elif result == 'rel_center_sd_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], np.log(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']]), 1, w= weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.log(np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']]]).T), weights =weights ).corrcoef[0,1]
+							elif result == 'abs_surround_sd_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], (all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results[this_condition][rgi][j][mask[rgi][j],results_frames['size_ratio']]) - (all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']] * all_results['fix'][rgi][j][mask[rgi][j],results_frames['size_ratio']]), 1, w= weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], (all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results[this_condition][rgi][j][mask[rgi][j],results_frames['size_ratio']]) - (all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']])]).T, weights = weights).corrcoef[0,1]
+							elif result == 'rel_surround_sd_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], np.log((all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results[this_condition][rgi][j][mask[rgi][j],results_frames['size_ratio']]) / (all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']] * all_results['fix'][rgi][j][mask[rgi][j],results_frames['size_ratio']])), 1, w= weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.log(np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], (all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results[this_condition][rgi][j][mask[rgi][j],results_frames['size_ratio']]) / (all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']]*all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']])]).T), weights =weights ).corrcoef[0,1]
+							elif result == 'abs_ecc_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]-all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], 1, w=weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]-all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]]).T, weights = weights ).corrcoef[0,1]
+							elif result == 'rel_ecc_diff':
+								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], np.log(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]), 1, w=weights)
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.log(np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]]).T), weights = weights).corrcoef[0,1]
+							else:
+								try:
+									fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]], 1, w = weights)
+								except:
+									pass
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]]]).T, weights = weights ).corrcoef[0,1]
 
+							if np.size(r) != 1:
+								r = 0
+							# fit = polyfit(eccen_x[np.array(mean_per_bin[j])>0], np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0], 1)
+							fit_fn = poly1d(fit)
 
-					# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
+							# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+							s2.plot(eccen_x,mean_per_bin[j],c = all_roi_colors[rgi][j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
+							s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=all_roi_colors[rgi][j],alpha=0.15)
+							# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
+							label = roi
+							try:
+								s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(label,r))
+							except:
+								pass
+							# s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
 
-					leg = s2.legend(fancybox = True, loc = 'best')
-					leg.get_frame().set_alpha(0.5)
-					if leg:
-						for t in leg.get_texts():
-						    t.set_fontsize('large')    # the legend text fontsize
-						for l in leg.get_lines():
-						    l.set_linewidth(3.5)  # the legend line width
+							s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
 
-					simpleaxis(s2)
-					spine_shift(s2)
-					s2.set_ylim([0,15])
-					s2.set_xlabel('pRF eccentricity')
-					s2.set_ylabel('pRF size (sd)')
-					s2.set_yticks(np.arange(15))
+							# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
 
-				pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'eccen_surf_cor_%s_%d_%s.pdf'%(this_condition,n_pixel_elements,maskfile)))
-			
+							leg = s2.legend(fancybox = False, loc = 'best')
+							leg.get_frame().set_alpha(0.5)
+							if leg:
+								for t in leg.get_texts():
+								    t.set_fontsize(10)    # the legend text fontsize
+								for l in leg.get_lines():
+								    l.set_linewidth(2.5)  # the legend line width
+
+							simpleaxis(s2)
+							spine_shift(s2)
+							if result == 'sd_gauss':
+								s2.set_ylim([0,15])
+								s2.set_yticks(np.arange(0,15))
+								s2.set_ylabel('pRF size (sd)')
+							elif result == 'size_ratio':
+								s2.set_ylim([0,15])
+								s2.set_yticks(np.arange(0,15))
+								s2.set_ylabel('center-surround ratio')							
+							elif result == 'ecc_gauss':
+								s2.set_ylim([0,15])
+								s2.set_yticks(np.arange(0,15))
+								plot(s2.get_xlim(), s2.get_xlim(),  ls="--", c=".3")
+								s2.set_ylabel('pRF eccentricity %s'%this_condition)
+							elif (result == 'abs_center_sd_diff'):
+								s2.set_ylim([-10,10])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-10,10))
+								s2.set_ylabel('absolute pRF sd difference of %s and fix'%this_condition)
+							elif (result == 'rel_center_sd_diff'):
+								s2.set_ylim([-3,3])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-3,3))
+								s2.set_ylabel('relative pRF sd difference of %s and fix'%this_condition)
+							elif (result == 'abs_surround_sd_diff'):
+								s2.set_ylim([-100,100])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-100,100),10)
+								s2.set_ylabel('absolute pRF sd difference of %s and fix'%this_condition)
+							elif (result == 'rel_surround_sd_diff'):
+								s2.set_ylim([-3,3])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-3,3))
+								s2.set_ylabel('relative pRF sd difference of %s and fix'%this_condition)							
+							elif result == 'abs_ecc_diff':
+								s2.set_ylim([-10,10])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-10,10))
+								s2.set_ylabel('absolute pRF sd difference of %s and fix'%this_condition)
+							elif result == 'rel_ecc_diff':
+								s2.set_ylim([-3,3])
+								plot(s2.get_xlim(), [0,0], ls="--", c=".3")
+								s2.set_yticks(np.arange(-3,3))
+								s2.set_ylabel('relative pRF sd difference of %s and fix'%this_condition)							
+							
+							s2.set_xlabel('pRF eccentricity fix')
+
+					if grouplvl:
+						pl.savefig(os.path.join(group_plot_dir,'%d_%s_%s.pdf'%(n_pixel_elements,result,this_condition)))
+					else:
+						pl.savefig(os.path.join(self.stageFolder(stage =  'processed/mri/figs/fit_diagnostics'), '%d_%s_%s.pdf'%(n_pixel_elements,result,this_condition)))
+						# pl.savefig(os.path.join(self.stageFolder(stage =  'processed/mri/figs/fit_diagnostics/compare_weighing'), '%s_%.2f.pdf'%(weigh_on,mean_thresh)))
+
+				pl.close(f2)
+
+				compare_stats = False
+				if compare_stats:
+
+					all_measures = np.array(stats_frames.keys())
+					all_measures = all_measures[(all_measures != 'RSS')*(all_measures != 'chi_squared')]
+					for stat_1 in all_measures:
+						for stat_2 in all_measures:
+							if stat_1 != stat_2:
+								if len(roi_groups)==4:
+									f2 = pl.figure(figsize = (12,12))
+								else:
+									f2 = pl.figure(figsize = (4*len(roi_groups),4))
+
+								for rgi,roi_group in enumerate(roi_groups):
+									
+									if len(roi_groups)==4:
+										s2 = f2.add_subplot(2,2,rgi+1)
+									else:
+										s2 = f2.add_subplot(1,len(roi_groups),rgi+1)
+
+									pl.title(roi_group)
+									for j, roi in enumerate(all_roi_names[rgi]):		
+
+										sn.regplot(all_stats[this_condition][rgi][j][:,stats_frames[stat_1]],all_stats[this_condition][rgi][j][:,stats_frames[stat_2]],label=roi)
+										
+										simpleaxis(s2)
+										spine_shift(s2)
+
+										s2.set_ylabel(stat_2)
+										s2.set_xlabel(stat_1)
+
+										leg = s2.legend(fancybox = False, loc = 'best')
+										leg.get_frame().set_alpha(0.5)
+										if leg:
+											for t in leg.get_texts():
+											    t.set_fontsize(10)    # the legend text fontsize
+											for l in leg.get_lines():
+											    l.set_linewidth(2.5)  # the legend line width
+
+								pl.savefig(os.path.join(self.stageFolder(stage =  'processed/mri/figs/fit_diagnostics/compare_stats'), '%s_%s.pdf'%(stat_1,stat_2)))
+
 	
 	def condition_comparison(self, condition = 'PRF', corr_threshold = 0.0,SNR_thresh=0.0,sd_thresh=0.0,amp_thresh=0.0,logp_thresh=0.0,ecc_thresh=[0.0,100],rois = [], task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[]):
-	# 
+	 
 		
 		if results_type == 'Lee_to_Dumoulin':
-			results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
+			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'eccen':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
 		else:
 			results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14,'n_regions':15} 
-		stats_frames = {'corr': 0, '-logp': 1}
+		stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
 
 		self.logger.info('reading data')
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition  +'-'+ str(n_pixel_elements) +"_file.hdf5")
@@ -3065,10 +3646,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			end_rois = {rois:0}
 			roi_comb = {0:[rois]}
 
-
 		import colorsys
 		colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np .linspace(0.0,0.2,len(task_conditions))][::-1]
-
 
 		all_results = []
 		all_stats = []
@@ -3078,7 +3657,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			all_results.append( [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_results') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ])
 			all_stats.append( [ np.concatenate([self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = rci, data_type = this_condition + '_corrs') for rci in roi_comb[ri]]) for ri in range(len(end_rois)) ])
 
-			shell()
+
+
 			# mask for voxel selection
 			if results_type == 'Lee_to_Dumoulin':
 				if ci == 0:
@@ -3147,19 +3727,137 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/'), 'figs', 'comparison_%s_vs_%s_%s.pdf'%(task_conditions[this_comp[0]],task_conditions[this_comp[1]],n_pixel_elements)))
 
 
-		
+	def create_difference_surface_plots(self,mask,postFix=['mcf','sgtf','psc','res'],n_pixel_elements_raw = 101,conditions=['fix','orient','sf','speed','color']):
 
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+		from surfer import Brain, io, project_volume_data
+
+		plotdir = self.stageFolder( stage = 'processed/mri/figs/surface_plots')
+		if not os.path.isdir(plotdir): os.mkdir(plotdir)
 
 
+		for variable in ['sd_gauss','ecc_gauss']:
+			reg_file = os.path.join(self.stageFolder( stage = 'processed/mri/reg'),'register_PRF_%s.dat'%self.project.subject.initials)
+			subj_dir = os.environ["SUBJECTS_DIR"]
+			label_dir = 'retmap_prf'
+			stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
+			stat_threshold = 0.0
 
+			# results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
+			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+
+			filename = os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'results_' + mask + '_' + '_'.join(postFix) +'_fix-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )
+			all_fix_data = NiftiImage(filename).data
+			fix_data = NiftiImage(filename).data[results_frames[variable],:,:,:]
+			fix_header = NiftiImage(filename).header
+
+			anatmask = NiftiImage(os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), 'combined_labels.nii.gz' )).data
+			statmask = NiftiImage(os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'corrs_' + mask + '_' + '_'.join(postFix) +'_' +'fix-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )).data
+
+			combined_mask = anatmask#(anatmask * (statmask[stats_frames['corr']]>stat_threshold) * (all_fix_data[results_frames['ecc_gauss']]<20))
+
+			for cond in conditions:
+				filename = os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'results_' + mask + '_' + '_'.join(postFix) +'_' +cond +'-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )
+				if os.path.isfile(filename):
+					
+					if cond != 'fix':
+						data_for_surf = np.log(NiftiImage(filename).data[results_frames[variable],:,:,:] /  fix_data) 
+						data_for_surf[combined_mask==False] = np.nan
+						c_min, c_max = 0.1, 2
+					else:
+						data_for_surf = NiftiImage(filename).data[results_frames[variable],:,:,:]
+						data_for_surf[combined_mask==False] = np.nan
+						if variable == 'ecc_gauss':
+							c_min, c_max = 0, 10
+						elif variable == 'polar':
+							c_min, c_max = -pi, pi
+						elif variable == 'sd_gauss':
+							c_min, c_max = 0, 10
+					try:
+						exec("%s_data_for_surf = NiftiImage(data_for_surf)"%cond)
+						# self.results_to_surface(file_name = filename.split('/')[-1].split('.')[0], output_file_name = '%s_diff_score'%cond,smooth = 0.0 )
+						exec("%s_data_for_surf.header = fix_header"%cond)
+						save_filename = os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'data_for_surf_' + mask + '_' + '_'.join(postFix) +'_' +cond +'-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )
+						exec("%s_data_for_surf.save(save_filename)"%cond)
+
+						for hemi in ['rh','lh']:
+
+							# load difference nifti, mask nifti and labels
+							label_files = subprocess.Popen('ls ' + os.path.join(subj_dir, self.project.subject.standardFSID, "label", label_dir, "%s.*.label" % hemi), shell=True, stdout=subprocess.PIPE).communicate()[0].split('\n')[:-1]
+							# mask_file = os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'corrs_' + mask + '_' + '_'.join(postFix) +'_' +cond +'-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )
+
+							# convert to surface and show
+							brain = Brain(self.project.subject.standardFSID, hemi, 'inflated', config_opts={"cortex": "bone", "background": "white", 'width': 1200, 'height': 1200}, curv = True)
+							exec("diff_surf_%s = io.project_volume_data(save_filename, '%s', reg_file,smooth_fwhm = 4)"%(hemi,hemi))
+							# exec("brain.add_overlay(diff_surf_%s, min = 0.001, max = pi, hemi = hemi)"%hemi)
+							exec("brain.add_overlay(diff_surf_%s, min = %s, max = %s, hemi = hemi)"%(hemi,c_min,c_max))
+							# exec("diff_surf_%s[np.isnan(diff_surf_%s)] = 0"%(hemi,hemi))
+							# exec("brain.add_data(diff_surf_%s, -1, 1, colormap='coolwarm', alpha=0.8,hemi=hemi)"%hemi)
+
+							# brain.add_data(stat_mask[:stat_mask.shape[0]/2], min=0.001, max=3.5, thresh=.5, colormap="bone", alpha=0.95, vertices = np.ones(stat_mask.shape[-1], dtype = bool), smoothing_steps = 2, colorbar=False, time = 0, time_label = None, hemi = hemi)
+							# brain.add_data(stat_mask, min=0, max=10, thresh=.5, colormap="bone", alpha=1, vertices = np.ones(stat_mask.shape[-1], dtype = bool), smoothing_steps = 2, colorbar=False, time = 0, time_label = None, hemi = hemi)
+
+							# for l in label_files:
+							# 	brain.add_label(l, borders=True, color = 'k' )
+
+							# create tiffs
+							for view in [ 'parietal', 'dorsal', 'lat', 'med', 'frontal', 'rostral', 'ventral', 'caudal']: # 'parietal', 'frontal','lat', 'med',, 'dorsal', 'lat', 'med'
+							# 'lateral' | 'medial' | 'rostral' | 'caudal' |        'dorsal' | 'ventral' | 'frontal' | 'parietal'
+								brain.show_view(view)
+								brain.save_image(os.path.join(self.stageFolder( stage = 'processed/mri/figs/surface_plots'),'%s_%s_%s_%s.tiff'%(variable,cond,hemi,view)))
+						del(data_for_surf)
+					except:
+						1+1
+
+	def create_group_level_hdf5(self,subjects,conditions):
+
+		group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+		group_data_dir = os.path.join(group_dir,'data')
+
+		roi_names = ['V1','V2d','V2v','V3d','V3v','V3AB','V4','MT','TO','TO1','TO2','V7','IPS0','IPS','IPS1','IPS2','IPS3','IPS4','LO','LO1','LO2','VO','VO1','VO2',
+		'FEF','FSUP','PRINF','PRCSUP','FRSUP','PRSUP1','PRSUP2','POC','POC1','POC2','POC3','POC4','POCSUP']
+
+		for roi in roi_names:
+			for cond in conditions:
+				exec('%s_%s_results = [] '%(cond,roi))
+				exec('%s_%s_stats = [] '%(cond,roi))
+
+		for subject in subjects:
+
+			hdf5_filename = os.path.join(group_data_dir, subject+'.hdf5')
+			h5file = open_file(hdf5_filename, mode = "r", title = subject)
+			
+			for cond in conditions:
+				for roi in roi_names:
+					if self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = cond + '_results') != None:
+						exec("%s_%s_results.extend(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = cond + '_results'))"%(cond,roi))
+						exec("%s_%s_stats.extend(self.roi_data_from_hdf(h5file, run = 'prf', roi_wildcard = roi, data_type = cond + '_corrs'))"%(cond,roi))
+			h5file.close()
+
+		self.hdf5_filename = os.path.join(group_data_dir,'all_subjects.hdf5')
+
+		self.logger.info('starting table file ' + self.hdf5_filename)
+		if os.path.isfile(self.hdf5_filename):
+			os.remove(self.hdf5_filename)
+		h5file = open_file(self.hdf5_filename, mode = "w", title = 'all_subjects')
+
+		this_run_group_name = 'prf'
+		thisRunGroup = h5file.create_group("/", this_run_group_name, '')
+			
+		for roi in roi_names:
+
+			thisRunGroup = h5file.create_group("/" + this_run_group_name, roi )
+
+			for cond in conditions:
+				h5file.create_array(thisRunGroup, cond+ '_results', np.array(eval('%s_%s_results'%(cond,roi))).T.astype(np.float32))
+				h5file.create_array(thisRunGroup, cond+ '_corrs', np.array(eval('%s_%s_stats'%(cond,roi))).T.astype(np.float32))
+
+		h5file.close()
+
+
+
+
+
+
+
+
+#
