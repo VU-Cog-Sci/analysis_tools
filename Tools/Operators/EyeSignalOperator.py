@@ -399,8 +399,10 @@ class EyeSignalOperator(Operator):
 		# we may also add a baseline variable which contains the baseine 
 		# by doing 3rd order savitzky-golay filtering, with a width of ~100 s
 		# we dan use this baseline signal for correlations of phasic and tonic pupil responses, for example
-		
-		self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
+		window_size = self.sample_rate / (hp * 0.25)
+		if np.mod(window_size,2)==0.0:
+			window_size+=1
+		self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil,window_size, 3)
 
 	
 	def zscore_pupil(self):
