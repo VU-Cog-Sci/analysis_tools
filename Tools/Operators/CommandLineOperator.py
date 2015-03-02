@@ -7,7 +7,7 @@ Created by Tomas Knapen on 2010-09-23.
 Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 """
 
-import os, sys, subprocess
+import os, sys, subprocess, shutil
 import tempfile, logging
 import re
 
@@ -20,6 +20,8 @@ from Operator import *
 from ..log import *
 
 from IPython import embed as shell
+
+
 
 
 ### Execute program in shell:
@@ -802,6 +804,70 @@ class AnnotationToLabelOperator( CommandLineOperator ):
 			self.runcmd += ' --subject ' + subjectID
 			self.runcmd += ' --hemi ' + hemi
 			self.runcmd += ' --outdir ' + os.path.join(os.environ['SUBJECTS_DIR'], subjectID, 'label', annotationName)
+			self.runcmd += ' &\n'
+
+		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
+		self.runcmd = self.runcmd[:-2]
+
+class LabelsToAnnotationOperator( CommandLineOperator ):
+	"""
+	AnnotationToLabelOperator makes use of freesurfer's mris_label2annot command to
+	create one annotation out of a folder of labels. This is particularly useful to 
+	be able to load a whole folder of labels at once, by simply loading only the annotation file.
+	"""
+	
+	def __init__(self, inputObject, cmd = 'mris_label2annot', **kwargs):
+		"""
+		Upon initialization AnnotationToLabelOperator needs inputObject=[path to label dir]
+		"""
+		super(LabelsToAnnotationOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, subjectID, outputFileName = 'all_labels', hemispheres = None ):
+		"""
+		configure sets up the command line for label2annot operation
+		"""
+		# self.inputObject is an annotation file name
+
+		# move ctab to this dir
+		base_label_dir = '/'.join(self.inputObject.split('/')[:-1])
+
+		if hemispheres == None:
+			hemispheres = ['lh','rh']
+		if subjectID == None:
+			self.logger.warning('no subjectID given. this negligence will not stand.')
+
+		# initiate command
+		self.runcmd = ''
+
+		# create ctab file
+		for hemi in hemispheres:
+			ctab_fname = os.path.join(self.inputObject,'%s.%s.annot.ctab'%(hemi,outputFileName))
+			if os.path.isfile(ctab_fname): os.remove(ctab_fname)
+			ctab_file = open(ctab_fname, 'w')
+			k = 0
+			for label in os.listdir(self.inputObject):
+				if (hemi in label) * ('.label' in label):
+					k+= 1
+					ctab_file.write("{:>3}  ".format(k))
+					ctab_file.write("{}".format(label.split('.')[1]))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=35-len(label.split('.')[1])))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=4))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=4))
+					ctab_file.write("{0:{width}}\n".format(0,width=5))
+			ctab_file.close()
+
+			# add to command
+			self.runcmd += self.cmd
+			self.runcmd += ' --subject ' + subjectID
+			self.runcmd += ' --hemi ' + hemi
+			self.runcmd += ' --ctab ' + ctab_fname
+			self.runcmd += ' --a ' + outputFileName
+			for label in os.listdir(self.inputObject):
+				if (hemi in label) * ('.label' in label):
+					# print label
+					self.runcmd += ' --l ' + os.path.join(self.inputObject,label) 
+					# self.runcmd += ' --offset ' + str(li)
+			self.runcmd += ' --nhits nhits.mgh'
 			self.runcmd += ' &\n'
 
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
