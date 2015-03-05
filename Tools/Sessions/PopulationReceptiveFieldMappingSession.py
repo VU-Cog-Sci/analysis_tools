@@ -2039,15 +2039,15 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# load statistical mask:
 				self.logger.info('loading statistical mask, r squared threshold: %.2f'%r_squared_threshold)
 				filename = 'corrs_'+mask_file_name + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,n_pixel_elements_raw)
-			stat_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), filename +  '.nii.gz'))
+				stat_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), filename +  '.nii.gz'))
 				stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 				cortex_mask *= stat_data.data[stats_frames['r_squared']] > r_squared_threshold
 
-			# number slices, for sub-TR timing to follow stimulus timing. 
+		# number slices, for sub-TR timing to follow stimulus timing. 
 		slices = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T[cortex_mask]
 		slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
 		
-			# load fMRI data 
+		# load fMRI data 
 		self.logger.info('loading fMRI data')
 		t = time.time()
 		data_list = []
@@ -2063,12 +2063,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 		t2 = time.time()-t
 		self.logger.info('loaded fMRI data in %ds'%(t2))
 
-			# estimate fit duration
-			estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/n_jobs)/141**2)*n_pixel_elements_raw**2)/60) 
+		# estimate fit duration
+		estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/n_jobs)/141**2)*n_pixel_elements_raw**2)/60) 
 		self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
-			self.logger.info('estimated duration this condition: %dm ' % (estimated_fit_duration))
+		self.logger.info('estimated duration this condition: %dm ' % (estimated_fit_duration))
 
-			# figure out roi label per voxel and how many there are for when plotting individual voxels in Dumoulin_fit
+		# figure out roi label per voxel and how many there are for when plotting individual voxels in Dumoulin_fit
 		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
 		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
 		roi_names = np.zeros_like(slices_in_full).astype('string')
@@ -3525,7 +3525,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					pl.close(f)
 
 			if this_condition != 'fix':
-			result_types = ['size_ratio','sd_gauss','abs_center_sd_diff','abs_surround_sd_diff','abs_ecc_diff', 'ecc_gauss','rel_center_sd_diff','rel_surround_sd_diff','rel_ecc_diff']
+				result_types = ['size_ratio','sd_gauss','abs_center_sd_diff','abs_surround_sd_diff','abs_ecc_diff', 'ecc_gauss','rel_center_sd_diff','rel_surround_sd_diff','rel_ecc_diff']
 			else:
 				result_types = ['size_ratio','sd_gauss']
 
@@ -3643,7 +3643,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 							# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
 							label = roi
 
-								s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(label,r))
+							s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(label,r))
 							# s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
 
 							s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
