@@ -39,12 +39,12 @@ set avgflag 1           ;# make half convex/concave
 set complexvalflag 1    ;# two-component data
 set colscale 0          ;# 0=wheel,1=heat,2=BR,3=BGR,4=twocondGR,5=gray
 set angle_offset -.25   ;# phase offset (-0.25 for up semicircle start)
-set angle_cycles 2.0    ;# adjust range
-set fthresh -1.0         ;# val/curv sigmoid zero (neg=>0)
+set angle_cycles 1.0    ;# adjust range
+set fthresh 0.1         ;# val/curv sigmoid zero (neg=>0)
 set fslope 1          ;# contast (was fsquash 2.5)
-set fmid   0          ;# set linear region
+set fmid   0.25          ;# set linear region
 set smoothsteps 0
-set offset 0.20    ;# default lighting offset
+set offset 0.0    ;# default lighting offset
 # smooth the curvature and surface before doing anything else
 set invphaseflag 0
 set revphaseflag 0
@@ -97,7 +97,7 @@ shrink 40
 
 
 scale_brain 1.6
-set nrimages 2
+set nrimages 15
 set rotation_gain 150.0
 set rot [ expr { $rotation_gain / $nrimages } ]
 

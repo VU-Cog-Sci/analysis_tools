@@ -2846,7 +2846,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# all_res_file.header = NiftiImage(self.stageFolder('processed/mri/PRF/results_'+filename+ '.nii.gz')).header
 			# all_res_file.save(os.path.join(self.stageFolder('processed/mri/PRF/'), 'results_' + filename+ '.nii.gz' ))	
 
-		for sm in [0,3,5]: # different smoothing values.
+		for sm in [0]: # different smoothing values. ,3,5
 			# reproject the original stats
 			self.results_to_surface(file_name = 'corrs_' + filename, output_file_name = 'corrs_' + filename + '_' + str(sm), frames = {'_f':stats_frames['r_squared']}, smooth = sm, condition = 'PRF')
 			# and the spatial values
@@ -2855,7 +2855,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# but now, we want to do a surf to vol for the smoothed real and imaginary numbers.
 			self.surface_to_polar(filename = os.path.join(self.stageFolder('processed/mri/PRF/surf/'), 'results_' + filename + '_' + str(sm) ))
 
-			self.makeTiffsFromCondition(condition='PRF',results_file = 'results_' + filename+ '_' + str(sm) + '_', exit_when_ready=1)
+			self.makeTiffsFromCondition(condition='PRF', results_file = 'results_' + filename+ '_' + str(sm) + '_', y_rotation = 150.0, exit_when_ready=1)
 
 			
 
@@ -3033,7 +3033,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	
 	def makeTiffsFromCondition(self, condition, results_file, y_rotation = 90.0, exit_when_ready = 1 ):
 		thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/redraw_retmaps.tcl' )
-		for hemi in ['lh','rh']:
+		for hemi in ['lh','rh']: #,'rh'
 			REDict = {
 			'---HEMI---': hemi,
 			'---CONDITION---': condition, 
