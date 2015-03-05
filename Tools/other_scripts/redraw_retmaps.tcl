@@ -44,7 +44,7 @@ set fthresh 0.1         ;# val/curv sigmoid zero (neg=>0)
 set fslope 1          ;# contast (was fsquash 2.5)
 set fmid   0.25          ;# set linear region
 set smoothsteps 0
-set offset 0.0    ;# default lighting offset
+set offset 0.20    ;# default lighting offset
 # smooth the curvature and surface before doing anything else
 set invphaseflag 0
 set revphaseflag 0
