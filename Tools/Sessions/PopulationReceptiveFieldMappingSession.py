@@ -883,7 +883,7 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 		if fix_PRF != []:
 			s = f.add_subplot(313)
 		else:
-		s = f.add_subplot(222)
+			s = f.add_subplot(222)
 		pl.plot(time_course,'--k')
 		pl.plot(trimmed_mp,'r')
 		simpleaxis(s)
