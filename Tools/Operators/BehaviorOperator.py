@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pylab as pl
 
 from nifti import *
-from pypsignifit import *
+# from pypsignifit import *
 from Operator import *
 from ..log import *
 import re
