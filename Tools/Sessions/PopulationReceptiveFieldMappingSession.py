@@ -606,7 +606,7 @@ def gaussfit(data,err=None,params=(),return_all=False,circle=False,
 
 class PRFModelTrial(object):
 	"""docstring for PRFModelTrial"""
-	def __init__(self, orientation, n_elements, n_samples, sample_duration, bar_width = 0.1):
+	def __init__(self, orientation, n_elements, n_samples, sample_duration, bar_width = 0.2):
 		super(PRFModelTrial, self).__init__()
 		self.orientation = -(orientation + np.pi/2.0)
 		self.n_elements = n_elements
@@ -638,7 +638,7 @@ class PRFModelTrial(object):
 
 class PRFModelRun(object):
 	"""docstring for PRFModelRun"""
-	def __init__(self, run, n_TRs, TR, n_pixel_elements, sample_duration = 0.6, bar_width = 0.1):
+	def __init__(self, run, n_TRs, TR, n_pixel_elements, sample_duration = 0.6, bar_width = 0.2):
 		super(PRFModelRun, self).__init__()
 		self.run = run
 		self.n_TRs = n_TRs
@@ -649,7 +649,7 @@ class PRFModelRun(object):
 		
 		self.orientation_list = self.run.orientations
 	
-	def simulate_run(self, orientations,save_images_to_file = None):
+	def simulate_run(self, save_images_to_file = None):
 		"""docstring for simulate_run"""
 		self.sample_times = np.arange(0, self.n_TRs * self.TR, self.sample_duration)
 		
@@ -660,7 +660,7 @@ class PRFModelRun(object):
 			samples_in_trial = (self.sample_times >= (self.run.trial_times[i][1])) * (self.sample_times < (self.run.trial_times[i][2]))
 
 
-			if np.all([self.run.trial_times[i][0] != 'fix_no_stim', self.orientation_list[i] in np.radians(orientations)]):
+			if self.run.trial_times[i][0] != 'fix_no_stim':
 				pt = PRFModelTrial(orientation = self.orientation_list[i], n_elements = self.n_pixel_elements, n_samples = samples_in_trial.sum(), sample_duration = self.sample_duration, bar_width = self.bar_width)
 				pt.pass_through()
 				self.run_matrix[samples_in_trial] = pt.pass_matrix
@@ -684,8 +684,8 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	params = Parameters()
 	params.add('xo', value= Ridge_start_params['xo'], min = -max_eccentricity, max = max_eccentricity)
 	params.add('yo', value= Ridge_start_params['yo'], min = -max_eccentricity, max = max_eccentricity)
-	params.add('theta', value= 0.0, min = -180, max = 180)
-	params.add('sigmas_ratio', value=1.0, min = 1/1.5, max = 1.5,vary=True)
+	params.add('theta', value= 0.0, min = -180, max = 180,vary=False)
+	params.add('sigmas_ratio', value=1.0, min = 1/1.5, max = 1.5,vary=False)
 	params.add('sigma_x',value=0.1,min=0.0,max=1.0) 
 	
 	if DoG:
@@ -698,7 +698,6 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 
 	orientations = ['0','45','90','135','180','225','270','315','X']
 	n_orientations = len(orientations)
-
 	# fix_prf
 	fix_PRF = []
 	if fix_prf_params != []:
@@ -829,7 +828,7 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	if (not os.path.isdir(plot_dir)) * plotbool: os.mkdir(plot_dir)
 
 	# if plotbool * (plotdir != []) * (srp[0] >= corr_threshold)*(srp[1] >= logp_thresh)*(SNR >= SNR_thresh)*(results['sd'] >= sd_thresh) * (results['ecc']<= ecc_thresh) * (results['amplitude'] <= amp_thresh):
-	if plotbool * (plot_dir != [])  * (results['ecc'] < 4):#* randint
+	if plotbool * (plot_dir != []) * (results['sd'] < 2)*(stats['r_squared'] > 0.3)*(results['ecc'] < 4): #* :#* randint
 
 		tr_block = int(len(time_course)/n_orientations)
 
@@ -841,7 +840,13 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 			s.set_title('fix PRF')
 
 			s = f.add_subplot(322)
-			pl.plot(time_course + instruction_prediction,'-k',alpha=0.4,label='input data')
+			for t in range(len(orientations)):
+				if t == 0:
+					pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],(time_course+instruction_prediction)[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='input data')
+				else:
+					pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],(time_course+instruction_prediction)[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1)
+
+			# pl.plot(time_course + instruction_prediction,'.--k',alpha=0.4,label='input data')
 			pl.plot(instruction_prediction,'--r',alpha=0.4,label='instruction prediction')
 			pl.plot(time_course,'--b',alpha=1,label='instruction corrected data')
 			simpleaxis(s)
@@ -884,14 +889,23 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 			s = f.add_subplot(313)
 		else:
 			s = f.add_subplot(222)
-		pl.plot(time_course,'--k')
-		pl.plot(trimmed_mp,'r')
+		for t in range(len(orientations)):
+			if t == 0:
+				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='time course')
+				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r',label='model prediction')
+
+			else:
+				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1)
+				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r')
+		# pl.plot(trimmed_mp,'r',label='model prediction')
 		simpleaxis(s)
 		spine_shift(s)
 		s.set_xlim(-20,tr_block*n_orientations+20)
 		pl.xticks(np.arange(0,n_orientations*tr_block,tr_block),orientations)
 		pl.tick_params(labelsize=18)
 		s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+		leg = s.legend(fancybox = True, loc = 'best')
+		leg.get_frame().set_alpha(0.5)
 
 		pl.savefig(os.path.join(plot_dir, 'vox_%d_%d_%d.pdf'%(slice_no,voxno,n_pixel_elements_raw)))
 		pl.close()
@@ -1338,8 +1352,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			trial_start_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 2" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri]  + stimulus_correction
 			trial_end_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 3" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri]  + stimulus_correction
 
-			trial_durations = trial_end_times - trial_start_times
-			r.trial_duration = np.median(trial_durations)
+			# trial_durations = trial_end_times - trial_start_times
+			# r.trial_duration = np.median(trial_durations)
+			r.trial_duration = 21
 
 			# create bool based on whether there was eye movement in that trial 
 			saccades = self.eye_informer(length_thresh=5) # only include saccades of > length_thresh degrees
@@ -1684,8 +1699,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	
 	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, 
-				fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.05, plot_diagnostics = False, ssr = 1, condition = 'PRF', 
-				save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315], stimulus_correction=0,convolve=True,add_instruction_to_dm = False,model_stimulus=True):
+				fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.01, plot_diagnostics = False, ssr = 1, condition = 'PRF', 
+				save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315], stimulus_correction=0,convolve=True,add_instruction_to_dm = False,model_stimulus=True,one_trial_per_dir=True):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -1701,27 +1716,55 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# get orientations and stimulus timings
 		if 'Square' in self.project.projectName: self.stimulus_timings_square(stimulus_correction=stimulus_correction)
 		else: self.stimulus_timings_square_2(stimulus_correction=stimulus_correction)
-		
 		self.logger.info('Creating design matrix with convolution is %s'%convolve)
 
 		self.stim_matrix_list = []
 		self.design_matrix_list = []
 		self.sample_time_list = []
-		self.tr_time_list = []
+		# self.tr_time_list = []
 		self.trial_start_list = []
-		for ri, r in enumerate([self.runList[c] for c in self.conditionDict[condition]]):
-			# 
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
-			if nii_file.rtime > 10:
-				TR = nii_file.rtime / 1000.0
-			else:
-				TR = nii_file.rtime
 
-			bar_width = 0.1
+
+		nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = [self.runList[c] for c in self.conditionDict[condition]][0], postFix = [] ))
+		if nii_file.rtime > 10:
+			TR = nii_file.rtime / 1000.0
+		else:
+			TR = nii_file.rtime		
+		sample_duration = TR/20
+
+
+		if one_trial_per_dir:
+			class empty_object(object): pass 
+			r = empty_object()
+			trial_duration = [self.runList[c] for c in self.conditionDict[condition]][0].trial_times[1][1]-[self.runList[c] for c in self.conditionDict[condition]][0].trial_times[0][1]
+			stim_duration = 21#[self.runList[c] for c in self.conditionDict[condition]][0].trial_duration
+			instruction_duration = 1.5
+			TRs_in_trial = ceil(trial_duration/TR) 
+			dilation_width = TRs_in_trial * TR - (stim_duration + instruction_duration)
+			conditions = np.repeat(['all','fix','speed','orient','sf','color'],len(orientations)+1).astype('|S12')
+			conditions[len(orientations)::len(orientations)+1] = 'fix_no_stim'
+			r.orientations = np.tile(np.radians(np.concatenate((orientations,[0]))),len(np.unique(conditions))-1)
+			trial_start_times = [(instruction_duration*(t+1)) + (dilation_width*t) + (stim_duration*t) for t in np.arange(len(r.orientations))]
+			trial_end_times = np.array(trial_start_times) + stim_duration
+			r.trial_times = [[conditions[t],trial_start_times[t],trial_end_times[t]] for t in range(len(trial_start_times))]
+			run_list = [r]
+			dm_type = 'one_trial_per_dir'
+			n_TRs = int((instruction_duration + stim_duration + dilation_width) * len(r.orientations)  / TR)
+		else:	
+			run_list = [self.runList[c] for c in self.conditionDict[condition]]
+			dm_type = 'full_experiment'
+			n_TRs = nii_file.timepoints
+
+		for ri, r in enumerate(run_list):
+
+			bar_width = 0.2
 			# bar_width = 1/(0.64*float(n_pixel_elements))
-			mr = PRFModelRun(r, n_TRs = nii_file.timepoints, TR = TR, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = bar_width)
-			self.logger.info('simulating run %d experiment of %d pixel elements and %1.2f s sample_duration'%(ri+1,n_pixel_elements, sample_duration))
-			mr.simulate_run( orientations )
+			mr = PRFModelRun(r, n_TRs = n_TRs, TR = TR, n_pixel_elements = n_pixel_elements, sample_duration = sample_duration, bar_width = bar_width)
+			if dm_type == 'full_experiment':
+				self.logger.info('simulating run %d experiment with %d pixel elements and %1.2f s sample_duration'%(ri+1,n_pixel_elements, sample_duration))
+			else:
+				self.logger.info('simulating one trial per dir with %d pixel elements and %1.2f s sample_duration'%(n_pixel_elements, sample_duration))
+			mr.simulate_run()
 		
 			if model_stimulus:
 				stimulus_suffix = 'with_stimulus'
@@ -1735,16 +1778,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 			if add_instruction_to_dm:
 				instruct_suffix = 'with_instruction'
 				fixation_size = 0.5
-				all_instruct_sizes = {'sf':[6.9,0.7],'color':[6.4,0.7],'orient':[7.7,0.7],'speed':[6.6,0.7],'fix_no_stim':[6.8,0.7],'fix':[6.8,0.7]}
+				all_instruct_sizes = {'all':[6.9,0.7],'sf':[6.9,0.7],'color':[6.4,0.7],'orient':[7.7,0.7],'speed':[6.6,0.7],'fix_no_stim':[6.8,0.7],'fix':[6.8,0.7]}
 				 # horizontal and vertical visual degrees
 				instruct_duration = 1.5
 				degree_per_pix_element = 27/float(n_pixel_elements)
-				instruct_times = ((np.array(r.trial_times)[:,1].astype('float32') - instruct_duration) / sample_duration)
-				instruct_times = instruct_times[instruct_times>0]
+				first_instruct_times = ((np.array(r.trial_times)[:,1].astype('float32') - instruct_duration) / sample_duration)
+				instruct_times = first_instruct_times
+				# second_instruct_times = first_instruct_times + (trial_duration)/sample_duration
+				# instruct_times = np.sort(np.ravel([first_instruct_times,second_instruct_times]))
+				instruct_times = instruct_times[instruct_times>=0]
 				if not convolve:
 					for ii, instruct_time in enumerate(instruct_times):
 						instruct_size = all_instruct_sizes[r.trial_times[ii][0]]
-						mr.run_matrix[int(instruct_time):int(instruct_time+instruct_duration/sample_duration),int(round(n_pixel_elements/2.0)):int(round(n_pixel_elements/2.0+(instruct_size[1]/2.0/degree_per_pix_element))),int(round(n_pixel_elements/2.0-(instruct_size[0]/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(instruct_size[0]/2.0/degree_per_pix_element)))] = 1.0
+						mr.run_matrix[int(instruct_time):int(instruct_time+instruct_duration/sample_duration),int(round(n_pixel_elements/2.0)):int(round(n_pixel_elements/2.0+(instruct_size[1]/degree_per_pix_element))),int(round(n_pixel_elements/2.0-(instruct_size[0]/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(instruct_size[0]/2.0/degree_per_pix_element)))] = 1.0
 				
 					# mr.run_matrix[:,int(round(n_pixel_elements/2.0-(fixation_size/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(fixation_size/2.0/degree_per_pix_element))),int(round(n_pixel_elements/2.0-(fixation_size/2.0/degree_per_pix_element))):int(round(n_pixel_elements/2.0+(fixation_size/2.0/degree_per_pix_element)))] = 1.0
 			else:
@@ -1908,6 +1954,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				run_design.rawDesignMatrix = np.repeat(rdm, ssr, axis=1)
 				run_design.convolveWithHRF(hrfType = gamma_hrfType, hrfParameters = gamma_hrfParameters)
 				workingDesignMatrix = run_design.designMatrix
+	
 			elif np.all([method == 'fir',convolve==True]):
 				self.logger.info('convolving design matrix of run %d with method fir'%(ri+1))
 				new_size = list(mr.run_matrix.shape)
@@ -1917,13 +1964,20 @@ class PopulationReceptiveFieldMappingSession(Session):
 					new_array[i:i+int(fir_ratio)] = mr.run_matrix[int(floor(i/int(fir_ratio)))]
 				workingDesignMatrix = new_array
 			
-			stimulus_refresh_period = 0.6 
-			down_sample_factor = stimulus_refresh_period/sample_duration
-			down_sample_index = np.arange(0,np.shape(mr.run_matrix)[0],down_sample_factor).astype(int)
+			if (dm_type == 'one_trial_per_dir')*convolve:
+				trial_ends = (trial_end_times + dilation_width) / sample_duration
+				trial_starts = np.array(trial_start_times) / sample_duration
+				for t in range(len(trial_ends)-1):
+					workingDesignMatrix[:,trial_ends[t]:trial_starts[t+1]] = np.zeros_like(workingDesignMatrix[:,trial_ends[t]:trial_starts[t+1]])
+
+			# stimulus_refresh_period = 0.6 
+			# down_sample_factor = TR/sample_duration
+			down_sample_index = np.linspace(0,np.shape(mr.run_matrix)[0],TRs_in_trial*len(r.orientations),endpoint=False).astype(int)
 			self.stim_matrix_list.append( np.reshape(mr.run_matrix[down_sample_index,:,:],(-1,n_pixel_elements**2)).T )
-			self.sample_time_list.append(mr.sample_times[down_sample_index] + ri * nii_file.timepoints * TR)
-			self.tr_time_list.append(np.arange(0, nii_file.timepoints * TR, TR) + ri * nii_file.timepoints * TR)
-			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + ri * nii_file.timepoints * TR) 		
+			self.sample_time_list.append(mr.sample_times[down_sample_index] + ri * n_TRs * TR)
+			# self.tr_time_list.append(np.arange(0, n_TRs * TR, TR) + ri * n_TRs * TR)
+			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + ri * n_TRs * TR) 	
+
 			if convolve:
 				self.design_matrix_list.append(workingDesignMatrix[:,down_sample_index])
 
@@ -1977,12 +2031,36 @@ class PopulationReceptiveFieldMappingSession(Session):
 			self.full_design_matrix = np.array(self.full_design_matrix - self.full_design_matrix.mean(axis = 0) )# / self.full_design_matrix.std(axis = 0)
 
 		self.raw_dm = np.hstack(self.stim_matrix_list).T
-		self.tr_time_list = np.concatenate(self.tr_time_list)
+		# self.tr_time_list = np.concatenate(self.tr_time_list)
 		self.sample_time_list = np.concatenate(self.sample_time_list)
 		self.trial_start_list = np.concatenate(self.trial_start_list)
 		self.logger.info('design_matrix of shape %s created, of which %d are valid stimulus locations'%(str(self.raw_dm.shape), int((self.raw_dm.sum(axis = 0) != 0).sum())))
 		
-		# 
+		animate_dm = False
+		if animate_dm:
+			from matplotlib import animation
+			plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+			ims = []
+			f=pl.figure(figsize=(24,24))
+			timepoints = np.arange(len(self.raw_dm))
+			# timepoints = np.arange(len(self.raw_dm)/(len(orientations)+1)*6,len(self.raw_dm)/(len(orientations)+1)*7)
+			if convolve:
+				dm = self.full_design_matrix
+			else:
+				dm = self.raw_dm
+			for i,t in enumerate(timepoints):
+				s=f.add_subplot(111)
+				im=pl.imshow(dm.reshape(-1,n_pixel_elements,n_pixel_elements)[t,:,:],interpolation='nearest',cmap='gray')
+				pl.clim(0,np.max(dm))
+				# pl.title(str(t))
+				pl.axis('off')
+				ims.append([im])
+			ani = animation.ArtistAnimation(f, ims)#, interval=5, blit = True, repeat_delay = 1000)
+			mywriter = animation.FFMpegWriter(fps = 1)
+			self.logger.info('saving animation')
+			ani.save(os.path.join(self.stageFolder('processed/mri/figs/delve_deeper/'),'design_matrix_%ix%i_%s_%s_%s_%s.mp4'%(n_pixel_elements, n_pixel_elements, method,instruct_suffix,stimulus_suffix,dm_type)),writer=mywriter)#,fps=2)#,dpi=100,bitrate=50)
+			# pl.close()
+
 		if plot_diagnostics:
 			f = pl.figure(figsize = (10, 3))
 			s = f.add_subplot(111)
@@ -1990,16 +2068,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 			pl.plot(self.trial_start_list / sample_duration, np.ones(self.trial_start_list.shape), 'ko')
 			s.set_title('original')
 			s.axis([0,200,0,200])
-
-
+	
 		save_design_matrix=True
 		if save_design_matrix:
 			self.logger.info('saving design matrix')
-			with open(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'design_matrix_%1.2f_%ix%i_%s_%s_%s.pickle'%(sample_duration, n_pixel_elements, n_pixel_elements, method,instruct_suffix,stimulus_suffix)), 'w') as f:
+			with open(os.path.join(self.stageFolder('processed/mri/%s/'%condition), 'design_matrix_%ix%i_%s_%s_%s_%s.pickle'%(n_pixel_elements, n_pixel_elements, method,instruct_suffix,stimulus_suffix,dm_type)), 'w') as f:
 				if convolve:
 					pickle.dump({'full_design_matrix' : self.full_design_matrix}, f)
 				else:
-					pickle.dump({'tr_time_list' : self.tr_time_list, 'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
+					# pickle.dump({'tr_time_list' : self.tr_time_list, 'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
+					pickle.dump( {'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
+
 
 	def stats_to_mask(self, mask_file_name, postFix = ['mcf', 'sgtf', 'prZ', 'res'], condition = 'PRF', task_condition = ['all'], threshold = 5.0):
 		"""stats_to_mask takes the stats from an initial fitting and converts it to a anatomical mask, and places it in the masks/anat folder"""
@@ -2028,59 +2107,74 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# load anatomical mask:
 		mask_file = NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name +  '.nii.gz'))
 		cortex_mask = np.array(mask_file.data, dtype = bool)
+		stat_data_loaded = True
+		all_data_loaded = False
+		thresh_data_loaded = False
 
 		total_elapsed_time = 0
 
 		for this_condition in task_conditions:
 			
-			self.logger.info('starting PRF fit procedure on condition: %s'%this_condition)
-
-			if this_condition != 'all':
-				# load statistical mask:
+			if (this_condition != 'all') * (stat_data_loaded == False):
 				self.logger.info('loading statistical mask, r squared threshold: %.2f'%r_squared_threshold)
-				filename = 'corrs_'+mask_file_name + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,n_pixel_elements_raw)
+				# filename = 'corrs_'+mask_file_name + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,n_pixel_elements_raw)
+				filename = 'corrs_'+'cortex_dilated_mask' + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,101)
 				stat_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), filename +  '.nii.gz'))
 				stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
-				cortex_mask *= stat_data.data[stats_frames['r_squared']] > r_squared_threshold
+				cortex_mask *= (stat_data.data[stats_frames['r_squared']] > r_squared_threshold)
+				stat_data_loaded = True
 
-		# number slices, for sub-TR timing to follow stimulus timing. 
-		slices = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T[cortex_mask]
-		slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
+			self.logger.info('starting PRF fit procedure on condition: %s'%this_condition)
+
+			# number slices, for sub-TR timing to follow stimulus timing. 
+			slices = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T[cortex_mask]
+			slices_in_full = (np.ones(cortex_mask.shape).T * np.arange(cortex_mask.shape[0])).T
+			
+			# load fMRI data
+			if (not all_data_loaded) + (not thresh_data_loaded):
+				self.logger.info('loading fMRI data')
+				t = time.time()
+				data_list = []
+				for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
+					nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
+					data_list.append(nii_file.data[:,cortex_mask])
+				if nii_file.rtime > 10:
+					self.TR = nii_file.rtime / 1000.0
+				else:
+					self.TR = nii_file.rtime
+				z_data = np.array(np.vstack(data_list), dtype = np.float32)
+				del(data_list)
+				t2 = time.time()-t
+				self.logger.info('loaded fMRI data in %ds'%(t2))
+				if this_condition == 'all':
+					all_data_loaded = True
+				else:
+					thresh_data_loaded = True
+
+			# estimate fit duration
+			if n_pixel_elements_raw == 181: time_per_voxel = 4
+			if n_pixel_elements_raw == 141: time_per_voxel = 2
+			if n_pixel_elements_raw == 101: time_per_voxel = 1
+			if n_pixel_elements_raw == 51: time_per_voxel = 0.5
+
+			estimated_fit_duration = cortex_mask.sum() * time_per_voxel / float(n_jobs)
+			# estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/float(n_jobs))/141**2)*101*(float(n_pixel_elements_raw)/101)**2)/60) 
+			self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
+			self.logger.info('estimated duration this condition: %dm (%.1fh)' % (estimated_fit_duration,estimated_fit_duration/60.0))
+
+			# figure out roi label per voxel and how many there are for when plotting individual voxels in Dumoulin_fit
+			anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
+			anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
+			roi_names = np.zeros_like(slices_in_full).astype('string')
+			for this_roi in anatRoiFileNames:
+				roi_nifti = NiftiImage(this_roi).data.astype('bool')
+				roi_names[roi_nifti] = (this_roi.split('/')[-1]).split('.')[1]
+			roi_names[roi_names=='0.0'] = 'unkown_roi'
+			roi_names = roi_names[cortex_mask]
+			roi_count = {}
+			for roi in np.unique(roi_names):
+				roi_count[roi] = np.size(roi_names[roi_names==roi]) 
 		
-		# load fMRI data 
-		self.logger.info('loading fMRI data')
-		t = time.time()
-		data_list = []
-		for i, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
-			data_list.append(nii_file.data[:,cortex_mask])
-			if nii_file.rtime > 10:
-				self.TR = nii_file.rtime / 1000.0
-			else:
-				self.TR = nii_file.rtime
-			z_data = np.array(np.vstack(data_list), dtype = np.float32)
-			del(data_list)
-		t2 = time.time()-t
-		self.logger.info('loaded fMRI data in %ds'%(t2))
-
-		# estimate fit duration
-		estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/n_jobs)/141**2)*n_pixel_elements_raw**2)/60) 
-		self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
-		self.logger.info('estimated duration this condition: %dm ' % (estimated_fit_duration))
-
-		# figure out roi label per voxel and how many there are for when plotting individual voxels in Dumoulin_fit
-		anatRoiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/anat/' ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
-		anatRoiFileNames = [anRF for anRF in anatRoiFileNames if np.all([np.any(['bh' in anRF,'lh' in anRF,'rh' in anRF]),'cortex' not in anRF])]
-		roi_names = np.zeros_like(slices_in_full).astype('string')
-		for this_roi in anatRoiFileNames:
-			roi_nifti = NiftiImage(this_roi).data.astype('bool')
-			roi_names[roi_nifti] = (this_roi.split('/')[-1]).split('.')[1]
-		roi_names[roi_names=='0.0'] = 'unkown_roi'
-		roi_names = roi_names[cortex_mask]
-		roi_count = {}
-		for roi in np.unique(roi_names):
-			roi_count[roi] = np.size(roi_names[roi_names==roi]) 
-	
 			# plot dir for individual voxel plots
 			plotdir = os.path.join(self.stageFolder('processed/mri/figs'), 'PRF_plots_%s_%s_%s'%(mask_file_name,n_pixel_elements_raw,this_condition))
 			if os.path.isdir(plotdir)*plotbool: shutil.rmtree(plotdir); os.mkdir(plotdir)
@@ -2091,13 +2185,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 			t = time.time()
 			self.logger.info('loading high res raw design matrix')
 			if (this_condition == 'fix')+(this_condition == 'all'):
-				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%0.2f_%dx%d_hrf_with_instruction_with_stimulus.pickle'%(sample_duration,n_pixel_elements_raw,n_pixel_elements_raw)) 
+				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_with_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
 			else:
-				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%0.2f_%dx%d_hrf_no_instruction_with_stimulus.pickle'%(sample_duration,n_pixel_elements_raw,n_pixel_elements_raw)) 
+				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_no_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
 			with open(filename) as f:
 				picklefile = pickle.load(f)
 			self.raw_dm = picklefile['raw_dm']
-			self.tr_time_list = picklefile['tr_time_list']
+			# self.tr_time_list = picklefile['tr_time_list']
 			self.sample_time_list = picklefile['sample_time_list']
 			self.trial_start_list = picklefile['trial_start_list']
 			t2 = time.time()-t
@@ -2106,7 +2200,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# the dm for the Lee procedure is always the same, simple: no instruction modelled.
 			self.logger.info('loading low res convolved design matrix')
 			t = time.time()
-			filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%.2f_%dx%d_hrf_no_instruction_with_stimulus.pickle'%(sample_duration,n_pixel_elements_full,n_pixel_elements_full)) 
+			filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_no_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_full,n_pixel_elements_full)) 
 			with open(filename) as f:
 				picklefile = pickle.load(f)
 			self.full_design_matrix = picklefile['full_design_matrix']
@@ -2115,9 +2209,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			# only select non-empty regressors to reduce computation time
 			full_dm_valid_regressors = self.full_design_matrix.sum(axis = 0) != 0
-			raw_dm_valid_regressors = self.raw_dm.sum(axis = 0) != 0
+			# raw_dm_valid_regressors = self.raw_dm.sum(axis = 0) != 0
 			self.full_design_matrix = self.full_design_matrix[:,full_dm_valid_regressors]
-			self.raw_dm = self.raw_dm[:,raw_dm_valid_regressors]
+			# self.raw_dm = self.raw_dm[:,raw_dm_valid_regressors]
 
 			# if this condition is not fix or all, load in the fix prf parameters (results file) and a high res unconvolved dm with only the instruction modelled. 
 			if (this_condition != 'fix') * (this_condition != 'all'):
@@ -2127,7 +2221,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 				t = time.time()
 				self.logger.info('loading design matrix for instruction correction')
-				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%0.2f_%dx%d_hrf_with_instruction_no_stimulus.pickle'%(sample_duration,n_pixel_elements_raw,n_pixel_elements_raw)) 
+				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%0.2f_%dx%d_hrf_with_instruction_no_stimulus_one_trial_per_dir.pickle'%(sample_duration,n_pixel_elements_raw,n_pixel_elements_raw)) 
 				with open(filename) as f:
 					picklefile = pickle.load(f)
 				# self.full_design_matrix = picklefile['full_design_matrix']
@@ -2135,6 +2229,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 				t2 = time.time()-t
 				self.logger.info('loaded design matrix for instruction correction in %ds'%(t2))
 				self.raw_dm_fix = self.raw_dm_fix[:,raw_dm_valid_regressors]
+
+			condition_order_dm = np.array(['all','fix','speed','orient','sf','color'])
+			this_condition_ind = np.where(condition_order_dm==this_condition)[0][0]
+			this_condition_dm = self.raw_dm[this_condition_ind*len(self.raw_dm)/len(condition_order_dm):(this_condition_ind+1)*len(self.raw_dm)/len(condition_order_dm),:]
+			this_condition_dm_full = self.full_design_matrix[this_condition_ind*len(self.raw_dm)/len(condition_order_dm):(this_condition_ind+1)*len(self.raw_dm)/len(condition_order_dm),:]
 
 			if method == 'old':
 				tasks = list(np.unique(np.array([tt[0] for tt in r.trial_times])))
@@ -2165,26 +2264,30 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 				# get experiment information for this condition
 				orientations.append('fix_no_stim')
+				trial_duration = [self.runList[c] for c in self.conditionDict[condition]][0].trial_times[1][1]-[self.runList[c] for c in self.conditionDict[condition]][0].trial_times[0][1]
 				instruction_duration = 1.5
-				dilate_width = 5 + instruction_duration/self.TR # trs after stimulus disappearance to include in trial		
-				trial_duration = r.trial_duration
-				trs_in_trial = round(trial_duration/self.TR)
+				extended_period = int(ceil(trial_duration/self.TR))
+				# dilate_width = 6  # trs after stimulus disappearance to include in trial		
+				# trial_duration = r.trial_duration
+				# trs_in_trial = round(trial_duration/self.TR)
 				add_time_for_previous_runs = 0
-				trial_start_times = [];trial_names=[];saccades=[];trial_orientations=[]
+				trial_start_times = [];trial_names=[];saccades=[];trial_orientations=[];tr_time_list= []
 				for j, r in enumerate([self.runList[k] for k in self.conditionDict['PRF']]):
 					this_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 					trial_start_times.append(np.array(r.trial_times)[:,1].astype('float32') + add_time_for_previous_runs - instruction_duration)
 					trial_names.append(np.array(r.trial_times)[:,0])
 					trial_orientations.append(np.array(r.trial_times)[:,4].astype('float32'))
 					saccades.append(np.array(r.trial_times)[:,3]=='False')
+					tr_time_list.append(np.arange(0, self.TR * this_nii_file.timepoints,self.TR)+add_time_for_previous_runs)
 					add_time_for_previous_runs += self.TR * this_nii_file.timepoints
-				trial_names = np.ravel(np.array(trial_names))[:-1] # cutoff last and first trial because we want to be able to include *pad_trs_4_smooth* trs before and after trial
-	 			if this_condition == 'all':
+				trial_names = np.ravel(np.array(trial_names))[1:-1] # cutoff last and first trial because we want to be able to include *pad_trs_4_smooth* trs before and after trial
+				if this_condition == 'all':
 					trial_names[trial_names!='fix_no_stim'] = 'all'
-	 			trial_start_times = np.ravel(np.array(trial_start_times))[:-1]		
-				saccades = np.ravel(np.array(saccades))[:-1]
-				trial_orientations = np.ravel(np.array(trial_orientations))[:-1].astype(int)
-				extended_period = int(trs_in_trial+dilate_width) 
+				tr_time_list = np.ravel(tr_time_list)
+				trial_start_times = np.ravel(np.array(trial_start_times))[1:-1]		
+				saccades = np.ravel(np.array(saccades))[1:-1]
+				trial_orientations = np.ravel(np.array(trial_orientations))[1:-1].astype(int)
+				# extended_period = 20
 				# pad_trs_4_smooth=5
 				# filter_width = 17
 
@@ -2192,7 +2295,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				all_processed_data = np.zeros([extended_period*len(orientations)] + list(cortex_mask.shape))
 
 			# set up empty arrays for saving the data
-			all_coefs = np.zeros([int(raw_dm_valid_regressors.sum())] + list(cortex_mask.shape))
+			# all_coefs = np.zeros([int(n_pixel_elements_raw**2)] + list(cortex_mask.shape))
 			all_full_coefs = np.zeros([n_pixel_elements_raw**2] + list(cortex_mask.shape))
 			all_corrs = np.zeros([7] + list(cortex_mask.shape))
 			all_raw_data = np.zeros([z_data.shape[0]] + list(cortex_mask.shape))
@@ -2207,7 +2310,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				if voxels_in_this_slice.sum() > 0:
 					self.logger.info('now fitting pRF models on slice %d, with %d voxels ' % (sl, voxels_in_this_slice.sum()))
 					start_fit = time.time()
-					these_tr_times = self.tr_time_list + sl * (self.TR / float(cortex_mask.shape[0])) # was shape[1], but didn't make sense, so changed to shape[0] (amount of slices instead of voxels)
+					these_tr_times = tr_time_list + sl * (self.TR / float(cortex_mask.shape[0])) # was shape[1], but didn't make sense, so changed to shape[0] (amount of slices instead of voxels)
 					these_voxels = z_data[:,voxels_in_this_slice].T
 					if (this_condition != 'all') * (this_condition != 'fix'):
 						these_fix_prf_params = fix_prf_params[:,voxels_in_this_slice].T
@@ -2313,18 +2416,18 @@ class PopulationReceptiveFieldMappingSession(Session):
 					
 					if method == 'new':
 						
-						all_full_dm = []
-						all_raw_dm = []
-						all_raw_dm_fix = []
+						# all_full_dm = []
+						# all_raw_dm = []
+						# all_raw_dm_fix = []
 
-						all_concatenated_data = []
-						all_sorted_data = []
-						all_interpolated_data = []
+						# all_concatenated_data = []
+						# all_sorted_data = []
+						# all_interpolated_data = []
 						all_resampled_interpolated_data = []
-						all_moving_average_data = []
-						all_resampled_moving_average_data = []
-						all_resampled_smoothed_data = []
-						all_variance_per_point = []
+						# all_moving_average_data = []
+						# all_resampled_moving_average_data = []
+						# all_resampled_smoothed_data = []
+						# all_variance_per_point = []
 
 						for i, orient in enumerate(orientations):
 							
@@ -2335,24 +2438,60 @@ class PopulationReceptiveFieldMappingSession(Session):
 							trials_this_dir = len(trial_start_one_dir)
 
 							# select BOLD timepoints:
-							corrected_tr_times = np.hstack(np.array([ np.hstack([(these_tr_times - t)[(these_tr_times-t) > 0][:extended_period]]) for t in trial_start_one_dir]))
-							sorted_tr_times = np.sort(corrected_tr_times)
-							tr_order = np.argsort(corrected_tr_times)
+							# corrected_tr_times = np.hstack(np.array([ np.hstack([(these_tr_times - t)[(these_tr_times-t) > 0][:extended_period]]) for t in trial_start_one_dir]))
+							# corrected_tr_times_old = np.hstack(np.array([ (these_tr_times - t)[np.argmin(np.abs(these_tr_times-t))-1:np.argmin(np.abs(these_tr_times-t))+extended_period+2] for t in trial_start_one_dir]))
+							# zerofy = lambda x: 0 if x < 0 else x
+							# extendify = lambda x: 3 if x < 0 else 2
+							corrected_tr_times = [ (these_tr_times - t)[np.argmin(np.abs(these_tr_times-t))-1:np.argmin(np.abs(these_tr_times-t))+extended_period+2] for t in trial_start_one_dir]
+							# corrected_tr_times = np.vstack(np.array([ (these_tr_times-t)[(these_tr_times-t)[(these_tr_times-t)<0][-1]:(these_tr_times-t)[(these_tr_times-t)<0][-1]+extended_period+2] for t in trial_start_one_dir]))
+
+							# sorted_tr_times = np.sort(corrected_tr_times_old)
+							# tr_order = np.argsort(corrected_tr_times_old)
 
 							# smooth and resample selected data
-							orig_tr_ind = np.hstack(np.array([ np.hstack([np.arange(these_tr_times.shape[0])[(these_tr_times-t) > 0][:extended_period]])  for t in trial_start_one_dir]))
+							# orig_tr_ind_old = np.hstack(np.array([ np.arange(len(these_tr_times))[np.argmin(np.abs(these_tr_times-t))-1:np.argmin(np.abs(these_tr_times-t))+extended_period+2]  for t in trial_start_one_dir]))
+							orig_tr_ind = [ list(np.arange(len(these_tr_times))[np.argmin(np.abs(these_tr_times-t))-1:np.argmin(np.abs(these_tr_times-t))+extended_period+2])  for t in trial_start_one_dir]
+							# concatenated_data_old = these_voxels[:,orig_tr_ind_old]
 							concatenated_data = these_voxels[:,orig_tr_ind]
-							sorted_data = concatenated_data[:,tr_order]
+							# sorted_data = concatenated_data_old[:,tr_order]
 							
 							# interpolate and resample data (interpolation goes through every data point. This ensures that the data jitter is corrected for. However, 
 							# as all trials are quite different, this results in very high frequency noise. Resample takes care of this by filtering the data to contain only frequencies
 							# that can be expected at the sample rate dictated by the new amount of samples (extended_period))
 							
 							# variance_per_point = [np.std(np.reshape(data,(trials_this_dir,-1)),axis=0) for data in concatenated_data]
-							interp1d_data = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.linspace(sorted_tr_times[0],sorted_tr_times[-1],len(sorted_data[0]))) for s in sorted_data ])
+							# shell()
+							interp_per_trial = np.array([[sp.interpolate.interp1d(corrected_tr_times[t],c[t])(np.linspace(0,extended_period*self.TR,extended_period)) for t in np.arange(trials_this_dir)] for c in concatenated_data])
+							resampled_interp1d_data = np.median(interp_per_trial,1)
+
+							# interp1d_data = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.arange(0,extended_period*self.TR,self.TR/trials_this_dir)) for s in sorted_data ])
+							# resampled_interp1d_data = np.array([np.median(interp1d_data[:,t:t+4],axis=1) for t in np.arange(0,np.shape(interp1d_data)[1],trials_this_dir) ]).T
+
+							# voxno = 50
+							# colors = ['r','g','b','m']
+							# for voxno in np.random.randint(101,size=20):
+							# 	f = pl.figure(figsize=(24,16))
+							# 	for t in range(trials_this_dir):
+							# 		s = f.add_subplot(2,trials_this_dir,t+1)
+							# 		plot(corrected_tr_times[t],concatenated_data[voxno,t],color=colors[t])
+							# 		plot(np.arange(0,extended_period*self.TR,self.TR),interp_per_trial[voxno,t],'--k')
+							# 	s = f.add_subplot(212)
+							# 	for t in range(trials_this_dir):
+							# 		# plot(interp_per_trial[voxno,t],color =colors[t])
+							# 		plot(corrected_tr_times[t],concatenated_data[voxno,t],'-',color =colors[t])
+
+							# 	plot(np.arange(0,extended_period*self.TR,self.TR),resampled_interp1d_data[voxno],'--k',linewidth=6)
+							# 	# plot(np.arange(0,extended_period*self.TR,self.TR),interp1d_data_averaged[voxno],'--w',linewidth=6)
+							# 	pl.savefig(os.path.join(self.stageFolder('processed/mri/figs/delve_deeper/interpolation_examples/'),'interpolation_example_vox_%d.pdf'%voxno))
+							# 	pl.close()
+							# resampled_interp1d_data
+
+							# show()
+							# resampled_interp1d_data = np.mean(interp_per_trial,axis = 1)
+							# interp1d_data = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.linspace(sorted_tr_times[0],sorted_tr_times[-1],len(sorted_data[0]))) for s in sorted_data ])
 							# interp1d_data_few_samples = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.linspace(sorted_tr_times[0],sorted_tr_times[-1],extended_period)) for s in sorted_data ])
 							# decimated_signal = np.array([sp.signal.decimate(s,len(s)/extended_period) for s in interp1d_data ])
-							resampled_interp1d_data = np.mean(np.reshape(interp1d_data,(interp1d_data.shape[0],interp1d_data.shape[1]/trials_this_dir,trials_this_dir)),axis=2)
+							# resampled_interp1d_data = np.mean(np.reshape(interp1d_data,(interp1d_data.shape[0],interp1d_data.shape[1]/trials_this_dir,trials_this_dir)),axis=2)
 							# median_signal = np.median(np.reshape(sorted_data,(sorted_data.shape[0],sorted_data.shape[1]/trials_this_dir,trials_this_dir)),axis=2)
 
 							# resampled_interp1d_data=resample(interp1d_data,extended_period,axis=1)
@@ -2383,19 +2522,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 							# smoothed_data = np.array([savitzky_golay(s,17,1) for s in sorted_data])
 							# resampled_smoothed_data = resample(smoothed_data,extended_period,axis=1)
 
-							# find according median dm samples
-							sorted_orig_tr_times = these_tr_times[orig_tr_ind][tr_order]
-							corrected_sample_time_ind = np.array([np.argmin(np.abs(self.sample_time_list - (t))) for t in sorted_orig_tr_times])
-							full_dm = np.median(np.array([ self.full_design_matrix[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
-							raw_dm = np.median(np.array([ self.raw_dm[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
+							# # find according median dm samples
+							# sorted_orig_tr_times = these_tr_times[orig_tr_ind][tr_order]
+							# corrected_sample_time_ind = np.array([np.argmin(np.abs(self.sample_time_list - (t))) for t in sorted_orig_tr_times])
+							# full_dm = np.median(np.array([ self.full_design_matrix[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
+							# raw_dm = np.median(np.array([ self.raw_dm[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
 
-							if (this_condition != 'all') * (this_condition != 'fix'):
-								raw_dm_fix = np.median(np.array([ self.raw_dm_fix[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
+							# if (this_condition != 'all') * (this_condition != 'fix'):
+								# raw_dm_fix = np.median(np.array([ self.raw_dm_fix[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
 
-							if orient != 'fix_no_stim':
-								all_concatenated_data.append(concatenated_data)
-								all_sorted_data.append(np.array(sorted_data))
-								all_interpolated_data.append(interp1d_data)
+							# if orient != 'fix_no_stim':
+								# all_concatenated_data.append(concatenated_data)
+								# all_sorted_data.append(np.array(sorted_data))
+								# all_interpolated_data.append(interp1d_data)
 								# all_moving_average_data.append(moving_average)
 								# all_smoothed_data.append(smoothed_data)
 							# all_variance_per_point.append(variance_per_point)
@@ -2403,15 +2542,15 @@ class PopulationReceptiveFieldMappingSession(Session):
 							# all_resampled_moving_average_data.append(resampled_moving_average)
 							# all_resampled_smoothed_data.append(resampled_smoothed_data)
 
-							all_full_dm.append(full_dm)
-							all_raw_dm.append(raw_dm)
-							if (this_condition != 'all') * (this_condition != 'fix'):
-								all_raw_dm_fix.append(raw_dm_fix)
+							# all_full_dm.append(full_dm)
+							# all_raw_dm.append(raw_dm)
+							# if (this_condition != 'all') * (this_condition != 'fix'):
+								# all_raw_dm_fix.append(raw_dm_fix)
 
-						if orient != 'fix_no_stim':
-							all_concatenated_data = np.reshape(np.swapaxes(np.array(all_concatenated_data),0,1),(voxels_in_this_slice.sum(),-1))
-							all_sorted_data = np.reshape(np.swapaxes(np.array(all_sorted_data),0,1),(voxels_in_this_slice.sum(),-1))
-							all_interpolated_data = np.reshape(np.swapaxes(np.array(all_interpolated_data),0,1),(voxels_in_this_slice.sum(),-1))
+						# if orient != 'fix_no_stim':
+							# all_concatenated_data = np.reshape(np.swapaxes(np.array(all_concatenated_data),0,1),(voxels_in_this_slice.sum(),-1))
+							# all_sorted_data = np.reshape(np.swapaxes(np.array(all_sorted_data),0,1),(voxels_in_this_slice.sum(),-1))
+							# all_interpolated_data = np.reshape(np.swapaxes(np.array(all_interpolated_data),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_moving_average_data = np.reshape(np.swapaxes(np.array(all_moving_average_data),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_smoothed_data = np.reshape(np.swapaxes(np.array(all_smoothed_data),0,1),(voxels_in_this_slice.sum(),-1))
 						# all_resampled_smoothed_data = np.reshape(np.swapaxes(np.array(all_resampled_smoothed_data),0,1),(voxels_in_this_slice.sum(),-1))
@@ -2421,26 +2560,29 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 						# all_smoothed_data = np.reshape(np.swapaxes(np.array(all_smoothed_data),0,1),(voxels_in_this_slice.sum(),-1))
 						# all_sorted_data =  np.reshape(np.swapaxes(np.array(all_sorted_data),0,1),(voxels_in_this_slice.sum(),-1))
-						all_full_dm = np.reshape(np.array(all_full_dm),(-1,full_dm_valid_regressors.sum()))
-						all_raw_dm = np.reshape(np.array(all_raw_dm),(-1,raw_dm_valid_regressors.sum()))
-						if (this_condition != 'all') * (this_condition != 'fix'):
-							all_raw_dm_fix = np.reshape(np.array(all_raw_dm_fix),(-1,raw_dm_valid_regressors.sum()))
+						# all_full_dm = np.reshape(np.array(all_full_dm),(-1,full_dm_valid_regressors.sum()))
+						# all_raw_dm = np.reshape(np.array(all_raw_dm),(-1,raw_dm_valid_regressors.sum()))
+						# if (this_condition != 'all') * (this_condition != 'fix'):
+							# all_raw_dm_fix = np.reshape(np.array(all_raw_dm_fix),(-1,raw_dm_valid_regressors.sum()))
 
-						raw_dm_for_dumoulin = np.zeros((all_raw_dm.shape[0],n_pixel_elements_raw**2))
-						raw_dm_for_dumoulin[:,raw_dm_valid_regressors] = all_raw_dm
-						raw_dm_for_dumoulin = np.reshape(raw_dm_for_dumoulin,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
+						# raw_dm_for_dumoulin = np.zeros((all_raw_dm.shape[0],n_pixel_elements_raw**2))
+						# raw_dm_for_dumoulin[:,raw_dm_valid_regressors] = all_raw_dm
+						# raw_dm_for_dumoulin = np.reshape(raw_dm_for_dumoulin,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
 
-						if (this_condition != 'all') * (this_condition != 'fix'):
-							raw_dm_for_dumoulin_fix = np.zeros((all_raw_dm_fix.shape[0],n_pixel_elements_raw**2))
-							raw_dm_for_dumoulin_fix[:,raw_dm_valid_regressors] = all_raw_dm_fix
-							raw_dm_for_dumoulin_fix = np.reshape(raw_dm_for_dumoulin_fix,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
+						# if (this_condition != 'all') * (this_condition != 'fix'):
+						# 	raw_dm_for_dumoulin_fix = np.zeros((all_raw_dm_fix.shape[0],n_pixel_elements_raw**2))
+						# 	raw_dm_for_dumoulin_fix[:,raw_dm_valid_regressors] = all_raw_dm_fix
+						# 	raw_dm_for_dumoulin_fix = np.reshape(raw_dm_for_dumoulin_fix,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
 
-						samples_to_delete = np.tile(np.hstack(np.array([np.zeros(int(trs_in_trial)),np.ones(int(dilate_width))])),int(len(orientations))).astype('bool')
-						raw_dm_for_dumoulin[samples_to_delete,:,:] = np.zeros((n_pixel_elements_raw,n_pixel_elements_raw))
+						# samples_to_delete = np.tile(np.hstack(np.array([np.zeros(int(trs_in_trial)),np.ones(int(dilate_width))])),int(len(orientations))).astype('bool')
+						# raw_dm_for_dumoulin[samples_to_delete,:,:] = np.zeros((n_pixel_elements_raw,n_pixel_elements_raw))
 
 						# dm_screen = np.zeros((all_raw_dm.shape[0],n_pixel_elements**2))
 						# dm_screen[:,valid_regressors] = all_dm
 						# dm_screen = np.reshape(dm_screen,(-1,n_pixel_elements,n_pixel_elements))	
+						raw_dm_for_dumoulin = np.reshape(this_condition_dm,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
+						all_full_dm = np.array(this_condition_dm_full)
+
 
 						if delve_deeper:
 
@@ -2819,11 +2961,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 							# res = []
 							# for voxno in range(voxels_in_this_slice.sum()):
-								# res.append(Dumoulin_fit(time_course=all_resampled_interpolated_data[voxno,:], design_matrix=raw_dm_for_dumoulin,plotbool=plotbool, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold=corr_threshold,SNR_thresh=SNR_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],variance_per_point = all_variance_per_point[voxno],fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix))
+							# 	res.append(Dumoulin_fit(time_course=all_resampled_interpolated_data[voxno,:], design_matrix=raw_dm_for_dumoulin,plotbool=plotbool, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold=corr_threshold,SNR_thresh=SNR_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]))#,fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix))
 							if (this_condition != 'all') * (this_condition != 'fix'):
-								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
+								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
 							else:
-								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, raw_dm_valid_regressors = raw_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
+								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
 
 					elif method == 'old':
 						res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
@@ -3184,10 +3326,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition),  condition  +'-'+ str(n_pixel_elements) +"_file.hdf5")
 
 		if os.path.isfile(self.hdf5_filename):
-			h5file = open_file(self.hdf5_filename, mode = "r+", title = condition  +'-'+ str(n_pixel_elements) +"_file")
-		else:
-			h5file = open_file(self.hdf5_filename, mode = "w", title = condition  +'-'+ str(n_pixel_elements) +"_file")
-		# 	os.system('rm ' + self.hdf5_filename)
+			os.system('rm ' + self.hdf5_filename)
+		h5file = open_file(self.hdf5_filename, mode = "w", title = condition  +'-'+ str(n_pixel_elements) +"_file")
+			# h5file = open_file(self.hdf5_filename, mode = "r+", title = condition  +'-'+ str(n_pixel_elements) +"_file")
+		# else:
 		self.logger.info('starting table file ' + self.hdf5_filename)
 
 		# else:
@@ -3387,7 +3529,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	
 
 
-	def fit_diagnostics(self, condition = 'PRF', sd_thresh=0.0,ecc_thresh=0.0, task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[],hists=True,eccen_surf=True,weight_data = False,threshold=True,grouplvl=False,weigh_on='pearson_squared',proportion_voxels_to_include=0.2):
+	def fit_diagnostics(self, condition = 'PRF', sd_thresh=0.0,ecc_thresh=0.0, task_conditions = [],n_pixel_elements=[],results_type = 'Lee_to_Dumoulin',maskfile=[],hists=True,eccen_surf=True,grouplvl=False,weigh_on='r_squared',proportion_voxels_to_include=0.2):
 
 
 		# for weigh_on in ['pearson','spearman','pearson_squared','kendalls_tau','r_squared']:
@@ -3427,17 +3569,20 @@ class PopulationReceptiveFieldMappingSession(Session):
 				h5file = open_file(self.hdf5_filename, mode = "r", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 
 
-			# early_visual = {'V1':['V1','v1','V2d','V3d','V2v','V3v']}
-			early_visual = {'V1':['V1','v1'],'V2':['V2d','V2v','v2d','v2v'],'V3':['V3d','v3d','V3v','v3v']}			# dorsal_stream = {'v3ab':['v3ab'],'v7':['v7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4'],'MT':['MT'],'TO1':['TO1'],'TO2':['TO2']}
-			dorsal_stream = {'V3AB':['v3ab','V3AB'],'MT':['MT','TO1','TO2'],'IPS':['v7','V7','IPS0','IPS','IPS1','IPS2','IPS3','IPS4','IPS4_lateral','IPS4_medial']}#'IPS0':['V7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4']}#'IPS':['V7','IPS1','IPS2','IPS3','IPS4'],'v7':['v7']}
-			ventral_stream = {'V4':['v4','V4'],'LO':['LO1','LO2'],'VO':['VO','VO1','VO2']}
-			frontal_visual = {'frontal':['FEF','FSUP','PRINF','PRCSUP','FRSUP','PRSUP1','PRSUP2'],'parietal':['POC','POC1','POC2','POC3','POC4','POCSUP','SPRCINF','SPRCSUP','STEMSUP']}
+			early_visual = {'V1':['V1','v1']}
+			# dorsal_stream = {'unkown':'unkown'}
+
+
+			# early_visual = {'V1':['V1','v1'],'V2':['V2d','V2v','v2d','v2v'],'V3':['V3d','v3d','V3v','v3v']}			# dorsal_stream = {'v3ab':['v3ab'],'v7':['v7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4'],'MT':['MT'],'TO1':['TO1'],'TO2':['TO2']}
+			# dorsal_stream = {'V3AB':['v3ab','V3AB'],'MT':['MT','TO1','TO2'],'IPS':['v7','V7','IPS0','IPS','IPS1','IPS2','IPS3','IPS4','IPS4_lateral','IPS4_medial']}#'IPS0':['V7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4']}#'IPS':['V7','IPS1','IPS2','IPS3','IPS4'],'v7':['v7']}
+			# ventral_stream = {'V4':['v4','V4'],'LO':['LO1','LO2'],'VO':['VO','VO1','VO2']}
+			# frontal_visual = {'frontal':['FEF','FSUP','PRINF','PRCSUP','FRSUP','PRSUP1','PRSUP2'],'parietal':['POC','POC1','POC2','POC3','POC4','POCSUP','SPRCINF','SPRCSUP','STEMSUP']}
 
 			# early_visual = {'V1':['V1'],'V2':['V2d','V2v'],'V3':['V3d','V3v']}			# dorsal_stream = {'v3ab':['v3ab'],'v7':['v7'],'IPS1':['IPS1'],'IPS2':['IPS2'],'IPS3':['IPS3'],'IPS4':['IPS4'],'MT':['MT'],'TO1':['TO1'],'TO2':['TO2']}
 			# dorsal_stream = {'V3AB':['V3AB'],'MT':['MT','TO1','TO2'],'IPS':['IPS1','IPS2','IPS3','IPS4']}
 			# ventral_stream = {'V4':['V4'],'LO':['LO1','LO2']}#,'VO':['VO','VO1','VO2']}			# frontal_visual = {'frontal':['FEF','FSUP','PRINF','PRCSUP']}#,'parietal':['POC','POCSUP']}
 
-			roi_groups = ['early_visual','dorsal_stream','ventral_stream','frontal_visual']
+			roi_groups = ['early_visual']#,'dorsal_stream','ventral_stream']#,'frontal_visual']
 
 			# all_areas = ['v1','v2d','v2v','v3ab','v3d','v3v','v4','v7','VO','VO1','VO2','FEF','IPS1','IPS2','IPS3','IPS4','LO1','LO2','MT','TO1','TO2','FSUP','POC','POCSUP','PRCSUP','PRINF']
 			all_roi_names = []
@@ -3474,10 +3619,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		for this_condition in task_conditions:
 			for rgi,roi_group in enumerate(roi_groups):
 				
-				r_squared_threshold_all = [np.sort(all_stats['all'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['all'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
-				r_squared_threshold_this_condition = [np.sort(all_stats['all'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['all'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
+				r_squared_threshold_all = [np.sort(all_stats['fix'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['fix'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
+				r_squared_threshold_this_condition = [np.sort(all_stats['fix'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['fix'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
 				
-				mask.append([(all_stats['all'][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_all[r]) * (all_stats[this_condition][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_this_condition[r])*(all_results['all'][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) for r in range(len(all_roi_names[rgi]))])
+				mask.append([(all_stats['fix'][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_all[r]) * (all_stats[this_condition][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_this_condition[r])*(all_results['fix'][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) for r in range(len(all_roi_names[rgi]))])
 
 				import colorsys
 				roi_colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np.linspace(0.0,0.5,len(all_roi_names[rgi]))][::-1]
@@ -3579,7 +3724,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 
 								if data != []:
-									if weight_data:
+									if weigh_on != '':
 										mean_per_bin[j].append( np.average( data,weights = weights ) )	
 									else:
 										mean_per_bin[j].append( np.average( data ) )					
@@ -3602,7 +3747,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 							import statsmodels
 
-							if weight_data:
+							if weigh_on != '':
 								weights = all_stats[this_condition][rgi][j][mask[rgi][j],stats_frames[weigh_on]]#* all_results[this_condition][rgi][j][mask[rgi][j],results_frames['SNR']]
 							else:
 								weights = np.ones(shape(all_results[this_condition][rgi][j][mask[rgi][j],stats_frames[weigh_on]]))
@@ -3634,21 +3779,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 							if np.size(r) != 1:
 								r = 0
-							# fit = polyfit(eccen_x[np.array(mean_per_bin[j])>0], np.array(mean_per_bin[j])[np.array(mean_per_bin[j])>0], 1)
 							fit_fn = poly1d(fit)
 
-							# pl.plot(results[j][mask[j],results_frames['ecc_gauss']],results[j][mask[j],results_frames['sd_gauss']], c = colors[j], marker = 'o', linewidth = 0, alpha = 0.3, mec = 'w', ms = 3.5)
+							
 							s2.plot(eccen_x,mean_per_bin[j],c = all_roi_colors[rgi][j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
 							s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=all_roi_colors[rgi][j],alpha=0.15)
-							# pl.plot(results[j][mask[j],results_frames['ecc_gauss']], fit_fn(results[j][mask[j],results_frames['ecc_gauss']]),linewidth = 3.5, alpha = 0.75, linestyle = '-', c = colors[j], label=roi)
-							label = roi
-
-							s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(label,r))
-							# s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = colors[j], label='%s, rho: %.4f, pval: %.4f'%(label,r,p))
+							
+							# pl.plot(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']],all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']], alpha = 0.25, linestyle = '.', c = colors[j], label=roi)
+							
+							s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(roi,r))
 
 							s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
-
-							# pl.text(100,100, 'r: %.2f \np: %.2f \n' %(r,p),fontsize=14,fontweight ='bold',bbox={'facecolor':'white', 'alpha':0.5, 'pad':10})
 
 							leg = s2.legend(fancybox = False, loc = 'best')
 							leg.get_frame().set_alpha(0.5)
