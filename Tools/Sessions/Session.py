@@ -33,6 +33,7 @@ from ..Operators.BehaviorOperator import *
 from ..Operators.EyeOperator import *
 from IPython import embed as shell
 from joblib import Parallel, delayed
+import xml.etree.ElementTree as ET
 
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
@@ -685,7 +686,7 @@ class Session(PathConstructor):
 				self.logger.info('removing mask %s, because it doesn\'t contain any voxels in this EPI image space'%m)
 				os.system('rm ' + m)
 	
-	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC'], smoothing_width = 2.0, threshold = 0.3):
+	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC','Brain-Stem'], smoothing_width = 2.0, threshold = 0.3):
 		"""
 		docstring for createMasksFromFreeSurferAseg. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
@@ -749,7 +750,7 @@ class Session(PathConstructor):
 						# label_opf.save(label_opf_name)
 						# self.logger.info( area[1] + ' outputted to ' + label_opf_name )
 						
-	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
+	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC','Brain-Stem']):
 		"""
 		docstring for createMasksFromFreeSurferAseg2. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
@@ -790,6 +791,53 @@ class Session(PathConstructor):
 					fmo.configure(outputFileName=inputObject, **{'-thr':str(0.5), '-bin':''})
 					fmo.execute()
 	
+	def createMasksFromFSLAtlases(self, xml_files = ['Thalamus.xml', 'Striatum-Connectivity-7sub.xml'], files = ['Thalamus/Thalamus-prob-2mm.nii.gz','Striatum/striatum-con-prob-thr25-2mm.nii.gz'], labels = ['Thalamus','Striatum'], threshold = 0.35):
+		"""createMasksFromFSLAtlases takes lists of xml files in the fsl atlas folders, the corresponding nii files, and a threshold.
+		These atlases are likely connectivity-based subcortical atlases.
+		createMasksFromFSLAtlases uses these inputs to create subject-session specific anatomical masks, given the threshold.
+		First, the xml file is read, and then the corresponding nii is transformed and 
+		taken apart on a per-timepoint basis in order to create 3d instead of 4d masks
+		"""
+
+		target_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]])
+		mni_reg_file = os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard2example_func.mat' )
+		output_folder = self.stageFolder(stage = 'processed/mri/masks/anat')
+
+		for xml, nii_mask_file, label in zip(xml_files, files, labels):
+			# read xml files. 
+			tree = ET.parse(os.path.join(os.environ['FSL_DIR'], 'data/atlases/', xml))
+			root = tree.getroot()
+			name_frame_dict = {child.text: int(child.attrib['index'])  for child in list(root.iterfind('data'))[0]}
+
+			joined_output_filename = os.path.join(output_folder, nii_mask_file.split('/')[1][:-7])
+
+			for i, hemi in enumerate(['lh','rh']):
+				# create hemispheric masks, last dimension is lateral dimension in MNI space
+				orig_mni = NiftiImage(os.path.join(os.environ['FSL_DIR'], 'data/atlases/', nii_mask_file))
+				hemi_mni_data = orig_mni.data.copy()
+				hemi_mni_data[:,:,:,i * (orig_mni.data.shape[-1]/2) : np.min([(i+1) * (orig_mni.data.shape[-1]/2), orig_mni.data.shape[-1]])] = 0
+				hemi_mni = NiftiImage(hemi_mni_data)
+				hemi_mni.header = orig_mni.header
+				hemi_mni_filename = os.path.join(os.path.split(joined_output_filename)[0], hemi + '.' + os.path.split(joined_output_filename)[1] + '_MNI.nii.gz')
+				hemi_mni.save(hemi_mni_filename)
+
+				hemi_filename = os.path.join(os.path.split(joined_output_filename)[0], hemi + '.' + os.path.split(joined_output_filename)[1] + '.nii.gz')
+
+				flO = FlirtOperator(inputObject = hemi_mni_filename, referenceFileName = target_file)
+				flO.configureApply(transformMatrixFileName = mni_reg_file, outputFileName = hemi_filename, sinc=True, extra_args = ' -datatype float')
+				flO.execute()
+
+				# delete mni space masks to avoid errors due to import of non-compying sized niis
+				os.system('rm ' + hemi_mni_filename)
+
+				joined_output_file = NiftiImage(hemi_filename)
+				for name in name_frame_dict.keys():
+					this_file = NiftiImage((joined_output_file.data[name_frame_dict[name]] > threshold).astype(np.float32))
+					this_file.header = joined_output_file.header
+					this_file.save(os.path.join(output_folder, hemi + '.'+ label + '_' + name + '.nii.gz'))
+					
+
+
 	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
 		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/' + originalMaskFolder ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
