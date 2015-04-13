@@ -20,6 +20,7 @@ from scipy.stats import spearmanr
 from scipy import ndimage
 import matplotlib.mlab as mlab
 from matplotlib import cm 
+import seaborn as sns
 
 from nifti import *
 from math import *
@@ -673,28 +674,10 @@ class PRFModelRun(object):
 					pl.imshow(self.run_matrix[i])
 					pl.savefig(save_images_to_file + '_' + str(i) + '.pdf')
 
-def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_elements_raw=[],n_pixel_elements_full=[], max_eccentricity = 1,ssr = 20,plotbool=False,
+def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_elements_raw=[],n_pixel_elements_full=[], max_eccentricity = 1,ssr = 20,plotbool=False,corrected_tr_times=[],concatenated_data = [],tr_times = [],fit_hrf_shape=False,fit_2_sds=False,
 			hrf_shape='doubleGamma',plotdir=[],voxno=[],dm_for_BR = [], raw_dm_valid_regressors = [],full_dm_valid_regressors = [],slice_no=[],corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,DoG=True,randint=True,roi='unkown_roi',variance_per_point=[],fix_prf_params=[]):
 	""""""
 
-	## initiate search space with Ridge prefit:
-	Ridge_start_params, BR_PRF, BR_predicted = fitRidge_for_Dumoulin(dm_for_BR, time_course,valid_regressors=full_dm_valid_regressors,n_pixel_elements=n_pixel_elements_full,alpha=1e14)
-
-	## initiate parameters:
-	params = Parameters()
-	params.add('xo', value= Ridge_start_params['xo'], min = -max_eccentricity, max = max_eccentricity)
-	params.add('yo', value= Ridge_start_params['yo'], min = -max_eccentricity, max = max_eccentricity)
-	params.add('theta', value= 0.0, min = -180, max = 180,vary=False)
-	params.add('sigmas_ratio', value=1.0, min = 1/1.5, max = 1.5,vary=False)
-	params.add('sigma_x',value=0.1,min=0.0,max=1.0) 
-	
-	if DoG:
-		params.add('amplitude2',value=-0.01,min=-100,max=0.0) 
-		params.add('delta_amplitude',value=0.005,max=100,min=0)
-		params.add('amplitude1',expr='-amplitude2+delta_amplitude') 
-		params.add('size_ratio',value=2,min=1.0,max=20.0) 
-	else:
-		params.add('amplitude',value=0.01,min=0.0,max=100.0) 
 
 	orientations = ['0','45','90','135','180','225','270','315','X']
 	n_orientations = len(orientations)
@@ -707,9 +690,10 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 		fix_design_matrix[first_samples==0,:,:] = 0	
 		fix_design_matrix[fix_design_matrix>0] = 1
 		fix_design_matrix = np.concatenate([np.zeros((5,n_pixel_elements_raw,n_pixel_elements_raw)),fix_design_matrix])
-		results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+		results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 		g_fix = gpf(design_matrix = fix_design_matrix, max_eccentricity = max_eccentricity, n_pixel_elements = n_pixel_elements_raw, ssr = ssr,n_orientations=n_orientations)
-		instruction_prediction = g_fix.hrf_model_prediction(fix_prf_params[results_frames['amplitude1']], fix_prf_params[results_frames['x']], fix_prf_params[results_frames['y']],fix_prf_params[results_frames['sigma_x']],fix_prf_params[results_frames['sigma_x']] * fix_prf_params[results_frames['sigmas_ratio']],fix_prf_params[results_frames['theta']], fix_prf_params[results_frames['amplitude2']],fix_prf_params[results_frames['size_ratio']],hrf_type=hrf_shape)[0][5:]
+		instruction_prediction = g_fix.hrf_model_prediction(fix_prf_params[results_frames['amplitude1']], fix_prf_params[results_frames['x']], fix_prf_params[results_frames['y']],fix_prf_params[results_frames['sigma_x']],fix_prf_params[results_frames['sigma_x']] * fix_prf_params[results_frames['sigmas_ratio']],fix_prf_params[results_frames['theta']], fix_prf_params[results_frames['amplitude2']],fix_prf_params[results_frames['size_ratio']],
+			fix_prf_params[results_frames['hrf_a1']],fix_prf_params[results_frames['hrf_a2']],fix_prf_params[results_frames['hrf_b1']],fix_prf_params[results_frames['hrf_b2']],fix_prf_params[results_frames['hrf_c']])[0][5:]
 		time_course -= instruction_prediction
 		if DoG:
 			fix_PRF = g_fix.Difference_of_Gaussians(fix_prf_params[results_frames['amplitude1']],fix_prf_params[results_frames['x']], fix_prf_params[results_frames['y']],fix_prf_params[results_frames['sigma_x']],fix_prf_params[results_frames['sigma_x']] * fix_prf_params[results_frames['sigmas_ratio']],fix_prf_params[results_frames['theta']], fix_prf_params[results_frames['amplitude2']],fix_prf_params[results_frames['size_ratio']])
@@ -730,14 +714,49 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 		# pl.ylim(0,2)
 
 	# baseline subtract data
-	baseline = np.median(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):])
+	# baseline = np.median(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):])
+	baseline = np.tile(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):],9)
 	time_course -= baseline 
 	# signal to noise ratio
-	baseline_se = np.std(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):]) / np.sqrt(len(time_course)/n_orientations)
-	time_course_se = np.std(time_course[:int(len(time_course)/n_orientations*(n_orientations-1))]) / np.sqrt(len(time_course)/n_orientations*(n_orientations-1))
-	SNR=time_course_se/baseline_se
+	# baseline_se = np.std(time_course[int(len(time_course)/n_orientations*(n_orientations-1)):]) / np.sqrt(len(time_course)/n_orientations)
+	# time_course_se = np.std(time_course[:int(len(time_course)/n_orientations*(n_orientations-1))]) / np.sqrt(len(time_course)/n_orientations*(n_orientations-1))
+	# SNR=time_course_se/baseline_se
 
-	# SSR
+	## initiate search space with Ridge prefit:
+	Ridge_start_params, BR_PRF, BR_predicted = fitRidge_for_Dumoulin(dm_for_BR, time_course,valid_regressors=full_dm_valid_regressors,n_pixel_elements=n_pixel_elements_full,alpha=1e14)
+
+	## initiate parameters:
+	params = Parameters()
+	params.add('xo', value= Ridge_start_params['xo'], min = -max_eccentricity, max = max_eccentricity)
+	params.add('yo', value= Ridge_start_params['yo'], min = -max_eccentricity, max = max_eccentricity)
+	params.add('theta', value= 0.0, min = 0, max = 180,vary=False)
+	params.add('sigmas_ratio', value=1.0, min = 1/1.5, max = 1.5,vary=False)
+	params.add('sigma_x',value=0.1,min=0.0,max=1.0) 
+	
+	# if DoG:
+	# params.add('amplitude2',value=-0.00001,min=-100,max=0.0) 
+	# params.add('delta_amplitude',value=0.0000000000000000001,max=100,min=0)
+	# params.add('amplitude1',value=0.0001,expr='-amplitude2+delta_amplitude') 
+	params.add('amplitude1',value=0.0001,min=0) 
+	params.add('amp_ratio',value=-0.1,min=-100,max=0)
+	params.add('size_ratio',value=5,min=0.0) 
+	# else:
+		# params.add('amplitude',value=0.01,min=0.0,max=100.0) 
+	
+	params.add('hrf_a1',value=6,min=2,max=9) 
+	params.add('hrf_a2',value=12,min=6,max=16) 
+	params.add('hrf_b1',value=0.9,min=0.7,max=1) 
+	params.add('hrf_b2',value=0.9,min=0.7,max=1) 
+	params.add('hrf_c',value=0.35,min=0.05,max=0.65) 
+
+	for param in params:
+		if 'hrf' in params[param].name:
+			if fit_hrf_shape:
+				params[param].vary = True
+			else:
+				params[param].vary = False
+	if fit_2_sds:
+		params['theta'].vary, params['sigmas_ratio'].vary=True,True
 
 	# add empty periods between trials both in data and dm in order to let the 
 	tr_per_trial = len(time_course)/n_orientations
@@ -750,30 +769,30 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	# time_course=new_time_course
 	# design_matrix=new_dm
 
-
 	# initiate model prediction object
 	g = gpf(design_matrix = padded_dm, max_eccentricity = max_eccentricity, n_pixel_elements = n_pixel_elements_raw, ssr = ssr, add_empty_trs=add_empty_trs,tr_per_trial=tr_per_trial,n_orientations=n_orientations)
 
 	# initiate fit function
 	def residual(params, time_course,n_orientations):
-		if DoG:
-			model_prediction = g.hrf_model_prediction(params['amplitude1'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude2'].value,params['size_ratio'].value,hrf_type=hrf_shape )[0]
-			trimmed_mp = np.zeros(n_orientations*tr_per_trial)
-			for i in range(n_orientations):
-				trimmed_mp[i*tr_per_trial:(i+1)*tr_per_trial] = model_prediction[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
-			trimmed_time_course = np.zeros(n_orientations*tr_per_trial)
-			for i in range(n_orientations):
-				trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
-			return trimmed_mp - trimmed_time_course
-		else:	
-			model_prediction = g.hrf_model_prediction(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value,hrf_type=hrf_shape )[0]
-			trimmed_time_course = np.zeros(n_orientations*tr_per_trial)
-			for i in range(n_orientations):
-				trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
-			trimmed_mp = np.zeros(n_orientations*tr_per_trial)
-			for i in range(n_orientations):
-				trimmed_mp[i*tr_per_trial:(i+1)*tr_per_trial] = model_prediction[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
-			return trimmed_mp - trimmed_time_course
+		# if DoG:
+		model_prediction = g.hrf_model_prediction(params['amplitude1'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude1'].value * params['amp_ratio'].value ,params['size_ratio'].value,
+			params['hrf_a1'].value,params['hrf_a2'].value,params['hrf_b1'].value,params['hrf_b2'].value,params['hrf_c'].value )[0]
+		# trimmed_mp = np.zeros(n_orientations*tr_per_trial)
+		# for i in range(n_orientations):
+		# 	trimmed_mp[i*tr_per_trial:(i+1)*tr_per_trial] = model_prediction[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
+		# trimmed_time_course = np.zeros(n_orientations*tr_per_trial)
+		# for i in range(n_orientations):
+		# 	trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
+		return model_prediction - time_course
+		# else:	
+		# 	model_prediction = g.hrf_model_prediction(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value,hrf_type=hrf_shape )[0]
+		# 	trimmed_time_course = np.zeros(n_orientations*tr_per_trial)
+		# 	for i in range(n_orientations):
+		# 		trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
+		# 	trimmed_mp = np.zeros(n_orientations*tr_per_trial)
+		# 	for i in range(n_orientations):
+		# 		trimmed_mp[i*tr_per_trial:(i+1)*tr_per_trial] = model_prediction[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
+		# 	return trimmed_mp - trimmed_time_course
 
 	# if np.mean(time_course) > 0:
 	minim = Minimizer(residual, params, fcn_args=(), fcn_kws={'time_course':padded_time_course,'n_orientations':n_orientations })
@@ -781,10 +800,11 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	# minim = minimize(residual, params, method='leastsq', kws={'time_course':time_course,'n_orientations':n_orientations })#maxfev=int(1e8))
 	
 	# recreate results:
-	if DoG:
-		model_prediction = g.hrf_model_prediction(params['amplitude1'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude2'].value,params['size_ratio'].value,hrf_type=hrf_shape )[0]
-	else:	
-		model_prediction = g.hrf_model_prediction(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value,hrf_type=hrf_shape )[0]
+	# if DoG:
+	model_prediction = g.hrf_model_prediction(params['amplitude1'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude1'].value * params['amp_ratio'].value ,params['size_ratio'].value,
+		params['hrf_a1'].value,params['hrf_a2'].value,params['hrf_b1'].value,params['hrf_b2'].value,params['hrf_c'].value )[0]
+	# else:	
+		# model_prediction = g.hrf_model_prediction(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value,hrf_type=hrf_shape )[0]
 
 	trimmed_mp = np.zeros(n_orientations*tr_per_trial)
 	for i in range(n_orientations):
@@ -792,6 +812,7 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	# trimmed_time_course = np.zeros(n_orientations*tr_per_trial)
 	# for i in range(n_orientations):
 	# 	trimmed_time_course[i*tr_per_trial:(i+1)*tr_per_trial] = time_course[i*tr_per_trial+add_empty_trs*i:(i+1)*tr_per_trial+add_empty_trs*i]
+
 
 	## EVALUATE FIT QUALITY
 	stats = {}
@@ -803,7 +824,6 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 	stats['chi_squared'] =  0#np.sum((time_course - trimmed_mp)**2/variance_per_point)
 	stats['kendalls_tau'] = kendalltau(time_course,trimmed_mp)[0]
 
-
 	## REPORT FIT PARAMETERS
 	results={}
 	for key in params.keys():
@@ -811,35 +831,103 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 
 	results['ecc'] = np.linalg.norm([params['xo'].value,params['yo'].value]) * 27.0/2.0
 	results['sd'] = np.mean([params['sigma_x'].value * params['sigmas_ratio'].value,params['sigma_x'].value])/2  * 27.0
-	results['SNR'] = SNR
+	results['SNR'] = 0
 	results['polar'] = np.arctan2(params['yo'].value,params['xo'].value)
 	results['real'] = np.cos(results['polar'])*np.arctanh(stats['pearson'])
 	results['imag'] = np.sin(results['polar'])*np.arctanh(stats['pearson'])
 
-	if DoG:
-		results['amplitude'] = params['amplitude1'].value
-		PRF = g.Difference_of_Gaussians(params['amplitude1'].value,params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude2'].value,params['size_ratio'].value)
-	else:
-		results['amplitude'] = params['amplitude'].value
-		PRF = g.twoD_Gaussian(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value)
+	# if DoG:
+	# results['amplitude'] = params['amplitude1'].value
+	PRF = g.Difference_of_Gaussians(params['amplitude1'].value,params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value, params['amplitude1'].value * params['amp_ratio'].value ,params['size_ratio'].value)
+
+	# shell()
+
+	# amp1, amp2, = 0.01,-0.005
+	# sd_x, sd_y = 0.1,0.1
+	# size_ratio = 10
+	# try_PRF = g.Difference_of_Gaussians(amp1,0,0,sd_x,sd_y,0,amp2,size_ratio)
+	# pl.imshow(try_PRF,interpolation='nearest',cmap=cm.coolwarm)
+	# pl.axis('off')
+	# show()
+
+
+
+		# else:
+		# results['amplitude'] = params['amplitude'].value
+		# PRF = g.twoD_Gaussian(params['amplitude'].value, params['xo'].value, params['yo'].value,params['sigma_x'].value,params['sigma_x'].value * params['sigmas_ratio'].value,params['theta'].value)
 
 	## PLOT
 	plot_dir = os.path.join(plotdir, '%s'%roi)
 	if (not os.path.isdir(plot_dir)) * plotbool: os.mkdir(plot_dir)
 
 	# if plotbool * (plotdir != []) * (srp[0] >= corr_threshold)*(srp[1] >= logp_thresh)*(SNR >= SNR_thresh)*(results['sd'] >= sd_thresh) * (results['ecc']<= ecc_thresh) * (results['amplitude'] <= amp_thresh):
-	if plotbool * (plot_dir != []) * (results['sd'] < 2)*(stats['r_squared'] > 0.3)*(results['ecc'] < 4): #* :#* randint
+	if plotbool * (plot_dir != []) * randint:#* (results['ecc'] < 3) :#:# * (stats['r_squared'] > 0.3 )* randint ) #* :#* ) * randint
 
-		tr_block = int(len(time_course)/n_orientations)
+		# tr_block = int(len(time_course)/n_orientations)
+
+		if fix_PRF == []:
+			f=pl.figure(figsize=(24,8)); ri = 2
+		else:
+			f=pl.figure(figsize=(36,8)); ri = 3
+
+		for di in range(9):
+			s=f.add_subplot(ri,len(orientations),di+1)
+			pl.plot(tr_times,concatenated_data[di].T,color='#006ab4',alpha=0.1)
+			pl.plot(tr_times,time_course[di*len(time_course)/len(orientations):(di+1)*len(time_course)/len(orientations)],color='#006ab4',linewidth=2,label='timecourse')
+			pl.plot(tr_times,trimmed_mp[di*len(trimmed_mp)/len(orientations):(di+1)*len(trimmed_mp)/len(orientations)],'r',linewidth=2,label = 'model prediction')
+			pl.axhline(0,linestyle='--')
+			pl.ylim(np.min(zip(*concatenated_data)),np.max(zip(*concatenated_data)))
+			if di == 0:
+				pl.ylabel('%s signal change'%'%')
+			else:
+				plt.tick_params(axis='y',which='both',left='off',right='off',labelleft='off') 
+			if di == (len(orientations)-1):
+				leg = s.legend(fancybox = True, loc = 'best')
+				leg.get_frame().set_alpha(0.5)
+
+			pl.title(orientations[di])
+			pl.xlabel('time (s)')
+
+		s = f.add_subplot(ri,6,ri*6-5)
+		pl.imshow(BR_PRF,interpolation='nearest',cmap=cm.coolwarm)
+		pl.axis('off')
+		s.set_title('Raw ridge spatial profile')
+
+		s = f.add_subplot(ri,6,ri*6-4)
+		pl.imshow(PRF,interpolation='nearest',cmap=cm.coolwarm)
+		pl.axis('off')
+		s.set_title('Direct model PRF')
+
+		s = f.add_subplot(ri,6,ri*6-2)
+		imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
+		clim(0,1)
+		# s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \n polar: %.2f \nr squared: %.2f  ' %(results['sd'],results['ecc'],results['polar'],stats['r_squared']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+		# results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,amplitude1:6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
+		s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'r squared: %.2f \n polar: %.2f \n ecc: %.2f \n center size: %.2f \n surround size: %.2f \n size ratio: %.2f \n center amplitude: %.6f \n surround amplitude: %.6f \n amplitude ratio: %.2f\n '
+			 %(stats['r_squared'],results['polar'],results['ecc'],results['sd'],results['sd']*results['size_ratio'],results['size_ratio'],results['amplitude1'],results['amplitude1']*results['amp_ratio'],results['amp_ratio']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+
+		pl.axis('off')
+		hrf_kernel = singleGamma(np.linspace(0,32,32))
+		# hrf_kernel = doubleGamma(np.linspace(0,32,32), a1 = params['hrf_a1'].value, a2 = params['hrf_a2'].value, b1 = params['hrf_b1'].value, b2 = params['hrf_b2'].value, c = params['hrf_c'].value)
+		s = f.add_subplot(ri,6,ri*6)
+		pl.plot(hrf_kernel)
+		s.set_title('HRF-kernel')
+		pl.xlabel('time (s)')
+
+		# s = f.add_subplot(ri,6,ri*6-1)
+		# imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
+		# clim(0,1)
+		# s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'a1: %.2f \na2: %.2f \n b1: %.2f \nb2: %.2f \nc: %.2f  ' %(results['hrf_a1'],results['hrf_a2'],results['hrf_b1'],results['hrf_b2'],results['hrf_c']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+		# pl.axis('off')
 
 		if fix_PRF != []:
 			f=pl.figure(figsize = (16,12))
-			s = f.add_subplot(3,4,2)
+			s = f.add_subplot(ri,4,ri*4-3)
 			pl.imshow(fix_PRF,interpolation='nearest',cmap=cm.coolwarm)
 			pl.axis('off')
 			s.set_title('fix PRF')
 
-			s = f.add_subplot(322)
+			s = f.add_subplot(ri,2,ri*2)
 			for t in range(len(orientations)):
 				if t == 0:
 					pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],(time_course+instruction_prediction)[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='input data')
@@ -857,60 +945,88 @@ def Dumoulin_fit(time_course, design_matrix, fix_design_matrix = [], n_pixel_ele
 			s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
 			leg = s.legend(fancybox = True, loc = 'best')
 			leg.get_frame().set_alpha(0.5)
-		else:
-			f=pl.figure(figsize = (16,8))
 
-		if fix_PRF != []:
-			s = f.add_subplot(345)
-		else:
-			s = f.add_subplot(245)
-		pl.imshow(BR_PRF,interpolation='nearest',cmap=cm.coolwarm)
-		pl.axis('off')
-		s.set_title('Raw ridge spatial profile')
+		# if fix_PRF != []:
+		# 	f=pl.figure(figsize = (16,12))
+		# 	s = f.add_subplot(3,4,2)
+		# 	pl.imshow(fix_PRF,interpolation='nearest',cmap=cm.coolwarm)
+		# 	pl.axis('off')
+		# 	s.set_title('fix PRF')
 
-		if fix_PRF != []:
-			s = f.add_subplot(346)
-		else:
-			s = f.add_subplot(246)
-		pl.imshow(PRF,interpolation='nearest',cmap=cm.coolwarm)
-		pl.axis('off')
-		s.set_title('Direct model PRF')
+		# 	s = f.add_subplot(322)
+		# 	for t in range(len(orientations)):
+		# 		if t == 0:
+		# 			pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],(time_course+instruction_prediction)[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='input data')
+		# 		else:
+		# 			pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],(time_course+instruction_prediction)[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1)
 
-		if fix_PRF != []:
-			s = f.add_subplot(324)
-		else:
-			s = f.add_subplot(242)
-		imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
-		clim(0,1)
-		s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \n polar: %.2f \n theta: %.2f \nr squared: %.2f  ' %(results['sd'],results['ecc'],results['polar'],params['theta'].value,stats['r_squared']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
-		pl.axis('off')
+		# 	# pl.plot(time_course + instruction_prediction,'.--k',alpha=0.4,label='input data')
+		# 	pl.plot(instruction_prediction,'--r',alpha=0.4,label='instruction prediction')
+		# 	pl.plot(time_course,'--b',alpha=1,label='instruction corrected data')
+		# 	simpleaxis(s)
+		# 	spine_shift(s)
+		# 	s.set_xlim(-20,tr_block*n_orientations+20)
+		# 	pl.xticks(np.arange(0,n_orientations*tr_block,tr_block),orientations)
+		# 	pl.tick_params(labelsize=18)
+		# 	s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+		# 	leg = s.legend(fancybox = True, loc = 'best')
+		# 	leg.get_frame().set_alpha(0.5)
+		# else:
+		# 	f=pl.figure(figsize = (16,8))
 
-		if fix_PRF != []:
-			s = f.add_subplot(313)
-		else:
-			s = f.add_subplot(222)
-		for t in range(len(orientations)):
-			if t == 0:
-				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='time course')
-				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r',label='model prediction')
+		# if fix_PRF != []:
+		# 	s = f.add_subplot(345)
+		# else:
+		# 	s = f.add_subplot(245)
+		# pl.imshow(BR_PRF,interpolation='nearest',cmap=cm.coolwarm)
+		# pl.axis('off')
+		# s.set_title('Raw ridge spatial profile')
 
-			else:
-				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1)
-				pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r')
-		# pl.plot(trimmed_mp,'r',label='model prediction')
-		simpleaxis(s)
-		spine_shift(s)
-		s.set_xlim(-20,tr_block*n_orientations+20)
-		pl.xticks(np.arange(0,n_orientations*tr_block,tr_block),orientations)
-		pl.tick_params(labelsize=18)
-		s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-		leg = s.legend(fancybox = True, loc = 'best')
-		leg.get_frame().set_alpha(0.5)
+		# if fix_PRF != []:
+		# 	s = f.add_subplot(346)
+		# else:
+		# 	s = f.add_subplot(246)
+		# pl.imshow(PRF,interpolation='nearest',cmap=cm.coolwarm)
+		# pl.axis('off')
+		# s.set_title('Direct model PRF')
+
+		# if fix_PRF != []:
+		# 	s = f.add_subplot(324)
+		# else:
+		# 	s = f.add_subplot(242)
+		# imshow(np.ones((n_pixel_elements_raw,n_pixel_elements_raw)),cmap='gray')
+		# clim(0,1)
+		# s.text(n_pixel_elements_raw/2,n_pixel_elements_raw/2, 'size (sd): %.2f \necc: %.2f \n polar: %.2f \n theta: %.2f \nr squared: %.2f  ' %(results['sd'],results['ecc'],results['polar'],params['theta'].value,stats['r_squared']),horizontalalignment='center',verticalalignment='center',fontsize=16,fontweight ='bold',bbox={'facecolor':'white', 'alpha':1, 'pad':10})
+		# pl.axis('off')
+
+		# if fix_PRF != []:
+		# 	s = f.add_subplot(313)
+		# else:
+		# 	s = f.add_subplot(222)
+		# for t in range(len(orientations)):
+		# 	if t == 0:
+		# 		pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1,label='time course')
+		# 		pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r',label='model prediction')
+
+		# 	else:
+		# 		pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],time_course[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'-k',alpha=0.5,linewidth=1)
+		# 		pl.plot(np.arange(len(time_course))[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],trimmed_mp[t*(len(time_course)/len(orientations)):(t+1)*(len(time_course)/len(orientations))],'r')
+		# # pl.plot(trimmed_mp,'r',label='model prediction')
+		# simpleaxis(s)
+		# spine_shift(s)
+		# s.set_xlim(-20,tr_block*n_orientations+20)
+		# pl.xticks(np.arange(0,n_orientations*tr_block,tr_block),orientations)
+		# pl.tick_params(labelsize=18)
+		# s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+		# leg = s.legend(fancybox = True, loc = 'best')
+		# leg.get_frame().set_alpha(0.5)
 
 		pl.savefig(os.path.join(plot_dir, 'vox_%d_%d_%d.pdf'%(slice_no,voxno,n_pixel_elements_raw)))
 		pl.close()
 
 	# stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
+	# results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,amplitude1:6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
+
 	return results.values(), PRF.ravel(), stats.values(), trimmed_mp
 
 class gpf(object):
@@ -946,12 +1062,12 @@ class gpf(object):
 		a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
 		b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
 		c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
-		gauss1 = amplitude1*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
+		gauss1 = amplitude1 * np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
 
 		a = (np.cos(theta)**2)/(2*(sigma_x*size_ratio)**2) + (np.sin(theta)**2)/(2*(sigma_y*size_ratio)**2)
 		b = -(np.sin(2*theta))/(4*(sigma_x*size_ratio)**2) + (np.sin(2*theta))/(4*(sigma_y*size_ratio)**2)
 		c = (np.sin(theta)**2)/(2*(sigma_x*size_ratio)**2) + (np.cos(theta)**2)/(2*(sigma_y*size_ratio)**2)
-		gauss2 = amplitude2 *np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
+		gauss2 = amplitude2 * np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
 		
 		DoG = gauss1+gauss2
 		DoG[disk((self.n_pixel_elements-1)/2)==0] = 0
@@ -965,14 +1081,15 @@ class gpf(object):
 			g = self.twoD_Gaussian(amplitude, xo, yo, sigma_x, sigma_y, theta).reshape(self.n_pixel_elements**2)
 		return np.dot(self.design_matrix.reshape(-1,self.n_pixel_elements**2), g)
 
-	def hrf_model_prediction(self, amplitude, xo, yo, sigma_x, sigma_y, theta,amplitude2=0,size_ratio=0,
-								hrf_type='doubleGamma'):
+	def hrf_model_prediction(self, amplitude, xo, yo, sigma_x, sigma_y, theta,amplitude2=0,size_ratio=0,a1=6,a2=12,b1=0.9,b2=0.9,c=0.35):
  
 		rmp = self.raw_model_prediction( amplitude, xo, yo, sigma_x, sigma_y, theta,amplitude2,size_ratio,(amplitude2!=0))
 		rmp = np.repeat(rmp, self.ssr, axis=0)
-		exec('self.hrf_kernel = %s(np.arange(0,32,self.rtime/(self.ssr)))'%hrf_type)
+		self.hrf_kernel = singleGamma(np.arange(0,32,self.rtime/(self.ssr)))
+		# self.hrf_kernel = doubleGamma(np.arange(0,32,self.rtime/(self.ssr)), a1 = a1, a2 = a2, b1 = b1, b2 = b2, c = c)
 		if self.hrf_kernel.shape[0] % 2 == 1:
 			self.hrf_kernel = np.r_[self.hrf_kernel, 0]
+		# self.hrf_kernel /= self.hrf_kernel.sum()
 
 		kl = len(self.hrf_kernel)
 		dpadded = np.zeros(len(rmp) + kl*2)
@@ -993,31 +1110,66 @@ class PopulationReceptiveFieldMappingSession(Session):
 	Class for population receptive field mapping sessions analysis.
 	"""
 	
-	def preprocessing_evaluation(self):
+	def preprocessing_evaluation(self,num_voxels=10):
 
 		mask = 'rh.V1'
 		mask_data = np.array(NiftiImage(os.path.join(self.stageFolder( stage = 'processed/mri/masks/anat'), mask)).data, dtype = bool)
-		k=0
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+
+		plotdir = self.stageFolder( stage = 'processed/mri/figs/preprocessing')
+		if os.path.isdir(plotdir): shutil.rmtree(plotdir)
+		os.mkdir(plotdir)
+
+		for ri,r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			raw_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = [] ))
 			mcf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'] ))
 			sgtf_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf'] ))
 			psc_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
+
 			# prZ_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
-			# res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ','res'] ))
+			res_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc','res'] ))
 
-			all_files = ['raw_file','mcf_file','sgtf_file','psc_file']	 # ,'res_file'
-			f = pl.figure(figsize = ((6,6)))
+			all_files = ['raw_file','mcf_file','sgtf_file','psc_file' ,'res_file']	 # ,'res_file'
+			f = pl.figure(figsize = ((20,10)))
+			voxels = np.random.randint(mask_data.sum(),size=num_voxels)
+			k=1
+			colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,num_voxels)]	
 			for i,p in enumerate(all_files):
-				s = f.add_subplot(len(all_files),1,i+1)
-				exec("pl.plot("+p+".data[:,mask_data][:,0])")
-				simpleaxis(s)
-				spine_shift(s)
-				pl.title(p,fontsize=14)
-			k+=1
-			pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs'), 'preprocessing_evaluation_run_%d.pdf'%k))
+				for vi,voxno in enumerate(voxels):
+					s = f.add_subplot(len(all_files),num_voxels,k)
+					exec("pl.plot("+p+".data[:,mask_data][0:100,voxno],linewidth=1,color=colors[vi])")
+					simpleaxis(s)
+					pl.tick_params(axis='both', which='major', labelsize=5)
+					# spine_shift(s)
+					if i != (len(all_files)-1):
+						pl.xticks([])
+					pl.title(p,fontsize=10)
+					k+=1
+			pl.savefig(os.path.join(plotdir, 'preprocessing_evaluation_run_%d.pdf'%(ri+1)))
 
+			# extra motion correction eval
+			moco_pars = np.array(np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )))
 
+			parameters = ['translation x','translation y','translation z','rotation x','rotation y','rotation z']
+			framewise_displacement = np.sqrt(np.mean(np.diff(moco_pars[:,:3],0)**2,1)) # according to van Dijk et al. 2012 NeuroImage formula (the RMS of the translational parameters )
+			
+			f = pl.figure(figsize=(10,10))
+			s = f.add_subplot(211)
+			pl.plot(moco_pars)
+			simpleaxis(s)
+			spine_shift(s)
+			pl.ylim([-3,3])
+			pl.ylabel('mm')
+			pl.xlabel('TR')
+			pl.legend(parameters,loc='best')
+			s = f.add_subplot(212)
+			pl.plot(framewise_displacement)		
+			simpleaxis(s)
+			spine_shift(s)
+			pl.ylim([0,0.5])
+			pl.ylabel('mm')
+			pl.xlabel('TR')
+			pl.legend(['framewise displacement'],loc='best')
+			pl.savefig(os.path.join(plotdir, 'moco_evaluation_run_%d.pdf'%(ri+1)))
 
 	def resample_epis(self, condition = 'PRF'):
 		"""resample_epi resamples the mc'd epi files back to their functional space."""
@@ -1043,15 +1195,113 @@ class PopulationReceptiveFieldMappingSession(Session):
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','hr']) )
 			os.system('mv ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','res']) + ' ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf']) )
 			
-	def eye_informer(self, length_thresh, nr_dummy_scans = 6):
+	def analyze_behavior(self,this_project_folder):
+
+		misses = {}; hits = {}; false_alarms = {}; num_trials = {}; total_rts = {}; mean_rts = {}; accuracy = {}; se_rts = {}; d_prime = {};
+		tasks = ['color','fix','fix_no_stim','orient','sf','speed']
+		for task in tasks:
+			misses[task] = 0
+			hits[task] = 0
+			false_alarms[task] = 0
+			num_trials[task] = 0
+			total_rts[task] = []
+		rts = []	
+		task_per_trial = []
+		total_rts_task = []
+
+		for ri,r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
+
+			filename = self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' )
+			with open(filename) as f:
+				picklefile = pickle.load(f)
+
+			tasks_for_search = np.array([picklefile['parameterArray'][i]['task'] for i in range(len(picklefile['parameterArray'])) ])
+			tasks_for_search[tasks_for_search=='fix_no_stim'] = 'fix'
+			signal_time_per_trial = [np.array([float(e.split(' ')[-3]) for e in picklefile['eventArray'][i]  if ('signal' in e)  if (e.split(' ')[3] == tasks_for_search[i])]) for i in range(len(picklefile['eventArray']))]
+			button_press_times_per_trial = [np.array([float(e.split(' ')[-4]) for e in picklefile['eventArray'][i] if 'key: b at' in e ]) for i in range(len(picklefile['eventArray']))]
+			task_per_trial.append(np.array([picklefile['parameterArray'][i]['task'] for i in range(len(picklefile['parameterArray'])) ]))
+
+			rts.append([[] for t in range(len(task_per_trial[ri]))  ])
+			for ti, tr in enumerate(task_per_trial[ri]):
+				num_trials[tr] += np.size(signal_time_per_trial[ti])
+				for st in signal_time_per_trial[ti]:
+					if np.size(button_press_times_per_trial[ti]) > 0:
+						if np.size((button_press_times_per_trial[ti] - st)[(button_press_times_per_trial[ti] - st)>0]) >0:
+							closest_response = (button_press_times_per_trial[ti] - st)[(button_press_times_per_trial[ti] - st)>0][0]
+							if (closest_response < 2):
+								hits[tr] += 1
+								rts[ri][ti].append(closest_response)
+							else:
+								misses[tr] +=1
+						else:
+							misses[tr] +=1
+
+		for ti,tr in enumerate(np.ravel(task_per_trial)):
+			total_rts[tr] = np.hstack([total_rts[tr],np.ravel(rts)[ti]])
+
+		for task in np.unique(task_per_trial[0]):
+			mean_rts[task] = np.sum(total_rts[task]*1000)/hits[task]
+			se_rts[task] = np.std(total_rts[task]*1000) / np.sqrt(len(total_rts[task]))
+			accuracy[task] = (hits[task] / float(num_trials[task])) *100
+			# d_prime[task] = (hits[task]/float(num_trials[task])) / (false_alarms[task]/float(num_trials[task]))
+
+		f = pl.figure()
+		colors = ['#61a4d7','#77d761','#d76169']
+		bar_width = 0.5
+		index= np.arange(len(np.unique(task_per_trial[0])))
+		s = f.add_subplot(211)
+		pl.bar(index + bar_width/2,accuracy.values(),width=bar_width,color=colors[2],edgecolor=colors[2])
+		# pl.bar(index - bar_width + (bar_width/2),hits.values(),width=bar_width,color=colors[1],edgecolor=colors[1],label = 'hits')
+		# pl.bar(index+ (bar_width/2),misses.values(),width=bar_width,color=colors[2],edgecolor=colors[2],label = 'misses')
+		# pl.bar(index + bar_width+ (bar_width/2),false_alarms.values(),color=colors[0],edgecolor=colors[0],width=bar_width,label = 'false alarms')
+		simpleaxis(s)
+		spine_shift(s)
+		pl.ylabel('percent responded')
+		# plt.xticks([])
+		plt.xticks(index + bar_width, accuracy.keys())
+		pl.ylim(20,100)
+		# pl.ylim([np.min(accuracy.values())-10,np.min([np.max(accuracy.values())+10,100])])
+		pl.title('Responsiveness')
+		s = f.add_subplot(212)
+		pl.bar(index + bar_width/2,mean_rts.values(),width=bar_width,yerr=se_rts.values(),color=colors[0],edgecolor=colors[0],error_kw = {'ecolor':colors[0]})
+		simpleaxis(s)
+		spine_shift(s)
+		plt.xticks([])
+		# pl.xlim(-0.5,7.5)
+		pl.ylabel('milliseconds')
+		pl.ylim(400,1000)
+		# pl.ylim([np.min(np.array(mean_rts.values())-np.array(se_rts.values()))-50,np.max(np.array(mean_rts.values())+np.array(se_rts.values()))+50])
+		pl.xlabel('Reaction Time',fontsize=14)
+		# bar_width = 0.5/3
+
+		# leg = s.legend(fancybox = True, loc = 'best')
+		# pl.xlim(-1,7)
+
+		# leg.get_frame().set_alpha(0.5)
+		# s = f.add_subplot(313)
+		# simpleaxis(s)
+		# spine_shift(s)
+		# pl.bar(index + bar_width/2,d_prime.values(),width=bar_width)
+		# plt.xticks(index + bar_width, d_prime.keys())
+		# pl.ylim([0,np.max(d_prime.values())+5])
+		# pl.title('D-prime')
+		f.savefig(os.path.join(self.stageFolder('processed/behavior/figs'),'behavior_summary.pdf'))
+		if not os.path.isdir(os.path.join(this_project_folder,'data','_group_level','behavior')): os.mkdir(os.path.join(this_project_folder,'data','_group_level','behavior'))
+		f.savefig(os.path.join(this_project_folder,'data','_group_level','behavior','behavior_%s.pdf'%self.subject.initials))
+
+		# plt.xticks([0,100,200,300,400,500,600,700,800,900,1000])
+
+
+	def eye_informer(self, nr_dummy_scans = 6):
 		"""
 		- the times at which a blink began per run 
 		- duration of blink
 		Timings of the blinks are corrected for the start of the scan by the nr_dummy_scans
 		"""
 
-	
-		for r in [self.runList[i] for i in self.conditionDict['PRF']]:
+		all_saccades = []
+		all_saccade_lengths = []
+		for ri,r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			# 
 			niiFile = NiftiImage(self.runFile(stage = 'processed/mri', run = r))
 			tr = round(niiFile.rtime*1)/1000.0
@@ -1059,8 +1309,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			with open(msg_file_name) as inputFileHandle:
 				msg_file = inputFileHandle.read()
 
-
 			sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)'
+			# sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)'
 			fix_re = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?'
 			blink_re = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'
 			start_eye = 'START\t(-?\d+\.?\d*)'
@@ -1071,23 +1321,22 @@ class PopulationReceptiveFieldMappingSession(Session):
 			blink_strings = re.findall(re.compile(blink_re), msg_file)
 			start_time_scan = float(re.findall(re.compile(start_eye),msg_file)[0])
 			
+			# screen_height_pixels = 1200
+			# screen_height_degrees = 30
+			# ppd = screen_height_pixels/screen_height_degrees
 			if len(saccade_strings) > 0:
-				self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'length':float(e[8]),'peak_velocity':float(e[9])} for e in saccade_strings]
+				self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'amplitude':float(e[8]),'peak_velocity':float(e[9])} for e in saccade_strings]
 				self.fixations_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fix_strings]
 				self.blinks_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blink_strings]
 
+			eye_blinks = [[((blink['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, blink['duration']/1000,1] for blink in self.blinks_from_message_file if (blink['start_timestamp'] - start_time_scan) > (nr_dummy_scans*tr*1000)]
+			saccades = [[((sacc['start_timestamp'] - start_time_scan)/1000) - nr_dummy_scans*tr,sacc['amplitude']] for sacc in self.saccades_from_message_file]
+			all_saccades.append(saccades)
 
-				self.saccade_type_dictionary = np.dtype([(s , np.array(self.saccades_from_message_file[0][s]).dtype) for s in self.saccades_from_message_file[0].keys()])
-				self.fixation_type_dictionary = np.dtype([(s , np.array(self.fixations_from_message_file[0][s]).dtype) for s in self.fixations_from_message_file[0].keys()])
-				if len(self.blinks_from_message_file) > 0:
-					self.blink_type_dictionary = np.dtype([(s , np.array(self.blinks_from_message_file[0][s]).dtype) for s in self.blinks_from_message_file[0].keys()])
-			eye_blinks = [[((self.blinks_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.blinks_from_message_file[i]['duration']/1000,1] for i in range(len(self.blinks_from_message_file)) if (self.blinks_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000)]
-			saccades = [[((self.saccades_from_message_file[i]['start_timestamp']- start_time_scan)/1000) - nr_dummy_scans*tr, self.saccades_from_message_file[i]['duration']/1000,1] for i in range(len(self.saccades_from_message_file)) if np.all([(self.saccades_from_message_file[i]['start_timestamp']- start_time_scan) > (nr_dummy_scans*tr*1000), (self.saccades_from_message_file[i]['length'] > length_thresh)]) ]
-	
 			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']), np.array(eye_blinks), fmt = '%3.2f', delimiter = '\t')
-			np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
-			
-		return saccades
+			# np.savetxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['saccades']), np.array(saccades), fmt = '%3.2f', delimiter = '\t')
+
+		return all_saccades
 			
 	def create_dilated_cortical_mask(self, dilation_sd = 0.5, label = 'cortex'):
 		"""create_dilated_cortical_mask takes the rh and lh cortex files and joins them to one cortex.nii.gz file.
@@ -1146,7 +1395,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			bO = PopulationReceptiveFieldBehaviorOperator(self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ))
 			bO.trial_times(stim_offsets = stim_offsets) # sets up all behavior  
 			r.trial_times = bO.trial_times
-			saccades=self.eye_informer(length_thresh = 5)
+			# saccades=self.eye_informer(length_thresh = 1.5)
 			for ti, tb in enumerate(r.trial_times):
 				# subtract 2.5 seconds from every trial onset:
 				# r.trial_times[ti][1] -= 0.5
@@ -1295,7 +1544,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# 	trial_names = [trial_names[i] + '_' + str(orientation_per_trial[i]) if str(trial_names[i]) != 'fix_no_stim' else trial_names[i] for i in range(len(trial_names)) ]
 		
 			# # create bool based on whether there was eye movement in that trial 
- 		# 	saccades = self.eye_informer(length_thresh=5) # only include saccades of > length_thresh degrees
+ 		# 	saccades = self.eye_informer(length_thresh = 1.5) # only include saccades of > length_thresh degrees
  		# 	if saccades == []:
  		# 		saccade_bool = np.zeros(len(trial_start_times)).astype(bool)
  		# 	else:
@@ -1310,7 +1559,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			r.trial_duration = np.median(trial_durations)
 
 			# create bool based on whether there was eye movement in that trial 
-			saccades = self.eye_informer(length_thresh=5) # only include saccades of > length_thresh degrees
+			saccades = self.eye_informer(length_thresh = 1.5) # only include saccades of > length_thresh degrees
 			if saccades == []:
 				saccade_bool = np.zeros(len(trial_start_times)).astype(bool)
 			else:
@@ -1326,17 +1575,19 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				# np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
 
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
-			add_time_for_previous_runs += nii_file.getRepetitionTime() * nii_file.getTimepoints()
+			# nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','psc'] ))
+			# add_time_for_previous_runs += nii_file.getRepetitionTime() * nii_file.getTimepoints()
 
 
-	def stimulus_timings_square_2(self, stimulus_correction = 0):
+	def stimulus_timings_square_2(self,this_project_folder=[],saccade_threshold=[5,15]):
 		###
 		# this function is for the 'old' experiment, for the new method
 
 		run_start_time = []
-		run_duration = []
-		add_time_for_previous_runs = 0
+		# run_duration = []
+		trials_rejected=[]
+		all_saccades_in_trial_dur=[]
+		all_saccades = self.eye_informer()
 		for ri, r in enumerate([self.runList[i] for i in self.conditionDict['PRF']]):
 			filename = self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' )
 			with open(filename) as f:
@@ -1346,23 +1597,31 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			orientation_per_trial=np.array([int(np.degrees(picklefile['parameterArray'][i]['orientation'])) for i in range(len(picklefile['parameterArray'])) ])
 			task_per_trial = np.array([ picklefile['parameterArray'][i]['task'] for i in range(len(picklefile['parameterArray'])) ])
-			
-			# stimulus_correction_dict = {0:6.75,45:5.5,90:5,135:5.5,180:6.75,225:5.5,270:5,315:5.5}
-			# stimulus_correction_per_trial = [stimulus_correction_dict[int(orient)] for orient in orientation_per_trial]
-			trial_start_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 2" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri]  + stimulus_correction
-			trial_end_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 3" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri]  + stimulus_correction
 
-			# trial_durations = trial_end_times - trial_start_times
-			# r.trial_duration = np.median(trial_durations)
+			trial_start_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 2" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri] 
+			trial_end_times = np.concatenate([np.array([float(e.split('at ')[-1]) for e in picklefile['eventArray'][i] if e[0] == 't' and "phase 3" in e]) for i in range(len(picklefile['eventArray']))]) - run_start_time[ri]  
+
 			r.trial_duration = 21
 
-			# create bool based on whether there was eye movement in that trial 
-			saccades = self.eye_informer(length_thresh=5) # only include saccades of > length_thresh degrees
-			if saccades == []:
-				saccade_bool = np.zeros(len(trial_start_times)).astype(bool)
-			else:
-				saccades = np.array(saccades)[:,0]
-				saccade_bool = np.any([ (s>trial_start_times)*(s<trial_end_times) for s in saccades],0)
+			# create bool based on whether there was eye movement in that trial  # only include saccades of > length_thresh degrees	
+			saccades_in_trial_dur = np.any([ (trial_start_times[ti]<np.array(all_saccades[ri])[:,0])*(trial_end_times[ti]>np.array(all_saccades[ri])[:,0])  for ti in range(len(trial_start_times))],0)
+			all_saccades_in_trial_dur.append(saccades_in_trial_dur)
+			# saccade_bool = np.any([ (s[0]>trial_start_times)*(s[0]<trial_end_times)*(s[1]>saccade_threshold[0])*(s[1]<saccade_threshold[1]) for s in all_saccades[ri]],0)
+			saccade_bool = np.ravel(np.tile(False,(1,len(task_per_trial))))
+
+			# trials_rejected.append(np.sum(saccade_bool))
+			# all_saccade_lengths = np.array(all_saccades[ri])[saccades_in_trial_dur,1]
+			# f=pl.figure(figsize=(12,6))
+			# s=f.add_subplot(111)
+			# pl.hist(all_saccade_lengths,100)
+			# message = 'number of trials rejected: %d'%trials_rejected[ri]
+			# pl.axvline(saccade_threshold[0],linestyle='--',color='k',linewidth=2,label=message)
+			# pl.xlabel('saccade length (deg)')
+			# pl.xlim(0,saccade_threshold[1])
+			# pl.ylabel('#')
+			# leg = s.legend(fancybox = True, loc = 'best')
+			# leg.get_frame().set_alpha(0.5)
+			# f.savefig(os.path.join(self.stageFolder('processed/eye/figs/'),'saccade_hist_run_%s.pdf'%ri))
 
 			r.orientations = [t['orientation'] for t in picklefile['parameterArray'] ]
 			r.trial_times = [ [task_per_trial[i], trial_start_times[i], trial_end_times[i],saccade_bool[i],np.degrees(r.orientations[i])] for i in range(len(task_per_trial))]
@@ -1373,9 +1632,22 @@ class PopulationReceptiveFieldMappingSession(Session):
 				# these_buttons = np.array([[float(bt[1]), 0.5, 1.0] for bt in r.all_button_times if bt[0] == task])
 				# np.savetxt(self.runFile(stage = 'processed/mri', run = r, extension = '.txt', postFix = ['button', task]), these_buttons, fmt = '%3.2f', delimiter = '\t')
 
-			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf','sgtf','prZ'] ))
-			add_time_for_previous_runs += nii_file.getRepetitionTime() * nii_file.getTimepoints()
-			
+		# all_saccade_lengths = np.vstack(all_saccades)[np.hstack(all_saccades_in_trial_dur),1]
+		# f=pl.figure(figsize=(12,6))
+		# s=f.add_subplot(111)
+		# pl.hist(all_saccade_lengths,100)
+		# message = '%d out of %d trials rejected'%(np.sum(trials_rejected),len(saccade_bool)*len([self.runList[i] for i in self.conditionDict['PRF']]))
+		# pl.axvline(saccade_threshold[0],linestyle='--',color='k',linewidth=2,label=message)
+		# pl.xlabel('saccade length (deg)')
+		# pl.xlim(0,saccade_threshold[1])
+		# pl.ylabel('#')
+		# leg = s.legend(fancybox = True, loc = 'best')
+		# leg.get_frame().set_alpha(0.5)
+		# f.savefig(os.path.join(self.stageFolder('processed/eye/figs/'),'all_saccade_hist.pdf'))
+		# if this_project_folder != []:
+		# 	if not os.path.isdir(os.path.join(this_project_folder,'data','_group_level','saccade_analysis')): os.mkdir(os.path.join(this_project_folder,'data','_group_level','saccade_analysis'))
+		# 	f.savefig(os.path.join(this_project_folder,'data','_group_level','saccade_analysis','all_saccades_%s.pdf'%self.subject.initials))
+		
 	
 	def physio(self, condition = 'PRF'):
 		"""physio loops across runs to analyze their physio data"""
@@ -1399,7 +1671,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		if 'Square' in self.project.projectName: self.stimulus_timings_square()
 		else: self.stimulus_timings_square_2()
 		
-		self.eye_informer(length_thresh=5)
+		self.eye_informer(length_thresh = 1.5)
 		# physio regressors
 		physio_list = []
 		mcf_list = []
@@ -1489,7 +1761,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 		# 
 
-	def GLM_for_nuisances_per_run(self, condition = 'PRF', postFix = ['mcf', 'sgtf']):
+
+	def GLM_for_nuisances_per_run(self, condition = 'PRF', postFix = ['mcf', 'sgtf'],run=None):
 		"""GLM_for_nuisances takes a diverse set of nuisance regressors,
 		runs a GLM on them in order to run further PRF analysis on the 
 		residuals after GLM. It assumes physio, motion correction and 
@@ -1498,8 +1771,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 		"""
 		if 'Square' in self.project.projectName: self.stimulus_timings_square()
 		else: self.stimulus_timings_square_2()
+		self.eye_informer()
 		cortex_mask = np.array(NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), 'cortex_dilated_mask.nii.gz')).data, dtype = bool)
-		for j, r in enumerate([self.runList[i] for i in self.conditionDict[condition]]):
+		for r in [self.runList[i] for i in self.conditionDict[condition]]:
+			# r = [self.runList[i] for i in self.conditionDict[condition]][run]
 			nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
 			self.logger.info('nifti data loaded from %s for nuisance/trial onset analysis'%(self.runFile(stage = 'processed/mri', run = r, postFix = postFix )))
 			# moco and physiology regressors are per-TR regressors that need no convolution anymore.
@@ -1510,17 +1785,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# 	np.loadtxt(self.runFile(stage = 'processed/hr', run = r, extension = '.txt', postFix = ['ppu', 'raw']) )
 			# 	])
 				
-			# mcf = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' ))
+			mcf = np.loadtxt(self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' ))
 			# final regressor captures instruction-related variance that may otherwise cause strong responses in periphery
 			# trial_times are single events that have to still be convolved with HRF
-			instruct_times = [[[tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]
+			# instruct_times = [[[tt[1] - 1.5, 1.5, 1.0]] for tt in r.trial_times]
 			# instruct_times = instruct_times.reshape((1,instruct_times.shape[0], instruct_times.shape[-1]))
 
 			# trial_onset_times = [[[tt[1], 0.5, 1.0]] for tt in r.trial_times]
-			# lateron, this will also have pupil size and the occurrence of saccades in there.
 			this_blink_events = np.loadtxt(self.runFile(stage = 'processed/eye', run = r, extension = '.txt', postFix = ['eye_blinks']))
-			blink_times_list = [[[float(tt[0]), tt[1],tt[2]]] for tt in this_blink_events]
-			# blink_times_list = blink_times_list.reshape((1,blink_times_list.shape[0], blink_times_list.shape[-1]))
+			blink_times_list = [[[float(tt[0]), float(tt[1]),tt[2]] for tt in this_blink_events]]
+			# blink_times_list = np.array(blink_times_list).reshape((1,blink_times_list.shape[0], blink_times_list.shape[-1]))
 			# instruct_times.extend(blink_times_list)
 			if nii_file.rtime > 1000:
 				rtime = nii_file.rtime/1000
@@ -1529,12 +1803,13 @@ class PopulationReceptiveFieldMappingSession(Session):
 			run_design = Design(nii_file.timepoints, rtime, subSamplingRatio = 10)
 			# run_design.configure(np.vstack([instruct_times, blink_times_list]), hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
 			run_design.configure(blink_times_list, hrfType = 'doubleGamma', hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35})
-			# joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf.T, physio]).T)
-			joined_design_matrix = np.mat(run_design.designMatrix).T
+			joined_design_matrix = np.mat(np.vstack([run_design.designMatrix, mcf.T]).T)
+			# joined_design_matrix = np.mat(run_design.designMatrix).T
 
 			f = pl.figure(figsize = (10, 10))
+			sns.set_style('white')
 			s = f.add_subplot(111)
-			pl.imshow(joined_design_matrix)
+			pl.imshow(joined_design_matrix,interpolation='nearest')
 			s.set_title('nuisance design matrix')
 			pl.savefig(self.runFile(stage = 'processed/mri', run = r, postFix = postFix, base = 'nuisance_design', extension = '.pdf' ))
 			
@@ -1700,7 +1975,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	
 	def design_matrix(self, method = 'hrf', gamma_hrfType = 'doubleGamma', gamma_hrfParameters = {'a1' : 6, 'a2' : 12, 'b1' : 0.9, 'b2' : 0.9, 'c' : 0.35}, 
 				fir_ratio = 6, n_pixel_elements = 40, sample_duration = 0.01, plot_diagnostics = False, ssr = 1, condition = 'PRF', 
-				save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315], stimulus_correction=0,convolve=True,add_instruction_to_dm = False,model_stimulus=True,one_trial_per_dir=True):
+				save_design_matrix = True, orientations = [0,45,90,135,180,225,270,315],convolve=True,add_instruction_to_dm = False,model_stimulus=True,one_trial_per_dir=True):
 		"""design_matrix creates a design matrix for the runs
 		using the PRFModelRun and PRFTrial classes. The temporal grain
 		of the model is specified by sample_duration. In our case, the 
@@ -1714,42 +1989,41 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# gamma_hrfType = 'singleGamma', gamma_hrfParameters = {'a': 6, 'b': 0.9}
 
 		# get orientations and stimulus timings
-		if 'Square' in self.project.projectName: self.stimulus_timings_square(stimulus_correction=stimulus_correction)
-		else: self.stimulus_timings_square_2(stimulus_correction=stimulus_correction)
+		if 'Square' in self.project.projectName: self.stimulus_timings_square()
+		else: self.stimulus_timings_square_2()
 		self.logger.info('Creating design matrix with convolution is %s'%convolve)
 
 		self.stim_matrix_list = []
 		self.design_matrix_list = []
-		self.sample_time_list = []
+		# self.sample_time_list = []
 		# self.tr_time_list = []
-		self.trial_start_list = []
-
+		# self.trial_start_list = []
 
 		nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = [self.runList[c] for c in self.conditionDict[condition]][0], postFix = [] ))
 		if nii_file.rtime > 10:
 			TR = nii_file.rtime / 1000.0
 		else:
 			TR = nii_file.rtime		
-		sample_duration = TR/20
-
+		sub_sampling_ratio = 20.0
+		sample_duration = TR/sub_sampling_ratio
+		instruct_duration = 1.5
 
 		if one_trial_per_dir:
 			class empty_object(object): pass 
 			r = empty_object()
-			trial_duration = [self.runList[c] for c in self.conditionDict[condition]][0].trial_times[1][1]-[self.runList[c] for c in self.conditionDict[condition]][0].trial_times[0][1]
-			stim_duration = 21#[self.runList[c] for c in self.conditionDict[condition]][0].trial_duration
-			instruction_duration = 1.5
+			trial_duration = np.median(np.diff(np.array([self.runList[c] for c in self.conditionDict[condition]][0].trial_times)[:,2].astype('float32')))
+			stim_duration = 21.0#[self.runList[c] for c in self.conditionDict[condition]][0].trial_duration
 			TRs_in_trial = ceil(trial_duration/TR) 
-			dilation_width = TRs_in_trial * TR - (stim_duration + instruction_duration)
+			dilation_width = TRs_in_trial * TR - (stim_duration + instruct_duration)
 			conditions = np.repeat(['all','fix','speed','orient','sf','color'],len(orientations)+1).astype('|S12')
 			conditions[len(orientations)::len(orientations)+1] = 'fix_no_stim'
 			r.orientations = np.tile(np.radians(np.concatenate((orientations,[0]))),len(np.unique(conditions))-1)
-			trial_start_times = [(instruction_duration*(t+1)) + (dilation_width*t) + (stim_duration*t) for t in np.arange(len(r.orientations))]
+			trial_start_times = [(instruct_duration*(t+1)) + (dilation_width*t) + (stim_duration*t) for t in np.arange(len(r.orientations))]
 			trial_end_times = np.array(trial_start_times) + stim_duration
 			r.trial_times = [[conditions[t],trial_start_times[t],trial_end_times[t]] for t in range(len(trial_start_times))]
 			run_list = [r]
 			dm_type = 'one_trial_per_dir'
-			n_TRs = int((instruction_duration + stim_duration + dilation_width) * len(r.orientations)  / TR)
+			n_TRs = int((instruct_duration + stim_duration + dilation_width) * len(r.orientations)  / TR)
 		else:	
 			run_list = [self.runList[c] for c in self.conditionDict[condition]]
 			dm_type = 'full_experiment'
@@ -1777,10 +2051,9 @@ class PopulationReceptiveFieldMappingSession(Session):
 			# add instruction to dm
 			if add_instruction_to_dm:
 				instruct_suffix = 'with_instruction'
-				fixation_size = 0.5
+				# fixation_size = 0.5
 				all_instruct_sizes = {'all':[6.9,0.7],'sf':[6.9,0.7],'color':[6.4,0.7],'orient':[7.7,0.7],'speed':[6.6,0.7],'fix_no_stim':[6.8,0.7],'fix':[6.8,0.7]}
 				 # horizontal and vertical visual degrees
-				instruct_duration = 1.5
 				degree_per_pix_element = 27/float(n_pixel_elements)
 				first_instruct_times = ((np.array(r.trial_times)[:,1].astype('float32') - instruct_duration) / sample_duration)
 				instruct_times = first_instruct_times
@@ -1971,15 +2244,21 @@ class PopulationReceptiveFieldMappingSession(Session):
 					workingDesignMatrix[:,trial_ends[t]:trial_starts[t+1]] = np.zeros_like(workingDesignMatrix[:,trial_ends[t]:trial_starts[t+1]])
 
 			# stimulus_refresh_period = 0.6 
-			# down_sample_factor = TR/sample_duration
-			down_sample_index = np.linspace(0,np.shape(mr.run_matrix)[0],TRs_in_trial*len(r.orientations),endpoint=False).astype(int)
+			down_sample_factor = TR/sample_duration
+			down_sample_index = np.arange(0,np.shape(mr.run_matrix)[0],sub_sampling_ratio).astype(int)
+			# down_sample_index = np.arange(sub_sampling_ratio/2,np.shape(mr.run_matrix)[0],sub_sampling_ratio).astype(int)
+			# self.sample_time_list.append(mr.sample_times[down_sample_index] + ri * n_TRs * TR)
 			self.stim_matrix_list.append( np.reshape(mr.run_matrix[down_sample_index,:,:],(-1,n_pixel_elements**2)).T )
-			self.sample_time_list.append(mr.sample_times[down_sample_index] + ri * n_TRs * TR)
+			
+			# self.stim_matrix_list.append(np.reshape([ np.mean(mr.run_matrix[int(s*sub_sampling_ratio):int((s+1)*sub_sampling_ratio)],0) for s in  range(int(TRs_in_trial*len(r.orientations)))],(-1,n_pixel_elements**2)).T)
+			
 			# self.tr_time_list.append(np.arange(0, n_TRs * TR, TR) + ri * n_TRs * TR)
-			self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + ri * n_TRs * TR) 	
+			# self.trial_start_list.append(np.array(np.array(r.trial_times)[:,1], dtype = float) + ri * n_TRs * TR) 	
 
 			if convolve:
 				self.design_matrix_list.append(workingDesignMatrix[:,down_sample_index])
+				# self.design_matrix_list.append(np.array([ np.mean(workingDesignMatrix[:,int(s*sub_sampling_ratio):int((s+1)*sub_sampling_ratio)],1) for s in  range(int(TRs_in_trial*len(r.orientations)))]).T)
+
 
 			if analyze_dm:	
 				k = 1
@@ -2032,23 +2311,23 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		self.raw_dm = np.hstack(self.stim_matrix_list).T
 		# self.tr_time_list = np.concatenate(self.tr_time_list)
-		self.sample_time_list = np.concatenate(self.sample_time_list)
-		self.trial_start_list = np.concatenate(self.trial_start_list)
+		# self.sample_time_list = np.concatenate(self.sample_time_list)
+		# self.trial_start_list = np.concatenate(self.trial_start_list)
 		self.logger.info('design_matrix of shape %s created, of which %d are valid stimulus locations'%(str(self.raw_dm.shape), int((self.raw_dm.sum(axis = 0) != 0).sum())))
 		
-		animate_dm = False
+		animate_dm = True
 		if animate_dm:
 			from matplotlib import animation
 			plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 			ims = []
 			f=pl.figure(figsize=(24,24))
-			timepoints = np.arange(len(self.raw_dm))
+			timepoints = np.arange(len(down_sample_index))
 			# timepoints = np.arange(len(self.raw_dm)/(len(orientations)+1)*6,len(self.raw_dm)/(len(orientations)+1)*7)
 			if convolve:
 				dm = self.full_design_matrix
 			else:
 				dm = self.raw_dm
-			for i,t in enumerate(timepoints):
+			for t in timepoints:
 				s=f.add_subplot(111)
 				im=pl.imshow(dm.reshape(-1,n_pixel_elements,n_pixel_elements)[t,:,:],interpolation='nearest',cmap='gray')
 				pl.clim(0,np.max(dm))
@@ -2058,14 +2337,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 			ani = animation.ArtistAnimation(f, ims)#, interval=5, blit = True, repeat_delay = 1000)
 			mywriter = animation.FFMpegWriter(fps = 1)
 			self.logger.info('saving animation')
-			ani.save(os.path.join(self.stageFolder('processed/mri/figs/delve_deeper/'),'design_matrix_%ix%i_%s_%s_%s_%s.mp4'%(n_pixel_elements, n_pixel_elements, method,instruct_suffix,stimulus_suffix,dm_type)),writer=mywriter)#,fps=2)#,dpi=100,bitrate=50)
+			plotdir = os.path.join(self.stageFolder('processed/mri/figs/dm_animations/'))
+			if not os.path.isdir(plotdir): os.mkdir(plotdir)
+			ani.save(os.path.join(plotdir,'design_matrix_%ix%i_%s_%s_%s_%s.mp4'%(n_pixel_elements, n_pixel_elements, method,instruct_suffix,stimulus_suffix,dm_type)),writer=mywriter)#,fps=2)#,dpi=100,bitrate=50)
 			# pl.close()
 
 		if plot_diagnostics:
 			f = pl.figure(figsize = (10, 3))
 			s = f.add_subplot(111)
 			pl.plot(self.full_design_matrix.sum(axis = 1))
-			pl.plot(self.trial_start_list / sample_duration, np.ones(self.trial_start_list.shape), 'ko')
+			# pl.plot(self.trial_start_list / sample_duration, np.ones(self.trial_start_list.shape), 'ko')
 			s.set_title('original')
 			s.axis([0,200,0,200])
 	
@@ -2077,7 +2358,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 					pickle.dump({'full_design_matrix' : self.full_design_matrix}, f)
 				else:
 					# pickle.dump({'tr_time_list' : self.tr_time_list, 'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
-					pickle.dump( {'raw_dm':self.raw_dm,'sample_time_list' : self.sample_time_list, 'trial_start_list' : self.trial_start_list} , f)
+					pickle.dump( {'raw_dm':self.raw_dm} , f)
 
 
 	def stats_to_mask(self, mask_file_name, postFix = ['mcf', 'sgtf', 'prZ', 'res'], condition = 'PRF', task_condition = ['all'], threshold = 5.0):
@@ -2090,7 +2371,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		output_image.save(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name + '_' + task_condition[0] + '.nii.gz'))
 
 	def fit_PRF(self, n_pixel_elements_raw = 30,n_pixel_elements_full = 30, mask_file_name = 'single_voxel', postFix = ['mcf', 'sgtf', 'prZ', 'res'], n_jobs = 15, task_conditions = ['fix'], 
-				condition = 'PRF', sample_duration = 0.05, save_all_data = True, orientations = [0,45,90,135,180,225,270,315],
+				condition = 'PRF', sample_duration = 0.05, save_all_data = True, orientations = [0,45,90,135,180,225,270,315],n_vox_per_ROI=100,
 				delve_deeper=False,method='new',corr_threshold = 0.3,SNR_thresh = 1.5,sd_thresh=0.0,logp_thresh=0.0,ecc_thresh=11.0,amp_thresh=100,plotbool=False,convert_to_surf=True,r_squared_threshold=0.1): # cortex_dilated_mask
 		"""fit_PRF creates a design matrix for the full experiment, 
 		with n_pixel_elements determining the amount of singular pixels in the display in each direction.
@@ -2107,7 +2388,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 		# load anatomical mask:
 		mask_file = NiftiImage(os.path.join(self.stageFolder('processed/mri/masks/anat'), mask_file_name +  '.nii.gz'))
 		cortex_mask = np.array(mask_file.data, dtype = bool)
-		stat_data_loaded = True
+		stat_data_loaded = False
 		all_data_loaded = False
 		thresh_data_loaded = False
 
@@ -2117,8 +2398,8 @@ class PopulationReceptiveFieldMappingSession(Session):
 			
 			if (this_condition != 'all') * (stat_data_loaded == False):
 				self.logger.info('loading statistical mask, r squared threshold: %.2f'%r_squared_threshold)
-				# filename = 'corrs_'+mask_file_name + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,n_pixel_elements_raw)
-				filename = 'corrs_'+'cortex_dilated_mask' + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,101)
+				filename = 'corrs_'+mask_file_name + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,n_pixel_elements_raw)
+				# filename = 'corrs_'+'cortex_dilated_mask' + '_' + '_'.join(postFix) + '_all-%s-%d'%(condition,101)
 				stat_data = NiftiImage(os.path.join(self.stageFolder('processed/mri/PRF/'), filename +  '.nii.gz'))
 				stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 				cortex_mask *= (stat_data.data[stats_frames['r_squared']] > r_squared_threshold)
@@ -2152,12 +2433,12 @@ class PopulationReceptiveFieldMappingSession(Session):
 					thresh_data_loaded = True
 
 			# estimate fit duration
-			if n_pixel_elements_raw == 181: time_per_voxel = 4
-			if n_pixel_elements_raw == 141: time_per_voxel = 2
-			if n_pixel_elements_raw == 101: time_per_voxel = 1
-			if n_pixel_elements_raw == 51: time_per_voxel = 0.5
+			if n_pixel_elements_raw == 181: time_per_voxel = 4*25
+			if n_pixel_elements_raw == 141: time_per_voxel = 2*25
+			if n_pixel_elements_raw == 101: time_per_voxel = 1*25
+			if n_pixel_elements_raw == 51: time_per_voxel = 0.5*25
 
-			estimated_fit_duration = cortex_mask.sum() * time_per_voxel / float(n_jobs)
+			estimated_fit_duration = cortex_mask.sum() * time_per_voxel / float(n_jobs) / 60.0
 			# estimated_fit_duration = ((int(cortex_mask.sum()) * (2.0*(22/float(n_jobs))/141**2)*101*(float(n_pixel_elements_raw)/101)**2)/60) 
 			self.logger.info('starting PRF model fits on %d voxels'%(int(cortex_mask.sum())))
 			self.logger.info('estimated duration this condition: %dm (%.1fh)' % (estimated_fit_duration,estimated_fit_duration/60.0))
@@ -2175,25 +2456,31 @@ class PopulationReceptiveFieldMappingSession(Session):
 			for roi in np.unique(roi_names):
 				roi_count[roi] = np.size(roi_names[roi_names==roi]) 
 		
-			# plot dir for individual voxel plots
-			plotdir = os.path.join(self.stageFolder('processed/mri/figs'), 'PRF_plots_%s_%s_%s'%(mask_file_name,n_pixel_elements_raw,this_condition))
+			# # plot dir for individual voxel plots
+			plotdir = os.path.join(self.stageFolder('processed/mri/figs'), 'PRF_plots_%s_%s'%(mask_file_name,this_condition))
 			if os.path.isdir(plotdir)*plotbool: shutil.rmtree(plotdir); os.mkdir(plotdir)
 			elif (not os.path.isdir(plotdir))*plotbool: os.mkdir(plotdir)
-			self.logger.info('Now fitting condition %s'%this_condition)
+			
+			interp_plotdir = self.stageFolder('processed/mri/figs/interp_examples_%s_%s/'%(mask_file_name,this_condition))
+			if os.path.isdir(interp_plotdir)*delve_deeper: shutil.rmtree(interp_plotdir); os.mkdir(interp_plotdir)
+			elif (not os.path.isdir(interp_plotdir))*delve_deeper: os.mkdir(interp_plotdir)
 
+			self.logger.info('Now fitting condition %s'%this_condition)
+								
 			# load design matrices. Load with instruction if condition is fix or all, and without instruction in the attention conditions (as this will be subtracted by prediction by fix prf)
 			t = time.time()
 			self.logger.info('loading high res raw design matrix')
 			if (this_condition == 'fix')+(this_condition == 'all'):
-				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_with_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
+				# filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_with_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
+				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_no_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
 			else:
 				filename = os.path.join(self.stageFolder('processed/mri/PRF/'), 'design_matrix_%dx%d_hrf_no_instruction_with_stimulus_one_trial_per_dir.pickle'%(n_pixel_elements_raw,n_pixel_elements_raw)) 
 			with open(filename) as f:
 				picklefile = pickle.load(f)
 			self.raw_dm = picklefile['raw_dm']
 			# self.tr_time_list = picklefile['tr_time_list']
-			self.sample_time_list = picklefile['sample_time_list']
-			self.trial_start_list = picklefile['trial_start_list']
+			# self.sample_time_list = picklefile['sample_time_list']
+			# self.trial_start_list = picklefile['trial_start_list']
 			t2 = time.time()-t
 			self.logger.info('loaded high res raw design matrix in %ds'%(t2))
 
@@ -2264,29 +2551,32 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 				# get experiment information for this condition
 				orientations.append('fix_no_stim')
-				trial_duration = [self.runList[c] for c in self.conditionDict[condition]][0].trial_times[1][1]-[self.runList[c] for c in self.conditionDict[condition]][0].trial_times[0][1]
+				trial_duration = np.median(np.diff(np.array([self.runList[c] for c in self.conditionDict[condition]][0].trial_times)[:,2].astype('float32')))
 				instruction_duration = 1.5
 				extended_period = int(ceil(trial_duration/self.TR))
+				tr_times = np.arange(0,extended_period*self.TR,self.TR)
+				# tr_times = np.linspace(0,extended_period*self.TR,extended_period)
 				# dilate_width = 6  # trs after stimulus disappearance to include in trial		
 				# trial_duration = r.trial_duration
 				# trs_in_trial = round(trial_duration/self.TR)
 				add_time_for_previous_runs = 0
 				trial_start_times = [];trial_names=[];saccades=[];trial_orientations=[];tr_time_list= []
-				for j, r in enumerate([self.runList[k] for k in self.conditionDict['PRF']]):
+				for r in [self.runList[k] for k in self.conditionDict['PRF']]:
 					this_nii_file = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = postFix ))
-					trial_start_times.append(np.array(r.trial_times)[:,1].astype('float32') + add_time_for_previous_runs - instruction_duration)
-					trial_names.append(np.array(r.trial_times)[:,0])
-					trial_orientations.append(np.array(r.trial_times)[:,4].astype('float32'))
-					saccades.append(np.array(r.trial_times)[:,3]=='False')
-					tr_time_list.append(np.arange(0, self.TR * this_nii_file.timepoints,self.TR)+add_time_for_previous_runs)
+					# get run information, but cutoff first and last trial because we want to be able to interpolate a (slightly) larger window than one trial duration
+					trial_start_times.append((np.array(r.trial_times)[:,1].astype('float32') + add_time_for_previous_runs - instruction_duration)[1:-1])
+					trial_names.append(np.array(r.trial_times)[:,0][1:-1])
+					trial_orientations.append(np.array(r.trial_times)[:,4].astype('float32')[1:-1])
+					saccades.append((np.array(r.trial_times)[:,3]=='False')[1:-1])
+					tr_time_list=np.hstack([tr_time_list,np.arange(0, self.TR * this_nii_file.timepoints,self.TR)+add_time_for_previous_runs])
 					add_time_for_previous_runs += self.TR * this_nii_file.timepoints
-				trial_names = np.ravel(np.array(trial_names))[1:-1] # cutoff last and first trial because we want to be able to include *pad_trs_4_smooth* trs before and after trial
+				trial_names = np.ravel(np.array(trial_names))#[1:-1] # cutoff last and first trial because we want to be able to include *pad_trs_4_smooth* trs before and after trial
 				if this_condition == 'all':
 					trial_names[trial_names!='fix_no_stim'] = 'all'
-				tr_time_list = np.ravel(tr_time_list)
-				trial_start_times = np.ravel(np.array(trial_start_times))[1:-1]		
-				saccades = np.ravel(np.array(saccades))[1:-1]
-				trial_orientations = np.ravel(np.array(trial_orientations))[1:-1].astype(int)
+				# tr_time_list = np.ravel(tr_time_list)
+				trial_start_times = np.ravel(np.array(trial_start_times))#[1:-1]
+				saccades = np.ravel(np.array(saccades))#[1:-1]
+				trial_orientations = np.ravel(np.array(trial_orientations)).astype(int)#[1:-1]
 				# extended_period = 20
 				# pad_trs_4_smooth=5
 				# filter_width = 17
@@ -2299,7 +2589,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			all_full_coefs = np.zeros([n_pixel_elements_raw**2] + list(cortex_mask.shape))
 			all_corrs = np.zeros([7] + list(cortex_mask.shape))
 			all_raw_data = np.zeros([z_data.shape[0]] + list(cortex_mask.shape))
-			all_results = np.zeros([16] + list(cortex_mask.shape))
+			all_results = np.zeros([19] + list(cortex_mask.shape))
 
 			dm_k = 0
 			# run through slices, each slice having a certain timing
@@ -2420,9 +2710,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 						# all_raw_dm = []
 						# all_raw_dm_fix = []
 
-						# all_concatenated_data = []
+						all_interpolated_data = []
+						all_corrected_tr_times = []
 						# all_sorted_data = []
 						# all_interpolated_data = []
+						all_concatenated_data=[]
 						all_resampled_interpolated_data = []
 						# all_moving_average_data = []
 						# all_resampled_moving_average_data = []
@@ -2460,31 +2752,30 @@ class PopulationReceptiveFieldMappingSession(Session):
 							# that can be expected at the sample rate dictated by the new amount of samples (extended_period))
 							
 							# variance_per_point = [np.std(np.reshape(data,(trials_this_dir,-1)),axis=0) for data in concatenated_data]
-							# shell()
-							interp_per_trial = np.array([[sp.interpolate.interp1d(corrected_tr_times[t],c[t])(np.linspace(0,extended_period*self.TR,extended_period)) for t in np.arange(trials_this_dir)] for c in concatenated_data])
+							interp_per_trial = np.array([ [sp.interpolate.interp1d(corrected_tr_times[t],c[t],kind='cubic')(tr_times) for t in np.arange(trials_this_dir)] for c in concatenated_data])
 							resampled_interp1d_data = np.median(interp_per_trial,1)
 
 							# interp1d_data = np.array([sp.interpolate.interp1d(sorted_tr_times,s)(np.arange(0,extended_period*self.TR,self.TR/trials_this_dir)) for s in sorted_data ])
 							# resampled_interp1d_data = np.array([np.median(interp1d_data[:,t:t+4],axis=1) for t in np.arange(0,np.shape(interp1d_data)[1],trials_this_dir) ]).T
 
-							# voxno = 50
-							# colors = ['r','g','b','m']
-							# for voxno in np.random.randint(101,size=20):
-							# 	f = pl.figure(figsize=(24,16))
-							# 	for t in range(trials_this_dir):
-							# 		s = f.add_subplot(2,trials_this_dir,t+1)
-							# 		plot(corrected_tr_times[t],concatenated_data[voxno,t],color=colors[t])
-							# 		plot(np.arange(0,extended_period*self.TR,self.TR),interp_per_trial[voxno,t],'--k')
-							# 	s = f.add_subplot(212)
-							# 	for t in range(trials_this_dir):
-							# 		# plot(interp_per_trial[voxno,t],color =colors[t])
-							# 		plot(corrected_tr_times[t],concatenated_data[voxno,t],'-',color =colors[t])
+							# if plotbool * (orient == 0):
+							# 	colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,trials_this_dir)]	
+							# 	for voxno in np.random.randint(voxels_in_this_slice.sum(),size=15):
+							# 	# for voxno in [4,6,7,8,9,12,14,16,17,18,20,21,22]:
+							# 		f = pl.figure(figsize=(24,16))
+							# 		for t in range(trials_this_dir):
+							# 			s = f.add_subplot(2,trials_this_dir,t+1)
+							# 			plot(corrected_tr_times[t],concatenated_data[voxno,t],color=colors[t])
+							# 			plot(tr_times,interp_per_trial[voxno,t],'--k')
+							# 		s = f.add_subplot(212)
+							# 		for t in range(trials_this_dir):
+							# 			# plot(interp_per_trial[voxno,t],color =colors[t])
+							# 			plot(corrected_tr_times[t],concatenated_data[voxno,t],'-',color =colors[t])
 
-							# 	plot(np.arange(0,extended_period*self.TR,self.TR),resampled_interp1d_data[voxno],'--k',linewidth=6)
-							# 	# plot(np.arange(0,extended_period*self.TR,self.TR),interp1d_data_averaged[voxno],'--w',linewidth=6)
-							# 	pl.savefig(os.path.join(self.stageFolder('processed/mri/figs/delve_deeper/interpolation_examples/'),'interpolation_example_vox_%d.pdf'%voxno))
-							# 	pl.close()
-							# resampled_interp1d_data
+							# 		plot(tr_times,resampled_interp1d_data[voxno],'--k',linewidth=6)
+							# 		# plot(np.arange(0,extended_period*self.TR,self.TR),interp1d_data_averaged[voxno],'--w',linewidth=6)
+							# 		pl.savefig(os.path.join(interp_plotdir,'interpolation_example_sl_%dvox_%d.pdf'%(sl,voxno)))
+							# 		pl.close()
 
 							# show()
 							# resampled_interp1d_data = np.mean(interp_per_trial,axis = 1)
@@ -2532,7 +2823,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 								# raw_dm_fix = np.median(np.array([ self.raw_dm_fix[corrected_sample_time_ind.astype('int32')[np.arange(i,len(corrected_sample_time_ind),trials_this_dir)],:] for i in range(trials_this_dir) ]),0)
 
 							# if orient != 'fix_no_stim':
-								# all_concatenated_data.append(concatenated_data)
+							all_interpolated_data.append(interp_per_trial)
+							all_corrected_tr_times.append(corrected_tr_times)
+							all_concatenated_data.append(concatenated_data)
+
 								# all_sorted_data.append(np.array(sorted_data))
 								# all_interpolated_data.append(interp1d_data)
 								# all_moving_average_data.append(moving_average)
@@ -2548,7 +2842,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 								# all_raw_dm_fix.append(raw_dm_fix)
 
 						# if orient != 'fix_no_stim':
-							# all_concatenated_data = np.reshape(np.swapaxes(np.array(all_concatenated_data),0,1),(voxels_in_this_slice.sum(),-1))
+						all_interpolated_data = np.reshape(np.swapaxes(np.array(all_interpolated_data),0,1),(voxels_in_this_slice.sum(),-1))
+						# all_concatenated_data = np.reshape(np.swapaxes(np.array(all_concatenated_data),0,1),(voxels_in_this_slice.sum(),-1))
+
+						# all_corrected_tr_times = np.reshape(np.swapaxes(np.array(all_corrected_tr_times),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_sorted_data = np.reshape(np.swapaxes(np.array(all_sorted_data),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_interpolated_data = np.reshape(np.swapaxes(np.array(all_interpolated_data),0,1),(voxels_in_this_slice.sum(),-1))
 							# all_moving_average_data = np.reshape(np.swapaxes(np.array(all_moving_average_data),0,1),(voxels_in_this_slice.sum(),-1))
@@ -2583,7 +2880,6 @@ class PopulationReceptiveFieldMappingSession(Session):
 						raw_dm_for_dumoulin = np.reshape(this_condition_dm,(-1,n_pixel_elements_raw,n_pixel_elements_raw))
 						all_full_dm = np.array(this_condition_dm_full)
 
-
 						if delve_deeper:
 
 							tr_block = all_resampled_interpolated_data.shape[1]/len(orientations)
@@ -2591,88 +2887,123 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 							###############################################################
 							# PLOT TIMECOURSES
+
 							plot_timecourses = True
-							shell()
 							if plot_timecourses:
-								for voxno in range(voxels_in_this_slice.sum()):
+								colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,5)]	
+								for fi in range(int(ceil(voxels_in_this_slice.sum()/5.0))):
+									f = pl.figure(figsize=(24,10))
+									k=1
+									if fi < (ceil(voxels_in_this_slice.sum()/5.0)-1):
+										plot_voxs = np.arange(5)+(fi*5)
+									else:
+										plot_voxs =  np.arange(np.mod(voxels_in_this_slice.sum(),5))+(fi*5)
+									for vi,voxno in enumerate(plot_voxs):
+										for di in range(len(orientations)):
+											s=f.add_subplot(5,len(orientations),k)
+											pl.plot(np.array(all_corrected_tr_times[di]).T,np.array(all_concatenated_data[di][voxno]).T,alpha=0.2,color=colors[vi])
+											# pl.plot(tr_times,all_interpolated_data[voxno][di].T,'--',alpha=0.2)
+											pl.plot(tr_times,all_resampled_interpolated_data[voxno,di*np.shape(all_resampled_interpolated_data)[1]/len(orientations):(di+1)*np.shape(all_resampled_interpolated_data)[1]/len(orientations)].T,color='k',linewidth=2,label='timecourse')
+											pl.axhline(0,linestyle='--',linewidth=1)
+											pl.ylim(np.min(zip(*np.array(all_concatenated_data)[:,voxno])),np.max(zip(*np.array(all_concatenated_data)[:,voxno])))
+											if di == 0:
+												pl.ylabel('%s signal change'%'%')
+											else:
+												plt.tick_params(axis='y',which='both',left='off',right='off',labelleft='off') 
 
-									f = pl.figure(figsize=(24,12))
-									s = f.add_subplot(3,1,1)
-									colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,trials_this_dir)]	
-								
-									trial_indices = np.tile(np.ravel([np.ones(extended_period)*(ti+1) for ti in range(trials_this_dir)]).astype(int),len(orientations))
-									conc_per_trial = np.array([all_concatenated_data[voxno][trial_indices==ti+1] for ti in range(trials_this_dir)])
-									trial_average = np.mean(conc_per_trial,0)
-									
-									for i in range(trials_this_dir):
-										plot(conc_per_trial[i],'-.',color=colors[i],alpha=0.4,label='trial_%d'%(i))
-									plot(trial_average,'-k',linewidth=3,label='average')
-									
-									simpleaxis(s)
-									spine_shift(s)
-									pl.axhline(0,linestyle='--')
-									pl.xticks(np.arange(0,extended_period*len(orientations),extended_period),orientations)
-									pl.tick_params(labelsize=18)
-									s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-									pl.xlim(0,extended_period*len(orientations))
-									s.set_xlabel('trials (degrees)')
-									s.set_ylabel('% signal change')
-									leg = s.legend(fancybox = True, loc = 'best')
-									leg.get_frame().set_alpha(0.5)
-									if leg:
-										for t in leg.get_texts():
-										    t.set_fontsize('large')    # the legend text fontsize
-										for l in leg.get_lines():
-										    l.set_linewidth(3.5)  # the legend line width
+											# if di == (len(orientations)-1):
+											# 	leg = s.legend(fancybox = True, loc = 'best')
+											# 	leg.get_frame().set_alpha(0.5)
 
-									s = f.add_subplot(312)
-									plot(all_sorted_data[voxno],'-.k',label='sorted data')
-									plot(all_interpolated_data[voxno],'b',label='interp1d')
-									plot(all_moving_average_data[voxno],'g',label='moving average')
-									plot(all_resampled_interpolated_data[voxno],'r',label='smoothed data')
+											if vi == 0:
+												pl.title(orientations[di])
+											if vi < (len(plot_voxs)-1):
+												plt.tick_params(axis='x',which='both',bottom='off',top='off',labelbottom='off') 
+											if vi == (len(plot_voxs)-1):
+												pl.xlabel('time (s)')
 
-
-									simpleaxis(s)
-									spine_shift(s)
-									pl.axhline(0,linestyle='--')
-									pl.xticks(np.arange(0,len(all_sorted_data[voxno]),len(all_sorted_data[voxno])/len(orientations)),orientations)
-									pl.tick_params(labelsize=18)
-									s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-									pl.xlim(0,len(all_sorted_data[voxno]))
-									s.set_xlabel('trials (degrees)')
-									s.set_ylabel('% signal change')
-									leg = s.legend(fancybox = True, loc = 'best')
-									leg.get_frame().set_alpha(0.5)
-									if leg:
-										for t in leg.get_texts():
-										    t.set_fontsize('large')    # the legend text fontsize
-										for l in leg.get_lines():
-										    l.set_linewidth(3.5)  # the legend line width
-
-									s = f.add_subplot(313)
-									plot(trial_average,'-k',label='regular trial average')
-									plot(all_resampled_smoothed_data[voxno],'r',label='smoothed data')
-									plot(all_resampled_interpolated_data[voxno],'b',label='resampled after interp1d')
-									plot(all_resampled_moving_average_data[voxno],'g',label='moving average')
-
-									simpleaxis(s)
-									spine_shift(s)
-									pl.axhline(0,linestyle='--')
-									pl.xticks(np.arange(0,extended_period*len(orientations),extended_period),orientations)
-									pl.tick_params(labelsize=18)
-									s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
-									pl.xlim(0,extended_period*len(orientations))
-									s.set_xlabel('trials (degrees)')
-									s.set_ylabel('% signal change')
-									leg = s.legend(fancybox = True, loc = 'best')
-									leg.get_frame().set_alpha(0.5)
-									if leg:
-										for t in leg.get_texts():
-										    t.set_fontsize('large')    # the legend text fontsize
-										for l in leg.get_lines():
-										    l.set_linewidth(3.5)  # the legend line 
-									pl.savefig(os.path.join(self.stageFolder('processed/mri/figs/time_courses/'),'voxel_time_courses_slice_%d_vox_%d.pdf'%(sl,voxno)))
+											k+=1
+									pl.savefig(os.path.join(interp_plotdir,'interpolation_example_sl_%s_fig_%d.pdf'%(sl,fi)))
 									pl.close()
+								# for voxno in range(voxels_in_this_slice.sum()):
+
+								# 	f = pl.figure(figsize=(24,12))
+								# 	s = f.add_subplot(3,1,1)
+								# 	colors = [(c, 1-c, 1-c) for c in np.linspace(0.0,1.0,trials_this_dir)]	
+								
+								# 	trial_indices = np.tile(np.ravel([np.ones(extended_period)*(ti+1) for ti in range(trials_this_dir)]).astype(int),len(orientations))
+								# 	conc_per_trial = np.array([all_concatenated_data[voxno][trial_indices==ti+1] for ti in range(trials_this_dir)])
+								# 	trial_average = np.mean(conc_per_trial,0)
+									
+								# 	for i in range(trials_this_dir):
+								# 		plot(conc_per_trial[i],'-.',color=colors[i],alpha=0.4,label='trial_%d'%(i))
+								# 	plot(trial_average,'-k',linewidth=3,label='average')
+									
+								# 	simpleaxis(s)
+								# 	spine_shift(s)
+								# 	pl.axhline(0,linestyle='--')
+								# 	pl.xticks(np.arange(0,extended_period*len(orientations),extended_period),orientations)
+								# 	pl.tick_params(labelsize=18)
+								# 	s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+								# 	pl.xlim(0,extended_period*len(orientations))
+								# 	s.set_xlabel('trials (degrees)')
+								# 	s.set_ylabel('% signal change')
+								# 	leg = s.legend(fancybox = True, loc = 'best')
+								# 	leg.get_frame().set_alpha(0.5)
+								# 	if leg:
+								# 		for t in leg.get_texts():
+								# 		    t.set_fontsize('large')    # the legend text fontsize
+								# 		for l in leg.get_lines():
+								# 		    l.set_linewidth(3.5)  # the legend line width
+
+								# 	s = f.add_subplot(312)
+								# 	plot(all_sorted_data[voxno],'-.k',label='sorted data')
+								# 	plot(all_interpolated_data[voxno],'b',label='interp1d')
+								# 	plot(all_moving_average_data[voxno],'g',label='moving average')
+								# 	plot(all_resampled_interpolated_data[voxno],'r',label='smoothed data')
+
+
+								# 	simpleaxis(s)
+								# 	spine_shift(s)
+								# 	pl.axhline(0,linestyle='--')
+								# 	pl.xticks(np.arange(0,len(all_sorted_data[voxno]),len(all_sorted_data[voxno])/len(orientations)),orientations)
+								# 	pl.tick_params(labelsize=18)
+								# 	s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+								# 	pl.xlim(0,len(all_sorted_data[voxno]))
+								# 	s.set_xlabel('trials (degrees)')
+								# 	s.set_ylabel('% signal change')
+								# 	leg = s.legend(fancybox = True, loc = 'best')
+								# 	leg.get_frame().set_alpha(0.5)
+								# 	if leg:
+								# 		for t in leg.get_texts():
+								# 		    t.set_fontsize('large')    # the legend text fontsize
+								# 		for l in leg.get_lines():
+								# 		    l.set_linewidth(3.5)  # the legend line width
+
+								# 	s = f.add_subplot(313)
+								# 	plot(trial_average,'-k',label='regular trial average')
+								# 	plot(all_resampled_smoothed_data[voxno],'r',label='smoothed data')
+								# 	plot(all_resampled_interpolated_data[voxno],'b',label='resampled after interp1d')
+								# 	plot(all_resampled_moving_average_data[voxno],'g',label='moving average')
+
+								# 	simpleaxis(s)
+								# 	spine_shift(s)
+								# 	pl.axhline(0,linestyle='--')
+								# 	pl.xticks(np.arange(0,extended_period*len(orientations),extended_period),orientations)
+								# 	pl.tick_params(labelsize=18)
+								# 	s.grid(axis = 'x', linestyle = '--', linewidth = 0.25)
+								# 	pl.xlim(0,extended_period*len(orientations))
+								# 	s.set_xlabel('trials (degrees)')
+								# 	s.set_ylabel('% signal change')
+								# 	leg = s.legend(fancybox = True, loc = 'best')
+								# 	leg.get_frame().set_alpha(0.5)
+								# 	if leg:
+								# 		for t in leg.get_texts():
+								# 		    t.set_fontsize('large')    # the legend text fontsize
+								# 		for l in leg.get_lines():
+								# 		    l.set_linewidth(3.5)  # the legend line 
+								# 	pl.savefig(os.path.join(self.stageFolder('processed/mri/figs/time_courses/'),'voxel_time_courses_slice_%d_vox_%d.pdf'%(sl,voxno)))
+								# 	pl.close()
 							###############################################################
 
 							###############################################################
@@ -2813,7 +3144,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 							###############################################################
 							# CHECK DM
-							check_dm = True
+							check_dm = False
 							###############################################################
 							if check_dm and dm_k == 0:
 								# di, d = 0,0
@@ -2957,15 +3288,17 @@ class PopulationReceptiveFieldMappingSession(Session):
 							res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(all_dm, vox_timeseries) for vox_timeseries in all_resampled_moving_average_data)
 						elif technique == 'Lee_to_Dumoulin':
 							# randints_for_plot = np.random.randint(10,size=np.shape(all_resampled_moving_average_data)[0])
-							randints_for_plot = [(np.random.randint(roi_count[these_roi_names[voxno]])<100) for voxno in range(voxels_in_this_slice.sum())]
+							randints_for_plot = [(np.random.randint(roi_count[these_roi_names[voxno]])<n_vox_per_ROI) for voxno in range(voxels_in_this_slice.sum())]
 
+							# pl.figure()
+							# pl.close('all')
 							# res = []
 							# for voxno in range(voxels_in_this_slice.sum()):
-							# 	res.append(Dumoulin_fit(time_course=all_resampled_interpolated_data[voxno,:], design_matrix=raw_dm_for_dumoulin,plotbool=plotbool, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold=corr_threshold,SNR_thresh=SNR_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]))#,fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix))
+								# res.append(Dumoulin_fit(concatenated_data = all_interpolated_data[voxno],tr_times = tr_times,time_course=all_resampled_interpolated_data[voxno], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]))#,fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix))
 							if (this_condition != 'all') * (this_condition != 'fix'):
-								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
+								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(concatenated_data = all_interpolated_data[voxno],tr_times = tr_times,time_course=all_resampled_interpolated_data[voxno], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors,n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno],fix_prf_params = these_fix_prf_params[voxno],fix_design_matrix=raw_dm_for_dumoulin_fix) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
 							else:
-								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(time_course=all_resampled_interpolated_data[voxno,:], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
+								res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(Dumoulin_fit)(concatenated_data = all_interpolated_data[voxno],tr_times = tr_times,time_course=all_resampled_interpolated_data[voxno], plotbool=plotbool,design_matrix=raw_dm_for_dumoulin, dm_for_BR = all_full_dm, full_dm_valid_regressors = full_dm_valid_regressors, n_pixel_elements_full=n_pixel_elements_full,n_pixel_elements_raw=n_pixel_elements_raw,plotdir=plotdir,voxno=voxno,slice_no=sl,corr_threshold = corr_threshold,SNR_thresh = SNR_thresh,sd_thresh=sd_thresh,logp_thresh=logp_thresh,ecc_thresh=ecc_thresh,amp_thresh=amp_thresh,randint=randints_for_plot[voxno],roi=these_roi_names[voxno]) for voxno in range(np.shape(all_resampled_interpolated_data)[0]))
 
 					elif method == 'old':
 						res = Parallel(n_jobs = n_jobs, verbose = 9)(delayed(fitBayesianRidge)(self.full_design_matrix[these_samples,:], vox_timeseries) for vox_timeseries in these_voxels[:,selected_tr_times])
@@ -3053,7 +3386,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			results = NiftiImage(self.stageFolder('processed/mri/PRF/results_'+filename+ '.nii.gz')).data
 			stats = NiftiImage(self.stageFolder('processed/mri/PRF/corrs_'+filename+ '.nii.gz')).data
 
-			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+			results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 			stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 
 			# polar = np.reshape(np.arctan2(results[results_frames['y']],results[results_frames['x']]),results[0].shape)
@@ -3327,9 +3660,10 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 		if os.path.isfile(self.hdf5_filename):
 			os.system('rm ' + self.hdf5_filename)
-		h5file = open_file(self.hdf5_filename, mode = "w", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 			# h5file = open_file(self.hdf5_filename, mode = "r+", title = condition  +'-'+ str(n_pixel_elements) +"_file")
 		# else:
+		h5file = open_file(self.hdf5_filename, mode = "w", title = condition  +'-'+ str(n_pixel_elements) +"_file")
+
 		self.logger.info('starting table file ' + self.hdf5_filename)
 
 		# else:
@@ -3379,7 +3713,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 				except NoSuchNodeError:
 					h5file.create_array(thisRunGroup, sf.replace('>', '_'), these_roi_data.astype(np.float32), roi_name + ' data from ' + stat_files[sf])
 
-		group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+		group_dir = os.path.join('/home','shared','PRF','data','_group_level')
 		if not os.path.isdir(group_dir): os.mkdir(group_dir)
 		group_data_dir = os.path.join(group_dir,'data')
 		if not os.path.isdir(group_data_dir): os.mkdir(group_data_dir)
@@ -3390,7 +3724,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def prf_data_from_hdf(self, roi = 'v2d', condition = 'PRF', base_task_condition = 'fix', comparison_task_conditions = ['fix', 'color', 'sf', 'speed', 'orient'], corr_threshold = 0.1, ecc_thresholds = [0.025, 0.6]):
 		self.logger.info('starting prf data correlations from region %s'%roi)
-		results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+		results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 		stats_frames = {'corr': 0, '-logp': 1}
 
 		self.hdf5_filename = os.path.join(self.stageFolder(stage = 'processed/mri/%s'%condition), condition  +'-'+ str(n_pixel_elements) +"_file")
@@ -3551,14 +3885,14 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 			if results_type == 'Lee_to_Dumoulin':
 				# results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
-				results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+				results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 			else:
 				results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14,'n_regions':15} 
 			# stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
 			stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'pearson_squared':3,'chi_squared':4,'r_squared':5,'RSS':6}
 
 			if grouplvl:
-				group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+				group_dir = os.path.join('/home','shared','PRF','data','_group_level')
 				group_data_dir = os.path.join(group_dir,'data')
 				self.hdf5_filename = os.path.join(group_data_dir,'all_subjects.hdf5')
 				h5file = open_file(self.hdf5_filename, mode = "r", title = 'all_subjects')
@@ -3617,12 +3951,27 @@ class PopulationReceptiveFieldMappingSession(Session):
 					mean_thresh = 2
 				
 		for this_condition in task_conditions:
+			mask = []
 			for rgi,roi_group in enumerate(roi_groups):
+
+				r_squared_threshold_this_condition = [np.max([np.sort(all_stats[this_condition][rgi][r][:,stats_frames['r_squared']])[int(all_stats[this_condition][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))],0]) for r in range(len(all_roi_names[rgi]))]
+
+				if 'fix' in task_conditions: 
+					r_squared_threshold_fix = [ np.max([np.sort(all_stats['fix'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['fix'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))],0]) for r in range(len(all_roi_names[rgi]))]
 				
-				r_squared_threshold_all = [np.sort(all_stats['fix'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['fix'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
-				r_squared_threshold_this_condition = [np.sort(all_stats['fix'][rgi][r][:,stats_frames['r_squared']])[int(all_stats['fix'][rgi][r][:,stats_frames['r_squared']].shape[0]*(1-proportion_voxels_to_include))] for r in range(len(all_roi_names[rgi]))]
-				
-				mask.append([(all_stats['fix'][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_all[r]) * (all_stats[this_condition][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_this_condition[r])*(all_results['fix'][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1]) for r in range(len(all_roi_names[rgi]))])
+					mask.append([(all_stats['fix'][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_fix[r]) * 
+						(all_stats[this_condition][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_this_condition[r])*
+						(all_results['fix'][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1])*
+						(all_results[this_condition][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1])*
+						(all_results['fix'][rgi][r][:,results_frames['sd_gauss']] < sd_thresh) *
+						(all_results[this_condition][rgi][r][:,results_frames['sd_gauss']] < sd_thresh)
+							for r in range(len(all_roi_names[rgi]))])
+
+				else:
+					mask.append([(all_stats[this_condition][rgi][r][:,stats_frames['r_squared']]  > r_squared_threshold_this_condition[r])*
+						(all_results[this_condition][rgi][r][:,results_frames['ecc_gauss']] < ecc_thresh[1])*
+						(all_results[this_condition][rgi][r][:,results_frames['sd_gauss']] < sd_thresh)
+							for r in range(len(all_roi_names[rgi]))])
 
 				import colorsys
 				roi_colors = [colorsys.hsv_to_rgb(c,0.6,0.85) for c in np.linspace(0.0,0.5,len(all_roi_names[rgi]))][::-1]
@@ -3631,23 +3980,36 @@ class PopulationReceptiveFieldMappingSession(Session):
 				if hists:
 					self.logger.info('generating histogram evaluation plots for roi group %s'%(roi_group))
 
-					f = pl.figure(figsize = (16,10))
+					f = pl.figure(figsize = (28,10))
 					for r, roi in enumerate(all_roi_names[rgi]):
 					## stats and results histograms
 						r_squared = all_stats[this_condition][rgi][r][ :,stats_frames['r_squared']] 
 						size_sd = all_results[this_condition][rgi][r][ :,results_frames['sd_gauss']] 
 						eccentricity =all_results[this_condition][rgi][r][ :,results_frames['ecc_gauss']] 
 						polar_angle =all_results[this_condition][rgi][r][ :,results_frames['polar']]
-						rotation =all_results[this_condition][rgi][r][ :,results_frames['theta']]
+						rotation = all_results[this_condition][rgi][r][ :,results_frames['theta']]
+						amplitude1 = all_results[this_condition][rgi][r][ :,results_frames['amplitude1']]
+						amplitude2 = all_results[this_condition][rgi][r][ :,results_frames['amplitude1']] *  all_results[this_condition][rgi][r][ :,results_frames['amp_ratio']]
+						surround = all_results[this_condition][rgi][r][ :,results_frames['sd_gauss']] * all_results[this_condition][rgi][r][ :,results_frames['size_ratio']]
+						size_ratio =  all_results[this_condition][rgi][r][ :,results_frames['size_ratio']]
+						amp_ratio =  all_results[this_condition][rgi][r][ :,results_frames['amp_ratio']]
+						sigma_ratio =  all_results[this_condition][rgi][r][ :,results_frames['sigmas_ratio']]
+
 
 						r_squared_masked = all_stats[this_condition][rgi][r][ mask[rgi][r],stats_frames['r_squared']] 
 						size_sd_masked = all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['sd_gauss']]
 						eccentricity_masked = all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['ecc_gauss']] 
 						polar_angle_masked =  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['polar']] 
 						rotation_masked =  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['theta']] 
+						amplitude1_masked  = all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['amplitude1']]
+						amplitude2_masked  = all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['amplitude1']]*  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['amp_ratio']]
+						surround_masked  = all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['sd_gauss']] * all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['size_ratio']]
+						size_ratio_masked  =  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['size_ratio']]
+						amp_ratio_masked =  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['amp_ratio']]
+						sigma_ratio_masked =  all_results[this_condition][rgi][r][ mask[rgi][r],results_frames['sigmas_ratio']]
 
-						variables = ['r_squared','size_sd','eccentricity','polar_angle','rotation']
-						x_lims = [[0,1.0],[0,15],[0,16],[-pi,pi],[-15,15]]
+						variables = ['r_squared','size_sd','eccentricity','polar_angle','amplitude1','amplitude2','surround','size_ratio','amp_ratio']#,'sigma_ratio']
+						x_lims = [[0,1.0],[0,15],[0,16],[-pi,pi],[0,np.max(amplitude1)],[np.min(amplitude2),0],[0,np.max(surround)],[0,np.max(size_ratio)],[-1,0]]#,[0,np.max(sigma_ratio)]]
 						k=0
 						s1 = f.add_subplot(len(all_roi_names[rgi]),len(variables)+1,len(variables)*r+r+1)
 						s1.text(0.3,0.7,roi,fontsize=14)
@@ -3669,16 +4031,16 @@ class PopulationReceptiveFieldMappingSession(Session):
 						pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/fit_diagnostics'), 'results_hists_%s_%s_%d.pdf'%(roi_group,this_condition,n_pixel_elements )))
 					pl.close(f)
 
-			if this_condition != 'fix':
-				result_types = ['size_ratio','sd_gauss','abs_center_sd_diff','abs_surround_sd_diff','abs_ecc_diff', 'ecc_gauss','rel_center_sd_diff','rel_surround_sd_diff','rel_ecc_diff']
-			else:
-				result_types = ['size_ratio','sd_gauss']
+			# if this_condition != 'fix':
+				# result_types = ['size_ratio','sd_gauss','abs_center_sd_diff','abs_surround_sd_diff','abs_ecc_diff', 'ecc_gauss','rel_center_sd_diff','rel_surround_sd_diff','rel_ecc_diff']
+			# else:
+			result_types = ['sd_gauss']#'size_ratio',
 
 			for result in result_types:
 				if len(roi_groups)==4:
-					f2 = pl.figure(figsize = (12,12))
+					f2 = pl.figure(figsize = (18,18))
 				else:
-					f2 = pl.figure(figsize = (4*len(roi_groups),4))
+					f2 = pl.figure(figsize = (8*len(roi_groups),8))
 
 				for rgi,roi_group in enumerate(roi_groups):
 
@@ -3718,9 +4080,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 									data = (np.log(all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']] 
 									/ all_results['fix'][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames['ecc_gauss']]))
 								else:
-									data = all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames[result]] 
+									# data = all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames[result]] 
+									data = all_results[this_condition][rgi][j][ mask[rgi][j] * (all_results[this_condition][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results[this_condition][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , results_frames[result]] 
 
-								weights = all_stats[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , stats_frames[weigh_on]]
+								# weights = all_stats[this_condition][rgi][j][ mask[rgi][j] * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results['fix'][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , stats_frames[weigh_on]]
+								weights = all_stats[this_condition][rgi][j][ mask[rgi][j] * (all_results[this_condition][rgi][j][:,results_frames['ecc_gauss']]>eccen_bins[b][0]) * (all_results[this_condition][rgi][j][:,results_frames['ecc_gauss']]<eccen_bins[b][1]) , stats_frames[weigh_on]]
 
 
 								if data != []:
@@ -3771,23 +4135,32 @@ class PopulationReceptiveFieldMappingSession(Session):
 								fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], np.log(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]), 1, w=weights)
 								r = statsmodels.stats.weightstats.DescrStatsW(data=np.log(np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']] / all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']]]).T), weights = weights).corrcoef[0,1]
 							else:
+								# try:
+								# 	fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]], 1, w = weights)
+								# except:
+								# 	pass
 								try:
-									fit = polyfit(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]], 1, w = weights)
+									fit = polyfit(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]], 1, w = weights)
 								except:
 									pass
-								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]]]).T, weights = weights ).corrcoef[0,1]
+								# r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]]]).T, weights = weights ).corrcoef[0,1]
+								r = statsmodels.stats.weightstats.DescrStatsW(data=np.array([all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']], all_results[this_condition][rgi][j][mask[rgi][j],results_frames[result]]]).T, weights = weights ).corrcoef[0,1]
 
 							if np.size(r) != 1:
 								r = 0
 							fit_fn = poly1d(fit)
-
 							
-							s2.plot(eccen_x,mean_per_bin[j],c = all_roi_colors[rgi][j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
-							s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=all_roi_colors[rgi][j],alpha=0.15)
+							# s2.plot(eccen_x,mean_per_bin[j],c = all_roi_colors[rgi][j], marker = 'o', markersize = 3,linewidth = 0, mec = 'w', ms = 3.5)
+							# s2.fill_between(eccen_x,np.array(mean_per_bin[j])+np.array(sd_per_bin[j]),np.array(mean_per_bin[j])-np.array(sd_per_bin[j]),color=all_roi_colors[rgi][j],alpha=0.15)
 							
-							# pl.plot(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']],all_results['fix'][rgi][j][mask[rgi][j],results_frames['sd_gauss']], alpha = 0.25, linestyle = '.', c = colors[j], label=roi)
+							# for vox in range(len(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']])):
+							# 	pl.plot(all_results['fix'][rgi][j][mask[rgi][j],results_frames['ecc_gauss']][vox],all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']][vox], alpha = all_stats[this_condition][rgi][j][mask[rgi][j],stats_frames['r_squared']][vox], linestyle = '.',marker='o', markersize=2,c = all_roi_colors[rgi][j])
+							for vox in range(len(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']])):
+								pl.plot(all_results[this_condition][rgi][j][mask[rgi][j],results_frames['ecc_gauss']][vox],all_results[this_condition][rgi][j][mask[rgi][j],results_frames['sd_gauss']][vox], alpha = all_stats[this_condition][rgi][j][mask[rgi][j],stats_frames['r_squared']][vox], linestyle = '.',marker='o', markersize=2,c = all_roi_colors[rgi][j])
 							
-							s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 3.5, alpha = 1, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(roi,r))
+							s2.plot(eccen_x,fit_fn(eccen_x),linewidth = 2.5, linestyle = '-', color = all_roi_colors[rgi][j], label='%s, rho: %.2f'%(roi,r))
+							simpleaxis(s2)
+							spine_shift(s2)
 
 							s2.set_xlim([np.min(eccen_bins),np.max(eccen_bins)])
 
@@ -3799,12 +4172,11 @@ class PopulationReceptiveFieldMappingSession(Session):
 								for l in leg.get_lines():
 								    l.set_linewidth(2.5)  # the legend line width
 
-							simpleaxis(s2)
-							spine_shift(s2)
 							if result == 'sd_gauss':
 								s2.set_ylim([0,15])
 								s2.set_yticks(np.arange(0,15))
 								s2.set_ylabel('pRF size (sd)')
+								pl.title(self.subject.initials)
 							elif result == 'size_ratio':
 								s2.set_ylim([0,15])
 								s2.set_yticks(np.arange(0,15))
@@ -3901,7 +4273,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 	 
 		
 		if results_type == 'Lee_to_Dumoulin':
-			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'eccen':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+			results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 		else:
 			results_frames = {'polar_gauss':0, 'polar_abs':1, 'ecc_gauss':2, 'ecc_abs':3, 'real_gauss':4, 'real_abs':5, 'imag_gauss':6, 'imag_abs':7, 'surf_gauss':8, 'surf_mask':9, 'vol':10, 'EV':11,'sd_gauss':12,'sd_surf':13,'fwhm':14,'n_regions':15} 
 		stats_frames = {'spearman':0,'pearson':1,'kendalls_tau':2,'chi_squared':3,'r_squared':4,'RSS':5}
@@ -4021,7 +4393,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 			stat_threshold = 0.0
 
 			# results_frames = {'sigmas_ratio':0,'sigma_x':1,'ecc_gauss':2,'xo':3,'yo':4,'size_ratio':5,'SNR':6,'amplitude':7,'sd_gauss':8,'theta':9,'amplitude':10,'delta_amplitude':11,'amplitude2':12}
-			results_frames = {'sigmas_ratio':0,'polar':1,'sigma_x':2,'ecc_gauss':3,'x':4,'y':5,'size_ratio':6,'imag':7,'SNR':8,'amplitude':9,'sd_gauss':10,'real':11,'theta':12,'amplitude1':13,'delta_amplitude':14,'amplitude2':15}
+			results_frames = {'sigmas_ratio':0,'hrf_b2':1,'hrf_b1':2,'sigma_x':3,'ecc_gauss':4,'xo':5,'amplitude1':6,'polar':7,'size_ratio':8,'imag':9,'hrf_a1':10,'yo':11,'real':12,'hrf_c':13,'SNR':14,'hrf_a2':15,'theta':16,'amp_ratio':17,'sd_gauss':18}
 
 			filename = os.path.join(self.stageFolder( stage = 'processed/mri/PRF'), 'results_' + mask + '_' + '_'.join(postFix) +'_fix-PRF-'+ str(n_pixel_elements_raw) + '.nii.gz' )
 			all_fix_data = NiftiImage(filename).data
@@ -4088,7 +4460,7 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 	def create_group_level_hdf5(self,subjects,conditions):
 
-		group_dir = os.path.join('/home','shared','PRF','data','~group_level')
+		group_dir = os.path.join('/home','shared','PRF','data','_group_level')
 		group_data_dir = os.path.join(group_dir,'data')
 
 		roi_names = ['V1','V2d','V2v','V3d','V3v','V3AB','V4','MT','TO','TO1','TO2','V7','IPS0','IPS','IPS1','IPS2','IPS3','IPS4','LO','LO1','LO2','VO','VO1','VO2',
@@ -4139,3 +4511,4 @@ class PopulationReceptiveFieldMappingSession(Session):
 
 
 #
+# 

@@ -32,11 +32,11 @@ from IPython import embed as shell
 def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
 	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 	
-	This function expects a sequence (2 x N) of xy gaze position or velocity data. 
+	This function expects a sequence (N x 2) of xy gaze position or velocity data. 
 	
 	Arguments:
-		xy_data (numpy.ndarray, optional): a sequence (2 x N) of xy gaze (float/integer) positions. Defaults to None
-		vel_data (numpy.ndarray, optional): a sequence (2 x N) of velocity data (float/integer). Defaults to None.
+		xy_data (numpy.ndarray, optional): a sequence (N x 2) of xy gaze (float/integer) positions. Defaults to None
+		vel_data (numpy.ndarray, optional): a sequence (N x 2) of velocity data (float/integer). Defaults to None.
 		l (float, optional):determines the threshold. Defaults to 5 median-based standard deviations from the median
 		sample_rate (float, optional) - the rate at which eye movements were measured per second). Defaults to 1000.0
 	
@@ -77,7 +77,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	
 	scaled_vel_data = vel_data/np.mean(np.array(np.sqrt((vel_data - med)**2)), axis = 0)
 	# normalize and to acceleration and its sign
-	if (np.__version__.split('.')[0] == 1) and (np.__version__.split('.')[1] > 6):
+	if (float(np.__version__.split('.')[1]) == 1.0) and (float(np.__version__.split('.')[1]) > 6):
 		normed_scaled_vel_data = LA.norm(scaled_vel_data, axis = 1)
 		normed_vel_data = LA.norm(vel_data, axis = 1)
 	else:
