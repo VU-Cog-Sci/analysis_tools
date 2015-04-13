@@ -144,15 +144,18 @@ class PathConstructor(object):
 		else:
 			return os.path.join(self.stageFolder(stage), fn)
 	
-	def createFolderHierarchy(self):
+	def create_folder_hierarchy(self):
 		"""
-		createFolderHierarchy creates the folder tree for a session. It needs for at least
+		create_folder_hierarchy creates the folder tree for a session. It needs for at least
 		the folder enclosing the project folder self.project.base_dir to exist,
 		and will build from there: project/observer/session/[further subfolders].
 		"""
-		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
-		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
-		conditionFolders = np.concatenate((self.conditionList, ['log','figs','masks','masks/stat','masks/anat','reg','surf','scripts']))
+		rawFolders = ['raw/%s'%modality for modality in self.modality_list]
+		self.processed_folders = ['processed/%s'%modality for modality in self.modality_list]
+		# rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
+		# self.processed_folders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
+		mri_condition_folders = np.concatenate((self.conditionList, ['log','figs','scripts','masks','masks/stat','masks/anat','reg','surf']))
+		condition_folders = np.concatenate((self.conditionList, ['log','figs','scripts']))
 		
 		
 		self.make_base_dir()
@@ -164,11 +167,15 @@ class PathConstructor(object):
 		
 		
 		# create folders for processed data
-		for pf in self.processedFolders:
+		for pf in self.processed_folders:
 			if not os.path.isdir(self.stageFolder(pf)):
 				os.mkdir(self.stageFolder(pf))
 			# create condition folders in each of the processed data folders and also their surfs
-			for c in conditionFolders:
+			if pf.split('/')[-1] == 'mri':
+				cf = mri_condition_folders
+			else:
+				cf = condition_folders
+			for c in cf:
 				 if not os.path.isdir(self.stageFolder(pf+'/'+c)):
 					os.mkdir(self.stageFolder(pf+'/'+c))
 					if pf == 'processed/mri':
@@ -180,11 +187,13 @@ class PathConstructor(object):
 			for rl in self.runList:
 				if not os.path.isdir(self.runFolder(pf, run = rl)):
 					os.mkdir(self.runFolder(pf, run = rl))
+				if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'events')):
+					os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'events'))
 					if pf == 'processed/mri':
 						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'surf')):
 							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'surf'))
-						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'masked')):
-							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'masked'))
+						# if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'masked')):
+						# 	os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'masked'))
 	
 
 class Session(PathConstructor):
@@ -272,7 +281,21 @@ class Session(PathConstructor):
 		for c in self.conditions:
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
-		
+
+		self.modality_list = []
+		for r in self.runList:
+			for file_type in r.keys():
+				if file_type == 'rawBehaviorFile' and 'behavior' not in self.modality_list:
+					self.modality_list.append('behavior')
+				if file_type == 'rawDataFilePath' and 'mri' not in self.modality_list:
+					self.modality_list.append('mri')
+				if file_type == 'eyeLinkFilePath' and 'eye' not in self.modality_list:
+					self.modality_list.append('eye')
+				if file_type == 'physiologyFile' and 'hr' not in self.modality_list:
+					self.modality_list.append('hr')
+				if file_type == 'starstim_eeg_file' and 'eeg' not in self.modality_list:
+					self.modality_list.append('eeg')
+
 			
 	def import_all_edf_data(self, aliases):
 		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """
@@ -302,7 +325,7 @@ class Session(PathConstructor):
 		
 		if not os.path.isfile(self.runFile(stage = 'processed/behavior', run = self.runList[0] )):
 			self.logger.info('creating folder hierarchy')
-			self.createFolderHierarchy()
+			self.create_folder_hierarchy()
 		
 		for r in self.runList:
 			if hasattr(r, 'rawDataFilePath'):
@@ -334,6 +357,9 @@ class Session(PathConstructor):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 			if hasattr(r, 'physiologyFile'):
 				ExecCommandLine('cp ' + r.physiologyFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/hr', run = r, extension = '.log' ) )
+			if hasattr(r, 'starstim_eeg_file'):
+				ExecCommandLine('cp ' + r.starstim_eeg_file.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/eeg', run = r, extension = '.log' ) )
+
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
