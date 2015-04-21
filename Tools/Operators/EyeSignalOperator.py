@@ -118,7 +118,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		# and check whether these saccades were also blinks...
 		blinks_during_saccades = np.ones(threshold_crossing_indices_2x2.shape[0], dtype = bool)
 		for i in range(blinks_during_saccades.shape[0]):
-			if np.sum(xy_data_zeros[threshold_crossing_indices_2x2[i,0]-20:threshold_crossing_indices_2x2[i,1]+20]) > 0:
+			if np.sum(sxy_data_zero[threshold_crossing_indices_2x2[i,0]-20:threshold_crossing_indices_2x2[i,1]+20]) > 0:
 				blinks_during_saccades[i] = False
 	
 		# and are they too close to the end of the interval?
