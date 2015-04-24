@@ -512,7 +512,7 @@ class Session(PathConstructor):
 		else:
 			os.system('featregapply ' + feat_directory + ' & ' )
 			
-	def motionCorrectFunctionals(self, postFix, registerNoMC = False, init_transform_file = None, further_args = ''):
+	def motionCorrectFunctionals(self, postFix=[], registerNoMC = False, further_args = ''):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		How we do this depends on whether we have parallel processing turned on or not.
@@ -522,15 +522,27 @@ class Session(PathConstructor):
 		"""
 		
 		self.logger.info('run motion correction')
-		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
 		# set up a list of motion correction operator objects for the runs
 		mcOperatorList = [];	stdOperatorList = [];
 		for er in self.scanTypeDict['epi_bold']:
+
+			# if T2anatID has been specified in the runarray, take this T2 as the target
+			if hasattr(self.runList[er],'T2anatID'):
+				self.referenceFunctionalFileName = self.runFile(stage='processed/mri/T2_anat/'+str(self.runList[er].T2anatID)+'/', postFix = [str(self.runList[er].T2anatID)] )
+				# as registerSession takes only the latter of the inplane_anat images for registration, some will not have been betted:
+				if not os.path.isfile(self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'):
+					better = BETOperator( inputObject = self.referenceFunctionalFileName )
+					self.referenceFunctionalFileName = self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'
+					better.configure( outputFileName = self.referenceFunctionalFileName )
+					better.execute()
+			# otherwise, take the forRegistration file in the registration dir, which is created in registerSession
+			else:
+				self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
+
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix=postFix ), target = self.referenceFunctionalFileName )
 			
-
-			if init_transform_file != None:
-				mcf.transformMatrixFileName = init_transform_file
+			if hasattr(self.runList[er],'transformationMatrixFile'):
+				mcf.transformMatrixFileName = self.runList[er].transformationMatrixFile
 			# RUN WITH 7 DEGREES OF FREEDOM:
 			if further_args != '':
 				mcf.configure(further_args = further_args)
@@ -611,7 +623,9 @@ class Session(PathConstructor):
 						TR = funcFile.rtime / 1000.0
 					else:
 						TR = funcFile.rtime
-					sgtfO.configure(mask_file = mask_file, TR = TR, width = filterFreqs['highpass'], order = 3)
+					# width = filterFreqs['highpass']
+					width = filterFreqs['highpass'] / TR # this ensures that a window contains filterfreqs highpass seconds
+					sgtfO.configure(mask_file = mask_file, TR = TR, width = width, order = 3)
 					sgtfO.execute()
 				if op =='mbs':
 					mbsO = MeanBrainSubtractionOperator(funcFile)
