@@ -4495,9 +4495,7 @@ class SingleRewardSession(RewardSession):
 			h5_file.put("/per_trial_glm_results_ordered/%s"% roi + '_' + mask_type + '_' + mask_direction, time_ordered_trials)
 		
 
-
-
-		def fit(RL, betas, which_var = 1, integration_window_length = 5):
+		def fit(RL, betas, which_var = 1, integration_window_length = 25):
 			""""""
 			start_params, min_params, max_params = {}, {}, {}
 
@@ -4507,7 +4505,7 @@ class SingleRewardSession(RewardSession):
 			min_params['time_scale_p'] = 0.00025
 			min_params['alpha_SR'], min_params['alpha_SNR'], min_params['alpha_FR'] = -30.0, -30.0, -30.0
 
-			max_params['time_scale_p'] = 0.05
+			max_params['time_scale_p'] = 0.5
 			max_params['alpha_SR'], max_params['alpha_SNR'], max_params['alpha_FR'] = 30.0, 30.0, 30.0
 
 			params = Parameters()
@@ -4519,8 +4517,8 @@ class SingleRewardSession(RewardSession):
 				return RL.simulate_results_for_fit(params = params, which_var = which_var, integration_window_length = integration_window_length) - betas
 
 			minim = Minimizer(residual, params, fcn_args=(), fcn_kws={'RL':RL, 'which_var':which_var, 'integration_window_length':integration_window_length, })
-			# minim.lbfgsb(maxfun = 10000)
-			minim.fmin(maxfun = 100000)
+			minim.lbfgsb(maxfun = 10000)
+			# minim.fmin(maxfun = 100000)
 			return minim
 
 		RL = RL_model(stim_rewards_sample_points, stim_norewards_sample_points, fix_rewards_sample_points)
@@ -4533,11 +4531,11 @@ class SingleRewardSession(RewardSession):
 		which_var_dict = {'V':0, 'dV':1}
 		betas = np.array(betas)/np.std(betas)
 
-		minim = fit(RL, betas = betas, which_var = which_var_dict[fit_variable], integration_window_length = 5)
+		minim = fit(RL, betas = betas, which_var = which_var_dict[fit_variable], integration_window_length = 15)
 		simulation = RL.simulate_run(minim.params)
-		corr_sim = RL.simulate_results_for_fit(minim.params, which_var = which_var_dict[fit_variable], integration_window_length = 5)
+		corr_sim = RL.simulate_results_for_fit(minim.params, which_var = which_var_dict[fit_variable], integration_window_length = 15)
 
-		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable+'\n' + fit_report(minim.params))
+		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable+'\n '  + ' event density %2.2f'%(stim_rewards_sample_points.shape[0]/float(stim_rewards_sample_points.sum()) + '\n' + fit_report(minim.params))
 		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable + ' spearmanr correlation and stats between betas and model: %3.3f, p: %3.3f' %spearmanr(betas, corr_sim))
 		# shell()
 		

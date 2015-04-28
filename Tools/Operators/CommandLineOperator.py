@@ -261,7 +261,7 @@ class ConcatFlirtOperator( CommandLineOperator ):
 
 class BETOperator( CommandLineOperator ):
 	"""
-	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB -z -f 0.5 -g 0 -m
+	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB -Z -f 0.5 -g 0 -m
 	"""
 	def __init__(self, inputObject, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
