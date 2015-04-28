@@ -791,7 +791,7 @@ class Session(PathConstructor):
 					fmo.configure(outputFileName=inputObject, **{'-thr':str(0.5), '-bin':''})
 					fmo.execute()
 	
-	def createMasksFromFSLAtlases(self, xml_files = ['Thalamus.xml', 'Striatum-Connectivity-7sub.xml'], files = ['Thalamus/Thalamus-prob-2mm.nii.gz','Striatum/striatum-con-prob-thr25-2mm.nii.gz'], labels = ['Thalamus','Striatum'], threshold = 0.35):
+	def createMasksFromFSLAtlases(self, xml_files = ['Thalamus.xml', 'Striatum-Connectivity-7sub.xml'], files = ['Thalamus/Thalamus-prob-2mm.nii.gz','Striatum/striatum-con-prob-thr25-2mm.nii.gz'], labels = ['Thalamus','Striatum'], threshold = 0.5):
 		"""createMasksFromFSLAtlases takes lists of xml files in the fsl atlas folders, the corresponding nii files, and a threshold.
 		These atlases are likely connectivity-based subcortical atlases.
 		createMasksFromFSLAtlases uses these inputs to create subject-session specific anatomical masks, given the threshold.
