@@ -551,6 +551,7 @@ class Session(PathConstructor):
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data. as such, it doesn't really rescale any functionals in most cases.
+		When using the sgtf method, the highpass argument in filterFreqs represents the filter window in seconds 
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
 		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel

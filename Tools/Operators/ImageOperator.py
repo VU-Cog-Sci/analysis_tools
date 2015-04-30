@@ -329,7 +329,11 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 def doubleGamma(x, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35):
 	d1 = a1 * b1
 	d2 = a2 * b2
-	return np.array([(t/(d1))**a1 * exp(-(t-d1)/b1) - c*(t/(d2))**a2 * exp(-(t-d2)/b2) for t in x])
+	return np.array([(t/(d1))**a1 * np.exp(-(t-d1)/b1) - c*(t/(d2))**a2 * np.exp(-(t-d2)/b2) for t in x])	
+
+def doubleGamma_with_d(x, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35,d1=5.4,d2=10.8):
+	return np.array([(t/(d1))**a1 * np.exp(-(t-d1)/b1) - c*(t/(d2))**a2 * np.exp(-(t-d2)/b2) for t in x])	
+
 
 def double_gamma(x, a1, sh1, sc1, a2, sh2, sc2 ): 
 	return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
