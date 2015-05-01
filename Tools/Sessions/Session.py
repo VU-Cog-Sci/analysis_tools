@@ -275,7 +275,6 @@ class Session(PathConstructor):
 		if 'field_map' in self.scanTypeList:
 			self.scanTypeDict.update({'field_map': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'field_map', [r for r in self.runList])]})
 		
-#		print self.scanTypeDict
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
 		for c in self.conditions:
