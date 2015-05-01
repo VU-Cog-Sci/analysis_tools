@@ -284,17 +284,16 @@ class Session(PathConstructor):
 
 		self.modality_list = []
 		for r in self.runList:
-			for file_type in r.keys():
-				if file_type == 'rawBehaviorFile' and 'behavior' not in self.modality_list:
-					self.modality_list.append('behavior')
-				if file_type == 'rawDataFilePath' and 'mri' not in self.modality_list:
-					self.modality_list.append('mri')
-				if file_type == 'eyeLinkFilePath' and 'eye' not in self.modality_list:
-					self.modality_list.append('eye')
-				if file_type == 'physiologyFile' and 'hr' not in self.modality_list:
-					self.modality_list.append('hr')
-				if file_type == 'starstim_eeg_file' and 'eeg' not in self.modality_list:
-					self.modality_list.append('eeg')
+			if hasattr(r, 'rawBehaviorFile') and 'behavior' not in self.modality_list:
+				self.modality_list.append('behavior')
+			if hasattr(r, 'rawDataFilePath') and 'mri' not in self.modality_list:
+				self.modality_list.append('mri')
+			if hasattr(r, 'eyeLinkFilePath') and 'eye' not in self.modality_list:
+				self.modality_list.append('eye')
+			if hasattr(r, 'physiologyFile') and 'hr' not in self.modality_list:
+				self.modality_list.append('hr')
+			if hasattr(r, 'starstim_eeg_file') and 'eeg' not in self.modality_list:
+				self.modality_list.append('eeg')
 
 			
 	def import_all_edf_data(self, aliases):

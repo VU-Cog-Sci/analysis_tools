@@ -4535,7 +4535,7 @@ class SingleRewardSession(RewardSession):
 		simulation = RL.simulate_run(minim.params)
 		corr_sim = RL.simulate_results_for_fit(minim.params, which_var = which_var_dict[fit_variable], integration_window_length = 15)
 
-		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable+'\n '  + ' event density %2.2f'%(stim_rewards_sample_points.shape[0]/float(stim_rewards_sample_points.sum()) + '\n' + fit_report(minim.params))
+		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable + '\nevent density %2.2f'%(stim_rewards_sample_points.shape[0]/float(stim_rewards_sample_points.sum())) + '\n' + fit_report(minim.params))
 		self.logger.info(roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable + ' spearmanr correlation and stats between betas and model: %3.3f, p: %3.3f' %spearmanr(betas, corr_sim))
 		# shell()
 		
