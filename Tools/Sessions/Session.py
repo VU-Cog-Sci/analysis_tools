@@ -1517,7 +1517,7 @@ class Session(PathConstructor):
 					featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf')
 					featOp = FEATOperator(inputObject = thisFeatFile)
 					# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
-					if r == [self.runList[i] for i in self.conditionDict[cond]][-1]:
+					if r == self.runList[self.scanTypeDict['epi_bold'][-1]]:
 						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 					else:
 						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )

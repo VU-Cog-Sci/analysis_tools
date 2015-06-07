@@ -65,43 +65,47 @@ class StarStimOperator(Operator):
 		self.channel_names.append('STI 014')
 
 		# prepare info, such as channel types
-		ch_types = ['eeg' for a in range(len(self.channel_names))]
+		self.ch_types = ['eeg' for a in range(len(self.channel_names))]
 		for i in range(len(self.channel_names)):	# accelerator samples are not eeg, but misc type
 			if self.channel_names[i] in ['X','Y','Z','STI 014']:
-				ch_types[i] = 'misc'
+				self.ch_types[i] = 'misc'
 		# prepare info, such as sampling frequency distilled from the time column
-		sfreq = 1000.0 / np.median(np.diff(self.raw_data[:,-1]))
+		self.sfreq = 1000.0 / np.median(np.diff(self.raw_data[:,-1]))
 
 		# create mne fif info structure
-		info = mne.create_info(ch_names = self.channel_names, sfreq = sfreq, ch_types = ch_types)
+		info = mne.create_info(ch_names = self.channel_names, sfreq = self.sfreq, ch_types = self.ch_types)
 		# input the data and info structure in raw array.
 		raw = mne.io.RawArray(raw_data.T, info)
 
+		self.logger.info('saving data and events from %s to fif file %s'%(self.inputObject, fif_file_name))
+		# save all data to file name
+		raw.save(fif_file_name)
+
+		
 		# now create valid-type events for the events channel
 		event_samples = np.arange(raw_data.shape[0])[self.raw_data[:,-2] != 0] 
 		event_samples = np.concatenate((event_samples, event_samples+1, event_samples+2, event_samples+3, event_samples+4, event_samples+5)) # blowing up the event samples.
 		event_values = np.mod(self.raw_data[:,-2][self.raw_data[:,-2] != 0], 100)
 		event_values = np.tile(event_values, 6) # to accommodate the event_samples that have been blown up.
 		events = np.array([event_samples, np.zeros(event_samples.shape[0]), event_values]).T
-		raw.add_events(events)
+		# raw.add_events(events)
+
+		mne.write_events(os.path.splitext(self.inputObject)[0] + '_raw_events.fif.gz', events)
 
 		# shell()
 		# raw.plot(n_channels = 1, block = True, scalings= {'eeg':20e-9})
 
 
-		if htps_file != None:
-			htps_dtype = np.dtype([('name','S10'),('x','f'),('y','f8'),('z','f8')])
-			positions = np.loadtxt(htps_file, dtype = htps_dtype)
-			all_names = list(positions['name'])
-			all_positions = np.array([[positions[positions['name'] == an][pos][0] for pos in ['x','y','z']] for an in all_names])
+		# if htps_file != None:
+		# 	htps_dtype = np.dtype([('name','S10'),('x','f'),('y','f8'),('z','f8')])
+		# 	positions = np.loadtxt(htps_file, dtype = htps_dtype)
+		# 	all_names = list(positions['name'])
+		# 	all_positions = np.array([[positions[positions['name'] == an][pos][0] for pos in ['x','y','z']] for an in all_names])
 
-			raw.set_channel_positions(all_positions, all_names)
+		# 	raw.set_channel_positions(all_positions, all_names)
 
 		# shell()
 
-		self.logger.info('saving data and events from %s to fif file %s'%(self.inputObject, fif_file_name))
-		# save all data to file name
-		raw.save(fif_file_name)
 
 	def line_filter_fif(self, fif_input_file_name = None, fif_output_file_name = None, notch_freq = 50):
 		if fif_input_file_name == None:
@@ -109,6 +113,7 @@ class StarStimOperator(Operator):
 		if fif_output_file_name == None:
 			fif_output_file_name = os.path.splitext(self.inputObject)[0] + '_notch_raw.fif.gz'
 		raw = mne.io.RawFIF(fif_input_file_name, preload=True)
+		self.logger.info( 'RawFIF info ' + str(raw.info) )
 		raw.notch_filter(freqs = np.arange(notch_freq, notch_freq * 3 + 1, notch_freq), n_jobs=8)
 		raw.save(fif_output_file_name)
 
@@ -127,7 +132,6 @@ class StarStimOperator(Operator):
 		raw = mne.io.RawFIF(fif_input_file_name, preload=True)
 		raw.plot_psds(tmin=0.0, tmax=raw.index_as_time(raw.n_times - 4), fmin=l_freq, fmax=h_freq)
 		pl.savefig(os.path.splitext(fif_input_file_name)[0] + '.pdf')
-
 
 
 

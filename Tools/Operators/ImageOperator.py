@@ -415,7 +415,7 @@ class NewDesign(object):
 			regressor_values[(self.time_values_for_convolution > start_time) * (self.time_values_for_convolution < end_time)] = event[2]
 		self.raw_design_matrix.append(regressor_values)
 		
-		return regressorValues
+		return regressor_values
 	
 	def convolve_with_HRF(self, hrf_type = 'singleGamma', hrf_parameters = {'a': 6, 'b': 0.9}): # hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35}
 		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 

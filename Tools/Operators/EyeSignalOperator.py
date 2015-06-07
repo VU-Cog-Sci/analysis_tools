@@ -435,5 +435,5 @@ class EyeSignalOperator(Operator):
 		frequencies = np.arange(min_freq, max_freq, freq_stepsize)  # define frequencies of interest
 		n_cycles = frequencies / float(n_cycles)  # different number of cycle per frequency
 		
-		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=1, zero_mean=True)
+		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=0, zero_mean=True)
 	
