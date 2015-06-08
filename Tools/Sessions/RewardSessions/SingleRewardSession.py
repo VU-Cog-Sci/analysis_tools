@@ -4436,6 +4436,122 @@ class SingleRewardSession(RewardSession):
 
 		return roi + '_' + mask_type + '_' + mask_direction + '_' + which_betas + '_' + fit_variable , pd.Series(reported_values, index = reported_labels)
 
+	def per_trial_history_regression_pupil(self, which_betas = 'reward', which_trials = 'all', analysis_sample_rate = 20, interval = [-0.5,7.5], data_type = 'pupil_bp'):
+		"""docstring for trial_history_from_per_trial_glm_results"""
+		# set up the right reward file
+
+		self.events_and_signals_in_time(data_type = data_type )
+		cond_labels = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward']
+		conds = ['blank_silence','blank_sound','visual_silence','visual_sound']
+
+		events = [self.event_data[0] + interval[0], self.event_data[1] + interval[0], self.event_data[2] + interval[0], self.event_data[3] + interval[0]]
+
+		with pd.get_store(os.path.join(self.conditionFolder(stage = 'processed/mri', run = self.runList[self.conditionDict['reward'][0]]), 'reward.hdf5')) as h5_file:
+			trials = h5_file["/per_trial_glm_results/V1_center_Z_pos_psc_hpf_data"]
+		with pd.get_store(self.hdf5_filename) as h5_file:
+			residuals = h5_file["/%s/%s"%('deconvolve_pupil', 'residuals')]
+	
+		# shell()
+		time_order = np.argsort(trials.event_times)
+		time_ordered_trials = trials.iloc[time_order]
+
+		fix_norewards = np.array(time_ordered_trials.event_types) == 0
+		fix_rewards = np.array(time_ordered_trials.event_types) == 1
+		stim_norewards = np.array(time_ordered_trials.event_types) == 2
+		stim_rewards = np.array(time_ordered_trials.event_types) == 3
+		reward_times = np.array(time_ordered_trials[fix_rewards + stim_rewards].event_times)
+		
+		stimulus = stim_rewards + stim_norewards
+		rewards = stim_rewards + fix_rewards
+
+		# TR was 1.5 and was subsampled twice, hence 0.75 s per sample
+		residual_indices = (time_ordered_trials['event_times'] * 0.75 ) * analysis_sample_rate
+
+		baseline_time = -0.5
+		stim_response_interval = [0.75, 1.25]
+		rew_response_interval = [3.0,4.0]
+
+
+		baseline_start_indices = residual_indices + (baseline_time * analysis_sample_rate)
+		stim_response_start_indices = residual_indices + (stim_response_interval[0] * analysis_sample_rate)
+		stim_response_stop_indices = residual_indices + (stim_response_interval[1] * analysis_sample_rate)
+
+		rew_response_start_indices = residual_indices + (rew_response_interval[0] * analysis_sample_rate)
+		rew_response_stop_indices = residual_indices + (rew_response_interval[1] * analysis_sample_rate)
+
+		baseline_responses_per_trial = np.array([residuals[i:j].mean() for i,j in zip(np.array(baseline_start_indices, dtype = int), np.array(residual_indices, dtype = int))])
+		stim_responses_per_trial = np.array([residuals[i:j].mean() for i,j in zip(np.array(stim_response_start_indices, dtype = int), np.array(stim_response_stop_indices, dtype = int))]) #- baseline_responses_per_trial
+		rew_responses_per_trial = np.array([residuals[i:j].mean() for i,j in zip(np.array(rew_response_start_indices, dtype = int), np.array(rew_response_stop_indices, dtype = int))]) #- baseline_responses_per_trial
+
+		# shell()
+
+		# choose which data
+		if which_betas == 'stim':
+			betas = stim_responses_per_trial
+		elif which_betas == 'reward':
+			betas = rew_responses_per_trial
+		betas = (betas-np.mean(betas))/np.std(betas)
+
+		if which_trials == 'all':
+			trial_selection = np.ones(betas.shape, dtype = bool)
+		elif which_trials == 'all_reward':
+			trial_selection = fix_rewards + stim_rewards
+		elif which_trials == 'all_stims':
+			trial_selection = stim_norewards + stim_rewards
+		elif which_trials == 'all_fix':
+			trial_selection = fix_norewards + fix_rewards
+		elif which_trials == 'fix_norewards':
+			trial_selection = fix_norewards
+		elif which_trials == 'fix_rewards':
+			trial_selection = fix_rewards
+		elif which_trials == 'stim_norewards':
+			trial_selection = stim_norewards
+		elif which_trials == 'stim_rewards':
+			trial_selection = stim_rewards
+		else:
+			trial_selection = np.ones(betas.shape, dtype = bool)
+
+		N_BACK = 20
+		res = np.zeros((6,N_BACK))
+
+		sn.set(style="ticks")
+		f = pl.figure(figsize = (9,5))
+		s = f.add_subplot(1,1,1)
+		for rew_i, rew in enumerate([fix_norewards, fix_rewards, stim_norewards, stim_rewards, stimulus, rewards ]):
+			# dm = np.zeros((N_BACK-1, betas.shape[0]))
+			# for tp in np.arange(1,N_BACK):
+			# 	dm[tp,tp:] = rew[:-tp]
+			dm = np.array([np.roll(rew, i) for i in np.arange(1,N_BACK + 1)])
+			for x in range(1,dm.shape[0]):
+				dm[x,:x] = 0
+			clf = linear_model.LinearRegression()
+			clf.fit(dm.T[trial_selection], betas[trial_selection])
+			res[rew_i] = clf.coef_
+			plot(np.arange(0,N_BACK), res[rew_i], ['b','b','g','g','k','r'][rew_i], alpha = [0.5,1.0,0.5,1.0,1.0,1.0][rew_i])
+		# pl.axvline(0, lw=0.25, alpha=0.5, color = 'k')
+		pl.axhline(0, lw=0.25, alpha=0.5, color = 'k')
+		s.set_xlim(xmin=0.5, xmax=N_BACK-0.5)
+		pl.legend(cond_labels)
+		simpleaxis(s)
+		spine_shift(s)
+		pl.savefig(os.path.join(self.stageFolder(stage = 'processed/mri/figs/'), which_betas + '_' + which_trials + '_per_trial_history_regression_pupil.pdf'))
+
+		res_pd = pd.DataFrame(res.T, columns = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward', 'stimulus', 'rewards'])
+
+		with pd.get_store(self.hdf5_filename) as h5_file:
+				h5_file.put("/per_trial_history_regression_pupil/%s_%s"%(which_betas, which_trials), res_pd)
+
+		return res
+
+	def per_trial_all_history_regression_pupil(self): #   'V2', 'V3', 'V3AB', 'V4'
+		"""docstring for trial_history_from_per_trial_glm_results_roi"""
+		
+		for which_beta in ['stim', 'reward']:
+			for which_trials in ['all', 'all_reward', 'all_stims', 'all_fix', 'fix_norewards', 'fix_rewards', 'stim_norewards', 'stim_rewards']:
+				self.per_trial_history_regression_pupil(which_betas = which_beta, which_trials = which_trials)
+				self.per_trial_history_regression_pupil(which_betas = which_beta, which_trials = which_trials)
+
+
 
 	def per_trial_glm_history_regression_roi(self, roi = 'V1', mask_type = 'center_Z', mask_direction = 'pos', which_betas = 'reward', which_trials = 'all'):
 		"""docstring for trial_history_from_per_trial_glm_results"""

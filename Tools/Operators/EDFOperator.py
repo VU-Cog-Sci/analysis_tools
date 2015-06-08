@@ -99,7 +99,7 @@ class EDFOperator( Operator ):
 		self.logger.info(self.header)
 		
 	
-	def identify_blocks(self, minimal_time_gap = 50.0):
+	def identify_blocks(self, minimal_time_gap = 50.0, minimal_block_duration = 1e6):
 		"""
 		identify separate recording blocks in eyelink file, where 'blocks' means periods between
 		startrecording and stoprecording
@@ -134,6 +134,14 @@ class EDFOperator( Operator ):
 						'screen_x_pix': float(k[2])-float(k[0]), 'screen_y_pix': float(k[3])-float(k[1]),  }
 					for h,i,j,k in zip(block_edge_indices, block_edge_times, block_sample_occurrences, block_screen_occurrences)]
 		
+		# select only blocks of a significant duration, assuming timestamps in ms
+		selected_block_indices = []
+		for i, b in enumerate(self.blocks):
+			if (b['block_end_timestamp'] - b['block_start_timestamp']) > minimal_block_duration:
+				selected_block_indices.append(i)
+		# and perform selection
+		self.blocks = [self.blocks[i] for i in selected_block_indices]
+
 		# now, we know what the different columns must mean per block, so we can create them
 		for bl in self.blocks:
 			if bl['eye_recorded'] == 'LR':
