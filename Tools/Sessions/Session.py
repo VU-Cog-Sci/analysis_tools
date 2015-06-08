@@ -42,6 +42,56 @@ from ..Operators.HDFEyeOperator import HDFEyeOperator
 
 from IPython import embed as shell
 
+def numerical_derivative(data):
+	"""
+	This function computes the numerical derivative of the input where its output is the 
+	same length as the input. It does so by using both interpolation and extrapolation.
+
+	For a tutorial on this function see shared/tutorials
+	"""
+
+	diff_data = np.diff(data)
+	diff_x = np.arange(0.5,len(data)-1)
+
+	interp_diff = sp.interpolate.interp1d(diff_x,diff_data,kind='cubic')
+
+	def extrap1d(interpolator):
+		xs = interpolator.x
+		ys = interpolator.y
+
+		def pointwise(x):
+			if x < xs[0]:
+				return ys[0]+(x-xs[0])*(ys[1]-ys[0])/(xs[1]-xs[0])
+			elif x > xs[-1]:
+				return ys[-1]+(x-xs[-1])*(ys[-1]-ys[-2])/(xs[-1]-xs[-2])
+			else:
+				return interpolator(x)
+
+		def ufunclike(xs):
+			return np.array(map(pointwise, np.array(xs)))
+
+		return ufunclike
+
+	return extrap1d(interp_diff)(np.arange(len(data)))
+
+def run_moco_dt_ddt_parallel(run,mcf_filename):
+	"""
+	For python parallel to work, this function cannot be part of the Session class.
+	"""
+
+	mcf = np.loadtxt(mcf_filename)
+
+	mcf_dt = []; mcf_ddt = []
+	for par in np.array(mcf).T:
+		mcf_dt.append(numerical_derivative(par))
+		mcf_ddt.append(numerical_derivative(numerical_derivative(par)))
+
+	mcf_dt = np.array(mcf_dt).T
+	mcf_ddt = np.array(mcf_ddt).T
+
+	np.savetxt(mcf_filename[:-4]+'_dt.par', mcf_dt, delimiter="\t",fmt='%.7f')
+	np.savetxt(mcf_filename[:-4]+'_ddt.par', mcf_ddt, delimiter="\t",fmt='%.7f')
+
 class PathConstructor(object):
 	"""
 	FilePathConstructor is an abstract superclass for sessions.
@@ -502,7 +552,7 @@ class Session(PathConstructor):
 			# if T2anatID has been specified in the runarray, take this T2 as the target
 			if hasattr(self.runList[er],'T2anatID'):
 				self.referenceFunctionalFileName = self.runFile(stage='processed/mri/T2_anat/'+str(self.runList[er].T2anatID)+'/', postFix = [str(self.runList[er].T2anatID)] )
-				# as registerSession takes only the latter of the inplane_anat images for registration, some will not have been betted:
+				# as registerSession takes only the latter of the inplane_anat images for registration, some may not have been betted:
 				if not os.path.isfile(self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'):
 					better = BETOperator( inputObject = self.referenceFunctionalFileName )
 					self.referenceFunctionalFileName = self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'
@@ -546,6 +596,22 @@ class Session(PathConstructor):
 				fMcf()
 			
 			job_server.print_stats()
+
+	def dt_ddt_moco_pars(self,conditions):
+		"""
+		This function takes the motion correction parameters and computes the
+		first and second derivative based on the numerical_derivative function.
+
+		For a tutorial see shared/tutorials/numerical_derivative
+		"""
+		for condition in conditions:
+
+			Parallel(n_jobs = -1, verbose = 9)(delayed(run_moco_dt_ddt_parallel)(
+				run = r,
+				mcf_filename = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )
+				) 
+				for r in [self.runList[i] for i in self.conditionDict[condition]])
+
 	
 	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf'], mask_file = None):#, 'percentsignalchange'
 		"""
