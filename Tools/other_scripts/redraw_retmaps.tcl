@@ -62,16 +62,16 @@ if [info exists polardir] { set dir $polardir }
 
 #### read and smooth complex component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth complex Fourier comp"
-setfile val */$dir/surf/${floatstem}${complexname}-$hemi.mgh     ;# polarangle
-# echo */$dir/surf/${floatstem}_${complexname}-$hemi.mgh
+setfile val */$dir/surf/${floatstem}${complexname}-$hemi.mgz     ;# polarangle
+# echo */$dir/surf/${floatstem}_${complexname}-$hemi.mgz
 read_binary_values
 smooth_val $smoothsteps 
 shift_values     ;# shift complex component out of way
 
 #### read and smooth real component MRI Fourier transform of data
 puts "tksurfer: [file tail $script]: read and smooth real Fourier comp"
-setfile val */$dir/surf/${floatstem}${realname}-$hemi.mgh    ;# polarangle
-#echo */$dir/surf/${floatstem}_${realname}-$hemi.mgh
+setfile val */$dir/surf/${floatstem}${realname}-$hemi.mgz    ;# polarangle
+#echo */$dir/surf/${floatstem}_${realname}-$hemi.mgz
 read_binary_values
 smooth_val $smoothsteps
 
