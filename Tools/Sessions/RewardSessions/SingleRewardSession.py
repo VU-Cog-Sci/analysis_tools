@@ -4160,9 +4160,11 @@ class SingleRewardSession(RewardSession):
 			# stimulus regressors:
 			per_trial_design_matrix[i][np.concatenate(rounded_event_array)[i]] = 1.0
 			per_trial_design_matrix[i] = np.correlate(per_trial_design_matrix[i], stim_resp, 'same')
+			per_trial_design_matrix[i] -= per_trial_design_matrix[i].mean()
 			# reward regressors:
 			per_trial_design_matrix[i + nr_trials][np.concatenate(rounded_event_array)[i]] = 1.0
-			per_trial_design_matrix[i + nr_trials] = np.correlate(per_trial_design_matrix[i], rew_resp, 'same')
+			per_trial_design_matrix[i + nr_trials] = np.correlate(per_trial_design_matrix[i + nr_trials], rew_resp, 'same')
+			per_trial_design_matrix[i + nr_trials] -= per_trial_design_matrix[i + nr_trials].mean()
 		
 		full_per_trial_design_matrix = np.mat(np.vstack((per_trial_design_matrix, full_nuisance_design.T))).T
 		full_per_trial_betas = ((full_per_trial_design_matrix.T * full_per_trial_design_matrix).I * full_per_trial_design_matrix.T) * np.mat(deco.residuals).T
