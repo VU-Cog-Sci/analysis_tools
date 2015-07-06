@@ -99,7 +99,7 @@ class EDFOperator( Operator ):
 		self.logger.info(self.header)
 		
 	
-	def identify_blocks(self, minimal_time_gap = 50.0, minimal_block_duration = 1e6):
+	def identify_blocks(self, minimal_time_gap = 50.0, minimal_block_duration = 5e3):
 		"""
 		identify separate recording blocks in eyelink file, where 'blocks' means periods between
 		startrecording and stoprecording
@@ -134,9 +134,11 @@ class EDFOperator( Operator ):
 						'screen_x_pix': float(k[2])-float(k[0]), 'screen_y_pix': float(k[3])-float(k[1]),  }
 					for h,i,j,k in zip(block_edge_indices, block_edge_times, block_sample_occurrences, block_screen_occurrences)]
 		
+		self.logger.info('%i raw blocks discovered' % len(self.blocks))
 		# select only blocks of a significant duration, assuming timestamps in ms
 		selected_block_indices = []
 		for i, b in enumerate(self.blocks):
+			self.logger.info('%f raw block duration, threshold %f' % (b['block_end_timestamp'] - b['block_start_timestamp'], minimal_block_duration))
 			if (b['block_end_timestamp'] - b['block_start_timestamp']) > minimal_block_duration:
 				selected_block_indices.append(i)
 		# and perform selection
@@ -151,7 +153,7 @@ class EDFOperator( Operator ):
 			elif bl['eye_recorded'] == 'L':
 				bl.update({'data_columns': ['time','L_gaze_x','L_gaze_y','L_pupil','L_vel_x','L_vel_y']})
 		
-		self.logger.info('%i blocks discovered' % len(self.blocks))
+		self.logger.info('%i correct duration blocks discovered' % len(self.blocks))
 		
 	
 	def read_all_messages(self):

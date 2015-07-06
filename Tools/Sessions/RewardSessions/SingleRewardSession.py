@@ -4635,7 +4635,7 @@ class SingleRewardSession(RewardSession):
 		res_pd = pd.DataFrame(res.T, columns = ['fix_no_reward','fix_reward','stimulus_no_reward','stimulus_reward', 'stimulus', 'rewards'])
 
 		with pd.get_store(self.hdf5_filename) as h5_file:
-				h5_file.put("/per_trial_glm_history_regression/%s_%s_%s_%s"%(roi, mask_direction, which_betas, which_trials), res_pd)
+			h5_file.put("/per_trial_glm_history_regression/%s_%s_%s_%s"%(roi, mask_direction, which_betas, which_trials), res_pd)
 
 		return res
 

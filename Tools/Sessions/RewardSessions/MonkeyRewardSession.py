@@ -411,7 +411,7 @@ class MonkeyRewardSession(Session):
             # shell()
             pl.plot(np.linspace(interval[0], interval[1], deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1]), np.array(
                 deco.deconvolvedTimeCoursesPerEventTypeNuisance[i].squeeze()), ['b', 'b', 'g', 'g'][i], alpha=[0.5, 1.0, 0.5, 1.0][i], label=cond_labels[i])
-
+        timepoints = np.linspace(interval[0], interval[1], deco.deconvolvedTimeCoursesPerEventTypeNuisance.shape[1])
         # the following commented code doesn't factor in blinks as nuisances
         # deco = DeconvolutionOperator(inputObject = timeseries, eventObject = event_data[:], TR = tr, deconvolutionSampleDuration = tr/2.0, deconvolutionInterval = interval[1])
         # for i in range(0, deco.deconvolvedTimeCoursesPerEventType.shape[0]):
@@ -471,6 +471,13 @@ class MonkeyRewardSession(Session):
         # pl.draw()
         pl.savefig(os.path.join(self.stageFolder(stage='processed/mri/figs/'),
                                 roi + '_' + mask_type + '_' + mask_direction + '_' + data_type + '.pdf'))
+
+        with pd.get_store(self.hdf5_filename) as h5_file:
+            h5_file.put("/%s/%s"%('deconvolution' + roi + '_' + mask_type + '_' + mask_direction + '_' + data_type, 'residuals'), pd.Series(np.squeeze(np.array(residuals))))
+            h5_file.put("/%s/%s"%('deconvolution' + roi + '_' + mask_type + '_' + mask_direction + '_' + data_type, 'time_points'), pd.Series(timepoints))
+            h5_file.put("/%s/%s"%('deconvolution' + roi + '_' + mask_type + '_' + mask_direction + '_' + data_type, 'dec_time_course'), pd.DataFrame(np.array(time_signals)))
+            h5_file.put("/%s/%s"%('deconvolution' + roi + '_' + mask_type + '_' + mask_direction + '_' + data_type, 'dec_time_course_per_run'), pd.Panel(np.squeeze(deco_per_run)))
+
         # shell()
         return [roi + '_' + mask_type + '_' + mask_direction, event_data, timeseries, np.array(time_signals), np.array(deco_per_run), residuals]
 
@@ -494,39 +501,39 @@ class MonkeyRewardSession(Session):
         this_run_group_name = 'deconvolution_results' + \
             '_' + signal_type + '_' + data_type
         try:
-            thisRunGroup = reward_h5file.get_node(
-                where='/', name=this_run_group_name, classname='Group')
+            thisRunGroup = reward_h5file.remove_node(
+                where='/', name=this_run_group_name, recursive = True)
             self.logger.info(
                 'data file ' + self.hdf5_filename + ' does not contain ' + this_run_group_name)
         except NoSuchNodeError:
             # import actual data
             self.logger.info(
                 'Adding group ' + this_run_group_name + ' to this file')
-            thisRunGroup = reward_h5file.createGroup(
-                "/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+            # thisRunGroup = reward_h5file.createGroup(
+            #     "/", this_run_group_name, 'deconvolution analysis conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
 
-        for r in results:
-            try:
-                reward_h5file.remove_node(
-                    where=thisRunGroup, name=r[0] + '_' + signal_type + '_' + data_type)
-                reward_h5file.remove_node(
-                    where=thisRunGroup, name=r[0] + '_' + signal_type + '_per_run_' + data_type)
-                reward_h5file.remove_node(
-                    where=thisRunGroup, name=r[0] + '_' + signal_type + '_residuals_' + data_type)
-            except NoSuchNodeError:
-                pass
-            self.logger.info('deconvolution timecourses results for ' + r[
-                             0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-            reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-3], 'deconvolution timecourses results for ' + r[
-                                       0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-            self.logger.info('per-run deconvolution timecourses results for ' + r[
-                             0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-            reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-2], 'per-run deconvolution timecourses results for ' + r[
-                                       0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-            self.logger.info('deconvolution residuals for ' + r[
-                             0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
-            reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_residuals_' + data_type, np.array(
-                r[-1]), 'deconvolution residuals for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        # for r in results:
+        #     try:
+        #         reward_h5file.remove_node(
+        #             where=thisRunGroup, name=r[0] + '_' + signal_type + '_' + data_type)
+        #         reward_h5file.remove_node(
+        #             where=thisRunGroup, name=r[0] + '_' + signal_type + '_per_run_' + data_type)
+        #         reward_h5file.remove_node(
+        #             where=thisRunGroup, name=r[0] + '_' + signal_type + '_residuals_' + data_type)
+        #     except NoSuchNodeError:
+        #         pass
+        #     self.logger.info('deconvolution timecourses results for ' + r[
+        #                      0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        #     reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_' + data_type, r[-3], 'deconvolution timecourses results for ' + r[
+        #                                0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        #     self.logger.info('per-run deconvolution timecourses results for ' + r[
+        #                      0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        #     reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_per_run_' + data_type, r[-2], 'per-run deconvolution timecourses results for ' + r[
+        #                                0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        #     self.logger.info('deconvolution residuals for ' + r[
+        #                      0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+        #     reward_h5file.create_array(thisRunGroup, r[0] + '_' + signal_type + '_residuals_' + data_type, np.array(
+        #         r[-1]), 'deconvolution residuals for ' + r[0] + 'conducted at ' + datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
         reward_h5file.close()
 
     def era_roi(self, roi, threshold=3.5, mask_type='visualNoJuice_Z', mask_direction='pos', signal_type='mean', data_type='Z_hpf_data', subsampling_factor=1, interval=[-5.0, 15.0]
