@@ -19,6 +19,8 @@ from itertools import *
 from ..Sessions.RewardSessions import *
 from Project import *
 
+from ..Operators.CommandLineOperator import AnnotationToLabelOperator
+
 class RewardProject(Project):
 	"""a RewardProject has a subject, and a standard T2 anatomical and EPI run.
 	This means that all subsequent sessions will have a T2 anatomical that can be co-registered with the standard project T2 anatomical,
@@ -148,6 +150,12 @@ class RewardProject(Project):
 								proj_frac = '0 1 .1' )
 				stV.execute()
 	
+	def create_annotation_based_labels(self, annot_file = 'aparc'):
+		anlo = AnnotationToLabelOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', 'rh' + '.' + annot_file + '.annot'))	#initialize with (e.g.) the rh file to avoid warning of file not existing; doesn't mean that only rh file will be used
+		anlo.configure(subjectID = self.subject.standardFSID )
+		anlo.execute()
+
+
 	def registerSession2Project(self, session_label, session_T2, session_EPI, bet_f_value = 0.2, bet_g_value = 0.45, sinc = True, flirt = True):
 		# copy the registration inputs to new folder in the subject's registration folder. Duplicate, but oh well. 
 		session_dir = os.path.join(self.registration_dir, self.subject.initials, session_label )
