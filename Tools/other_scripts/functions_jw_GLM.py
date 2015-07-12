@@ -23,6 +23,8 @@ class GeneralLinearModel(object):
 		self.timepoints = np.arange(0, input_object.shape[0]*sample_dur, new_sample_dur)
 		self.raw_design_matrix = []
 		
+		# shell()
+		
 	def configure(self, IRF='pupil', IRF_params=None, regressor_types='stick', IRF_dt=False, subsample=False):
 		
 		# resample input_object:
@@ -54,7 +56,7 @@ class GeneralLinearModel(object):
 		
 		# convolve raw regressors with IRF to obtain the full design matrix:
 		self.convolve_with_IRF()
-		self.demean()
+		# self.demean()
 		# self.z_score()
 		
 	def resample_input_object(self):
@@ -84,6 +86,7 @@ class GeneralLinearModel(object):
 	def z_score(self):
 		"""z-scores design matrix"""
 		
+		self.working_data_array = (self.working_data_array - self.working_data_array.mean()) / self.working_data_array.std()
 		for i in range(self.design_matrix.shape[0]):
 			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean()) / self.design_matrix[i,:].std()
 	
@@ -126,7 +129,8 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = event[2]
+			height = event[2] / float(dur)
+			# height = event[2]
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	
@@ -139,7 +143,7 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = np.linspace(0, (event[2]*2/dur), dur)
+			height = np.linspace(0, (event[2]*2/float(dur)), dur)
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 		
@@ -152,7 +156,7 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = np.linspace((event[2]*2/dur), 0, dur)
+			height = np.linspace((event[2]*2/float(dur)), 0, dur)
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	

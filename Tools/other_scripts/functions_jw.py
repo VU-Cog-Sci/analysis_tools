@@ -37,7 +37,75 @@ from itertools import combinations as comb
 import pp
 from IPython import embed as shell
 
-sns.set_style("white")
+
+sns.set(style='ticks', font='Arial', font_scale=1, rc={
+	'axes.linewidth': 0.25, 
+	'axes.labelsize': 7, 
+	'axes.titlesize': 7, 
+	'xtick.labelsize': 6, 
+	'ytick.labelsize': 6, 
+	'legend.fontsize': 6, 
+	'xtick.major.width': 0.25, 
+	'ytick.major.width': 0.25,
+	'text.color': 'Black',
+	'axes.labelcolor':'Black',
+	'xtick.color':'Black',
+	'ytick.color':'Black',} )
+sns.plotting_context()
+
+
+
+def figure(ax_type=1):
+	fig = plt.figure(num=None, figsize=(8.27, 11.69))
+	if ax_type==1:
+		ax = plt.subplot2grid((4, 3), (0, 0),rowspan=1, colspan=1)
+	if ax_type==2:
+		ax = plt.subplot2grid((4, 3), (0, 0),rowspan=1, colspan=2)
+	if ax_type==3:
+		ax = plt.subplot2grid((4, 3), (0, 0),rowspan=3, colspan=3)
+	if ax_type==4:
+		ax = plt.subplot2grid((4, 3), (0, 0),rowspan=3, colspan=3)
+	return fig, ax
+
+def common_dist(array_a, array_b, bins=25):
+	
+	"""Finds the common underlying distribution
+	
+	Parameters
+	----------
+	array_a : 1D array_like
+		data.
+	array_b : 1D array_like
+		data.
+	bins : postive number (default = 25)
+		number of bins used.
+	Returns
+	-------
+	indices_a : 1D array_like
+		indices of values in 'array_a' to keep.
+	indices_b : 1D array_like
+		indices of values in 'array_b' to keep.
+		
+	Jan Willem de Gee, april 2015
+	"""
+	
+	minimum = min(min(array_a),min(array_b))
+	maximum = max(max(array_a),max(array_b))
+	full_range = maximum - minimum
+	edges = np.linspace(minimum-(full_range/20.0), maximum+(full_range/20.0), bins+1)
+	indices_a = np.ones(len(array_a), dtype=bool)
+	indices_b = np.ones(len(array_b), dtype=bool)
+	for i in range(bins):
+		ind_a = (array_a >= edges[i]) * (array_a <= edges[i+1])
+		ind_b = (array_b >= edges[i]) * (array_b <= edges[i+1])
+		sum_a = sum(ind_a)
+		sum_b = sum(ind_b)
+		if sum_a<sum_b:
+			indices_b[np.random.choice(np.where(ind_b)[0], sum_b-sum_a, replace=False)] = False
+		if sum_a>sum_b:
+			indices_a[np.random.choice(np.where(ind_a)[0], sum_a-sum_b, replace=False)] = False
+	return indices_a, indices_b
+
 
 def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising', kpsh=False, valley=False, show=False, ax=None):
 
@@ -194,8 +262,14 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
 		plt.show()
 
 
-
-
+def orthogonal_projection(timeseries, to_project_out):
+	
+	# take the norm of vector you want to project out:
+	prj = to_project_out/np.linalg.norm(to_project_out)
+	
+	# project out the reference vector
+	return timeseries - (np.dot(timeseries, prj)*prj)
+	
 def chunks(l, n):
 	return [l[i:i+n] for i in range(0, len(l), n)]
 def chunks_mean(l, n):
@@ -266,7 +340,7 @@ def pupil_scalar_peak(data, time_start, time_end):
 	return pupil_scalars
 
 def pupil_scalar_mean(data, time_start, time_end):
-	pupil_scalars = np.array([ np.mean(data[i,time_start:time_end]) for i in range(data.shape[0])])
+	pupil_scalars = np.array([ bn.nanmean(data[i,time_start:time_end]) for i in range(data.shape[0])])
 	return pupil_scalars
 
 def pupil_scalar_lin_projection(data, time_start, time_end, template):
@@ -485,7 +559,11 @@ def SDT_measures(target, hit, fa):
 	import numpy as np
 	import scipy as sp
 	import matplotlib.pyplot as plt
-
+	
+	target = np.array(target, dtype=bool)
+	hit = np.array(hit, dtype=bool)
+	fa = np.array(fa, dtype=bool)
+	
 	hit_rate = np.sum(hit) / float(np.sum(target))
 	fa_rate = np.sum(fa) / float(np.sum(-target))
 	hit_rate_z = stats.norm.isf(1-hit_rate)
@@ -496,10 +574,95 @@ def SDT_measures(target, hit, fa):
 
 	return(d, c)
 
+def corr_matrix(C):
+	
+	C = np.asarray(C)
+	p = C.shape[1]
+	P_corr = np.zeros((p, p), dtype=np.float)
+	P_p = np.zeros((p, p), dtype=np.float)
+	for i in range(p):
+		P_corr[i, i] = 1
+		for j in range(i+1, p):
+			corr, p_value = sp.stats.pearsonr(C[:, i], C[:, j])
+			P_corr[i, j] = corr
+			P_corr[j, i] = corr
+			P_p[i, j] = p_value
+			P_p[j, i] = p_value
+
+	return P_corr, P_p
+
+
+def corr_matrix_partial(C):
+	"""
+	
+	Partial Correlation in Python (clone of Matlab's partialcorr)
+
+	This uses the linear regression approach to compute the partial 
+	correlation (might be slow for a huge number of variables). The 
+	algorithm is detailed here:
+
+	    http://en.wikipedia.org/wiki/Partial_correlation#Using_linear_regression
+
+	Taking X and Y two variables of interest and Z the matrix with all the variable minus {X, Y},
+	the algorithm can be summarized as
+
+	    1) perform a normal linear least-squares regression with X as the target and Z as the predictor
+	    2) calculate the residuals in Step #1
+	    3) perform a normal linear least-squares regression with Y as the target and Z as the predictor
+	    4) calculate the residuals in Step #3
+	    5) calculate the correlation coefficient between the residuals from Steps #2 and #4; 
+
+	    The result is the partial correlation between X and Y while controlling for the effect of Z
+	
+	Returns the sample linear partial correlation coefficients between pairs of variables in C, controlling 
+	for the remaining variables in C.
+	
+	
+	Parameters
+	----------
+	C : array-like, shape (n, p)
+	    Array with the different variables. Each column of C is taken as a variable
+	
+	
+	Returns
+	-------
+	P : array-like, shape (p, p)
+	    P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
+	    for the remaining variables in C.
+	"""
+	
+	C = np.asarray(C)
+	p = C.shape[1]
+	P_corr = np.zeros((p, p), dtype=np.float)
+	P_p = np.zeros((p, p), dtype=np.float)
+	for i in range(p):
+		P_corr[i, i] = 1
+		for j in range(i+1, p):
+			idx = np.ones(p, dtype=np.bool)
+			idx[i] = False
+			idx[j] = False
+			beta_i = sp.linalg.lstsq(C[:, idx], C[:, j])[0]
+			beta_j = sp.linalg.lstsq(C[:, idx], C[:, i])[0]
+			
+			res_j = C[:, j] - C[:, idx].dot( beta_i)
+			res_i = C[:, i] - C[:, idx].dot(beta_j)
+			
+			corr, p_value = sp.stats.pearsonr(res_i, res_j)
+			P_corr[i, j] = corr
+			P_corr[j, i] = corr
+			P_p[i, j] = p_value
+			P_p[j, i] = p_value
+	
+	return P_corr, P_p
+
+
 
 def lin_regress_resid(X,Y):
 	# shell()
-
+	
+	X = X - np.mean(X)
+	Y = Y - np.mean(Y)
+	
 	d = {
 		'X' : pd.Series(X),
 		'Y' : pd.Series(Y),
@@ -511,7 +674,7 @@ def lin_regress_resid(X,Y):
 	fitted = model.fit()
 	residuals = fitted.resid
 
-	return(residuals)
+	return np.array(residuals)
 
 def pcf3(X,Y,Z):
 	"""
@@ -773,26 +936,63 @@ def hist_q2(rt, bins=10, quantiles=[10,30,50,70,90], corrects=None, ax=None, xli
 	# ax2.set_xlabel('{} quantiles'.format(quantiles))
 	return quantile_hist
 
+def quantile_plot(conditions, rt, corrects, subj_idx, quantiles=[10,30,50,70,90], ax=None, fmt='o', color='k'):
+	
+	conditions = np.array(conditions)
+	rt = np.array(rt)
+	corrects = np.array(corrects, dtype=bool)
+	subj_idx = np.array(subj_idx)
+	
+	
+	# mean:
+	accuracy = np.array([np.array([np.mean(corrects[(conditions==c) & (subj_idx==s)]) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]).mean(axis=0)
+	break_points_correct = np.array([np.array([np.percentile(rt[(corrects) & (conditions==c) & (subj_idx==s)], quantiles) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]).mean(axis=0)
+	break_points_error = np.array([np.array([np.percentile(rt[(-corrects) & (conditions==c) & (subj_idx==s)], quantiles) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]).mean(axis=0)
+	break_points_error = break_points_error[::-1,:]
+	
+	# sem:
+	accuracy_sem = sp.stats.sem(np.array([np.array([np.mean(corrects[(conditions==c) & (subj_idx==s)]) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]), axis=0)
+	break_points_correct_sem = sp.stats.sem(np.array([np.array([np.percentile(rt[(corrects) & (conditions==c) & (subj_idx==s)], quantiles) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]), axis=0)
+	break_points_error_sem = sp.stats.sem(np.array([np.array([np.percentile(rt[(-corrects) & (conditions==c) & (subj_idx==s)], quantiles) for c in np.unique(conditions)]) for s in np.unique(subj_idx)]), axis=0)
+	break_points_error_sem = break_points_error_sem[::-1,:]
+	
+	if not ax:
+		fig = plt.figure(figsize=(3,3))
+		ax = fig.add_subplot(111)
+	
+	for i in range(len(quantiles)):
+		x = np.concatenate((1-accuracy, accuracy[::-1]))
+		y = np.concatenate((break_points_error[:,i], break_points_correct[:,i][::-1]))
+		ax.plot(x, y, lw=0.5, color=color)
+	for c in range(len(np.unique(conditions))):
+		ax.errorbar(np.repeat(accuracy[c], len(quantiles)), break_points_correct[c], xerr=np.repeat(accuracy_sem[c], len(quantiles)), yerr=break_points_correct_sem[c], fmt=fmt, color=color, ms=4, markeredgecolor='w', markeredgewidth=0.25, capsize=0, elinewidth=0.5)
+		ax.errorbar(np.repeat(1-accuracy[c], len(quantiles)), break_points_error[c], xerr=np.repeat(accuracy_sem[c], len(quantiles)), yerr=break_points_correct_sem[c], fmt=fmt, color=color, ms=4, markeredgecolor='w', markeredgewidth=0.25, capsize=0, elinewidth=0.5)
+	ax.set_ylabel('RT (s)')
+	ax.set_xlabel('Response proportion')
+	plt.ylim(0.5,2)
+	sns.despine(offset=10, trim=True)
+	plt.tight_layout()
+	
+	return ax
 
 
-def correlation_plot(X,Y):
-
+def correlation_plot(X, Y, ax=False, line=False):
+	
+	if not ax:
+		fig = plt.figure(figsize=(3,3))
+		ax = fig.add_subplot(111)
 	slope, intercept, r_value, p_value, std_err = stats.linregress(X,Y)
 	(m,b) = sp.polyfit(X,Y,1)
-	regression_line = sp.polyval([m,b],X)
-	fig = plt.figure(figsize=(3,3))
-	ax = fig.add_subplot(111)
-	ax.plot(X, Y, 'o', color='k', marker='o', markeredgecolor='w') #s=20, zorder=2, linewidths=2)
-	if p_value < 0.05:
-		ax.plot(X, regression_line, color='k', zorder=3)
-	# simpleaxis(ax)
-	# spine_shift(ax)
-	ax.tick_params(axis='both', which='major', labelsize=6)
-	ax.text(0.5*(plt.axis()[1]+plt.axis()[0]), 0.5*(plt.axis()[3]+plt.axis()[2]),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size=7)
-	plt.gca().spines["bottom"].set_linewidth(.5)
-	plt.gca().spines["left"].set_linewidth(.5)
+	ax.plot(X, Y, 'o', color='k', marker='o', markeredgecolor='w', markeredgewidth=0.5) #s=20, zorder=2, linewidths=2)
+	x_line = np.linspace(ax.axis()[0], ax.axis()[1], 100)
+	regression_line = sp.polyval([m,b],x_line)
+	if line:
+		ax.plot(x_line, regression_line, color='k', zorder=3)
+		ax.text(ax.axis()[0] + ((ax.axis()[1] - ax.axis()[0]) / 10.0), ax.axis()[3] - ((ax.axis()[3]-ax.axis()[2]) / 5.0), 'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 4)), size=6, color='k')
+	sns.despine(offset=10, trim=True)
+	plt.tight_layout()
 
-	return fig
+	return ax
 
 def correlation_plot2(X, Y, labelX, labelY, xlim, ylim):
 
@@ -1330,99 +1530,149 @@ class behavior(object):
 		data should be in pandas dataframe format, columns for:
 		"""
 		self.data = data
-		self.nr_subjects = len(np.unique(data.subj_idx))
-	
-	def choice_fractions(self, split_by=False):
+		self.subjects = np.unique(data.subj_idx)
+		self.nr_subjects = len(self.subjects)
+		
+		self.data['hit'] = ((self.data['choice'] == 1) & (self.data['correct'] == 1))
+		self.data['fa'] = ((self.data['choice'] == 1) & (self.data['correct'] == 0))
+		
+	def choice_fractions(self, split_by=False, split_target=0):
 		
 		if split_by:
-			split = [np.array(eval('self.data.' + split_by) == 0), np.array(eval('self.data.' + split_by) == 1)]
+			split_ind = eval('self.data.' + split_by) == split_target
 		else:
-			split = [np.ones(len(self.data), dtype=bool)]
+			split_ind = np.ones(len(self.data), dtype=bool)
 		
-		output = []
-		for split_ind in split:
-			c0 = np.array([sum((self.data.choice==0)[(self.data.subj_idx==i) & split_ind]) / float(len((self.data.choice==0)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			c1 = np.array([sum((self.data.choice==1)[(self.data.subj_idx==i) & split_ind]) / float(len((self.data.choice==0)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			c0_correct = np.array([sum((self.data.choice==0)[(self.data.subj_idx==i) & split_ind] & (self.data.correct==1)[(self.data.subj_idx==i) & split_ind]) / float(sum((self.data.stimulus==0)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			c0_error = np.array([sum((self.data.choice==0)[(self.data.subj_idx==i) & split_ind] & (self.data.correct==0)[(self.data.subj_idx==i) & split_ind]) / float(sum((self.data.stimulus==0)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			c1_correct = np.array([sum((self.data.choice==1)[(self.data.subj_idx==i) & split_ind] & (self.data.correct==1)[(self.data.subj_idx==i) & split_ind]) / float(sum((self.data.stimulus==1)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			c1_error = np.array([sum((self.data.choice==1)[(self.data.subj_idx==i) & split_ind] & (self.data.correct==0)[(self.data.subj_idx==i) & split_ind]) / float(sum((self.data.stimulus==1)[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
-			output.append((c0, c1, c0_correct, c0_error, c1_correct, c1_error))
+		# split_ind = (self.data.pupil_high == 1)
 		
-		if not split_by:
-			output = output[0]
+		c_correct = np.array([sum((self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		c_error = np.array([sum((self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
 		
-		return output
+		c0 = np.array([sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		c1 = np.array([sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		
+		c0_correct = np.array([ sum( (self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
+		c0_error = np.array([ sum( (self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
+		c1_correct = np.array([ sum( (self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
+		c1_error = np.array([ sum( (self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
+		
+		# c0_c = c0_correct / (c0_correct + c0_error)
+		# c0_e = c0_error / (c0_correct + c0_error)
+		#
+		# c1_c = c1_correct / (c1_correct + c1_error)
+		# c1_e = c1_error / (c1_correct + c1_error)
+		
+		# c0_correct = np.array([ sum( (self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		# c0_error = np.array([ sum( (self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		# c1_correct = np.array([ sum( (self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		# c1_error = np.array([ sum( (self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		
+		return (c_correct, c_error, c0, c1, c0_correct, c0_error, c1_correct, c1_error)
 	
+	def behavior_measures(self, split_by=False, split_target=0):
+		
+		if split_by:
+			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
+		else:
+			split_ind = np.ones(len(self.data), dtype=bool)
+		
+		rt = np.array([np.mean(self.data.rt[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
+		acc = np.array([np.mean(self.data.correct[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
+		d = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[0] for i, s in enumerate(self.subjects)])
+		c = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[1] for i, s in enumerate(self.subjects)])
+		
+		return rt, acc, d, abs(c) 
+		
 	def rt_kernel_densities(self, x_grid, bandwidth=0.05, split_by=False, split_target=0):
 		
 		if split_by:
-			split_ind = [np.array(eval('self.data.' + split_by) == split_target)]
+			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
 		else:
 			split_ind = np.ones(len(self.data), dtype=bool)
 		
 		x_grid = np.linspace(x_grid[0], x_grid[1], x_grid[2])
 		
-		# shell()
+		# c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c0_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+
+		# c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c0_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		# c1_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
 		
-		c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c0_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
-		c1_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c0_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c1_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
+		c1_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) for i in range(self.nr_subjects)]
 		
-		return (c0_pdf, c1_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf)
-			
-			
-			
-	# x = np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c0_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
-	#
-	# x = np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c1_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
-	#
-	# x = np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c0_corect_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
-	#
-	# x = np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c0_error_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
-	#
-	# x = np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c1_correct_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
-	#
-	# x = np.array(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind])
-	# grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.01, 0.1, 50)}, cv=20) # 20-fold cross-validation
-	# grid.fit(x[:, None])
-	# c1_error_pdf = general().kde_sklearn(x, x_grid, bandwidth=grid.best_params_['bandwidth'])
+		
+		return (c0_pdf, c1_pdf, c_correct_pdf, c_error_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf)
+
+	def rt_mean_var(self, split_by=False, split_target=0):
+		
+		if split_by:
+			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
+		else:
+			split_ind = np.ones(len(self.data), dtype=bool)
+		
+		rt_correct = [np.mean(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		rt_error = [np.mean(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		rt_correct_std = [np.std(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		rt_error_std = [np.std(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		
+		return (rt_correct, rt_error, rt_correct_std, rt_error_std)
+		
+	def pupil_bars(self, pupil='pupil', split_by=False, split_target=False):
+		
+		if split_by:
+			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
+		else:
+			split_ind = np.ones(len(self.data), dtype=bool)
+		p = np.array(eval('self.data.' + pupil))
+		
+		correct = [np.mean(np.array(p[np.array((self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		error = [np.mean(np.array(p[np.array((self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c0 = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c1 = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c0_correct = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c0_error = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c1_correct = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		c1_error = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		
+		return (correct, error, c0, c1, c0_correct, c0_error, c1_correct, c1_error)
+		
 	
-	# c0_y = [np.histogram(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c0_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-	# c1_y = [np.histogram(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c1_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-	#
-	# c0_correct_y = [np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c0_correct_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-	# c0_error_y = [np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c0_error_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-	# c1_correct_y = [np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c1_correct_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-	# c1_error_y = [np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[0] for i in range(self.nr_subjects)]
-	# c1_error_bincenters = [0.5*(np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][1:]+np.histogram(self.data.rt[(self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind], bins=nbins, density=True)[1][:-1]) for i in range(self.nr_subjects)]
-			
+	
+	
+	
+	
+	
+	
+	
+
+		
+	
+	
 		
 		
 		
+	
+	
+	
 		
 	
 	

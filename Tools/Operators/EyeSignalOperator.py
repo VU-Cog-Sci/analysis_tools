@@ -395,12 +395,13 @@ class EyeSignalOperator(Operator):
 		self.lp_filt_pupil = sp.signal.filtfilt(blp, alp, self.interpolated_pupil)
 		# Band pass:
 		self.bp_filt_pupil = sp.signal.filtfilt(blp, alp, self.hp_filt_pupil)
-
+		
 		# we may also add a baseline variable which contains the baseine 
 		# by doing 3rd order savitzky-golay filtering, with a width of ~100 s
 		# we dan use this baseline signal for correlations of phasic and tonic pupil responses, for example
 		
-		self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
+		# self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
+		self.baseline_filt_pupil = self.lp_filt_pupil - self.bp_filt_pupil
 
 	
 	def zscore_pupil(self):
@@ -417,13 +418,20 @@ class EyeSignalOperator(Operator):
 		self.lp_filt_pupil_zscore = (self.lp_filt_pupil - self.lp_filt_pupil.mean()) / self.lp_filt_pupil.std() 
 		self.baseline_filt_pupil_zscore = (self.baseline_filt_pupil - self.baseline_filt_pupil.mean()) / self.baseline_filt_pupil.std() 
 	
+	def percent_signal_change_pupil(self, dtype = 'bp_filt_pupil'):
+		"""
+		percent_signal_change_pupil takes percent signal change of the dtype pupil signal, and internalizes it as a dtype + '_psc' self variable.
+		"""
+		
+		exec('self.' + str(dtype) + '_psc = ((self.' + str(dtype) + ' / np.median(self.' + str(dtype) + ')) * 100) - 100' )
+	
 	def dt_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
 		dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable.
 		"""
 		
 		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
-
+	
 	def time_frequency_decomposition_pupil(self, min_freq = 0.01, max_freq = 3.0, freq_stepsize = 0.25, n_cycles = 7):
 		"""time_frequency_decomposition_pupil uses the mne package to perform a time frequency decomposition on the pupil data after interpolation"""
 		

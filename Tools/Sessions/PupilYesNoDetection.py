@@ -131,30 +131,30 @@ class pupilPreprocessSession(object):
 		x_matrix = []
 		y_matrix = []
 		
-		for t in range(self.nr_trials):
-			
-			try:
-				indices = (self.time > self.cue_times[t]) * (self.time < self.choice_times[t])
-			except:
-				shell()
-			
-			x = self.gaze_x[indices]
-			x = x - bn.nanmean(x)
-			y = self.gaze_y[indices]
-			y = y - bn.nanmean(y)
-			if (x < -175).sum() > 0 or (x > 175).sum() > 0:
-				self.omission_indices_sac[t] = True
-			if (y < -175).sum() > 0 or (y > 175).sum() > 0:
-				self.omission_indices_sac[t] = True
-			if ((x > middle_x + cut_off).sum() + (x < middle_x - cut_off).sum()) / float(self.rt[t]) * 100 > 10:
-				self.omission_indices_sac[t] = True
-			if ((y > middle_y + cut_off).sum() + (y < middle_y - cut_off).sum()) / float(self.rt[t]) * 100 > 10:
-				self.omission_indices_sac[t] = True
+		# for t in range(self.nr_trials):
+		#
+		# 	try:
+		# 		indices = (self.time > self.cue_times[t]) * (self.time < self.choice_times[t])
+		# 	except:
+		# 		shell()
+		#
+		# 	x = self.gaze_x[indices]
+		# 	x = x - bn.nanmean(x)
+		# 	y = self.gaze_y[indices]
+		# 	y = y - bn.nanmean(y)
+		# 	if (x < -175).sum() > 0 or (x > 175).sum() > 0:
+		# 		self.omission_indices_sac[t] = True
+		# 	if (y < -175).sum() > 0 or (y > 175).sum() > 0:
+		# 		self.omission_indices_sac[t] = True
+		# 	if ((x > middle_x + cut_off).sum() + (x < middle_x - cut_off).sum()) / float(self.rt[t]) * 100 > 10:
+		# 		self.omission_indices_sac[t] = True
+		# 	if ((y > middle_y + cut_off).sum() + (y < middle_y - cut_off).sum()) / float(self.rt[t]) * 100 > 10:
+		# 		self.omission_indices_sac[t] = True
 
 		self.omission_indices_blinks = np.zeros(self.nr_trials, dtype=bool)
-		for t in range(self.nr_trials):
-			if sum((self.blink_start_times > self.cue_times[t] - 500) * (self.blink_end_times < self.choice_times[t] + 500)) > 0:
-				self.omission_indices_blinks[t] = True
+		# for t in range(self.nr_trials):
+		# 	if sum((self.blink_start_times > self.cue_times[t]) * (self.blink_end_times < self.choice_times[t])) > 0:
+		# 		self.omission_indices_blinks[t] = True
 		
 		self.omission_indices_rt = np.zeros(self.nr_trials, dtype=bool)
 		for t in range(self.nr_trials):
@@ -162,7 +162,7 @@ class pupilPreprocessSession(object):
 				self.omission_indices_rt[t] = True
 		
 		self.omission_indices_first = np.zeros(self.nr_trials, dtype=bool)
-		self.omission_indices_first[0:2] = True
+		self.omission_indices_first[0] = True
 		if self.experiment == 1:
 			self.omission_indices_subject = np.array(self.parameters['confidence'] == -1)
 			self.omission_indices_subject = np.array(self.parameters['correct'] == -1)
@@ -195,6 +195,9 @@ class pupilPreprocessSession(object):
 		fa = -present * yes
 		miss = present * -yes
 		cr = -present * -yes
+		
+		run_nr = int(self.alias.split('_')[-1])
+		
 		self.parameters['omissions'] = self.omission_indices
 		self.parameters['omissions_answer'] = self.omission_indices_answer
 		self.parameters['omissions_sac'] = self.omission_indices_sac
@@ -211,7 +214,9 @@ class pupilPreprocessSession(object):
 		self.parameters['sacs_nr'] = sacs_nr
 		self.parameters['sacs_dur'] = sacs_dur
 		self.parameters['sacs_vel'] = sacs_vel
+		self.parameters['run_nr'] = run_nr
 		self.ho.data_frame_to_hdf(self.alias, 'parameters2', self.parameters)
+		
 		print '{} total trials'.format(self.nr_trials)
 		print '{} hits'.format(sum(hit))
 		print '{} false alarms'.format(sum(fa))
@@ -244,8 +249,8 @@ class pupilPreprocessSession(object):
 		cue_locked_array_bp[:, :] = np.NaN
 		for i in range(self.nr_trials):
 			indices = (self.time > self.cue_times[i] - 1000) * (self.time < self.cue_times[i] + 6500)
-			cue_locked_array_lp[i,:self.pupil_lp_z[indices].shape[0]] = self.pupil_lp_z[indices]
-			cue_locked_array_bp[i,:self.pupil_bp_z[indices].shape[0]] = self.pupil_bp_z[indices]
+			cue_locked_array_lp[i,:self.pupil_lp_psc[indices].shape[0]] = self.pupil_lp_psc[indices]
+			cue_locked_array_bp[i,:self.pupil_bp_psc[indices].shape[0]] = self.pupil_bp_psc[indices]
 
 		choice_locked_array_lp = np.empty((self.nr_trials, 7500))
 		choice_locked_array_lp[:, :] = np.NaN
@@ -253,8 +258,8 @@ class pupilPreprocessSession(object):
 		choice_locked_array_bp[:, :] = np.NaN
 		for i in range(self.nr_trials):
 			indices = (self.time > self.choice_times[i] - 4000) * (self.time < self.choice_times[i] + 3500)
-			choice_locked_array_lp[i,:self.pupil_lp_z[indices].shape[0]] = self.pupil_lp_z[indices]
-			choice_locked_array_bp[i,:self.pupil_bp_z[indices].shape[0]] = self.pupil_bp_z[indices]
+			choice_locked_array_lp[i,:self.pupil_lp_psc[indices].shape[0]] = self.pupil_lp_psc[indices]
+			choice_locked_array_bp[i,:self.pupil_bp_psc[indices].shape[0]] = self.pupil_bp_psc[indices]
 		
 		if self.experiment == 1:
 			feedback_locked_array_lp = np.empty((self.nr_trials, 5000))
@@ -263,8 +268,8 @@ class pupilPreprocessSession(object):
 			feedback_locked_array_bp[:, :] = np.NaN
 			for i in range(self.nr_trials):
 				indices = (self.time > self.feedback_times[i] - 1000) * (self.time < self.feedback_times[i] + 4000)
-				feedback_locked_array_lp[i,:self.pupil_lp_z[indices].shape[0]] = self.pupil_lp_z[indices]
-				feedback_locked_array_bp[i,:self.pupil_bp_z[indices].shape[0]] = self.pupil_bp_z[indices]
+				feedback_locked_array_lp[i,:self.pupil_lp_psc[indices].shape[0]] = self.pupil_lp_psc[indices]
+				feedback_locked_array_bp[i,:self.pupil_bp_psc[indices].shape[0]] = self.pupil_bp_psc[indices]
 		
 		# to hdf5:
 		self.ho.data_frame_to_hdf(self.alias, 'time_locked_cue_lp', pd.DataFrame(cue_locked_array_lp))
@@ -297,6 +302,9 @@ class pupilPreprocessSession(object):
 			response_times = np.array(events[((events.key == 275) + (events.key == 276)) * (events.up_down == 'Down')].EL_timestamp)
 			
 			if len(response_times) != 0:
+				
+				shell()
+				
 				
 				try:
 					ind = np.where(response_times>=self.choice_times[i])[0][0]
@@ -360,6 +368,17 @@ class pupilPreprocessSession(object):
 			trs = [249, 252, 249, 259, 260, 261, 262, 256, 256, 253, 255, 257,]
 		if self.subject.initials == 'MG':
 			trs = [265, 265, 252, 255, 304, 256, 251, 250, 256, 258, 253, 248,]
+		if self.subject.initials == 'NM':
+			trs = [248, 254, 253, 255, 267, 274, 289, 258, 253]
+		if self.subject.initials == 'NS':
+			trs = [254, 254, 259, 253, 255, 251, 254, 261, 253, 254, 263, 253]
+		if self.subject.initials == 'OC':
+			trs = [266, 255, 259, 253, 251, 262, 263, 250, 252, 247, 250, 246]
+		if self.subject.initials == 'TK':
+			trs = [246, 252, 258, 263, 258, 255, 259, 248, 248, 253, 247, 247]
+		if self.subject.initials == 'TN':
+			trs = [256, 267, 246, 248, 249, 252, 245, 247, 247, 247, 246, 246]
+		
 		nr_trs_nifti = trs[int(self.alias.split('_')[-1]) - 1]
 		
 		# load trigger timings:
@@ -374,21 +393,18 @@ class pupilPreprocessSession(object):
 			trigger_timings = trigger_timings[:-1]
 		
 		# create pupil timeseries in fMRI tr resolution:
-		pupil = np.zeros((6, nr_trs_nifti))
+		pupil = np.zeros((3, nr_trs_nifti))
 		pupil[:,:] = np.NaN
 		try:
 			pupil[0,:len(trigger_timings)] = np.array([np.mean(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-			pupil[1,:len(trigger_timings)] = np.array([np.max(self.pupil_lp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-			pupil[2,:len(trigger_timings)] = np.array([np.mean(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-			pupil[3,:len(trigger_timings)] = np.array([np.max(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-			pupil[4,:len(trigger_timings)] = np.array([np.mean(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
-			pupil[5,:len(trigger_timings)] = np.array([np.max(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[1,:len(trigger_timings)] = np.array([np.mean(self.pupil_bp_z[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
+			pupil[2,:len(trigger_timings)] = np.array([np.mean(np.array(self.pupil_data[(self.eye + '_pupil_lp_diff')])[(self.time>t)*(self.time<(t+tr))]) for t in trigger_timings])
 		except ValueError:
 			shell()
 		
 		# save:
 		self.ho.data_frame_to_hdf(self.alias, 'pupil_BOLD_regressors', pd.DataFrame(pupil))
-		#
+		
 	def process_runs(self, alias, create_pupil_BOLD_regressor=False):
 		print 'subject {}; {}'.format(self.subject.initials, alias)
 		print '##############################'
@@ -405,6 +421,9 @@ class pupilPreprocessSession(object):
 		self.phase_times = self.ho.read_session_data(alias, 'trial_phases')
 		self.cue_times = np.array(self.phase_times['trial_phase_EL_timestamp'][(self.phase_times['trial_phase_index'] == 2)])
 		self.choice_times = np.array(self.phase_times['trial_phase_EL_timestamp'][(self.phase_times['trial_phase_index'] == 3)])
+		
+		# shell()
+		
 		self.problem_trials()
 		self.rt = self.choice_times - self.cue_times
 		if self.experiment == 1:
@@ -421,15 +440,17 @@ class pupilPreprocessSession(object):
 		self.eye = self.ho.eye_during_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
 		self.pupil_data = self.ho.data_from_time_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
 		self.time = np.array(self.pupil_data['time'])
-		self.pupil_raw = np.array(self.pupil_data[(self.eye + '_pupil')])
-		self.pupil_lp = np.array(self.pupil_data[(self.eye + '_pupil_lp')])
-		self.pupil_bp = np.array(self.pupil_data[(self.eye + '_pupil_bp')])
+		# self.pupil_raw = np.array(self.pupil_data[(self.eye + '_pupil')])
+		# self.pupil_lp = np.array(self.pupil_data[(self.eye + '_pupil_lp')])
+		# self.pupil_bp = np.array(self.pupil_data[(self.eye + '_pupil_bp')])
+		self.pupil_lp_psc = np.array(self.pupil_data[(self.eye + '_pupil_lp_psc')])
+		self.pupil_bp_psc = np.array(self.pupil_data[(self.eye + '_pupil_bp_psc')])
 		self.gaze_x = np.array(self.pupil_data[(self.eye + '_gaze_x')])
 		self.gaze_y = np.array(self.pupil_data[(self.eye + '_gaze_y')])
 		
 		self.compute_omission_indices()
 		self.trial_params()
-		self.pupil_zscore()
+		# self.pupil_zscore()
 		self.create_timelocked_arrays()
 		
 		if create_pupil_BOLD_regressor:
@@ -748,9 +769,12 @@ class pupilAnalyses(object):
 		self.miss = np.array(self.parameters_joined['miss']) * -self.omissions
 		self.cr = np.array(self.parameters_joined['cr']) * -self.omissions
 		
-		self.bpd = np.array(self.parameters_joined['bpd_lp'])
+		self.yes = np.array(self.parameters_joined['yes']) * -self.omissions
+		self.correct = np.array(self.parameters_joined['correct']) * -self.omissions
+		self.present = np.array(self.parameters_joined['present']) * -self.omissions
 		
-		self.ppr = np.array(self.parameters_joined['ppr_proj_lp'])
+		self.bpd = np.array(self.parameters_joined['bpd_lp'])
+		self.ppr = np.array(self.parameters_joined['ppr_mean_lp'])
 		
 		self.criterion = np.array(self.parameters_joined['criterion'])[0]
 		
@@ -763,20 +787,26 @@ class pupilAnalyses(object):
 		nr_runs = (pd.Series(np.array(self.parameters_joined.trial_nr))==0).sum()
 		start_run = np.where(pd.Series(np.array(self.parameters_joined.trial_nr))==0)[0]
 		run_nr = np.ones(len(np.array(self.parameters_joined.trial_nr)))
+		subject = np.repeat(self.subject.initials,len(np.array(self.parameters_joined.trial_nr)))
 		for i in range(nr_runs):
 			if i != (nr_runs-1):
 				run_nr[start_run[i]:start_run[i+1]] = i
 			if i == (nr_runs-1): 
 				run_nr[start_run[i]:] = i
 		
+		# shell()
+		
 		# data:
 		d = {
+		'subject' : pd.Series(subject),
 		'trial_nr' : pd.Series(np.array(self.parameters_joined.trial_nr)),
 		'run_nr' : pd.Series(run_nr),
 		'omissions' : pd.Series(np.array(self.omissions)),
-		'pupil_mean' : pd.Series(np.array(self.parameters_joined.ppr_mean_lp)),
-		'pupil_proj' : pd.Series(np.array(self.ppr)),
+		'pupil_mean' : pd.Series(np.array(self.ppr)),
 		'pupil_b' : pd.Series(np.array(self.bpd)),
+		'yes' : pd.Series(np.array(self.yes)),
+		'correct' : pd.Series(np.array(self.correct)),
+		'present' : pd.Series(np.array(self.present)),
 		'hit' : pd.Series(np.array(self.hit)),
 		'fa' : pd.Series(np.array(self.fa)),
 		'miss' : pd.Series(np.array(self.miss)),
@@ -1258,29 +1288,124 @@ class pupilAnalyses(object):
 		ax.set_ylabel('pupil response (a.u.)')
 		fig.savefig(os.path.join(self.base_directory, 'figs', self.subject.initials + '_suprise.pdf'))
 		
-	def GLM(self):
+	def GLM(self, aliases):
 		
-		# create pupil timeseries:
-		choice_timings = [-2999, 3000]
-		pupil_time_series = self.choice_locked_array_joined[:, choice_timings[0]+4000:choice_timings[1]+4000]
-		for i in range(pupil_time_series.shape[0]):
-			pupil_time_series[i,:] = pupil_time_series[i,:] - self.bpd[i]
-		pupil_time_series = pupil_time_series[-self.omissions,:]
-		pupil_time_series = np.concatenate(pupil_time_series)
+		downsample_rate = 50 # 50
+		new_sample_rate = 1000 / downsample_rate
 		
-		# create events:
-		nr_trials = sum(-self.omissions)
+		# load data:
+		parameters = []
+		pupil = []
+		pupil_diff = []
+		time = []
+		cue_times = []
+		choice_times = []
+		# feedback_times = []
+		blink_times = []
+		time_to_add = 0
+		for alias in aliases:
+			parameters.append(self.ho.read_session_data(alias, 'parameters2'))
+			
+			self.alias = alias
+			self.trial_times = self.ho.read_session_data(alias, 'trials')
+			
+			# load pupil:
+			self.eye = self.ho.eye_during_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
+			self.pupil_data = self.ho.data_from_time_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
+			# self.pupil_bp = np.array(self.pupil_data[(self.eye + '_pupil_bp')])
+			# pupil.append(self.pupil_bp / np.std(self.pupil_bp))
+			
+			pupil.append(np.array(self.pupil_data[(self.eye + '_pupil_lp_psc')]))
+			
+			# load times:
+			self.session_start = self.trial_times['trial_start_EL_timestamp'][0]
+			self.time = np.array(self.pupil_data['time']) - self.session_start
+			time.append( self.time + time_to_add)
+			self.phase_times = self.ho.read_session_data(alias, 'trial_phases')
+			cue_times.append( np.array(self.phase_times['trial_phase_EL_timestamp'][(self.phase_times['trial_phase_index'] == 2)]) - self.session_start + time_to_add )
+			choice_times.append( np.array(self.phase_times['trial_phase_EL_timestamp'][(self.phase_times['trial_phase_index'] == 3)]) - self.session_start + time_to_add )
+			# feedback_times.append( np.array(self.phase_times['trial_phase_EL_timestamp'][(self.phase_times['trial_phase_index'] == 5)]) - self.session_start + time_to_add )
+			# load blinks:
+			self.blink_data = self.ho.read_session_data(alias, 'blinks_from_message_file')
+			blink_times.append( np.array(self.blink_data['end_timestamp']) - self.session_start + time_to_add )
+			
+			time_to_add += self.time[-1]
 		
-		event_a = np.zeros((nr_trials, 3))
-		event_a[:,0] = np.cumsum(np.repeat(6, nr_trials)) - 3
-		event_a[:,1] = 0
-		event_a[:,2] = 1
+		# join over runs:
+		parameters_joined = pd.concat(parameters)
+		omissions = np.array(parameters_joined.omissions, dtype=bool)
 		
-		events = [event_a]
+		pupil = np.concatenate(pupil)
+		time = np.concatenate(time)
+		blink_times = np.concatenate(blink_times)
+		cue_times = np.concatenate(cue_times)[-omissions]
+		choice_times = np.concatenate(choice_times)[-omissions]
 		
-		linear_model = GLM.GeneralLinearModel(input_object=pupil_time_series, event_object=events, sample_dur=0.001, new_sample_dur=0.05)
-		linear_model.configure(IRF_type='pupil', IRF_params={'dur':3, 's':1.0/(10**26), 'n':10.1, 'tmax':0.93}, regressor_types=['stick'])
+		correct = np.array(parameters_joined.correct, dtype=bool)[-omissions]
+		error = -np.array(parameters_joined.correct, dtype=bool)[-omissions]
+		hit = np.array(parameters_joined.hit, dtype=bool)[-omissions]
+		fa = np.array(parameters_joined.fa, dtype=bool)[-omissions]
+		miss = np.array(parameters_joined.miss, dtype=bool)[-omissions]
+		cr = np.array(parameters_joined.cr, dtype=bool)[-omissions]
+		
+		len_epoch = 5000
+		
+		pupil_epoched = np.concatenate([pupil[i:i+len_epoch]-pupil[i:i+500].mean() for i in (cue_times-500)])
+		
+		cue_times_epoched = np.arange(0,len_epoch*cue_times.shape[0],len_epoch) + 500
+		choice_times_epoched = cue_times_epoched + (choice_times-cue_times)
+		cue_times_epoched = cue_times_epoched / 1000.0
+		choice_times_epoched = choice_times_epoched / 1000.0
+		
+		event_1 = np.ones((len(choice_times),3))
+		event_1[:,0] = cue_times_epoched
+		event_1[:,1] = 0
+		event_2 = np.ones((len(choice_times),3))
+		event_2[:,0] = choice_times_epoched
+		event_2[:,1] = 0
+		event_3 = np.ones((len(choice_times),3))
+		event_3[:,0] = cue_times_epoched
+		event_3[:,1] = choice_times_epoched-cue_times_epoched
+		
+		# original
+		events = [event_1[:,:], event_2[:,:], event_3[:,:],]
+		linear_model = GLM.GeneralLinearModel(input_object=pupil_epoched, event_object=events, sample_dur=1.0/1000, new_sample_dur=1.0/new_sample_rate)
+		linear_model.configure(IRF='pupil', IRF_params={'dur':3, 's':1.0/(10**26), 'n':10.1, 'tmax':0.93}, regressor_types=['stick', 'stick', 'box',], IRF_dt=True, subsample=True)
 		linear_model.execute()
+		betas_0 = np.sqrt((linear_model.betas[::2]**2) + (linear_model.betas[1::2]**2))
+		slope, intercept, r_value, p_value, std_err = sp.stats.linregress(linear_model.predicted, linear_model.working_data_array)
+		print 'R = {}'.format(r_value)
+		
+		# plot cue locked:
+		x = np.linspace(-0.5,4.5,100)
+		pupil_mean = np.mean(np.vstack([linear_model.working_data_array[floor(i):floor(i)+100] for i in ((cue_times_epoched[1:-1]*1000/downsample_rate)-10)]), axis=0)
+		predicted_mean = np.mean(np.vstack([linear_model.predicted[floor(i):floor(i)+100] for i in ((cue_times_epoched[1:-1]*1000/downsample_rate)-10)]), axis=0)
+		fig = plt.figure()
+		plt.plot(x,pupil_mean, color='k', alpha=0.5, ls='--', label='measured, normal')
+		plt.plot(x,predicted_mean, color='k', ls='--', label='predicted, normal')
+		plt.legend()
+		plt.xlim(-0.5,4.5)
+		plt.title('R = {}'.format(r_value))
+		plt.xlabel('time (s)')
+		fig.savefig(os.path.join(self.base_directory, 'figs', 'GLM_0.pdf'))
+		
+		# shell()
+		
+		# plot response locked:
+		x = np.linspace(-3,2,100)
+		pupil_mean = np.mean(np.vstack([linear_model.working_data_array[floor(i):floor(i)+100] for i in ((choice_times_epoched[1:-1]*1000/downsample_rate)-60)]), axis=0)
+		predicted_mean = np.mean(np.vstack([linear_model.predicted[floor(i):floor(i)+100] for i in ((choice_times_epoched[1:-1]*1000/downsample_rate)-60)]), axis=0)
+		fig = plt.figure()
+		plt.plot(x,pupil_mean, color='k', alpha=0.5, ls='--', label='measured, normal')
+		plt.plot(x,predicted_mean, color='k', ls='--', label='predicted, normal')
+		plt.legend()
+		plt.xlim(-3,2)
+		plt.title('R = {}'.format(r_value))
+		plt.xlabel('time (s)')
+		fig.savefig(os.path.join(self.base_directory, 'figs', 'GLM_1.pdf'))
+		
+		# save:
+		np.save(os.path.join(self.project_directory, 'across_data', 'GLM_betas_0_{}.npy'.format(self.subject.initials)), betas_0)
 		
 		
 class pupilAnalysesAcross(object):
@@ -1326,37 +1451,49 @@ class pupilAnalysesAcross(object):
 		self.error = -np.array(self.parameters_joined['correct'], dtype=bool)
 		
 		self.bpd = np.array(self.parameters_joined['bpd_lp'])
-		self.ppr = np.array(self.parameters_joined['ppr_proj_lp'])
+		# self.ppr = np.array(self.parameters_joined['ppr_proj_lp'])
+		self.ppr = np.array(self.parameters_joined['ppr_mean_lp'])
+		# self.ppr = np.array(self.parameters_joined['ppr_proj_bp'])
 		
 		self.subj_idx = np.concatenate(np.array([np.repeat(i, sum(self.parameters_joined['subject'] == self.subjects[i])) for i in range(len(self.subjects))]))
 		
 		self.criterion = np.array([np.array(self.parameters_joined[self.parameters_joined['subject']==subj]['criterion'])[0] for subj in self.subjects])
 		
-		self.pupil_l_ind = np.concatenate([self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx] <= np.percentile(self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx], 33) for subj_idx in self.subjects])
-		self.pupil_h_ind = np.concatenate([self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx] >= np.percentile(self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx], 66) for subj_idx in self.subjects])
+		
+		# pupil = 'ppr_mean_bp'
+		pupil = 'ppr_mean_lp'
+		# pupil = 'bpd_lp'
+		self.pupil_l_ind = []
+		self.pupil_h_ind = []
+		for subj_idx in self.subjects:
+			for r in np.unique(self.parameters_joined['run_nr'][self.parameters_joined.subject == subj_idx]):
+				self.pupil_l_ind.append( self.parameters_joined[pupil][(self.parameters_joined.subject == subj_idx) & (self.parameters_joined.run_nr == r)] <= np.percentile(self.parameters_joined[pupil][(self.parameters_joined.subject == subj_idx) & (self.parameters_joined.run_nr == r)], 40) )
+				self.pupil_h_ind.append( self.parameters_joined[pupil][(self.parameters_joined.subject == subj_idx) & (self.parameters_joined.run_nr == r)] >= np.percentile(self.parameters_joined[pupil][(self.parameters_joined.subject == subj_idx) & (self.parameters_joined.run_nr == r)], 60) )
+		self.pupil_l_ind = np.concatenate(self.pupil_l_ind)
+		self.pupil_h_ind = np.concatenate(self.pupil_h_ind)
 		self.pupil_rest_ind = -(self.pupil_h_ind + self.pupil_l_ind)
-		
-	
-	def behavior(self):
-		
-		sns.set_style("ticks")
 		
 		# initialize behavior operator:
 		d = {
 		'subj_idx' : pd.Series(self.subj_idx),
 		'correct' : pd.Series(np.array(self.parameters_joined['correct'], dtype=int)),
 		'choice' : pd.Series(np.array(self.parameters_joined['yes'], dtype=int)),
-		'stimulus' : pd.Series(np.array(self.parameters_joined['present'], dtype=int)),
-		'rt' : pd.Series(np.array(self.parameters_joined['rt'])) / 1000.0,
+		'stimulus' : pd.Series(np.array(self.parameters_joined['signal_present'], dtype=int)),
+		'rt' : pd.Series(np.array(self.rt)) / 1000.0,
 		'pupil' : pd.Series(np.array(self.ppr)),
 		'pupil_b' : pd.Series(np.array(self.bpd)),
-		'pupil_high' : pd.Series(self.pupil_h_ind)
+		'pupil_high' : pd.Series(self.pupil_h_ind),
 		}
-		df = pd.DataFrame(d)[-self.pupil_rest_ind]
-		behavior = myfuncs.behavior(df)
+		self.df = pd.DataFrame(d)
+		self.df = self.df[self.df.correct != -1]
+		self.behavior = myfuncs.behavior(self.df)
+		
+		
+		
+	def behavior_choice(self):
 		
 		# SDT fractions:
-		yes_f, no_f, cr_f, miss_f, hit_f, fa_f = behavior.choice_fractions()
+		correct_f, error_f, yes_f, no_f, cr_f, miss_f, hit_f, fa_f = self.behavior.choice_fractions()
 		MEANS_correct = (np.mean(hit_f), np.mean(cr_f))
 		SEMS_correct = (sp.stats.sem(hit_f), sp.stats.sem(cr_f))
 		MEANS_error = (np.mean(miss_f), np.mean(fa_f))
@@ -1378,16 +1515,71 @@ class pupilAnalysesAcross(object):
 		plt.gca().spines["left"].set_linewidth(.5)
 		sns.despine(offset=10, trim=True)
 		plt.tight_layout()
-		fig.savefig(os.path.join(self.project_directory, 'figures', 'SDT_fractions.pdf'))
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_SDT_fractions.pdf'))
+		
+		# d-prime and criterion:
+		# ----------------------
+		
+		rt, acc, d, c = self.behavior.behavior_measures()
+		MEANS = (d.mean(), c.mean())
+		SEMS = (sp.stats.sem(d), sp.stats.sem(c))
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS[i], width = bar_width, yerr = SEMS[i], color = 'k', alpha = [1,0.5][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_title('N={}'.format(self.nr_subjects), size=8)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ("d'", 'c') )
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_SDT_measures.pdf'))
+		
+		# measures:
+		
+		measures_0 = self.behavior.behavior_measures(split_by='pupil_high', split_target=0)
+		measures_1 = self.behavior.behavior_measures(split_by='pupil_high', split_target=1)
+		titles = ['rt', 'acc', 'd', 'c']
+		ylim_max = [2,1,2,0.3]
+		ylim_min = [0,0,0,0.0]
+		
+		for m in range(len(measures_0)):
+		
+			MEANS = (measures_0[m].mean(), measures_1[m].mean())
+			SEMS = (sp.stats.sem(measures_0[m]), sp.stats.sem(measures_1[m]))
+			N = 2
+			ind = np.linspace(0,N/2,N)
+			bar_width = 0.50
+			fig = plt.figure(figsize=(1.5,2.5))
+			ax = fig.add_subplot(111)
+			for i in range(N):
+				ax.bar(ind[i], height=MEANS[i], width = bar_width, yerr = SEMS[i], color = ['b', 'r'][i], alpha = 1, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+			ax.set_ylim( ylim_min[m],ylim_max[m] )
+			ax.set_title('N={}'.format(self.nr_subjects), size=7)
+			ax.set_ylabel(titles[m], size=7)
+			ax.set_xticks( (ind) )
+			ax.set_xticklabels( ('placebo', 'drug') )
+			plt.text(x=np.mean((ind[0], ind[1])), y=ax.axis()[3] - ((ax.axis()[3]-ax.axis()[2]) / 10.0), s='p = {}'.format(round(sp.stats.ttest_rel(measures_0[m], measures_1[m])[1],3)), horizontalalignment='center')
+			sns.despine(offset=10, trim=True)
+			plt.tight_layout()
+			fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_SDT_measures_{}.pdf'.format(titles[m])))
+			
+	def behavior_rt_kde(self):
 		
 		# RT histograms:
 		# --------------
-		
-		x_grid = [0.5, 3.5, 100]
-		c0_pdf, c1_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf = behavior.rt_kernel_densities(x_grid=x_grid, bandwidth=0.07)
-		
+
+		x_grid = [0, 3, 100]
+		c0_pdf, c1_pdf, c_correct_pdf, c_error_pdf, c0_correct_pdf, c0_error_pdf, c1_correct_pdf, c1_error_pdf = self.behavior.rt_kernel_densities(x_grid=x_grid, bandwidth=0.1)
+
 		yes = np.vstack(c0_pdf)
 		no = np.vstack(c1_pdf)
+		correct = np.vstack(c_correct_pdf)
+		error = np.vstack(c_error_pdf)
 		cr = np.vstack(c0_correct_pdf)
 		miss = np.vstack(c0_error_pdf)
 		hit = np.vstack(c1_correct_pdf)
@@ -1396,24 +1588,251 @@ class pupilAnalysesAcross(object):
 		step = pd.Series(np.linspace(x_grid[0], x_grid[1], x_grid[2]), name='rt (s)')
 		
 		# Make the plt.plot
-		fig = plt.figure(figsize=(4, 5))
+		fig = plt.figure(figsize=(2, 3))
 		ax = plt.subplot(211)
 		conditions = pd.Series(['hits'], name='trial type')
 		sns.tsplot(hit, time=step, condition=conditions, value='kde', color='red', ci=66, lw=1, ls='-', ax=ax)
 		conditions = pd.Series(['miss'], name='trial type')
 		sns.tsplot(miss, time=step, condition=conditions, value='kde', color='blue', alpha=0.5, ci=66, lw=1, ls='-', ax=ax)
-		# ax.axvline(np.mean([np.median(df.rt[(df.choice==0) & (df.correct==1) & (df.subj_idx==i])) for i in range(self.nr_subjects)]), color='r', linestyle='--')
-		# ax.axvline(np.mean([np.median(df.rt[(df.choice==0) & (df.correct==1) & (df.subj_idx==i])) for i in range(self.nr_subjects)]), color='b', linestyle='--')
+		ax.axvline(np.mean([np.median(self.df.rt[(self.df.choice==1) & (self.df.stimulus==1) & (self.df.subj_idx==i)]) for i in range(self.nr_subjects)]), color='r', linestyle='--', lw=1)
+		ax.axvline(np.mean([np.median(self.df.rt[(self.df.choice==0) & (self.df.stimulus==1) & (self.df.subj_idx==i)]) for i in range(self.nr_subjects)]), color='b', linestyle='--', lw=1)
 		ax = plt.subplot(212)
 		conditions = pd.Series(['cr'], name='trial type')
 		sns.tsplot(cr, time=step, condition=conditions, value='kde', color='blue', ci=66, lw=1, ls='-', ax=ax)
 		conditions = pd.Series(['fa'], name='trial type')
 		sns.tsplot(fa, time=step, condition=conditions, value='kde', color='red', alpha=0.5, ci=66, lw=1, ls='-', ax=ax)
-		# ax.axvline(np.mean([np.median(df.rt[(df.choice==0) & (df.correct==1) & (df.subj_idx==i])) for i in range(self.nr_subjects)]), color='b', linestyle='--')
-		# ax.axvline(np.mean([np.median(df.rt[(df.choice==0) & (df.correct==1) & (df.subj_idx==i])) for i in range(self.nr_subjects)]), color='r', linestyle='--')
+		ax.axvline(np.mean([np.median(self.df.rt[(self.df.choice==1) & (self.df.stimulus==0) & (self.df.subj_idx==i)]) for i in range(self.nr_subjects)]), color='r', linestyle='--', lw=1)
+		ax.axvline(np.mean([np.median(self.df.rt[(self.df.choice==0) & (self.df.stimulus==0) & (self.df.subj_idx==i)]) for i in range(self.nr_subjects)]), color='b', linestyle='--', lw=1)
 		sns.despine(offset=10, trim=True)
 		plt.tight_layout()
-		fig.savefig(os.path.join(self.project_directory, 'figures', 'rt_hists.pdf'))
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_rt_hists.pdf'))
+		
+
+		
+	def behavior_normalized(self):
+		
+		# initialize behavior operator:
+		d = {
+		'subj_idx' : pd.Series(self.subj_idx),
+		'correct' : pd.Series(np.array(self.parameters_joined['correct'], dtype=int)),
+		'choice' : pd.Series(np.array(self.parameters_joined['yes'], dtype=int)),
+		'stimulus' : pd.Series(np.array(self.parameters_joined['present'], dtype=int)),
+		'rt' : pd.Series(np.array(self.parameters_joined['rt'])) / 1000.0,
+		'pupil' : pd.Series(np.array(self.ppr)),
+		'pupil_b' : pd.Series(np.array(self.bpd)),
+		'pupil_high' : pd.Series(self.pupil_h_ind)
+		}
+		df = pd.DataFrame(d)[-self.pupil_rest_ind]
+		df = df[df.correct != -1]
+		
+		split_ind = np.array(eval('df.' + 'pupil_high') == 1, dtype=bool)
+		
+		perms = 50
+		yes_fraction_high = np.zeros((perms, self.nr_subjects))
+		yes_fraction_low = np.zeros((perms, self.nr_subjects))
+		correct_fraction_high = np.zeros((perms, self.nr_subjects))
+		correct_fraction_low = np.zeros((perms, self.nr_subjects))
+		rt_high = np.zeros((perms, self.nr_subjects))
+		rt_low = np.zeros((perms, self.nr_subjects))
+		c_high = np.zeros((perms, self.nr_subjects))
+		c_low = np.zeros((perms, self.nr_subjects))
+		d_high = np.zeros((perms, self.nr_subjects))
+		d_low = np.zeros((perms, self.nr_subjects))
+		for r in xrange(perms):
+			# print '{} out of {}'.format(r, perms)
+			
+			# compute random indices equalizing signal present trials:
+			signal_presence_ind = []
+			imbalances_present = []
+			imbalances_absent = []
+			for s in xrange(self.nr_subjects):
+				del_ind = np.ones(sum(df.subj_idx==s), dtype=bool)
+				subj_ind = np.array(df.subj_idx==s)
+				stim_ind = np.array(df.stimulus == 1)
+				present_h = sum(stim_ind * subj_ind * split_ind)
+				present_l = sum(stim_ind * subj_ind * -split_ind)
+				absent_h = sum(-stim_ind * subj_ind * split_ind)
+				absent_l = sum(-stim_ind * subj_ind * -split_ind)
+				lowest = min(present_h, present_l, absent_h, absent_l)
+	
+				if present_h > lowest:
+					del_trials = np.random.choice( np.where((split_ind*stim_ind)[subj_ind])[0], present_h-lowest, replace=False)
+					del_ind[del_trials] = False
+				if present_l > lowest:
+					del_trials = np.random.choice( np.where((-split_ind*stim_ind)[subj_ind])[0], present_l-lowest, replace=False)
+					del_ind[del_trials] = False
+				if absent_h > lowest:
+					del_trials = np.random.choice( np.where((split_ind*-stim_ind)[subj_ind])[0], absent_h-lowest, replace=False)
+					del_ind[del_trials] = False
+				if absent_l > lowest:
+					del_trials = np.random.choice( np.where((-split_ind*-stim_ind)[subj_ind])[0], absent_l-lowest, replace=False)
+					del_ind[del_trials] = False
+				signal_presence_ind.append(del_ind)
+			signal_presence_ind = np.array(np.concatenate(signal_presence_ind), dtype=bool)
+			
+			# update data:
+			data = df[signal_presence_ind]
+			split_ind2 = np.array(eval('data.' + 'pupil_high') == 1, dtype=bool)
+			
+			# # check number of trials:
+			# for s in xrange(self.nr_subjects):
+			# 	print
+			# 	print sum(np.array(data[(data.subj_idx==s)&split_ind2].stimulus, dtype=bool))
+			# 	print sum(np.array(data[(data.subj_idx==s)&-split_ind2].stimulus, dtype=bool))
+			# 	print sum(-np.array(data[(data.subj_idx==s)&split_ind2].stimulus, dtype=bool))
+			# 	print sum(-np.array(data[(data.subj_idx==s)&-split_ind2].stimulus, dtype=bool))
+			# 	print sum(np.array(data[(data.subj_idx==s)&split_ind2].stimulus, dtype=bool)) + sum(np.array(data[(data.subj_idx==s)&-split_ind2].stimulus, dtype=bool)) + sum(-np.array(data[(data.subj_idx==s)&split_ind2].stimulus, dtype=bool)) + sum(-np.array(data[(data.subj_idx==s)&-split_ind2].stimulus, dtype=bool))
+			
+			# compute fractions:
+			yes_fraction_high[r,:] = np.array([sum((data.choice==1) & (data.subj_idx==i) & split_ind2) / float(sum((data.subj_idx==i) & split_ind2)) for i in range(self.nr_subjects)])
+			yes_fraction_low[r,:] = np.array([sum((data.choice==1) & (data.subj_idx==i) & -split_ind2) / float(sum((data.subj_idx==i) & -split_ind2)) for i in range(self.nr_subjects)])
+			
+			correct_fraction_high[r,:] = np.array([sum((data.correct==1) & (data.subj_idx==i) & split_ind2) / float(sum((data.subj_idx==i) & split_ind2)) for i in range(self.nr_subjects)])
+			correct_fraction_low[r,:] = np.array([sum((data.correct==1) & (data.subj_idx==i) & -split_ind2) / float(sum((data.subj_idx==i) & -split_ind2)) for i in range(self.nr_subjects)])
+			
+			rt_high[r,:] = np.array([np.mean(data.rt[(data.subj_idx==i) & split_ind2]) for i in range(self.nr_subjects)])
+			rt_low[r,:] = np.array([np.mean(data.rt[(data.subj_idx==i) & -split_ind2]) for i in range(self.nr_subjects)])
+			
+			# compute SDT measures:
+			behavior = myfuncs.behavior(data)
+			rt,acc,d,c = behavior.behavior_measures(split_by='pupil_high', split_target=1)
+			d_high[r,:] = d
+			c_high[r,:] = c
+			rt,acc,d,c = behavior.behavior_measures(split_by='pupil_high', split_target=0)
+			d_low[r,:] = d
+			c_low[r,:] = c
+		
+		# SDT fractions:
+		# --------------
+		
+		yes_high = rt_high.mean(axis=0)
+		yes_low = rt_low.mean(axis=0)
+		p = sp.stats.wilcoxon(yes_high, yes_low)[1]
+		MEANS_yes = (yes_high.mean(), yes_low.mean())
+		SEMS_yes = (sp.stats.sem(yes_high), sp.stats.sem(yes_low))
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS_yes[i], width = bar_width, yerr = SEMS_yes[i], color = ['r', 'b'][i], alpha = 0.8, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		# for i in range(N):
+		# 	ax.bar(ind[i], height=MEANS_error[i], bottom = MEANS_correct[i], width = bar_width, color = ['b', 'r'][i], alpha = 0.5, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_ylabel('mean rt (s)', size = 10)
+		ax.set_title('p={}'.format(round(p,3)), size=8)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('high\npupil', 'low\npupil') )
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_control_rt.pdf'))
+		
+		yes_high = yes_fraction_high.mean(axis=0)
+		yes_low = yes_fraction_low.mean(axis=0)
+		p = sp.stats.wilcoxon(yes_high, yes_low)[1]
+		MEANS_yes = (yes_high.mean(), yes_low.mean())
+		SEMS_yes = (sp.stats.sem(yes_high), sp.stats.sem(yes_low))
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS_yes[i], width = bar_width, yerr = SEMS_yes[i], color = ['r', 'b'][i], alpha = 0.8, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		# for i in range(N):
+		# 	ax.bar(ind[i], height=MEANS_error[i], bottom = MEANS_correct[i], width = bar_width, color = ['b', 'r'][i], alpha = 0.5, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_ylabel('fraction of yes trials', size = 10)
+		ax.set_title('p={}'.format(round(p,3)), size=8)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('high\npupil', 'low\npupil') )
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_control_yes.pdf'))
+		
+		yes_high = correct_fraction_high.mean(axis=0)
+		yes_low = correct_fraction_low.mean(axis=0)
+		p = sp.stats.wilcoxon(yes_high, yes_low)[1]
+		MEANS_yes = (yes_high.mean(), yes_low.mean())
+		SEMS_yes = (sp.stats.sem(yes_high), sp.stats.sem(yes_low))
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS_yes[i], width = bar_width, yerr = SEMS_yes[i], color = ['r', 'b'][i], alpha = 0.8, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		# for i in range(N):
+		# 	ax.bar(ind[i], height=MEANS_error[i], bottom = MEANS_correct[i], width = bar_width, color = ['b', 'r'][i], alpha = 0.5, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_ylabel('fraction of correct trials', size = 10)
+		ax.set_title('p={}'.format(round(p,3)), size=8)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('high\npupil', 'low\npupil') )
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_control_correct.pdf'))
+			
+		
+		# d-prime and criterion:
+		# ----------------------
+		d_h = np.ma.masked_invalid(d_high).mean(axis=0)
+		d_l = np.ma.masked_invalid(d_low).mean(axis=0)
+		c_h = np.ma.masked_invalid(c_high).mean(axis=0)
+		c_l = np.ma.masked_invalid(c_low).mean(axis=0)
+		d_means = np.vstack((d_h, d_l)).mean(axis=0)
+		c_means = np.vstack((c_h, c_l)).mean(axis=0)
+		
+		MEANS = (d_h.mean(), d_l.mean())
+		SEMS = (sp.stats.sem(d_h-d_means), sp.stats.sem(d_l-d_means))
+		p = sp.stats.wilcoxon(d_h, d_l)[1]
+		# p = myfuncs.permutationTest(d_h, d_l, normalize=True)[1]
+		
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r', 'b'][i], alpha = 1, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_title('p={}'.format(round(p,3)), size=8)
+		ax.set_ylabel("d'", size = 10)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('high\npupil', 'low\npupil') )
+		ax.set_ylim(ymax=1.6)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_control_SDT_measures_d.pdf'))
+		
+		MEANS = (c_h.mean(), c_l.mean())
+		SEMS = (sp.stats.sem(c_h-c_means), sp.stats.sem(c_l-c_means))
+		p = sp.stats.wilcoxon(c_h, c_l)[1]
+		# p = myfuncs.permutationTest(c_h, c_l, normalize=True)[1]
+		
+		N = 2
+		ind = np.linspace(0,N/2,N)
+		bar_width = 0.50
+		fig = plt.figure(figsize=(2,3))
+		ax = fig.add_subplot(111)
+		for i in range(N):
+			ax.bar(ind[i], height=MEANS[i], width = bar_width, yerr = SEMS[i], color = ['r', 'b'][i], alpha = 1, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+		ax.set_title('p={}'.format(round(p,3)), size=8)
+		ax.set_ylabel('criterion', size = 10)
+		ax.set_xticks( (ind) )
+		ax.set_xticklabels( ('high\npupil', 'low\npupil') )
+		ax.set_ylim(ymax=0.3)
+		plt.gca().spines["bottom"].set_linewidth(.5)
+		plt.gca().spines["left"].set_linewidth(.5)
+		sns.despine(offset=10, trim=True)
+		plt.tight_layout()
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_control_SDT_measures_c.pdf'))
+		
 
 		
 	def behavior_two_conditions(self):
@@ -1421,7 +1840,9 @@ class pupilAnalysesAcross(object):
 		sns.set(style="ticks")
 		
 		for j in range(2):
-				
+			
+			shell()
+			
 			if j == 0:
 				ind = self.pupil_l_ind
 			if j == 1:
@@ -1517,9 +1938,6 @@ class pupilAnalysesAcross(object):
 			plt.tight_layout()
 			fig.savefig(os.path.join(self.project_directory, 'figures', 'behavior_rt_hists_{}.pdf'.format(j)))
 			
-			
-			
-
 		# SDT fractions:
 		# --------------
 		hit_fraction = np.zeros(len(self.subjects))
@@ -1657,7 +2075,10 @@ class pupilAnalysesAcross(object):
 		bpd_error = [np.mean(self.bpd[self.subj_idx == i][(self.miss+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)]
 		
 		my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
-
+		
+		
+		# shell()
+		
 		N = 4
 		ind = np.linspace(0,2,N)  # the x locations for the groups
 		bar_width = 0.6   # the width of the bars
@@ -1666,7 +2087,11 @@ class pupilAnalysesAcross(object):
 		sns.set_style("ticks")
 		
 		# FIGURE 1
-		p_values = np.array([myfuncs.permutationTest(ppr_hit, ppr_miss)[1], myfuncs.permutationTest(ppr_fa, ppr_cr)[1]])
+		# p_values = np.array([myfuncs.permutationTest(ppr_hit, ppr_miss)[1], myfuncs.permutationTest(ppr_fa, ppr_cr)[1]])
+		p_values = np.array([sp.stats.ttest_rel(ppr_hit, ppr_miss)[1], sp.stats.ttest_rel(ppr_fa, ppr_cr)[1]])
+		print
+		print p_values
+		print
 		ppr = [ppr_hit, ppr_miss, ppr_fa, ppr_cr]
 		MEANS = np.array([np.mean(values) for values in ppr])
 		SEMS = np.array([sp.stats.sem(values) for values in ppr])
@@ -1684,13 +2109,17 @@ class pupilAnalysesAcross(object):
 		plt.gca().spines["left"].set_linewidth(.5)
 		plt.title('phasic pupil responses')
 		plt.ylabel('pupil response (a.u.)')
-		plt.text(x=np.mean((ind[0],ind[1])), y=1, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
-		plt.text(x=np.mean((ind[2],ind[3])), y=1, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD1_ppr.pdf'))
 		
 		# FIGURE 2
-		p_values = np.array([myfuncs.permutationTest(ppr_yes, ppr_no)[1], myfuncs.permutationTest(ppr_correct, ppr_error)[1]])
+		# p_values = np.array([myfuncs.permutationTest(ppr_yes, ppr_no)[1], myfuncs.permutationTest(ppr_correct, ppr_error)[1]])
+		p_values = np.array([sp.stats.ttest_rel(ppr_yes, ppr_no)[1], sp.stats.ttest_rel(ppr_correct, ppr_error)[1]])
+		print
+		print p_values
+		print
 		ppr = [ppr_yes, ppr_no, ppr_correct, ppr_error]
 		MEANS = np.array([np.mean(values) for values in ppr])
 		SEMS = np.array([sp.stats.sem(values) for values in ppr])
@@ -1708,13 +2137,14 @@ class pupilAnalysesAcross(object):
 		plt.gca().spines["left"].set_linewidth(.5)
 		plt.title('phasic pupil responses')
 		plt.ylabel('pupil response (a.u.)')
-		plt.text(x=np.mean((ind[0],ind[1])), y=1, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
-		plt.text(x=np.mean((ind[2],ind[3])), y=1, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD2_ppr.pdf'))
 		
 		# FIGURE 3
-		p_values = np.array([myfuncs.permutationTest(bpd_hit, bpd_miss)[1], myfuncs.permutationTest(bpd_fa, bpd_cr)[1]])
+		# p_values = np.array([myfuncs.permutationTest(bpd_hit, bpd_miss)[1], myfuncs.permutationTest(bpd_fa, bpd_cr)[1]])
+		p_values = np.array([sp.stats.ttest_rel(bpd_hit, bpd_miss)[1], sp.stats.ttest_rel(bpd_fa, bpd_cr)[1]])
 		bpd = [bpd_hit, bpd_miss, bpd_fa, bpd_cr]
 		MEANS = np.array([np.mean(values) for values in bpd])
 		SEMS = np.array([sp.stats.sem(values) for values in bpd])
@@ -1732,13 +2162,14 @@ class pupilAnalysesAcross(object):
 		plt.gca().spines["left"].set_linewidth(.5)
 		plt.title('baseline pupil responses')
 		plt.ylabel('pupil response (z)')
-		plt.text(x=np.mean((ind[0],ind[1])), y=0.02, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
-		plt.text(x=np.mean((ind[2],ind[3])), y=0.02, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD1_bpd.pdf'))
 		
 		# FIGURE 4
-		p_values = np.array([myfuncs.permutationTest(bpd_yes, bpd_no)[1], myfuncs.permutationTest(bpd_correct, bpd_error)[1]])
+		# p_values = np.array([myfuncs.permutationTest(bpd_yes, bpd_no)[1], myfuncs.permutationTest(bpd_correct, bpd_error)[1]])
+		p_values = np.array([sp.stats.ttest_rel(bpd_yes, bpd_no)[1], sp.stats.ttest_rel(bpd_correct, bpd_error)[1]])
 		bpd = [bpd_yes, bpd_no, bpd_correct, bpd_error]
 		MEANS = np.array([np.mean(values) for values in bpd])
 		SEMS = np.array([sp.stats.sem(values) for values in bpd])
@@ -1756,8 +2187,8 @@ class pupilAnalysesAcross(object):
 		plt.gca().spines["left"].set_linewidth(.5)
 		plt.title('baseline pupil responses')
 		plt.ylabel('pupil response (a.u.)')
-		plt.text(x=np.mean((ind[0],ind[1])), y=0.02, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
-		plt.text(x=np.mean((ind[2],ind[3])), y=0.02, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[0],ind[1])), y=0, s='p = {}'.format(round(p_values[0],3)), horizontalalignment='center')
+		plt.text(x=np.mean((ind[2],ind[3])), y=0, s='p = {}'.format(round(p_values[1],3)), horizontalalignment='center')
 		plt.tight_layout()
 		fig.savefig(os.path.join(self.project_directory, 'figures', 'STD2_bpd.pdf'))
 	
@@ -1766,12 +2197,17 @@ class pupilAnalysesAcross(object):
 		
 		# shell()
 		
-		ppr_yes = np.array([np.mean(self.ppr[self.subj_idx == i][(self.hit+self.fa)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
-		ppr_no = np.array([np.mean(self.ppr[self.subj_idx == i][(self.miss+self.cr)[[self.subj_idx == i]]]) for i in range(self.nr_subjects)])
+		fig = plt.figure(figsize=(2,2))
+		ax = fig.add_subplot(111)
+		myfuncs.quantile_plot(conditions=np.ones(len(self.rt)), rt=self.rt, corrects=self.correct, subj_idx=self.subj_idx, ax=ax)
 		
-		sns.set_style("darkgrid")
 		
-		fig = myfuncs.correlation_plot(self.criterion, ppr_yes-ppr_no)
+		ppr_yes = np.array([np.mean(self.ppr[(self.subj_idx == i) & self.yes]) for i in range(self.nr_subjects)])
+		ppr_no = np.array([np.mean(self.ppr[(self.subj_idx == i) & self.no]) for i in range(self.nr_subjects)])
+		
+		fig = plt.figure(figsize=(2,2))
+		ax = fig.add_subplot(111)
+		myfuncs.correlation_plot(self.criterion, ppr_yes-ppr_no, ax=ax, line=True)
 		plt.xlabel('criterion')
 		plt.ylabel('choice effect (yes-no)')
 		plt.tight_layout()
@@ -2034,35 +2470,41 @@ class pupilAnalysesAcross(object):
 		
 		# data:
 		d = {
-		'subj_idx' : pd.Series(self.subj_idx)+18,
+		'subj_idx' : pd.Series(self.subj_idx) + 18,
 		'response' : pd.Series(np.array(self.parameters_joined['correct'], dtype=int)),
 		'rt' : pd.Series(np.array(self.parameters_joined['rt']))/1000.0,
 		'pupil' : pd.Series(np.array(self.ppr)),
 		'pupil_b' : pd.Series(np.array(self.bpd)),
+		# 'split' : pd.Series(np.array(self.pupil_h_ind, dtype=int)),
 		}
 		data_accuracy = pd.DataFrame(d)
+		# data_accuracy = data_accuracy[-self.pupil_rest_ind]
 		data_accuracy.to_csv(os.path.join(self.project_directory, 'data_accuracy.csv'))
 		
 		d = {
-		'subj_idx' : pd.Series(self.subj_idx)+18,
+		'subj_idx' : pd.Series(self.subj_idx) + 18,
 		'stimulus' : pd.Series(np.array(self.parameters_joined['present'], dtype=int)),
 		'response' : pd.Series(np.array(self.parameters_joined['yes'], dtype=int)),
 		'rt' : pd.Series(np.array(self.parameters_joined['rt']))/1000.0,
 		'pupil' : pd.Series(np.array(self.ppr)),
 		'pupil_b' : pd.Series(np.array(self.bpd)),
+		# 'split' : pd.Series(np.array(self.pupil_h_ind, dtype=int)),
 		}
 		data_response = pd.DataFrame(d)
+		# data_response = data_response[-self.pupil_rest_ind]
 		data_response.to_csv(os.path.join(self.project_directory, 'data_response.csv'))
 		
 	
 	def grand_average_pupil_response(self,):
 		
 		# shell()
+		# subjects = ['AV', 'BL', 'DE', 'DL', 'EP', 'JG', 'JS', 'LH', 'LP', 'MG', 'NS', 'OC', 'TK', 'TN']
+		nr_runs = [12,12,12,16,10,12,11,10,12,12,12,12,11,12]
 		
-		nr_runs = [12,12,16,11,13,11,12,12,12]
-		
+		kernel_cue_all = []
 		kernel_cue_low = []
 		kernel_cue_high = []
+		kernel_choice_all = []
 		kernel_choice_low = []
 		kernel_choice_high = []
 		
@@ -2088,16 +2530,15 @@ class pupilAnalysesAcross(object):
 			blink_times = []
 			time_to_add = 0
 			for alias in aliases:
+				
 				parameters.append(self.ho.read_session_data(alias, 'parameters2'))
-
 				self.alias = alias
 				self.trial_times = self.ho.read_session_data(alias, 'trials')
-
+				
 				# load pupil:
 				self.eye = self.ho.eye_during_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
 				self.pupil_data = self.ho.data_from_time_period((np.array(self.trial_times['trial_start_EL_timestamp'])[0], np.array(self.trial_times['trial_end_EL_timestamp'])[-1]), self.alias)
-				self.pupil_bp = np.array(self.pupil_data[(self.eye + '_pupil_bp')])
-				pupil.append(self.pupil_bp / np.std(self.pupil_bp))
+				pupil.append(np.array(self.pupil_data[(self.eye + '_pupil_lp_psc')]))
 				
 				# load times:
 				self.session_start = self.trial_times['trial_start_EL_timestamp'][0]
@@ -2109,13 +2550,13 @@ class pupilAnalysesAcross(object):
 				# load blinks:
 				self.blink_data = self.ho.read_session_data(alias, 'blinks_from_message_file')
 				blink_times.append( np.array(self.blink_data['end_timestamp']) - self.session_start + time_to_add )
-
+				
 				time_to_add += self.time[-1]
-
-			# join over runs:
-			ppr = np.array(parameters_joined2[i]['ppr_mean_lp'])
-			pupil_l_ind = (ppr <= np.percentile(ppr, 33))
-			pupil_h_ind = (ppr >= np.percentile(ppr, 66))
+			
+			# shell()
+			
+			pupil_h_ind = self.pupil_h_ind[self.subj_idx == i]
+			pupil_l_ind = self.pupil_l_ind[self.subj_idx == i]
 			
 			parameters_joined = pd.concat(parameters)
 			pupil = np.concatenate(pupil)
@@ -2131,9 +2572,6 @@ class pupilAnalysesAcross(object):
 			miss = np.array(parameters_joined.miss, dtype=bool)*-omissions
 			cr = np.array(parameters_joined.cr, dtype=bool)*-omissions
 			
-			
-			
-			
 			# event related averages:
 			interval = 10
 
@@ -2141,31 +2579,29 @@ class pupilAnalysesAcross(object):
 			# ---------------
 
 			# output:
-			kernel_cue_high.append(np.mean(np.vstack([pupil[floor(i):floor(i)+10000] for i in (cue_times[pupil_h_ind]-1)*1000]), axis=0))
-			kernel_cue_low.append(np.mean(np.vstack([pupil[floor(i):floor(i)+10000] for i in (cue_times[pupil_l_ind]-1)*1000]), axis=0))
-			# kernel_cue_error_A = np.mean(np.vstack([pupil[floor(i):floor(i)+5000] for i in (cue_times[error*drug]-0.5)*1000]), axis=0)
-			# kernel_cue_error_B = np.mean(np.vstack([pupil[floor(i):floor(i)+5000] for i in (cue_times[error*-drug]-0.5)*1000]), axis=0)
+			kernel_cue_all.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (cue_times[-omissions]-1)*1000]), axis=0))
+			kernel_cue_high.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (cue_times[-omissions][pupil_h_ind]-1)*1000]), axis=0))
+			kernel_cue_low.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (cue_times[-omissions][pupil_l_ind]-1)*1000]), axis=0))
+			# kernel_cue_error_A = np.mean(np.vstack([pupil[floor(t):floor(t)+5000] for t in (cue_times[error*drug]-0.5)*1000]), axis=0)
+			# kernel_cue_error_B = np.mean(np.vstack([pupil[floor(t):floor(t)+5000] for t in (cue_times[error*-drug]-0.5)*1000]), axis=0)
 
 			# choice locked:
 			# -------------
 
 			# output:
-			kernel_choice_high.append(np.mean(np.vstack([pupil[floor(i):floor(i)+10000] for i in (choice_times[pupil_h_ind]-4)*1000]), axis=0))
-			kernel_choice_low.append(np.mean(np.vstack([pupil[floor(i):floor(i)+10000] for i in (choice_times[pupil_l_ind]-4)*1000]), axis=0))
-			# kernel_choice_error_A = np.mean(np.vstack([pupil[floor(i):floor(i)+5000] for i in (choice_times[error*drug]-2)*1000]), axis=0)
-			# kernel_choice_error_B = np.mean(np.vstack([pupil[floor(i):floor(i)+5000] for i in (choice_times[error*-drug]-2)*1000]), axis=0)
-		
-		
-		pupil_l_ind = np.concatenate([self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx] <= np.percentile(self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx], 33) for subj_idx in self.subjects])
-		pupil_h_ind = np.concatenate([self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx] >= np.percentile(self.parameters_joined.ppr_mean_lp[self.parameters_joined.subject == subj_idx], 66) for subj_idx in self.subjects])
+			kernel_choice_all.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (choice_times[-omissions]-4)*1000]), axis=0))
+			kernel_choice_high.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (choice_times[-omissions][pupil_h_ind]-4)*1000]), axis=0))
+			kernel_choice_low.append(np.mean(np.vstack([pupil[floor(t):floor(t)+10000] for t in (choice_times[-omissions][pupil_l_ind]-4)*1000]), axis=0))
+			# kernel_choice_error_A = np.mean(np.vstack([pupil[floor(t):floor(t)+5000] for t in (choice_times[error*drug]-2)*1000]), axis=0)
+			# kernel_choice_error_B = np.mean(np.vstack([pupil[floor(t):floor(t)+5000] for t in (choice_times[error*-drug]-2)*1000]), axis=0)
 		
 		sns.set_context("paper", font_scale=0.5)
 		sns.set(style="ticks")
 		
-		fig = plt.figure(figsize=(4,4))
+		fig = plt.figure(figsize=(4,6))
 		ax1 = plt.subplot2grid((2,5), (0, 0), colspan=3)
-		ax3 = plt.subplot2grid((2,5), (1, 0), colspan=3)
 		ax2 = plt.subplot2grid((2,5), (0, 3), colspan=2)
+		ax3 = plt.subplot2grid((2,5), (1, 0), colspan=3)
 		ax4 = plt.subplot2grid((2,5), (1, 3), colspan=2)
 		axes = [ax1, ax2, ax3, ax4]
 		ax_nr = 0
@@ -2173,10 +2609,12 @@ class pupilAnalysesAcross(object):
 		for time_locked in ['stim_locked', 'resp_locked']:
 			
 			if time_locked == 'stim_locked':
+				kernels_pupil_a = np.vstack(kernel_cue_all)
 				kernels_pupil_l = np.vstack(kernel_cue_low)
 				kernels_pupil_h = np.vstack(kernel_cue_high)
 				xlim = [-1,9]
 			if time_locked == 'resp_locked':
+				kernels_pupil_a = np.vstack(kernel_choice_all)
 				kernels_pupil_l = np.vstack(kernel_choice_low)
 				kernels_pupil_h = np.vstack(kernel_choice_high)
 				xlim = [-4,6]
@@ -2207,9 +2645,10 @@ class pupilAnalysesAcross(object):
 				lin_projections_b.append([np.mean(kernel1[time_of_interest_b_ind]), np.mean(kernel2[time_of_interest_b_ind])])
 			lin_projections_b = np.array(lin_projections_b)
 			means = np.vstack((lin_projections_b[:,0], lin_projections_b[:,1])).mean(axis=0)
-			p_bars_b = myfuncs.permutationTest(lin_projections_b[:,0]-means, lin_projections_b[:,1]-means)[1]
+			p_bars_b = stats.ttest_rel(lin_projections_b[:,0], lin_projections_b[:,1])[1]
 		
-			# baseline the kernels:
+			# # baseline the kernels:
+			kernels_pupil_a = np.array(kernels_pupil_a[:,:] - np.mat(kernels_pupil_a[:,time_of_interest_b_ind].mean(axis=1)).T)
 			kernels_pupil_h = np.array(kernels_pupil_h[:,:] - np.mat(kernels_pupil_h[:,time_of_interest_b_ind].mean(axis=1)).T)
 			kernels_pupil_l = np.array(kernels_pupil_l[:,:] - np.mat(kernels_pupil_l[:,time_of_interest_b_ind].mean(axis=1)).T)
 		
@@ -2232,7 +2671,7 @@ class pupilAnalysesAcross(object):
 			lin_projections = np.array(lin_projections)
 		
 			means = np.vstack((lin_projections[:,0], lin_projections[:,1])).mean(axis=0)
-			p_bars = myfuncs.permutationTest(lin_projections[:,0]-means, lin_projections[:,1]-means, nrand=5000)[1]
+			p_bars = stats.ttest_rel(lin_projections[:,0], lin_projections[:,1])[1]
 		
 			# combine baseline and phasic scalars:
 			lin_projections = np.hstack((lin_projections_b, lin_projections))
@@ -2256,75 +2695,122 @@ class pupilAnalysesAcross(object):
 			ax = axes[ax_nr]
 			ax.axvline(0, lw=0.25, alpha=0.5, color = 'k')
 			ax.axhline(0, lw=0.25, alpha=0.5, color = 'k')
-		
-			# shell()
-		
 			colors = ['black']
+			conditions = pd.Series(['all trials'], name='trial type')
+			sns.tsplot(kernels_pupil_a[:,xlim_indices], time=step[xlim_indices], condition=conditions, value='fMRI response (% signal change)', color='grey', ci=66, lw=1, ls='-', ax=ax)
 			conditions = pd.Series(['high pupil'], name='trial type')
-			# sns.tsplot(kernels_pupil_h, time=step, condition=conditions, value='fMRI response\n(% signal change)', color='red', ci=66, lw=1, ls='-', ax=ax)
-			sns.tsplot(kernels_pupil_h[:,xlim_indices], time=step[xlim_indices], condition=conditions, value='fMRI response (Z)', color='red', ci=66, lw=1, ls='-', ax=ax)
-			conditions = pd.Series(['medium pupil'], name='trial type')
-			# sns.tsplot(kernels_pupil_m, time=step, condition=conditions, value='fMRI response (Z)', color='black', ci=False, lw=1, ls=':', ax=ax, alpha=0.5)
+			sns.tsplot(kernels_pupil_h[:,xlim_indices], time=step[xlim_indices], condition=conditions, value='fMRI response (% signal change)', color='red', ci=66, lw=1, ls='-', ax=ax)
 			conditions = pd.Series(['low pupil'], name='trial type')
-			sns.tsplot(kernels_pupil_l[:,xlim_indices], time=step[xlim_indices], condition=conditions, value='fMRI response (Z)', color='blue', ci=66, lw=1, ls='-', ax=ax)
+			sns.tsplot(kernels_pupil_l[:,xlim_indices], time=step[xlim_indices], condition=conditions, value='fMRI response (% signal change)', color='blue', ci=66, lw=1, ls='-', ax=ax)
 			# ax.set_ylim(ylim)
 			ax.set_xlim(xlim)
 			ax.legend(loc='upper left', fontsize=6)
 			# for i in range(kernels_h_hit.shape[1]):
 			# 	if p[1][i] < 0.05:
 			# 		ax.plot(step[i], ylim[0]+0.1, 'o', color='g', marker='o', markeredgecolor='w', ms=3)
-			
-			if time_locked == 'stim_locked':
-				sns.distplot(np.array(self.rt[pupil_h_ind])/1000.0, bins=20, hist=False, kde_kws={"shade": True}, color='r', ax=ax)
-				sns.distplot(np.array(self.rt[pupil_l_ind])/1000.0, bins=20, hist=False, kde_kws={"shade": True}, color='b', ax=ax)
-			if time_locked == 'resp_locked':
-				sns.distplot(0-(np.array(self.rt[pupil_h_ind])/1000.0), bins=20, hist=False, kde_kws={"shade": True}, color='r', ax=ax)
-				sns.distplot(0-(np.array(self.rt[pupil_l_ind])/1000.0), bins=20, hist=False, kde_kws={"shade": True}, color='b', ax=ax)
-			
-			
+			# if time_locked == 'stim_locked':
+			# 	sns.distplot(np.array(self.rt[pupil_h_ind])/1000.0, bins=20, hist=False, kde_kws={"shade": True}, color='r', ax=ax)
+			# 	sns.distplot(np.array(self.rt[pupil_l_ind])/1000.0, bins=20, hist=False, kde_kws={"shade": True}, color='b', ax=ax)
+			# if time_locked == 'resp_locked':
+			# 	sns.distplot(0-(np.array(self.rt[pupil_h_ind])/1000.0), bins=20, hist=False, kde_kws={"shade": True}, color='r', ax=ax)
+			# 	sns.distplot(0-(np.array(self.rt[pupil_l_ind])/1000.0), bins=20, hist=False, kde_kws={"shade": True}, color='b', ax=ax)
 			for axis in ['top','bottom','left','right']:
-				ax.spines[axis].set_linewidth(0.5)
-		
-		
+				ax.spines[axis].set_linewidth(0.25)
+				ax.tick_params(width=0.25)
+			y_limits = ax.get_ylim()
 			ax_nr+=1
-		
+			
 			# bars:
 			ax = axes[ax_nr]
-		
 			ax.axhline(0, lw=0.25, alpha=0.5, color = 'k')
 			bar_width = 0.50
-
 			my_dict = {'edgecolor' : 'k', 'ecolor': 'k', 'linewidth': 0, 'capsize': 0, 'align': 'center'}
 			for i in range(lin_projections.shape[1]):
-			
-				# shell()
-			
-				ax.bar([0.5,1.25, 2.5,3.25][i], lin_projections.mean(axis = 0)[i], width = bar_width, yerr = (lin_projections.std(axis = 0)/sqrt(lin_projections.shape[0]))[i], color = ['r','b','r','b'][i], alpha = [1,1,1,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center',)
+				ax.bar([0.5,1.25, 2.5,3.25][i], lin_projections.mean(axis = 0)[i], width = bar_width, yerr = (lin_projections.std(axis = 0)/sqrt(lin_projections.shape[0]))[i], color = ['r','b','r','b'][i], alpha = [1,1,1,1][i], edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center', error_kw={'elinewidth':0.5,})
 				ax.set_xticks([0.5,1.25, 2.5,3.25])
-				ax.set_xticklabels(['bh', 'bl', 'ph', 'pl'])
-			# ax.set_ylim(ylim)
-		
-			# shell()
-		
+				ax.set_xticklabels(['high TPR', 'low TPR', 'high TPR', 'low TPR'])
+			ax.set_ylim(y_limits)
 			ax.text(s='p = {}'.format(round(p_bars_b, 3)), x=0.5, y=0, size=6)
 			ax.text(s='p = {}'.format(round(p_bars, 3)), x=2, y=0, size=6)
-			# ax.set_ylabel('fMRI response\n(% signal change)')
-		
 			for axis in ['top','bottom','left','right']:
-				ax.spines[axis].set_linewidth(0.5)
-		
+				ax.spines[axis].set_linewidth(0.25)
+				ax.tick_params(width=0.25)
 			ax_nr+=1
 
 		sns.despine(offset=10, trim=True)
-
+		plt.setp( axes[1].xaxis.get_majorticklabels(), rotation=45 )
+		plt.setp( axes[3].xaxis.get_majorticklabels(), rotation=45 )
+		axes[0].set_title('pupil')
+		axes[1].set_title('N = {}'.format(len(self.subjects)))
 		axes[1].yaxis.set_visible(False)
 		axes[3].yaxis.set_visible(False)
-
 		plt.tight_layout()
-		fig.savefig(os.path.join(self.project_directory, 'figures', 'grand_mean.pdf'))
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'grand_mean_1.pdf'))
 		
-	
+	def correlation_PPRa_BPD(self):
+		
+		sns.set_style('darkgrid')
+		
+		fig = plt.figure(figsize=(15,8))
+		for i in range(len(self.subjects)):
+		
+			varX = self.bpd[self.subj_idx == i]
+			varY = self.ppr[self.subj_idx == i]
+			
+			slope, intercept, r_value, p_value, std_err = stats.linregress(varX,varY)
+			(m,b) = sp.polyfit(varX, varY, 1)
+			regression_line = sp.polyval([m,b], varX)
+			
+			ax = fig.add_subplot(3,5,i+1)
+			ax.plot(varX,regression_line, color = 'k', linewidth = 1.5)
+			ax.scatter(varX, varY, color='#808080', alpha = 0.75, rasterized=True)
+			ax.set_title('subj.' + str(i+1) + ' (r = ' + str(round(r_value, 3)) + ')', size = 12)
+			ax.set_ylabel('phasic response (% signal change)', size = 10)
+			ax.set_xlabel('baseline (% signal change)', size = 10)
+			plt.tick_params(axis='both', which='major', labelsize=10)
+			# if round(p_value,5) < 0.005:
+			#	 ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np < 0.005', size = 12)
+			# else:	
+			#	 ax.text(plt.axis()[0]+((abs(plt.axis()[0])+abs(plt.axis()[1]))/8), plt.axis()[2]+((abs(plt.axis()[2])+abs(plt.axis()[3]))/8),'r = ' + str(round(r_value, 3)) + '\np = ' + str(round(p_value, 5)), size = 12)
+			plt.tight_layout()
+			# plt.gca().spines["bottom"].set_linewidth(.5)
+			# plt.gca().spines["left"].set_linewidth(.5)
+		
+		fig.savefig(os.path.join(self.project_directory, 'figures', 'correlation_bpd_ppr.pdf'))	
 
-
-
+	def GLM_betas(self):
+		
+		# shell()
+		
+		sns.set_style("ticks")
+		
+		for b in [0]:
+		
+			betas = np.vstack([np.load(os.path.join(self.project_directory, 'across_data', 'GLM_betas_{}_{}.npy'.format(b,s))) for s in self.subjects])
+			MEANS = betas.mean(axis=0)
+			SEMS = sp.stats.sem(betas, axis=0)
+		
+			p1 = sp.stats.ttest_rel(betas[:,0],np.zeros(len(self.subjects)))[1]
+			p2 = sp.stats.ttest_rel(betas[:,1],np.zeros(len(self.subjects)))[1]
+			p3 = sp.stats.ttest_rel(betas[:,2],np.zeros(len(self.subjects)))[1]
+		
+			N = 3
+			ind = np.linspace(0,N,N)  # the x locations for the groups
+			bar_width = 0.8   # the width of the bars
+		
+			# FIGURE 1
+			fig = plt.figure(figsize=(2,3))
+			ax = fig.add_subplot(111)
+			ax.bar(ind, MEANS[0:3], width = bar_width, yerr=SEMS[0:3], color='k', alpha=1, edgecolor = 'k', ecolor = 'k', linewidth = 0, capsize = 0, align = 'center')
+			ax.set_xticks(ind)
+			ax.set_xticklabels(['cue', 'choice', 'box'])
+			for i, p in enumerate([p1,p2,p3]):
+				ax.text(x=ind[i],y=ax.get_ylim()[1]-((ax.get_ylim()[1] - ax.get_ylim()[0]) / 10.0),s='p = {}'.format(round(p,3)))
+			plt.ylabel('beta (a.u.)')
+			sns.despine(offset=10, trim=True)
+			plt.tight_layout()
+			fig.savefig(os.path.join(self.project_directory, 'figures', 'betas_across_{}.pdf'.format(b)))
+			
+			shell()
+			
 

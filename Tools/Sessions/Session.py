@@ -769,7 +769,7 @@ class Session(PathConstructor):
 					inputObject = aseg_image
 					outputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.mgz'.format(area[1]))
 					os.system('mri_binarize --i {} --match {} --o {}'.format(inputObject, area[0], outputObject))
-
+					
 					# convert to nifti
 					inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.mgz'.format(area[1]))
 					outputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', 'aseg_{}.nii.gz'.format(area[1]))
@@ -783,7 +783,7 @@ class Session(PathConstructor):
 					flO = FlirtOperator(inputObject = inputObject, referenceFileName = target)
 					flO.configureApply(transformMatrixFileName=reg, outputFileName = outputObject, sinc=False)
 					flO.execute()
-		
+					
 					# treshold:
 					inputObject = os.path.join(self.stageFolder(stage = 'processed/mri/masks/anat'), '{}.nii.gz'.format(area[1]))
 					fmo = FSLMathsOperator(inputObject)
@@ -1575,7 +1575,7 @@ class Session(PathConstructor):
 			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r])
 			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['NB'])
 			better = BETOperator( inputObject = inputObject )
-			better.configure( outputFileName = outputObject )
+			better.configure( outputFileName = outputObject, f_value=0.5, g_value=0 )
 			better.execute()
 
 			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['NB', 'mask'])
@@ -1604,20 +1604,20 @@ class Session(PathConstructor):
 			fmO = FSLMathsOperator(inputObject=inputObject)
 			fmO.configure(outputFileName=outputObject, **{'-mul': str(200)})
 			fmO.execute()
-
+		
 		# Reorient high res T1:
 		inputObject = os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' )
 		ro = ReorientOperator(inputObject = inputObject)
 		ro.configure(outputFileName = inputObject)
 		ro.execute()
-
+		
 		# Bet al epi's:
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
 				better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = r ) )
 				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), **{'-F': ''} )
 				better.execute()
-
+		
 		# ----------------------------------------
 		# Formula:                               -
 		# ----------------------------------------
@@ -1650,11 +1650,11 @@ class Session(PathConstructor):
 				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_B0/design.fsf'
 				REDict = {
 				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), 
-			
+				
 				'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']), 
 				'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['NB']), 
 				'---HIGHRES_FILES---':os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), 
-
+				
 				'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
 				'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
 				'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
@@ -1663,7 +1663,7 @@ class Session(PathConstructor):
 				'---UNWARP_DIREC---':unwarp_direction,
 				'---SIGNAL_LOSS_THRESHOLD---':signal_loss_threshold,
 				}
-			
+				
 				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
 				featOp = FEATOperator(inputObject = thisFeatFile)
 				# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
