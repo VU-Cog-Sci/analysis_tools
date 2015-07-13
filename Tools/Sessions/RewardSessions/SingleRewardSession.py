@@ -4630,6 +4630,9 @@ class SingleRewardSession(RewardSession):
 		sn.set(style="ticks")
 		f = pl.figure(figsize = (9,5))
 		s = f.add_subplot(1,1,1)
+
+		total_dm = []
+
 		for rew_i, rew in enumerate([fix_norewards, fix_rewards, stim_norewards, stim_rewards, stimulus, rewards ]):
 			# dm = np.zeros((N_BACK-1, betas.shape[0]))
 			# for tp in np.arange(1,N_BACK):
@@ -4637,10 +4640,12 @@ class SingleRewardSession(RewardSession):
 			dm = np.array([np.roll(rew, i) for i in np.arange(1,N_BACK + 1)])
 			for x in range(1,dm.shape[0]):
 				dm[x,:x] = 0
+			total_dm.append(dmobject)
 			clf = linear_model.LinearRegression()
 			clf.fit(dm.T[trial_selection], betas[trial_selection])
 			res[rew_i] = clf.coef_
 			plot(np.arange(0,N_BACK), res[rew_i], ['b','b','g','g','k','r'][rew_i], alpha = [0.5,1.0,0.5,1.0,1.0,1.0][rew_i])
+		
 		# pl.axvline(0, lw=0.25, alpha=0.5, color = 'k')
 		pl.axhline(0, lw=0.25, alpha=0.5, color = 'k')
 		s.set_xlim(xmin=0.5, xmax=N_BACK-0.5)

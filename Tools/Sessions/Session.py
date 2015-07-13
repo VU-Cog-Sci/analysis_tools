@@ -717,6 +717,14 @@ class Session(PathConstructor):
 				zsc_cmd()
 			job_server.print_stats()
 	
+	def fsaverage_labels_to_masks(self, labels = ['V1.4-1','V1.4-2','V1.4-3','V1.4-4']):
+		# import fsaverage labels to own subject. 
+		for hemi in ['rh', 'lh']:
+			for l in labels:
+				llO = Label2LabelOperator(os.path.join(os.environ['SUBJECTS_DIR'], 'fsaverage', 'label', hemi + '.' + l + '.label'))
+				llO.configure(source_subjectID = 'fsaverage', target_subjectID = self.subject.standardFSID, hemisphere = hemi )
+				llO.execute()
+
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None, cortex = True):
 		"""
 		createMasksFromFreeSurferLabels creates masks in the volume out of labels on the surface, located in (subfolders of) the
