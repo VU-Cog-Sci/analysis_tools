@@ -822,25 +822,25 @@ class LabelToLabelOperator( CommandLineOperator ):
 		"""
 		super(LabelToLabelOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
 
-	def configure(self, source_subjectID, target_subjectID, hemisphere = 'lh' ):
+	def configure(self, source_subjectID = None, target_subjectID = None, hemisphere = 'lh', target_label_folder = '', regmethod = 'surface' ):
 		"""
 		configure sets up the command line for surf to vol translation.
 		"""
 		# self.inputObject is an annotation file name
-		labelName = os.path.split(self.inputFileName)[1])
+		labelName = os.path.split(self.inputFileName)[1]
 
-		if hemispheres == None:
-			hemispheres = ['lh','rh']
 		if source_subjectID == None:
 			self.logger.warning('no source_subjectID given. this negligence will not stand.')
 		if target_subjectID == None:
 			self.logger.warning('no target_subjectID given. this negligence will not stand.')
 
 		self.runcmd = self.cmd
+		self.runcmd += ' --regmethod %s'%regmethod
+		self.runcmd += ' --srclabel ' + os.path.join(os.environ['SUBJECTS_DIR'], source_subjectID, 'label', self.inputObject) 
 		self.runcmd += ' --srcsubject ' + source_subjectID
 		self.runcmd += ' --trgsubject ' + target_subjectID
-		self.runcmd += ' --hemi ' + hemi
-		self.runcmd += ' --trglabel ' + os.path.join(os.environ['SUBJECTS_DIR'], target_subjectID, 'label', labelName)
+		self.runcmd += ' --hemi ' + hemisphere
+		self.runcmd += ' --trglabel ' + os.path.join(os.environ['SUBJECTS_DIR'], target_subjectID, 'label', target_label_folder, labelName)
 
 
 
