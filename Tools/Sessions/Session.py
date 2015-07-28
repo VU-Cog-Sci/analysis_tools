@@ -717,8 +717,12 @@ class Session(PathConstructor):
 				zsc_cmd()
 			job_server.print_stats()
 	
-	def fsaverage_labels_to_masks(self, labels = ['V1.4-1','V1.4-2','V1.4-3','V1.4-4'], target_label_folder = 'V1_ecc'):
+	def fsaverage_labels_to_masks(self, labels = ['V1-4-1','V1-4-2','V1-4-3','V1-4-4'], target_label_folder = 'V1_ecc'):
 		# import fsaverage labels to own subject. 
+		try:
+			os.system('rm -rf ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', target_label_folder))
+		except OSError:
+			pass
 		try:
 			os.mkdir(os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', target_label_folder))
 		except OSError:
