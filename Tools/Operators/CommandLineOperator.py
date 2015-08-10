@@ -7,7 +7,7 @@ Created by Tomas Knapen on 2010-09-23.
 Copyright (c) 2010 __MyCompanyName__. All rights reserved.
 """
 
-import os, sys, subprocess
+import os, sys, subprocess, shutil
 import tempfile, logging
 import re
 
@@ -20,6 +20,8 @@ from Operator import *
 from ..log import *
 
 from IPython import embed as shell
+
+
 
 
 ### Execute program in shell:
@@ -259,7 +261,7 @@ class ConcatFlirtOperator( CommandLineOperator ):
 
 class BETOperator( CommandLineOperator ):
 	"""
-	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB -z -f 0.5 -g 0 -m
+	BETOperator does something like /usr/local/fsl/bin/bet /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5 /Users/tk/Documents/research/experiments/retinotopy/RetMapAmsterdam/data/TK/TK_080910/processed/mri/inplane_anat/5/TK_080910_5_NB -Z -f 0.5 -g 0 -m
 	"""
 	def __init__(self, inputObject, **kwargs):
 		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
@@ -646,7 +648,7 @@ class VolToSurfOperator( CommandLineOperator ):
 					self.runcmd += "  --projfrac-max %d %d %1.2f" % tuple(threshold)
 				self.runcmd += ' --frame ' + str(frames[frame])
 				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
-				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.mgh'
+				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.mgz'
 				self.runcmd += ' --surf-fwhm ' + str(surfSmoothingFWHM)
 				self.runcmd += ' &\n'
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
@@ -802,6 +804,105 @@ class AnnotationToLabelOperator( CommandLineOperator ):
 			self.runcmd += ' --subject ' + subjectID
 			self.runcmd += ' --hemi ' + hemi
 			self.runcmd += ' --outdir ' + os.path.join(os.environ['SUBJECTS_DIR'], subjectID, 'label', annotationName)
+			self.runcmd += ' &\n'
+
+		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.
+		self.runcmd = self.runcmd[:-2]
+
+class LabelToLabelOperator( CommandLineOperator ):
+	"""
+	LabelToLabelOperator makes use of freesurfer's mri_label2label command to
+	take labels from a freesurfer subject, and converts them to another subject.
+	Typically used to transform fsaverage labels to subject space.
+	"""
+	
+	def __init__(self, inputObject, cmd = 'mri_label2label', **kwargs):
+		"""
+		Upon initialization AnnotationToLabelOperator needs inputObject=[path to annotation file]
+		"""
+		super(LabelToLabelOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, source_subjectID = None, target_subjectID = None, hemisphere = 'lh', target_label_folder = '', regmethod = 'surface' ):
+		"""
+		configure sets up the command line for surf to vol translation.
+		"""
+		# self.inputObject is an annotation file name
+		labelName = os.path.split(self.inputFileName)[1]
+
+		if source_subjectID == None:
+			self.logger.warning('no source_subjectID given. this negligence will not stand.')
+		if target_subjectID == None:
+			self.logger.warning('no target_subjectID given. this negligence will not stand.')
+
+		self.runcmd = self.cmd
+		self.runcmd += ' --regmethod %s'%regmethod
+		self.runcmd += ' --srclabel ' + os.path.join(os.environ['SUBJECTS_DIR'], source_subjectID, 'label', self.inputObject) 
+		self.runcmd += ' --srcsubject ' + source_subjectID
+		self.runcmd += ' --trgsubject ' + target_subjectID
+		self.runcmd += ' --hemi ' + hemisphere
+		self.runcmd += ' --trglabel ' + os.path.join(os.environ['SUBJECTS_DIR'], target_subjectID, 'label', target_label_folder, labelName)
+
+
+
+class LabelsToAnnotationOperator( CommandLineOperator ):
+	"""
+	AnnotationToLabelOperator makes use of freesurfer's mris_label2annot command to
+	create one annotation out of a folder of labels. This is particularly useful to 
+	be able to load a whole folder of labels at once, by simply loading only the annotation file.
+	"""
+	
+	def __init__(self, inputObject, cmd = 'mris_label2annot', **kwargs):
+		"""
+		Upon initialization AnnotationToLabelOperator needs inputObject=[path to label dir]
+		"""
+		super(LabelsToAnnotationOperator, self).__init__(inputObject, cmd = cmd, **kwargs)
+
+	def configure(self, subjectID, outputFileName = 'all_labels', hemispheres = None ):
+		"""
+		configure sets up the command line for label2annot operation
+		"""
+		# self.inputObject is an annotation file name
+
+		# move ctab to this dir
+		base_label_dir = '/'.join(self.inputObject.split('/')[:-1])
+
+		if hemispheres == None:
+			hemispheres = ['lh','rh']
+		if subjectID == None:
+			self.logger.warning('no subjectID given. this negligence will not stand.')
+
+		# initiate command
+		self.runcmd = ''
+
+		# create ctab file
+		for hemi in hemispheres:
+			ctab_fname = os.path.join(self.inputObject,'%s.%s.annot.ctab'%(hemi,outputFileName))
+			if os.path.isfile(ctab_fname): os.remove(ctab_fname)
+			ctab_file = open(ctab_fname, 'w')
+			k = 0
+			for label in os.listdir(self.inputObject):
+				if (hemi in label) * ('.label' in label):
+					k+= 1
+					ctab_file.write("{:>3}  ".format(k))
+					ctab_file.write("{}".format(label.split('.')[1]))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=35-len(label.split('.')[1])))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=4))
+					ctab_file.write("{0:{width}}".format(np.random.randint(255),width=4))
+					ctab_file.write("{0:{width}}\n".format(0,width=5))
+			ctab_file.close()
+
+			# add to command
+			self.runcmd += self.cmd
+			self.runcmd += ' --subject ' + subjectID
+			self.runcmd += ' --hemi ' + hemi
+			self.runcmd += ' --ctab ' + ctab_fname
+			self.runcmd += ' --a ' + outputFileName
+			for label in os.listdir(self.inputObject):
+				if (hemi in label) * ('.label' in label):
+					# print label
+					self.runcmd += ' --l ' + os.path.join(self.inputObject,label) 
+					# self.runcmd += ' --offset ' + str(li)
+			self.runcmd += ' --nhits nhits.mgh'
 			self.runcmd += ' &\n'
 
 		# make sure the last ampersand is not listed - else running this on many runs in one go will explode.

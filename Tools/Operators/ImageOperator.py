@@ -20,7 +20,7 @@ from IPython import embed as shell
 
 from nifti import *
 from Operator import *
-import nipy.labs.glm
+# import nipy.labs.glm
 from Tools.other_scripts.savitzky_golay import *
 from scipy.signal import fftconvolve, resample
 
@@ -329,7 +329,11 @@ class SavitzkyGolayHighpassFilterOperator(ImageOperator):
 def doubleGamma(x, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35):
 	d1 = a1 * b1
 	d2 = a2 * b2
-	return np.array([(t/(d1))**a1 * exp(-(t-d1)/b1) - c*(t/(d2))**a2 * exp(-(t-d2)/b2) for t in x])
+	return np.array([(t/(d1))**a1 * np.exp(-(t-d1)/b1) - c*(t/(d2))**a2 * np.exp(-(t-d2)/b2) for t in x])	
+
+def doubleGamma_with_d(x, a1 = 6, a2 = 12, b1 = 0.9, b2 = 0.9, c = 0.35,d1=5.4,d2=10.8):
+	return np.array([(t/(d1))**a1 * np.exp(-(t-d1)/b1) - c*(t/(d2))**a2 * np.exp(-(t-d2)/b2) for t in x])	
+
 
 def double_gamma(x, a1, sh1, sc1, a2, sh2, sc2 ): 
 	return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
@@ -415,7 +419,7 @@ class NewDesign(object):
 			regressor_values[(self.time_values_for_convolution > start_time) * (self.time_values_for_convolution < end_time)] = event[2]
 		self.raw_design_matrix.append(regressor_values)
 		
-		return regressorValues
+		return regressor_values
 	
 	def convolve_with_HRF(self, hrf_type = 'singleGamma', hrf_parameters = {'a': 6, 'b': 0.9}): # hrfType = 'doubleGamma', hrfParameters = {'a1': 6, 'a2': 12, 'b1': 0.9, 'b2': 0.9, 'c': 0.35}
 		# hrfType = 'singleGamma', hrfParameters = {'a': 6, 'b': 0.9} OR hrfType = 'doubleGamma', hrfParameters = {a1, sh1, sc1, a2, sh2, sc2} OR 
@@ -440,43 +444,43 @@ class NewDesign(object):
 		self.convolve_with_HRF(hrf_type = hrf_type, hrf_parameters = hrf_parameters)
 
 
-class ImageRegressOperator(ImageOperator):
-	"""
-	class for running glms on functional data
-	takes a functional data file and creates a design matrix for it
-	calculates glm and returns results
-	"""
-	def __init__(self, inputObject, regressors, **kwargs):
-		"""docstring for __init__"""
-		super(ImageRegressOperator, self).__init__(inputObject = inputObject, **kwargs)
-		self.design = Design(nrTimePoints = self.inputObject.timepoints, rtime = self.inputObject.rtime)
-		self.design.configure(regressors)
+# class ImageRegressOperator(ImageOperator):
+# 	"""
+# 	class for running glms on functional data
+# 	takes a functional data file and creates a design matrix for it
+# 	calculates glm and returns results
+# 	"""
+# 	def __init__(self, inputObject, regressors, **kwargs):
+# 		"""docstring for __init__"""
+# 		super(ImageRegressOperator, self).__init__(inputObject = inputObject, **kwargs)
+# 		self.design = Design(nrTimePoints = self.inputObject.timepoints, rtime = self.inputObject.rtime)
+# 		self.design.configure(regressors)
 	
-	def execute(self, outputFormat = ['betas','sse','rank','sing']):
-		"""docstring for execute"""
-		super(ImageRegressOperator, self).execute()
-		origShape = self.inputObject.data.shape
-		designShape = self.design.designMatrix.shape
-		fitData = self.inputObject.data.reshape(self.inputObject.timepoints,-1).astype(np.float64)
-		design = self.design.designMatrix.astype(np.float64)
-		# self.betas, self.sse, self.rank, self.sing = sp.linalg.lstsq( design, fitData, overwrite_a = True, overwrite_b = True )
-		# self.logger.info('regress operator betas & sse shape ' + str(self.betas.shape) + ' ' + str(self.sse.shape) + ' rank ' + str(self.rank) + ' from design shaped ' + str(designShape) + ' and data shaped ' + str(origShape))
-		# returnDict = {}
-		# if 'betas' in outputFormat: 
-		# 	returnDict['betas'] = self.betas.reshape(np.concatenate(([designShape[1]], origShape[1:])))
-		# if 'sse' in outputFormat:
-		# 	returnDict['sse'] = self.sse.reshape(origShape[1:])
-		# if 'rank' in outputFormat:
-		# 	returnDict['rank'] = self.rank
-		# if 'sing' in outputFormat:
-		# 	returnDict['sing'] = self.sing
-		# return returnDict
+# 	def execute(self, outputFormat = ['betas','sse','rank','sing']):
+# 		"""docstring for execute"""
+# 		super(ImageRegressOperator, self).execute()
+# 		origShape = self.inputObject.data.shape
+# 		designShape = self.design.designMatrix.shape
+# 		fitData = self.inputObject.data.reshape(self.inputObject.timepoints,-1).astype(np.float64)
+# 		design = self.design.designMatrix.astype(np.float64)
+# 		# self.betas, self.sse, self.rank, self.sing = sp.linalg.lstsq( design, fitData, overwrite_a = True, overwrite_b = True )
+# 		# self.logger.info('regress operator betas & sse shape ' + str(self.betas.shape) + ' ' + str(self.sse.shape) + ' rank ' + str(self.rank) + ' from design shaped ' + str(designShape) + ' and data shaped ' + str(origShape))
+# 		# returnDict = {}
+# 		# if 'betas' in outputFormat: 
+# 		# 	returnDict['betas'] = self.betas.reshape(np.concatenate(([designShape[1]], origShape[1:])))
+# 		# if 'sse' in outputFormat:
+# 		# 	returnDict['sse'] = self.sse.reshape(origShape[1:])
+# 		# if 'rank' in outputFormat:
+# 		# 	returnDict['rank'] = self.rank
+# 		# if 'sing' in outputFormat:
+# 		# 	returnDict['sing'] = self.sing
+# 		# return returnDict
 		
-		# using nipy this might become:
-		model = "ar1"
-		method = "kalman"
-		my_glm = nipy.labs.glm.glm.glm()
-		glm = my_glm.fit(fitData.T, design, method="kalman", model="ar1")
+# 		# using nipy this might become:
+# 		model = "ar1"
+# 		method = "kalman"
+# 		my_glm = nipy.labs.glm.glm.glm()
+# 		glm = my_glm.fit(fitData.T, design, method="kalman", model="ar1")
 		
 	
 

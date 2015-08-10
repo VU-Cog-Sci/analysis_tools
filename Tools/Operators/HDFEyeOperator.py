@@ -13,7 +13,7 @@ import pandas as pd
 
 from EDFOperator import EDFOperator
 from Operator import Operator
-from EyeSignalOperator import EyeSignalOperator
+from EyeSignalOperator import EyeSignalOperator, detect_saccade_from_data
 
 from IPython import embed as shell 
 
@@ -370,8 +370,9 @@ class HDFEyeOperator(Operator):
 			]).squeeze()
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
-	def signal_from_trial_phases(self, trial_nr, trial_phases, alias, signal, requested_eye = 'L', time_extensions = [0,0]):
-		"""docstring for signal_from_trial"""
+	def time_period_for_trial_phases(self, trial_nr, trial_phases, alias ):
+		"""the time period corresponding to the trial phases requested.
+		"""
 		with pd.get_store(self.inputObject) as h5_file:
 			table = h5_file['%s/trial_phases'%alias]
 			# check whether one of the trial phases is the end or the beginning of the trial.
@@ -384,21 +385,19 @@ class HDFEyeOperator(Operator):
 				end_time = table[table['trial_start_index'] == trial_nr]['trial_end_EL_timestamp']
 			else:
 				end_time = table[((table['trial_phase_index'] == trial_phases[1]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
-			time_period = np.array([np.array(start_time) + np.array(time_extensions)[0], np.array(end_time) + np.array(time_extensions)[1]]).squeeze()
+			time_period = np.array([np.array(start_time), np.array(end_time)]).squeeze()
+		return time_period
+
+	def signal_from_trial_phases(self, trial_nr, trial_phases, alias, signal, requested_eye = 'L', time_extensions = [0,0]):
+		"""docstring for signal_from_trial"""
+		time_period = self.time_period_for_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias)
+		time_period = np.array([time_period[0] + time_extensions[0], time_period[1] + time_extensions[1]]).squeeze()
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
-	def saccades_from_trial_phases(self, trial_nr, trial_phases, alias, requested_eye = 'L', time_extensions = [0,0]):
-		with pd.get_store(self.inputObject) as h5_file:
-			table = h5_file['%s/trial_phases'%alias]
-			if trial_phases[0] == 0:
-				start_time = table[table['trial_start_index'] == trial_nr]['trial_start_EL_timestamp']
-			else:
-				start_time = table[((table['trial_phase_index'] == trial_phases[0]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
-			if trial_phases[-1] == -1:
-				end_time = table[table['trial_start_index'] == trial_nr]['trial_end_EL_timestamp']
-			else:
-				end_time = table[((table['trial_phase_index'] == trial_phases[1]) * (table['trial_phase_trial'] == trial_nr))]['trial_phase_EL_timestamp']
-			time_period = np.array([start_time + time_extensions[0], end_time + time_extensions[1]]).squeeze()
+	def saccades_from_trial_phases(self, trial_nr, trial_phases, alias, requested_eye = 'L', time_extensions = [0,0], l = 5):
+		xy_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'gaze', requested_eye = requested_eye, time_extensions = time_extensions)
+		vel_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'vel', requested_eye = requested_eye, time_extensions = time_extensions) 
+		return detect_saccade_from_data(xy_data = xy_data, vel_data = vel_data, l = l, sample_rate = self.sample_rate_during_period(self.time_period_for_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias), alias))
 			
 	#
 	#	read whole dataframes

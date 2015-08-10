@@ -66,7 +66,7 @@ class EDFOperator( Operator ):
 		
 		# optimize this so that it doesn't delete the periods in the float time, for example.
 		# first clean out those C and R occurrences. No letters allowed.
-		gaze_string = re.sub(re.compile('[A-Z]*'), '', gaze_string)
+		gaze_string = re.sub(re.compile('[A-Z]+'), '', gaze_string)
 		gaze_string = re.sub(re.compile('\t+\.+'), '', gaze_string)
 		# # check for these really weird character shit in the final columns of the output.
 		# self.workingStringClean = re.sub(re.compile('C.'), '', self.workingStringClean)
@@ -99,7 +99,7 @@ class EDFOperator( Operator ):
 		self.logger.info(self.header)
 		
 	
-	def identify_blocks(self, minimal_time_gap = 50.0):
+	def identify_blocks(self, minimal_time_gap = 50.0, minimal_block_duration = 5e3):
 		"""
 		identify separate recording blocks in eyelink file, where 'blocks' means periods between
 		startrecording and stoprecording
@@ -134,6 +134,16 @@ class EDFOperator( Operator ):
 						'screen_x_pix': float(k[2])-float(k[0]), 'screen_y_pix': float(k[3])-float(k[1]),  }
 					for h,i,j,k in zip(block_edge_indices, block_edge_times, block_sample_occurrences, block_screen_occurrences)]
 		
+		self.logger.info('%i raw blocks discovered' % len(self.blocks))
+		# select only blocks of a significant duration, assuming timestamps in ms
+		selected_block_indices = []
+		for i, b in enumerate(self.blocks):
+			self.logger.info('%f raw block duration, threshold %f' % (b['block_end_timestamp'] - b['block_start_timestamp'], minimal_block_duration))
+			if (b['block_end_timestamp'] - b['block_start_timestamp']) > minimal_block_duration:
+				selected_block_indices.append(i)
+		# and perform selection
+		self.blocks = [self.blocks[i] for i in selected_block_indices]
+
 		# now, we know what the different columns must mean per block, so we can create them
 		for bl in self.blocks:
 			if bl['eye_recorded'] == 'LR':
@@ -143,7 +153,7 @@ class EDFOperator( Operator ):
 			elif bl['eye_recorded'] == 'L':
 				bl.update({'data_columns': ['time','L_gaze_x','L_gaze_y','L_pupil','L_vel_x','L_vel_y']})
 		
-		self.logger.info('%i blocks discovered' % len(self.blocks))
+		self.logger.info('%i correct duration blocks discovered' % len(self.blocks))
 		
 	
 	def read_all_messages(self):
@@ -334,11 +344,14 @@ class EDFOperator( Operator ):
 				self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('exp_timestamp', np.float64)])
 	
 	def read_eyelink_events(self,
-		sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)', 
+		sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)',
 		fix_re = 'EFIX\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?\s+(-?\d+\.?\d*)?', 
 		blink_re = 'EBLINK\t(\S+)\s+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d?.?\d*)?'):
 		"""
 		read_key_events reads experimental events from the message file. 
+		
+		other sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)', 
+
 		
 		Examples:
 		ESACC	R	2347313	2347487	174	  621.8	  472.4	  662.0	  479.0	   0.99	 
@@ -352,7 +365,8 @@ class EDFOperator( Operator ):
 		blink_strings = re.findall(re.compile(blink_re), self.message_string)
 		
 		if len(saccade_strings) > 0:
-			self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[7])} for e in saccade_strings]
+			# self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'peak_velocity':float(e[8])} for e in saccade_strings]
+			self.saccades_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'start_x':float(e[4]),'start_y':float(e[5]),'end_x':float(e[6]),'end_y':float(e[7]), 'length':float(e[8]),'peak_velocity':float(e[9])} for e in saccade_strings]
 			self.fixations_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3]),'x':float(e[4]),'y':float(e[5]),'pupil_size':float(e[6])} for e in fix_strings]
 			self.blinks_from_message_file = [{'eye':e[0],'start_timestamp':float(e[1]),'end_timestamp':float(e[2]),'duration':float(e[3])} for e in blink_strings]
 		

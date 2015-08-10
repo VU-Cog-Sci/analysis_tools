@@ -134,7 +134,7 @@ class DeconvolutionOperator(EventDataOperator):
 			self.logger.error('nuisance dimensions does not correspond to the designmatrix, shapes %s, %s' % (nuisanceVectors.shape, designShape))
 		else:
 			newNuisanceVectors = nuisanceVectors
-			newNuisanceVectors = nuisanceVectors / nuisanceVectors.max(axis=0)
+			# newNuisanceVectors = nuisanceVectors / nuisanceVectors.max(axis=0)
 			# newNuisanceVectors = newNuisanceVectors - newNuisanceVectors.mean(axis = 0)
 			self.newDesignMatrix = np.mat(np.hstack((self.designMatrix, newNuisanceVectors)))
 			#run and segment

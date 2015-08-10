@@ -146,4 +146,22 @@ class RewardSession(Session):
 	
 	def add_first_session_reward_responses_to_hdf5(self):
 		"""docstring for add_first_session_reward_responses_to_hdf5"""
+		pass
+
+
+	def combine_motion_parameters_one_file(self, run):
+		files = [
+			self.runFile(
+				stage='processed/mri', run=run, extension='.par', postFix=['mcf.nii.gz']),
+			self.runFile(
+				stage='processed/mri', run=run, extension='.par', postFix=['mcf.nii.gz', 'dt']),
+			self.runFile(
+				stage='processed/mri', run=run, extension='.par', postFix=['mcf.nii.gz', 'ddt'])
+		]
+		np.savetxt(self.runFile(stage='processed/mri', run=run, extension='.par', postFix=[
+				   'mcf', 'all']), np.hstack([np.loadtxt(f) for f in files]), fmt='%f', delimiter='\t')
+
+	def combine_motion_parameters(self):
+		for run in self.runList:
+			self.combine_motion_parameters_one_file(run)
 		

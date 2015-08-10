@@ -32,11 +32,11 @@ from IPython import embed as shell
 def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
 	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 	
-	This function expects a sequence (2 x N) of xy gaze position or velocity data. 
+	This function expects a sequence (N x 2) of xy gaze position or velocity data. 
 	
 	Arguments:
-		xy_data (numpy.ndarray, optional): a sequence (2 x N) of xy gaze (float/integer) positions. Defaults to None
-		vel_data (numpy.ndarray, optional): a sequence (2 x N) of velocity data (float/integer). Defaults to None.
+		xy_data (numpy.ndarray, optional): a sequence (N x 2) of xy gaze (float/integer) positions. Defaults to None
+		vel_data (numpy.ndarray, optional): a sequence (N x 2) of velocity data (float/integer). Defaults to None.
 		l (float, optional):determines the threshold. Defaults to 5 median-based standard deviations from the median
 		sample_rate (float, optional) - the rate at which eye movements were measured per second). Defaults to 1000.0
 	
@@ -54,7 +54,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	if xy_data is None and vel_data is None:
 		raise ValueError("Supply either xy_data or vel_data")	
 	
-	minimum_saccade_duration = 0.012 # in s
+	minimum_saccade_duration = 0.0075 # in s
 	
 	#If xy_data is given, process it
 	if not xy_data is None:
@@ -64,20 +64,24 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	
 	# Calculate velocity data if it has not been given to function
 	if vel_data is None:
-		# Check for shape of xy_data. If x and y are ordered in columns, transpose array.
-		# Should be 2 x N array to use np.diff namely (not Nx2)
-		rows, cols = xy_data.shape
-		if rows == 2:
-			vel_data = np.diff(xy_data)
-		if cols == 2:
-			vel_data = np.diff(xy_data.T)
-		
+		# # Check for shape of xy_data. If x and y are ordered in columns, transpose array.
+		# # Should be 2 x N array to use np.diff namely (not Nx2)
+		# rows, cols = xy_data.shape
+		# if rows == 2:
+		# 	vel_data = np.diff(xy_data)
+		# if cols == 2:
+		# 	vel_data = np.diff(xy_data.T)
+		vel_data = np.zeros(xy_data.shape)
+		vel_data[1:] = np.diff(xy_data, axis = 0)
+	else:
+		vel_data = np.array(vel_data)
+
 	# median-based standard deviation, for x and y separately
 	med = np.median(vel_data, axis = 0)
 	
 	scaled_vel_data = vel_data/np.mean(np.array(np.sqrt((vel_data - med)**2)), axis = 0)
 	# normalize and to acceleration and its sign
-	if (np.__version__.split('.')[0] == 1) and (np.__version__.split('.')[1] > 6):
+	if (float(np.__version__.split('.')[1]) == 1.0) and (float(np.__version__.split('.')[1]) > 6):
 		normed_scaled_vel_data = LA.norm(scaled_vel_data, axis = 1)
 		normed_vel_data = LA.norm(vel_data, axis = 1)
 	else:
@@ -124,16 +128,14 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		# and are they too close to the end of the interval?
 		right_times = threshold_crossing_indices_2x2[:,1] < xy_data.shape[0]-30
 	
-		valid_saccades_bool = (((raw_saccade_durations / sample_rate) > minimum_saccade_duration) * blinks_during_saccades ) * right_times
+		valid_saccades_bool = ((raw_saccade_durations / float(sample_rate) > minimum_saccade_duration) * blinks_during_saccades ) * right_times
 		if type(valid_saccades_bool) != np.ndarray:
 			valid_threshold_crossing_indices = threshold_crossing_indices_2x2
 		else:
 			valid_threshold_crossing_indices = threshold_crossing_indices_2x2[valid_saccades_bool]
 	
 		# print threshold_crossing_indices_2x2, valid_threshold_crossing_indices, blinks_during_saccades, ((raw_saccade_durations / sample_rate) > minimum_saccade_duration), right_times, valid_saccades_bool
-		# print raw_saccade_durations, sample_rate, minimum_saccade_duration
-	
-		
+		# print raw_saccade_durations, sample_rate, minimum_saccade_duration		
 	
 	saccades = []
 	for i, cis in enumerate(valid_threshold_crossing_indices):
@@ -197,7 +199,8 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 			'raw_amplitude': 0.0,
 		}
 		saccades.append(this_saccade)
-	
+
+	# shell()
 	return saccades
 
 class EyeSignalOperator(Operator):
@@ -438,5 +441,5 @@ class EyeSignalOperator(Operator):
 		frequencies = np.arange(min_freq, max_freq, freq_stepsize)  # define frequencies of interest
 		n_cycles = frequencies / float(n_cycles)  # different number of cycle per frequency
 		
-		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=1, zero_mean=True)
+		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=0, zero_mean=True)
 	
