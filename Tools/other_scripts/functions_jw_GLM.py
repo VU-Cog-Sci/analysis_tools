@@ -17,18 +17,18 @@ class GeneralLinearModel(object):
 		# variables:
 		self.input_object = input_object
 		self.event_object = event_object
+		self.downsample_ratio = int(new_sample_dur / sample_dur)
 		self.sample_dur = sample_dur
 		self.new_sample_dur = new_sample_dur
-		self.resample_ratio = sample_dur / new_sample_dur
-		self.timepoints = np.arange(0, input_object.shape[0]*sample_dur, new_sample_dur)
+		self.timepoints = np.linspace(0, input_object.shape[0]*self.downsample_ratio*self.sample_dur, input_object.shape[0])
 		self.raw_design_matrix = []
 		
-		# shell()
+	def configure(self, IRF='pupil', IRF_params=None, regressor_types='stick', demean=False, basis_set=False, normalize_sustained=False):
 		
-	def configure(self, IRF='pupil', IRF_params=None, regressor_types='stick', IRF_dt=False, subsample=False):
+		self.basis_set = basis_set
 		
 		# resample input_object:
-		if subsample:
+		if self.downsample_ratio != 1:
 			self.resample_input_object()
 		else:
 			self.working_data_array = self.input_object
@@ -38,13 +38,11 @@ class GeneralLinearModel(object):
 			if regressor_types[i] == 'stick':
 				self.add_stick_regressor(np.atleast_2d(reg))
 			if regressor_types[i] == 'box':
-				self.add_box_regressor(np.atleast_2d(reg))
+				self.add_box_regressor(np.atleast_2d(reg), normalize_sustained)
 			if regressor_types[i] == 'upramp':
-				self.add_upramp_regressor(np.atleast_2d(reg))
+				self.add_upramp_regressor(np.atleast_2d(reg), normalize_sustained)
 			if regressor_types[i] == 'downramp':
-				self.add_downramp_regressor(np.atleast_2d(reg))
-		
-		self.IRF_dt = IRF_dt
+				self.add_downramp_regressor(np.atleast_2d(reg), normalize_sustained)
 		
 		# create IRF:
 		if IRF == 'pupil':
@@ -56,19 +54,22 @@ class GeneralLinearModel(object):
 		
 		# convolve raw regressors with IRF to obtain the full design matrix:
 		self.convolve_with_IRF()
-		# self.demean()
-		# self.z_score()
+		
+		if demean:
+			self.demean()
+			# self.z_score()
+			# self.psc()
 		
 	def resample_input_object(self):
 		"""resample_input_object takes a timeseries of data points and resamples them according to the ratio between sample duration and the new sample duration."""
 		
-		self.working_data_array = sp.signal.resample(self.input_object, self.timepoints.shape[0])
+		self.working_data_array = sp.signal.decimate(self.input_object, int(self.downsample_ratio))
 		
 	def convolve_with_IRF(self):
 		"""convolve_wit_IRF convolves the designMatrix with the specified IRF (sampled according to resample_ratio)"""
 		
-		print
-		print len(self.IRF)
+		# print
+		# print len(self.IRF)
 		
 		self.design_matrix = np.zeros([len(self.raw_design_matrix)*len(self.IRF), self.timepoints.shape[0]])
 		i = 0
@@ -80,28 +81,37 @@ class GeneralLinearModel(object):
 	def demean(self):
 		"""demeans design matrix"""
 		
+		self.working_data_array = self.working_data_array - self.working_data_array.mean()
 		for i in range(self.design_matrix.shape[0]):
 			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean())
 	
 	def z_score(self):
 		"""z-scores design matrix"""
 		
+		# print 'z-scoring!'
+		
 		self.working_data_array = (self.working_data_array - self.working_data_array.mean()) / self.working_data_array.std()
 		for i in range(self.design_matrix.shape[0]):
 			self.design_matrix[i,:] = (self.design_matrix[i,:] - self.design_matrix[i,:].mean()) / self.design_matrix[i,:].std()
 	
+	def psc(self):
+		"""percent signal chances design matrix"""
+		
+		self.working_data_array = ((self.working_data_array / np.median(self.working_data_array)) * 100) - 100
+		for i in range(self.design_matrix.shape[0]):
+			self.design_matrix[i,:] = ((self.design_matrix[i,:] / np.median(self.design_matrix[i,:])) * 100) - 100
+	
 	def execute(self):
 		
-		# GLM:
-		GLM = sm.GLM(self.working_data_array,self.design_matrix.T)
-		GLM_results = GLM.fit()
-		GLM_results.summary()
+		# print 'fitting model'
 		
-		# betas:
-		self.betas = GLM_results.params
+		self.design_matrix = np.mat(self.design_matrix).T
+		
+		# GLM:
+		self.betas = np.array(((self.design_matrix.T * self.design_matrix).I * self.design_matrix.T) * np.mat(self.working_data_array).T).ravel()
 		
 		# predicted signal:
-		self.predicted = GLM_results.predict()
+		self.predicted = np.sum(np.vstack([np.array(self.design_matrix).T[i]*b for i, b in enumerate(self.betas)]), axis=0)
 		
 		# residuals:
 		self.residuals = self.working_data_array - self.predicted
@@ -120,7 +130,7 @@ class GeneralLinearModel(object):
 			regressor_values[start_time] = event[2]
 		self.raw_design_matrix.append(regressor_values)
 	
-	def add_box_regressor(self, regressor):
+	def add_box_regressor(self, regressor, normalize_sustained=False):
 		"""
 		regressors are vectors identical to custom EV files in FSL
 		"""
@@ -129,12 +139,14 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = event[2] / float(dur)
-			# height = event[2]
+			if normalize_sustained:
+				height = event[2] / float(dur)
+			else:
+				height = event[2]
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	
-	def add_upramp_regressor(self, regressor):
+	def add_upramp_regressor(self, regressor, normalize_sustained=False):
 		"""
 		regressors are vectors identical to custom EV files in FSL
 		"""
@@ -143,11 +155,14 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = np.linspace(0, (event[2]*2/float(dur)), dur)
+			if normalize_sustained:
+				height = np.linspace(0, (event[2]*2/float(dur)), dur)
+			else:
+				height = np.linspace(0, event[2]*2, dur)
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 		
-	def add_downramp_regressor(self, regressor):
+	def add_downramp_regressor(self, regressor, normalize_sustained=False):
 		"""
 		regressors are vectors identical to custom EV files in FSL
 		"""
@@ -156,7 +171,10 @@ class GeneralLinearModel(object):
 			start_time = np.floor(event[0]/self.new_sample_dur)
 			end_time = np.floor((event[0]+event[1])/self.new_sample_dur)
 			dur = end_time - start_time
-			height = np.linspace((event[2]*2/float(dur)), 0, dur)
+			if normalize_sustained:
+				height = np.linspace((event[2]*2/float(dur)), 0, dur)
+			else:
+				height = np.linspace(event[2]*2, 0, dur)
 			regressor_values[start_time:end_time] = height
 		self.raw_design_matrix.append(regressor_values)
 	
@@ -193,32 +211,52 @@ class GeneralLinearModel(object):
 		else:
 			return [y/np.std(y)]
 
-	def IRF_pupil(self, dur=3, s=1.0/(10**26), n=10.1, tmax=.930):
+	def IRF_pupil(self, dur=4, s=1.0/(10**26), n=10.1, tmax=.930):
 		"""
 		Canocial pupil impulse fucntion [ref]: 
 		"""
 		
+		# for n in np.linspace(4,12,10):
+		# 	for tmax in np.linspace(0.5, 1.3, 10):
+		
+		
 		# parameters:
 		timepoints = np.arange(0, dur, self.new_sample_dur)
-		
+
 		# sympy variable:
 		t = sympy.Symbol('t')
-		
+
 		# function:
 		y = ( (s) * (t**n) * (math.e**((-n*t)/tmax)) )
-		
+
 		# derivative:
 		y_dt = y.diff(t)
-		
+
 		# lambdify:
 		y = sympy.lambdify(t, y, "numpy")
 		y_dt = sympy.lambdify(t, y_dt, "numpy")
-		
-		# evaluate:
+
+		# evaluate and normalize:
 		y = y(timepoints)
+		y = y/np.std(y)
 		y_dt = y_dt(timepoints)
+		y_dt = y_dt/np.std(y_dt)
+
+		# dispersion:
+		y_dn = ( (s) * (timepoints**(n-0.01)) * (math.e**((-(n-0.01)*timepoints)/tmax)) )
+		y_dn = y_dn / np.std(y_dn)
+		y_dn = y - y_dn
+		y_dn = y_dn / np.std(y_dn)
+	
+		# plt.plot(timepoints, y, color='k', lw=0.5, alpha=0.5)
 		
-		if self.IRF_dt:
-			return [y/np.std(y), y_dt/np.std(y_dt)]
+		# plt.figure()
+		# plt.plot(y)
+		# plt.plot(y_dt)
+		# plt.plot(y_dn)
+		# plt.show()
+		
+		if self.basis_set:
+			return [y, y_dt]
 		else:
-			return [y/np.std(y)]
+			return [y]

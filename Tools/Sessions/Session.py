@@ -501,7 +501,6 @@ class Session(PathConstructor):
 		for er in self.scanTypeDict['epi_bold']:
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix=postFix ), target = self.referenceFunctionalFileName )
 			
-
 			if init_transform_file != None:
 				mcf.transformMatrixFileName = init_transform_file
 			# RUN WITH 7 DEGREES OF FREEDOM:
@@ -541,6 +540,7 @@ class Session(PathConstructor):
 		and does high/low pass filtering, percent signal change or zscoring of the data. as such, it doesn't really rescale any functionals in most cases.
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
+		# for r in self.conditionDict['loc']:
 		for r in self.scanTypeDict['epi_bold']:	# now this is a for loop we would love to run in parallel
 			funcFile = NiftiImage(self.runFile(stage = 'processed/mri', run = self.runList[r], postFix = funcPostFix ))
 			for op in operations:	# using this for loop will ensure that the order of operations as defined in the argument is adhered to
@@ -1245,7 +1245,9 @@ class Session(PathConstructor):
 				
 				if prepare:
 					# load nifti:
-					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
+					
+					TR = 2.0
+					# TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
 					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
 					nr_TRs = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).timepoints
 				
@@ -1312,7 +1314,9 @@ class Session(PathConstructor):
 										np.arange(slice_times[scan_slices[-1]]-(8*sample_rate), x.shape[0]),
 										np.arange(slice_times[scan_slices[-10]], slice_times[scan_slices[-5]]),
 										]
-				
+										
+					
+										
 					for i, times in enumerate(plot_timewindow):
 						f = pl.figure(figsize = (15,3))
 						s = f.add_subplot(111)
@@ -1337,17 +1341,10 @@ class Session(PathConstructor):
 						pl.tight_layout()
 						f.savefig(os.path.join(self.stageFolder(stage = 'processed/hr/figs'), str(r.ID) + '_gradient_signal_{}_'.format(i+1) + ['start', 'end', 'slice'][i] + '.jpg'))
 					pl.close('all')
-				
-				# ----------------------------------------
-				# Create retroicor slise-wise regressors:-
-				# ----------------------------------------
-				
-				if prepare:
 					
-					# load nifti:
-					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
-					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
-					nr_TRs = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).timepoints
+					# ----------------------------------------
+					# Create retroicor slise-wise regressors:-
+					# ----------------------------------------
 					
 					# retroicor folder:
 					folder = os.path.join(self.runFolder(stage = 'processed/mri', run = r), 'retroicor')

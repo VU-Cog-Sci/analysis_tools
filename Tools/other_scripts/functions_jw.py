@@ -574,16 +574,27 @@ def SDT_measures(target, hit, fa):
 
 	return(d, c)
 
-def corr_matrix(C):
+def corr_matrix(C, dv='cor'):
 	
 	C = np.asarray(C)
 	p = C.shape[1]
 	P_corr = np.zeros((p, p), dtype=np.float)
 	P_p = np.zeros((p, p), dtype=np.float)
 	for i in range(p):
-		P_corr[i, i] = 1
-		for j in range(i+1, p):
-			corr, p_value = sp.stats.pearsonr(C[:, i], C[:, j])
+		# P_corr[i, i] = 1
+		for j in range(i, p):
+			if dv=='cor':
+				corr, p_value = sp.stats.pearsonr(C[:, i], C[:, j])
+			if dv=='var':
+				corr = np.mean((np.var(C[:, i]), np.var(C[:, j])))
+				p_value = 1
+			if dv=='cov':
+				# corr = (np.var(C[:, i]+C[:, j]) - np.var(C[:, i]) - np.var(C[:, j])) / 2.0
+				corr = np.cov(C[:, i], C[:, j])[0][1]
+				p_value = 1
+			if dv=='mean':
+				corr = np.mean((np.mean(C[:, i]), np.mean(C[:, j])))
+				p_value = 1
 			P_corr[i, j] = corr
 			P_corr[j, i] = corr
 			P_p[i, j] = p_value
@@ -697,10 +708,10 @@ def pcf3(X,Y,Z):
 	return [(rxy_z, rxz_y, ryz_x)]
 
 
-import rpy2.robjects as robjects
-from rpy2.robjects import pandas2ri
-pandas2ri.activate()
-import pandas.rpy.common as com
+# import rpy2.robjects as robjects
+# from rpy2.robjects import pandas2ri
+# pandas2ri.activate()
+# import pandas.rpy.common as com
  
 def rm_ANOVA(df):
 	
@@ -976,14 +987,15 @@ def quantile_plot(conditions, rt, corrects, subj_idx, quantiles=[10,30,50,70,90]
 	return ax
 
 
-def correlation_plot(X, Y, ax=False, line=False):
+def correlation_plot(X, Y, ax=False, dots=True, line=False):
 	
 	if not ax:
 		fig = plt.figure(figsize=(3,3))
 		ax = fig.add_subplot(111)
 	slope, intercept, r_value, p_value, std_err = stats.linregress(X,Y)
 	(m,b) = sp.polyfit(X,Y,1)
-	ax.plot(X, Y, 'o', color='k', marker='o', markeredgecolor='w', markeredgewidth=0.5) #s=20, zorder=2, linewidths=2)
+	if dots:
+		ax.plot(X, Y, 'o', color='k', marker='o', markeredgecolor='w', markeredgewidth=0.5) #s=20, zorder=2, linewidths=2)
 	x_line = np.linspace(ax.axis()[0], ax.axis()[1], 100)
 	regression_line = sp.polyval([m,b],x_line)
 	if line:
@@ -1576,7 +1588,7 @@ class behavior(object):
 		else:
 			split_ind = np.ones(len(self.data), dtype=bool)
 		
-		rt = np.array([np.mean(self.data.rt[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
+		rt = np.array([np.median(self.data.rt[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
 		acc = np.array([np.mean(self.data.correct[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
 		d = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[0] for i, s in enumerate(self.subjects)])
 		c = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[1] for i, s in enumerate(self.subjects)])

@@ -1389,8 +1389,6 @@ class pupilAnalyses(object):
 		plt.xlabel('time (s)')
 		fig.savefig(os.path.join(self.base_directory, 'figs', 'GLM_0.pdf'))
 		
-		# shell()
-		
 		# plot response locked:
 		x = np.linspace(-3,2,100)
 		pupil_mean = np.mean(np.vstack([linear_model.working_data_array[floor(i):floor(i)+100] for i in ((choice_times_epoched[1:-1]*1000/downsample_rate)-60)]), axis=0)
