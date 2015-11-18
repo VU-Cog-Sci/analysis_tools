@@ -462,7 +462,7 @@ class EyeSignalOperator(Operator):
 	def regress_blinks(self,):
 		
 		# params:
-		self.downsample_rate = 40
+		self.downsample_rate = 50
 		self.new_sample_rate = self.sample_rate / self.downsample_rate
 		interval = 4
 		
@@ -475,9 +475,14 @@ class EyeSignalOperator(Operator):
 		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
 		self.bp_filt_pupil_clean = np.array(do.residuals()).ravel()
 		
+		# self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0])
+		
 		# upsample blink and sac kernels to original sample rate:
-		blink_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
-		sac_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
+		
+		self.blink_response = sp.signal.savgol_filter(np.concatenate([ np.repeat(d, 50) for d in np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()]), (self.downsample_rate*2)-1, 3)
+		self.sac_response = sp.signal.savgol_filter(np.concatenate([ np.repeat(d, 50) for d in np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel()]), (self.downsample_rate*2)-1, 3)
+		# self.blink_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
+		# self.sac_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
 		
 		# regress out from original timeseries with GLM:
 		event_1 = np.ones((len(blinks),3))
@@ -486,8 +491,8 @@ class EyeSignalOperator(Operator):
 		event_2 = np.ones((len(sacs),3))
 		event_2[:,0] = sacs
 		event_2[:,1] = 0
-		GLM = functions_jw_GLM.GeneralLinearModel(input_object=self.bp_filt_pupil, event_object=[event_1, event_2], sample_dur=1/self.sample_rate, new_sample_dur=1/self.sample_rate)
-		GLM.configure(IRF=[blink_response, sac_response], regressor_types=['stick', 'stick'],)
+		GLM = functions_jw_GLM.GeneralLinearModel(input_object=self.bp_filt_pupil, event_object=[event_1, event_2], sample_dur=1.0/self.sample_rate, new_sample_dur=1.0/self.sample_rate)
+		GLM.configure(IRF=[self.blink_response, self.sac_response], regressor_types=['stick', 'stick'],)
 		GLM.design_matrix = np.vstack((GLM.design_matrix[0], GLM.design_matrix[3]))
 		GLM.execute()
 		
