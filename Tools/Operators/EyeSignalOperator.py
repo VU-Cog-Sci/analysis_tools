@@ -220,10 +220,11 @@ class EyeSignalOperator(Operator):
 	signals that result from further processing.
 	"""
 	def __init__(self, inputObject, **kwargs):
-		"""inputObject is a dictionary with timepoints, gazeXY and pupil keys and timeseries as values"""
+		"""inputObject is a dictionary with timepoints, gaze_X, and gaze_Y and pupil keys and timeseries as values"""
 		super(EyeSignalOperator, self).__init__(inputObject = inputObject, **kwargs)
 		self.timepoints = np.array(self.inputObject['timepoints']).squeeze()
-		self.raw_gazeXY = np.array(self.inputObject['gazeXY']).squeeze()
+		self.raw_gaze_X = np.array(self.inputObject['gaze_X']).squeeze()
+		self.raw_gaze_Y = np.array(self.inputObject['gaze_Y']).squeeze()
 		self.raw_pupil = np.array(self.inputObject['pupil']).squeeze()
 		
 		if hasattr(self, 'eyelink_blink_data'):
@@ -327,8 +328,8 @@ class EyeSignalOperator(Operator):
 		import copy
 		
 		self.interpolated_pupil = copy.copy(self.raw_pupil[:])
-		self.interpolated_x = copy.copy(self.raw_gazeXY[:,0])
-		self.interpolated_y = copy.copy(self.raw_gazeXY[:,1])
+		self.interpolated_x = copy.copy(self.raw_gaze_X)
+		self.interpolated_y = copy.copy(self.raw_gaze_Y)
 		
 		if method == 'spline':
 			points_for_interpolation = np.array(np.array(spline_interpolation_points) * self.sample_rate, dtype = int)
@@ -339,9 +340,9 @@ class EyeSignalOperator(Operator):
 				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_pupil[sample_indices])
 				# replace with interpolated data, from the inside points of the interpolation lists. 
 				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
-				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gazeXY[sample_indices,0])
+				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gaze_X[sample_indices])
 				self.interpolated_x[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
-				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gazeXY[sample_indices,1])
+				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gaze_Y[sample_indices])
 				self.interpolated_y[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
 		
 		elif method == 'linear':

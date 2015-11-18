@@ -203,10 +203,10 @@ class HDFEyeOperator(Operator):
 				#
 				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
 				# create dictionairy of data per block:
-					gazeXY = bdf[[s%'gaze' for s in [eye+'_%s_x', eye+'_%s_y',]]]
+					gaze_X = bdf[[s%'gaze' for s in [eye+'_%s_x']]]
+					gaze_Y = bdf[[s%'gaze' for s in [eye+'_%s_y']]]
 					pupil = bdf[[s%'pupil' for s in [eye+'_%s']]]
-					eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
-					
+					eye_dict = {'timepoints':bdf.time, 'gaze_X':gaze_X, 'gaze_Y':gaze_Y, 'pupil':pupil,}
 					# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
 					if hasattr(self.edf_operator, 'blinks_from_message_file'):
 						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
@@ -216,6 +216,7 @@ class HDFEyeOperator(Operator):
 						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict, eyelink_sac_data=sac_dict, sample_rate=sample_rate)
 					else:
 						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
+					
 					# detect blinks (coalese period in samples):
 					eso.blink_detection_pupil(coalesce_period=sample_rate*250./1000.)
 					# interpolate blinks:
