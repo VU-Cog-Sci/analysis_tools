@@ -26,6 +26,10 @@ import scipy.stats as stats
 import mne
 
 from Operator import Operator
+import ArrayOperator
+
+from Tools.other_scripts import functions_jw_GLM
+
 
 from IPython import embed as shell
 
@@ -226,7 +230,12 @@ class EyeSignalOperator(Operator):
 			self.blink_dur = np.array(self.eyelink_blink_data['duration']) 
 			self.blink_starts = np.array(self.eyelink_blink_data['start_timestamp'])[self.blink_dur<4000]
 			self.blink_ends = np.array(self.eyelink_blink_data['end_timestamp'])[self.blink_dur<4000]
-			
+		
+		if hasattr(self, 'eyelink_sac_data'):
+			self.sac_dur = np.array(self.eyelink_sac_data['duration']) 
+			self.sac_starts = np.array(self.eyelink_sac_data['start_timestamp'])
+			self.sac_ends = np.array(self.eyelink_sac_data['end_timestamp'])
+		
 		if not hasattr(self, 'sample_rate'): # this should have been set as a kwarg, but if it hasn't we just assume a standard 1000 Hz
 			self.sample_rate = 1000.0
 	
@@ -356,6 +365,7 @@ class EyeSignalOperator(Operator):
 		# shell()
 		
 	def interpolate_blinks2(self, lin_interpolation_points = [[-100],[100]]):
+		
 		"""
 		interpolate_blinks2 performs linear interpolation around peaks in the rate of change of
 		the pupil size.
@@ -365,7 +375,7 @@ class EyeSignalOperator(Operator):
 		
 		This method is typically called after an initial interpolation using self.interpolateblinks(),
 		consistent with the fact that this method expects the self.interpolated_... variables to already exist.
-		"""	
+		"""
 		
 		from Tools.other_scripts import functions_jw as myfuncs
 		self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
@@ -377,7 +387,7 @@ class EyeSignalOperator(Operator):
 				self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
 				self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 			
-	def filter_pupil(self, hp = 0.05, lp = 4.0):
+	def filter_pupil(self, hp = 0.01, lp = 4.0):
 		"""
 		band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. 
 		
@@ -407,7 +417,7 @@ class EyeSignalOperator(Operator):
 		self.baseline_filt_pupil = self.lp_filt_pupil - self.bp_filt_pupil
 
 	
-	def zscore_pupil(self):
+	def zscore_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
 		zscore_pupil z-scores the low-pass filtered pupil size data and the band-pass filtered pupil size data.
 		
@@ -417,24 +427,29 @@ class EyeSignalOperator(Operator):
 		expects the self.[...]_filt_pupil variables to exist.
 		"""
 		
-		self.bp_filt_pupil_zscore = (self.bp_filt_pupil - self.bp_filt_pupil.mean()) / self.bp_filt_pupil.std() 
-		self.lp_filt_pupil_zscore = (self.lp_filt_pupil - self.lp_filt_pupil.mean()) / self.lp_filt_pupil.std() 
-		self.baseline_filt_pupil_zscore = (self.baseline_filt_pupil - self.baseline_filt_pupil.mean()) / self.baseline_filt_pupil.std() 
-	
+		# self.bp_filt_pupil_clean_zscore = (self.bp_filt_pupil_clean - self.bp_filt_pupil_clean.mean()) / self.bp_filt_pupil_clean.std()
+		# self.bp_filt_pupil_zscore = (self.bp_filt_pupil - self.bp_filt_pupil.mean()) / self.bp_filt_pupil.std()
+		# self.lp_filt_pupil_zscore = (self.lp_filt_pupil - self.lp_filt_pupil.mean()) / self.lp_filt_pupil.std()
+		# self.baseline_filt_pupil_zscore = (self.baseline_filt_pupil - self.baseline_filt_pupil.mean()) / self.baseline_filt_pupil.std()
+		
+		exec('self.' + str(dtype) + '_zscore = (self.' + str(dtype) + ' - np.mean(self.' + str(dtype) + ')) / np.std(self.' + str(dtype) + ')')
+		
+		
 	def percent_signal_change_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
 		percent_signal_change_pupil takes percent signal change of the dtype pupil signal, and internalizes it as a dtype + '_psc' self variable.
 		"""
 		
-		exec('self.' + str(dtype) + '_psc = ((self.' + str(dtype) + ' / np.median(self.' + str(dtype) + ')) * 100) - 100' )
-	
+		exec('self.' + str(dtype) + '_psc = ((self.' + str(dtype) + ' / np.mean(self.baseline_filt_pupil[2000:-2000])) * 100) - 100' )
+		
+		
 	def dt_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
 		dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable.
 		"""
 		
 		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
-	
+		
 	def time_frequency_decomposition_pupil(self, min_freq = 0.01, max_freq = 3.0, freq_stepsize = 0.25, n_cycles = 7):
 		"""time_frequency_decomposition_pupil uses the mne package to perform a time frequency decomposition on the pupil data after interpolation"""
 		
@@ -443,3 +458,50 @@ class EyeSignalOperator(Operator):
 		
 		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=0, zero_mean=True)
 	
+	def regress_blinks(self,):
+		
+		# params:
+		self.downsample_rate = 40
+		self.new_sample_rate = self.sample_rate / self.downsample_rate
+		interval = 4
+		
+		# events:
+		blinks = (self.blink_ends/self.sample_rate) - 0.5
+		sacs = ((self.sac_ends-self.timepoints[0])/self.sample_rate) - 0.5
+		events = [blinks, sacs]
+		
+		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
+		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
+		self.bp_filt_pupil_clean = np.array(do.residuals()).ravel()
+		
+		# upsample blink and sac kernels to original sample rate:
+		blink_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
+		sac_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
+		
+		# regress out from original timeseries with GLM:
+		event_1 = np.ones((len(blinks),3))
+		event_1[:,0] = blinks
+		event_1[:,1] = 0
+		event_2 = np.ones((len(sacs),3))
+		event_2[:,0] = sacs
+		event_2[:,1] = 0
+		GLM = functions_jw_GLM.GeneralLinearModel(input_object=self.bp_filt_pupil, event_object=[event_1, event_2], sample_dur=1/self.sample_rate, new_sample_dur=1/self.sample_rate)
+		GLM.configure(IRF=[blink_response, sac_response], regressor_types=['stick', 'stick'],)
+		GLM.design_matrix = np.vstack((GLM.design_matrix[0], GLM.design_matrix[3]))
+		GLM.execute()
+		
+		# clean data:
+		self.bp_filt_pupil_clean = GLM.residuals
+		
+		# # compute blink and sac kernels with deconvolution (on downsampled timeseries):
+		# do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil_clean, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
+		# self.bp_filt_pupil_clean = np.array(do.residuals()).ravel()
+		#
+		# # upsample blink and sac kernels to original sample rate:
+		# blink_response_clean = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
+		# sac_response_clean = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
+		
+		# final timeseries:
+		self.lp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil
+		self.bp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil.mean()
+		

@@ -23,7 +23,7 @@ class GeneralLinearModel(object):
 		self.timepoints = np.linspace(0, input_object.shape[0]*self.downsample_ratio*self.sample_dur, input_object.shape[0])
 		self.raw_design_matrix = []
 		
-	def configure(self, IRF='pupil', IRF_params=None, regressor_types='stick', demean=False, basis_set=False, normalize_sustained=False):
+	def configure(self, IRF='pupil', IRF_params=None, regressor_types=['stick'], demean=False, basis_set=False, normalize_sustained=False):
 		
 		self.basis_set = basis_set
 		

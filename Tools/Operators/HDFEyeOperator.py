@@ -211,7 +211,9 @@ class HDFEyeOperator(Operator):
 					if hasattr(self.edf_operator, 'blinks_from_message_file'):
 						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
 						blink_dict[blink_dict['eye'] == eye]
-						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict,sample_rate=sample_rate)
+						sac_dict = self.read_session_data(alias, 'saccades_from_message_file')
+						sac_dict[sac_dict['eye'] == eye]
+						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict, eyelink_sac_data=sac_dict, sample_rate=sample_rate)
 					else:
 						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
 					# detect blinks (coalese period in samples):
@@ -221,11 +223,19 @@ class HDFEyeOperator(Operator):
 					eso.interpolate_blinks2()
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
+					# regress out blinks:
+					eso.regress_blinks()
 					# z-score filtered pupil data:
-					eso.zscore_pupil()
+					eso.zscore_pupil(dtype='baseline_filt_pupil')
+					eso.zscore_pupil(dtype='lp_filt_pupil')
+					eso.zscore_pupil(dtype='lp_filt_pupil_clean')
+					eso.zscore_pupil(dtype='bp_filt_pupil')
+					eso.zscore_pupil(dtype='bp_filt_pupil_clean')
 					# percent signal change filtered pupil data:
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil')
+					eso.percent_signal_change_pupil(dtype='lp_filt_pupil_clean')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
+					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
 					# now dt the resulting pupil data:
 					eso.dt_pupil()
 					
@@ -239,11 +249,16 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
 					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
-					bdf[eye+'_pupil_bp_psc'] = eso.bp_filt_pupil_psc
 					bdf[eye+'_pupil_baseline'] = eso.baseline_filt_pupil
 					bdf[eye+'_pupil_baseline_zscore'] = eso.baseline_filt_pupil_zscore
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
+					
+					# add downsampled clean data:
+					bdf[eye+'_pupil_lp_clean_zscore'] = eso.lp_filt_pupil_clean_zscore
+					bdf[eye+'_pupil_lp_clean_psc'] = eso.lp_filt_pupil_clean_psc
+					bdf[eye+'_pupil_bp_clean_zscore'] = eso.bp_filt_pupil_clean_zscore
+					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
 					# plot interpolated pupil time series:
 					fig = pl.figure()
@@ -257,12 +272,21 @@ class HDFEyeOperator(Operator):
 					
 					# plot results blink detection next to hdf5:
 					fig = pl.figure()
+					pl.plot(x, eso.lp_filt_pupil_psc, 'b', rasterized=True)
+					pl.plot(x, eso.lp_filt_pupil_clean_psc, 'g', rasterized=True)
+					pl.ylabel('pupil size (% signal change)')
+					pl.xlabel('time (s)')
+					pl.legend(['low pass', 'low pass + cleaned up'])
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+					
+					# plot results blink detection next to hdf5:
+					fig = pl.figure()
 					pl.plot(eso.pupil_diff, rasterized=True)
 					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
 					pl.ylim(ymin=-200, ymax=200)
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_3_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)

@@ -262,6 +262,8 @@ class EDFOperator( Operator ):
 		# parameters 
 		#
 		
+		self.message_string = self.message_string.replace(' [','').replace('.]','')
+		
 		parameters = []
 		for i in range(self.nr_trials):
 			this_re = parameter_re.replace(' X ', ' ' + str(i) + ' ')

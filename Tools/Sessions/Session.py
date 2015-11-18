@@ -33,7 +33,6 @@ from ..Operators.BehaviorOperator import *
 from ..Operators.EyeOperator import *
 from IPython import embed as shell
 from joblib import Parallel, delayed
-import xml.etree.ElementTree as ET
 
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
@@ -42,56 +41,6 @@ from joblib import Parallel, delayed
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
 from IPython import embed as shell
-
-def numerical_derivative(data):
-	"""
-	This function computes the numerical derivative of the input where its output is the 
-	same length as the input. It does so by using both interpolation and extrapolation.
-
-	For a tutorial on this function see shared/tutorials
-	"""
-
-	diff_data = np.diff(data)
-	diff_x = np.arange(0.5,len(data)-1)
-
-	interp_diff = sp.interpolate.interp1d(diff_x,diff_data,kind='cubic')
-
-	def extrap1d(interpolator):
-		xs = interpolator.x
-		ys = interpolator.y
-
-		def pointwise(x):
-			if x < xs[0]:
-				return ys[0]+(x-xs[0])*(ys[1]-ys[0])/(xs[1]-xs[0])
-			elif x > xs[-1]:
-				return ys[-1]+(x-xs[-1])*(ys[-1]-ys[-2])/(xs[-1]-xs[-2])
-			else:
-				return interpolator(x)
-
-		def ufunclike(xs):
-			return np.array(map(pointwise, np.array(xs)))
-
-		return ufunclike
-
-	return extrap1d(interp_diff)(np.arange(len(data)))
-
-def run_moco_dt_ddt_parallel(run,mcf_filename):
-	"""
-	For python parallel to work, this function cannot be part of the Session class.
-	"""
-
-	mcf = np.loadtxt(mcf_filename)
-
-	mcf_dt = []; mcf_ddt = []
-	for par in np.array(mcf).T:
-		mcf_dt.append(numerical_derivative(par))
-		mcf_ddt.append(numerical_derivative(numerical_derivative(par)))
-
-	mcf_dt = np.array(mcf_dt).T
-	mcf_ddt = np.array(mcf_ddt).T
-
-	np.savetxt(mcf_filename[:-4]+'_dt.par', mcf_dt, delimiter="\t",fmt='%.7f')
-	np.savetxt(mcf_filename[:-4]+'_ddt.par', mcf_ddt, delimiter="\t",fmt='%.7f')
 
 class PathConstructor(object):
 	"""
@@ -194,18 +143,15 @@ class PathConstructor(object):
 		else:
 			return os.path.join(self.stageFolder(stage), fn)
 	
-	def create_folder_hierarchy(self):
+	def createFolderHierarchy(self):
 		"""
-		create_folder_hierarchy creates the folder tree for a session. It needs for at least
+		createFolderHierarchy creates the folder tree for a session. It needs for at least
 		the folder enclosing the project folder self.project.base_dir to exist,
 		and will build from there: project/observer/session/[further subfolders].
 		"""
-		rawFolders = ['raw/%s'%modality for modality in self.modality_list]
-		self.processed_folders = ['processed/%s'%modality for modality in self.modality_list]
-		# rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
-		# self.processed_folders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
-		mri_condition_folders = np.concatenate((self.conditionList, ['log','figs','scripts','masks','masks/stat','masks/anat','reg','surf']))
-		condition_folders = np.concatenate((self.conditionList, ['log','figs','scripts']))
+		rawFolders = ['raw/mri', 'raw/behavior', 'raw/eye', 'raw/hr']
+		self.processedFolders = ['processed/mri', 'processed/behavior', 'processed/eye', 'processed/hr']
+		conditionFolders = np.concatenate((self.conditionList, ['log','figs','masks','masks/stat','masks/anat','reg','surf','scripts']))
 		
 		
 		self.make_base_dir()
@@ -217,15 +163,11 @@ class PathConstructor(object):
 		
 		
 		# create folders for processed data
-		for pf in self.processed_folders:
+		for pf in self.processedFolders:
 			if not os.path.isdir(self.stageFolder(pf)):
 				os.mkdir(self.stageFolder(pf))
 			# create condition folders in each of the processed data folders and also their surfs
-			if pf.split('/')[-1] == 'mri':
-				cf = mri_condition_folders
-			else:
-				cf = condition_folders
-			for c in cf:
+			for c in conditionFolders:
 				 if not os.path.isdir(self.stageFolder(pf+'/'+c)):
 					os.mkdir(self.stageFolder(pf+'/'+c))
 					if pf == 'processed/mri':
@@ -237,13 +179,11 @@ class PathConstructor(object):
 			for rl in self.runList:
 				if not os.path.isdir(self.runFolder(pf, run = rl)):
 					os.mkdir(self.runFolder(pf, run = rl))
-				if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'events')):
-					os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'events'))
 					if pf == 'processed/mri':
 						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'surf')):
 							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'surf'))
-						# if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'masked')):
-						# 	os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'masked'))
+						if not os.path.isdir(os.path.join(self.runFolder(pf, run = rl), 'masked')):
+							os.mkdir(os.path.join(self.runFolder(pf, run = rl), 'masked'))
 	
 
 class Session(PathConstructor):
@@ -325,25 +265,13 @@ class Session(PathConstructor):
 		if 'field_map' in self.scanTypeList:
 			self.scanTypeDict.update({'field_map': [hit.indexInSession for hit in filter(lambda x: x.scanType == 'field_map', [r for r in self.runList])]})
 		
+#		print self.scanTypeDict
 		self.conditions = np.unique(np.array([r.condition for r in self.runList]))
 		self.conditionDict = {}
 		for c in self.conditions:
 			if c != '':
 				self.conditionDict.update({c: [hit.indexInSession for hit in filter(lambda x: x.condition == c, [r for r in self.runList])]})
-
-		self.modality_list = []
-		for r in self.runList:
-			if hasattr(r, 'rawBehaviorFile') and 'behavior' not in self.modality_list:
-				self.modality_list.append('behavior')
-			if hasattr(r, 'rawDataFilePath') and 'mri' not in self.modality_list:
-				self.modality_list.append('mri')
-			if hasattr(r, 'eyeLinkFilePath') and 'eye' not in self.modality_list:
-				self.modality_list.append('eye')
-			if hasattr(r, 'physiologyFile') and 'hr' not in self.modality_list:
-				self.modality_list.append('hr')
-			if hasattr(r, 'starstim_eeg_file') and 'eeg' not in self.modality_list:
-				self.modality_list.append('eeg')
-
+		
 			
 	def import_all_edf_data(self, aliases):
 		"""import_all_data loops across the aliases of the sessions and converts the respective edf files, adds them to the self.ho's hdf5 file. """
@@ -373,7 +301,7 @@ class Session(PathConstructor):
 		
 		if not os.path.isfile(self.runFile(stage = 'processed/behavior', run = self.runList[0] )):
 			self.logger.info('creating folder hierarchy')
-			self.create_folder_hierarchy()
+			self.createFolderHierarchy()
 		
 		for r in self.runList:
 			if hasattr(r, 'rawDataFilePath'):
@@ -405,9 +333,6 @@ class Session(PathConstructor):
 				ExecCommandLine('cp ' + r.rawBehaviorFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/behavior', run = r, extension = '.dat' ) )
 			if hasattr(r, 'physiologyFile'):
 				ExecCommandLine('cp ' + r.physiologyFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/hr', run = r, extension = '.log' ) )
-			if hasattr(r, 'starstim_eeg_file'):
-				ExecCommandLine('cp ' + r.starstim_eeg_file.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/eeg', run = r, extension = '.log' ) )
-
 	
 	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
@@ -463,7 +388,7 @@ class Session(PathConstructor):
 			# register to both freesurfer anatomical and fsl MNI template
 			# actual registration - BBRegister to freesurfer subject
 			bbR = BBRegisterOperator( self.referenceFunctionalFileName, FSsubject = self.FSsubject, contrast = contrast )
-			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True, init_fsl = True )
+			bbR.configure( transformMatrixFileName = self.runFile(stage = 'processed/mri/reg', base = 'register', postFix = [self.ID], extension = '.dat' ), flirtOutputFile = True, init_fsl = prepare_register )
 			bbR.execute()
 				
 			
@@ -560,7 +485,7 @@ class Session(PathConstructor):
 		else:
 			os.system('featregapply ' + feat_directory + ' & ' )
 			
-	def motionCorrectFunctionals(self, postFix=[], registerNoMC = False, further_args = ''):
+	def motionCorrectFunctionals(self, postFix, registerNoMC = False, init_transform_file = None, further_args = ''):
 		"""
 		motionCorrectFunctionals corrects all functionals in a given session.
 		How we do this depends on whether we have parallel processing turned on or not.
@@ -570,27 +495,15 @@ class Session(PathConstructor):
 		"""
 		
 		self.logger.info('run motion correction')
+		self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
+		
 		# set up a list of motion correction operator objects for the runs
 		mcOperatorList = [];	stdOperatorList = [];
 		for er in self.scanTypeDict['epi_bold']:
-
-			# if T2anatID has been specified in the runarray, take this T2 as the target
-			if hasattr(self.runList[er],'T2anatID'):
-				self.referenceFunctionalFileName = self.runFile(stage='processed/mri/T2_anat/'+str(self.runList[er].T2anatID)+'/', postFix = [str(self.runList[er].T2anatID)] )
-				# as registerSession takes only the latter of the inplane_anat images for registration, some may not have been betted:
-				if not os.path.isfile(self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'):
-					better = BETOperator( inputObject = self.referenceFunctionalFileName )
-					self.referenceFunctionalFileName = self.referenceFunctionalFileName[:-7] + '_NB.nii.gz'
-					better.configure( outputFileName = self.referenceFunctionalFileName )
-					better.execute()
-			# otherwise, take the forRegistration file in the registration dir, which is created in registerSession
-			else:
-				self.referenceFunctionalFileName = self.runFile(stage = 'processed/mri/reg', base = 'forRegistration', postFix = [self.ID]  )
-
 			mcf = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[er], postFix=postFix ), target = self.referenceFunctionalFileName )
 			
-			if hasattr(self.runList[er],'transformationMatrixFile'):
-				mcf.transformMatrixFileName = self.runList[er].transformationMatrixFile
+			if init_transform_file != None:
+				mcf.transformMatrixFileName = init_transform_file
 			# RUN WITH 7 DEGREES OF FREEDOM:
 			if further_args != '':
 				mcf.configure(further_args = further_args)
@@ -621,28 +534,11 @@ class Session(PathConstructor):
 				fMcf()
 			
 			job_server.print_stats()
-
-	def dt_ddt_moco_pars(self,conditions):
-		"""
-		This function takes the motion correction parameters and computes the
-		first and second derivative based on the numerical_derivative function.
-
-		For a tutorial see shared/tutorials/numerical_derivative
-		"""
-		for condition in conditions:
-
-			Parallel(n_jobs = -1, verbose = 9)(delayed(run_moco_dt_ddt_parallel)(
-				run = r,
-				mcf_filename = self.runFile(stage = 'processed/mri', run = r, postFix = ['mcf'], extension = '.par' )
-				) 
-				for r in [self.runList[i] for i in self.conditionDict[condition]])
-
 	
 	def rescaleFunctionals(self, operations = ['bandpass', 'zscore'], filterFreqs = {'highpass': 30.0, 'lowpass': -1.0}, funcPostFix = ['mcf'], mask_file = None):#, 'percentsignalchange'
 		"""
 		rescaleFunctionals operates on motion corrected functionals
 		and does high/low pass filtering, percent signal change or zscoring of the data. as such, it doesn't really rescale any functionals in most cases.
-		When using the sgtf method, the highpass argument in filterFreqs represents the filter window in seconds 
 		"""
 		self.logger.info('rescaling functionals with options %s', str(operations))
 		# for r in self.conditionDict['loc']:
@@ -689,9 +585,7 @@ class Session(PathConstructor):
 						TR = funcFile.rtime / 1000.0
 					else:
 						TR = funcFile.rtime
-					# width = filterFreqs['highpass']
-					width = filterFreqs['highpass'] / TR # this ensures that a window contains filterfreqs highpass seconds
-					sgtfO.configure(mask_file = mask_file, TR = TR, width = width, order = 3)
+					sgtfO.configure(mask_file = mask_file, TR = TR, width = filterFreqs['highpass'], order = 3)
 					sgtfO.execute()
 				if op =='mbs':
 					mbsO = MeanBrainSubtractionOperator(funcFile)
@@ -718,23 +612,6 @@ class Session(PathConstructor):
 				zsc_cmd()
 			job_server.print_stats()
 	
-	def fsaverage_labels_to_masks(self, labels = ['V1-4-1','V1-4-2','V1-4-3','V1-4-4'], target_label_folder = 'V1_ecc'):
-		# import fsaverage labels to own subject. 
-		try:
-			os.system('rm -rf ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', target_label_folder))
-		except OSError:
-			pass
-		try:
-			os.mkdir(os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'label', target_label_folder))
-		except OSError:
-			pass
-
-		for hemi in ['rh', 'lh']:
-			for l in labels:
-				llO = LabelToLabelOperator(hemi + '.' + l + '.label')
-				llO.configure(source_subjectID = 'fsaverage', target_subjectID = self.subject.standardFSID, hemisphere = hemi, target_label_folder = target_label_folder )
-				llO.execute()
-
 	def createMasksFromFreeSurferLabels(self, labelFolders = [], annot = True, annotFile = 'aparc.a2009s', template_condition = None, cortex = True):
 		"""
 		createMasksFromFreeSurferLabels creates masks in the volume out of labels on the surface, located in (subfolders of) the
@@ -809,7 +686,7 @@ class Session(PathConstructor):
 				self.logger.info('removing mask %s, because it doesn\'t contain any voxels in this EPI image space'%m)
 				os.system('rm ' + m)
 	
-	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC','Brain-Stem'], smoothing_width = 2.0, threshold = 0.3):
+	def createMasksFromFreeSurferAseg(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC'], smoothing_width = 2.0, threshold = 0.3):
 		"""
 		docstring for createMasksFromFreeSurferAseg. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
@@ -873,7 +750,7 @@ class Session(PathConstructor):
 						# label_opf.save(label_opf_name)
 						# self.logger.info( area[1] + ' outputted to ' + label_opf_name )
 						
-	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC','Brain-Stem']):
+	def createMasksFromFreeSurferAseg2(self, asegFile = 'aparc.a2009s+aseg', which_regions = ['Putamen', 'Caudate', 'Pallidum', 'Hippocampus', 'Amygdala', 'Accumbens', 'Cerebellum_Cortex', 'Thalamus_Proper', 'Thalamus', 'VentralDC']):
 		"""
 		docstring for createMasksFromFreeSurferAseg2. Appears to be for the delinations resulting from subcortical segmentation.
 		"""
@@ -914,53 +791,6 @@ class Session(PathConstructor):
 					fmo.configure(outputFileName=inputObject, **{'-thr':str(0.5), '-bin':''})
 					fmo.execute()
 	
-	def createMasksFromFSLAtlases(self, xml_files = ['Thalamus.xml', 'Striatum-Connectivity-7sub.xml'], files = ['Thalamus/Thalamus-prob-2mm.nii.gz','Striatum/striatum-con-prob-thr25-2mm.nii.gz'], labels = ['Thalamus','Striatum'], threshold = 0.5):
-		"""createMasksFromFSLAtlases takes lists of xml files in the fsl atlas folders, the corresponding nii files, and a threshold.
-		These atlases are likely connectivity-based subcortical atlases.
-		createMasksFromFSLAtlases uses these inputs to create subject-session specific anatomical masks, given the threshold.
-		First, the xml file is read, and then the corresponding nii is transformed and 
-		taken apart on a per-timepoint basis in order to create 3d instead of 4d masks
-		"""
-
-		target_file = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]])
-		mni_reg_file = os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'standard2example_func.mat' )
-		output_folder = self.stageFolder(stage = 'processed/mri/masks/anat')
-
-		for xml, nii_mask_file, label in zip(xml_files, files, labels):
-			# read xml files. 
-			tree = ET.parse(os.path.join(os.environ['FSL_DIR'], 'data/atlases/', xml))
-			root = tree.getroot()
-			name_frame_dict = {child.text: int(child.attrib['index'])  for child in list(root.iterfind('data'))[0]}
-
-			joined_output_filename = os.path.join(output_folder, nii_mask_file.split('/')[1][:-7])
-
-			for i, hemi in enumerate(['lh','rh']):
-				# create hemispheric masks, last dimension is lateral dimension in MNI space
-				orig_mni = NiftiImage(os.path.join(os.environ['FSL_DIR'], 'data/atlases/', nii_mask_file))
-				hemi_mni_data = orig_mni.data.copy()
-				hemi_mni_data[:,:,:,i * (orig_mni.data.shape[-1]/2) : np.min([(i+1) * (orig_mni.data.shape[-1]/2), orig_mni.data.shape[-1]])] = 0
-				hemi_mni = NiftiImage(hemi_mni_data)
-				hemi_mni.header = orig_mni.header
-				hemi_mni_filename = os.path.join(os.path.split(joined_output_filename)[0], hemi + '.' + os.path.split(joined_output_filename)[1] + '_MNI.nii.gz')
-				hemi_mni.save(hemi_mni_filename)
-
-				hemi_filename = os.path.join(os.path.split(joined_output_filename)[0], hemi + '.' + os.path.split(joined_output_filename)[1] + '.nii.gz')
-
-				flO = FlirtOperator(inputObject = hemi_mni_filename, referenceFileName = target_file)
-				flO.configureApply(transformMatrixFileName = mni_reg_file, outputFileName = hemi_filename, sinc=True, extra_args = ' -datatype float')
-				flO.execute()
-
-				# delete mni space masks to avoid errors due to import of non-compying sized niis
-				os.system('rm ' + hemi_mni_filename)
-
-				joined_output_file = NiftiImage(hemi_filename)
-				for name in name_frame_dict.keys():
-					this_file = NiftiImage((joined_output_file.data[name_frame_dict[name]] > threshold).astype(np.float32))
-					this_file.header = joined_output_file.header
-					this_file.save(os.path.join(output_folder, hemi + '.'+ label + '_' + name + '.nii.gz'))
-					
-
-
 	def masksWithStatMask(self, originalMaskFolder = 'anat', statMasks = None, statMaskNr = 0, absolute = False, toSurf = False, thresholds = [2.0], maskFunction = '__gt__', delete_older_files = False):
 		# now take those newly constructed anatomical masks and use them to mask the statMasks, if any, or just copy them to the lower level for wholesale use.
 		roiFileNames = subprocess.Popen('ls ' + self.stageFolder( stage = 'processed/mri/masks/' + originalMaskFolder ) + '*' + standardMRIExtension, shell=True, stdout=PIPE).communicate()[0].split('\n')[0:-1]
@@ -1599,7 +1429,7 @@ class Session(PathConstructor):
 					featFileName = self.runFile(stage = 'processed/mri', run = r, postFix = postFix, extension = '.fsf')
 					featOp = FEATOperator(inputObject = thisFeatFile)
 					# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
-					if r == self.runList[self.scanTypeDict['epi_bold'][-1]]:
+					if r == [self.runList[i] for i in self.conditionDict[cond]][-1]:
 						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
 					else:
 						featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
