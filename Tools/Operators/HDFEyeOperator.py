@@ -6,7 +6,7 @@ from datetime import *
 from math import *
 import numpy as np
 import numpy.linalg as LA
-import matplotlib.pylab as pl
+import matplotlib.pyplot as plt
 import scipy as sp
 from tables import *
 import pandas as pd
@@ -16,6 +16,7 @@ from Operator import Operator
 from EyeSignalOperator import EyeSignalOperator, detect_saccade_from_data
 
 from IPython import embed as shell 
+
 
 class HDFEyeOperator(Operator):
 	"""
@@ -217,10 +218,8 @@ class HDFEyeOperator(Operator):
 					else:
 						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
 					
-					# detect blinks (coalese period in samples):
-					eso.blink_detection_pupil(coalesce_period=sample_rate*250./1000.)
-					# interpolate blinks:
-					eso.interpolate_blinks(method='linear')
+					# detect and interpolate blinks:
+					eso.interpolate_blinks(method='linear', coalesce_period=0.5*sample_rate)
 					eso.interpolate_blinks2()
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
@@ -261,33 +260,8 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp_clean_zscore'] = eso.bp_filt_pupil_clean_zscore
 					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
-					# plot interpolated pupil time series:
-					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
-					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
-					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
-					pl.ylabel('pupil size (raw)')
-					pl.xlabel('time (s)')
-					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
-					
-					# plot results blink detection next to hdf5:
-					fig = pl.figure()
-					pl.plot(x, eso.lp_filt_pupil_psc, 'b', rasterized=True)
-					pl.plot(x, eso.lp_filt_pupil_clean_psc, 'g', rasterized=True)
-					pl.ylabel('pupil size (% signal change)')
-					pl.xlabel('time (s)')
-					pl.legend(['low pass', 'low pass + cleaned up'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
-					
-					# plot results blink detection next to hdf5:
-					fig = pl.figure()
-					pl.plot(eso.pupil_diff, rasterized=True)
-					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
-					pl.ylim(ymin=-200, ymax=200)
-					pl.ylabel('diff pupil size (raw)')
-					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_3_{}_{}_{}.pdf'.format(alias, i, eye)))
+					fig = eso.summary_plot()
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'pupil_preprocess_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)

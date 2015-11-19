@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import numpy.linalg as LA
 from Tools.other_scripts.savitzky_golay import *
-import matplotlib.pylab as pl
+import matplotlib.pyplot as plt
 from math import *
 from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.interpolate as interpolate
@@ -228,81 +228,43 @@ class EyeSignalOperator(Operator):
 		self.raw_pupil = np.array(self.inputObject['pupil']).squeeze()
 		
 		if hasattr(self, 'eyelink_blink_data'):
-			self.blink_dur = np.array(self.eyelink_blink_data['duration']) 
-			self.blink_starts = np.array(self.eyelink_blink_data['start_timestamp'])[self.blink_dur<4000]
-			self.blink_ends = np.array(self.eyelink_blink_data['end_timestamp'])[self.blink_dur<4000]
+			self.blink_dur_EL = np.array(self.eyelink_blink_data['duration']) 
+			self.blink_starts_EL = np.array(self.eyelink_blink_data['start_timestamp'])[self.blink_dur_EL<4000] - self.timepoints[0]
+			self.blink_ends_EL = np.array(self.eyelink_blink_data['end_timestamp'])[self.blink_dur_EL<4000] - self.timepoints[0]
 		
 		if hasattr(self, 'eyelink_sac_data'):
-			self.sac_dur = np.array(self.eyelink_sac_data['duration']) 
-			self.sac_starts = np.array(self.eyelink_sac_data['start_timestamp'])
-			self.sac_ends = np.array(self.eyelink_sac_data['end_timestamp'])
+			self.sac_dur_EL = np.array(self.eyelink_sac_data['duration']) 
+			self.sac_starts_EL = np.array(self.eyelink_sac_data['start_timestamp']) - self.timepoints[0]
+			self.sac_ends_EL = np.array(self.eyelink_sac_data['end_timestamp']) - self.timepoints[0]
 		
 		if not hasattr(self, 'sample_rate'): # this should have been set as a kwarg, but if it hasn't we just assume a standard 1000 Hz
 			self.sample_rate = 1000.0
 	
-	def blink_detection_pupil(self, coalesce_period = 250, threshold_level = 0.01):
+	def interpolate_blinks(self, method='linear', lin_interpolation_points=[[-200],[200]], spline_interpolation_points=[[-0.15,-0.075], [0.075,0.15]], coalesce_period=500):
 		"""
-		blink_detection_pupil detects blinks in the pupil signal
-		depending on when signals go below threshold_level,
-		dilates these intervals by period coalesce_period.
-		
-		If eyelink already provided blink information,
-		then this information is used to set raw_pupil entries within
-		those blinks to zero (so they're not really raw anymore), and then the eyelink-provided 
-		pupil information (in self.blink_starts and self.blink_ends) is
-		overwritten (probably causing a mismatch with the eyelink-provided
-		blink duration information in self.blink_dur).
-		
-		In typical usage a call to the present method is followed by a call to self.interpolate_blinks().
+		interpolate_blinks interpolates blink periods with method, which can be spline or linear.
+		Use after self.blink_detection_pupil().
+		spline_interpolation_points is a 2 by X list detailing the data points around the blinks
+		(in s offset from blink start and end) that should be used for fitting the interpolation spline.
+
+		The results are stored in self.interpolated_pupil, self.interpolated_x and self.interpolated_y
+		without affecting the self.raw_... variables
+
+		After calling this method, additional interpolation may be performed by calling self.interpolate_blinks2()
 		"""
 		
+		# set all missing data to 0:
+		self.raw_pupil[self.raw_pupil<1] = 0
+		
+		# blinks to work with -- preferably eyelink!
 		if hasattr(self, 'eyelink_blink_data'):
-			
-			# set all eyelink-identified blinks to 0:
-			for i in range(len(self.blink_starts)):
-				self.raw_pupil[(self.timepoints>self.blink_starts[i])*(self.timepoints<self.blink_ends[i])] = 0
-		
-			# set all missing data to 0:
-			self.raw_pupil[self.raw_pupil<threshold_level] = 0
-		
-			# we do not want to start or end with a 0:
-			pupil_median_start = max(1000, np.median(self.raw_pupil[:int(self.sample_rate*10)][self.raw_pupil[:int(self.sample_rate*10)]!=0]))
-			pupil_median_end = max(1000, np.median(self.raw_pupil[int(self.sample_rate*10):][self.raw_pupil[int(self.sample_rate*10):]!=0]))
-			self.raw_pupil[:coalesce_period+1] = pupil_median_start
-			self.raw_pupil[-coalesce_period+1:] = pupil_median_end
-		
-			# detect zero edges (we just created from blinks, plus missing data):
-			zero_edges = np.arange(self.raw_pupil.shape[0])[np.diff((self.raw_pupil<threshold_level))]
-			if zero_edges.shape[0] == 0:
-				pass
-			else:
-				zero_edges = zero_edges[:int(2 * np.floor(zero_edges.shape[0]/2.0))].reshape(-1,2)
-		
-			# check for neighbouring blinks (coalesce_period, default is 250ms), and string them together:
-			start_indices = np.ones(zero_edges.shape[0], dtype=bool)
-			end_indices = np.ones(zero_edges.shape[0], dtype=bool)
-			for i in range(zero_edges.shape[0]):
-				try:
-					if zero_edges[i+1,0] - zero_edges[i,1] <= coalesce_period:
-						start_indices[i+1] = False
-						end_indices[i] = False
-				except IndexError:
-					pass
-		
-			# these are the blink start and end samples to work with:
-			if sum(start_indices) > 0:
-				self.blink_starts = zero_edges[start_indices,0]
-				self.blink_ends = zero_edges[end_indices,1]
-			else:
-				self.blink_starts = None
-				self.blink_ends = None
-		
+			for i in range(len(self.blink_starts_EL)):
+				self.raw_pupil[self.blink_starts_EL[i]:self.blink_ends_EL[i]] = 0 # set all eyelink-identified blinks to 0:
 		else:
 			self.blinks_indices = pd.rolling_mean(np.array(self.raw_pupil < threshold_level, dtype = float), int(coalesce_period)) > 0
 			self.blinks_indices = np.array(self.blinks_indices, dtype=int)
 			self.blink_starts = self.timepoints[:-1][np.diff(self.blinks_indices) == 1]
 			self.blink_ends = self.timepoints[:-1][np.diff(self.blinks_indices) == -1]
-		
 			# now make sure we're only looking at the blnks that fall fully inside the data stream
 			try:
 				if self.blink_starts[0] > self.blink_ends[0]:
@@ -312,59 +274,69 @@ class EyeSignalOperator(Operator):
 			except:
 				shell()
 		
-	def interpolate_blinks(self, method = 'linear', lin_interpolation_points = [[-100],[100]], spline_interpolation_points = [[-0.15, -0.075],[0.075, 0.15]]):
-		"""
-		interpolate_blinks interpolates blink periods with method, which can be spline or linear. 
-		Use after self.blink_detection_pupil().
-		spline_interpolation_points is a 2 by X list detailing the data points around the blinks
-		(in s offset from blink start and end) that should be used for fitting the interpolation spline.
-		
-		The results are stored in self.interpolated_pupil, self.interpolated_x and self.interpolated_y
-		without affecting the self.raw_... variables
-		
-		After calling this method, additional interpolation may be performed by calling self.interpolate_blinks2()
-		"""
-		
+		# we do not want to start or end with a 0:
 		import copy
-		
 		self.interpolated_pupil = copy.copy(self.raw_pupil[:])
 		self.interpolated_x = copy.copy(self.raw_gaze_X)
 		self.interpolated_y = copy.copy(self.raw_gaze_Y)
+		self.interpolated_pupil[:coalesce_period*2] = np.percentile(self.interpolated_pupil[:int(self.sample_rate*2.5)], 90)
+		self.interpolated_pupil[-coalesce_period:] = np.percentile(self.interpolated_pupil[-int(self.sample_rate*2.5):], 90)
+		self.interpolated_x[:coalesce_period*2] = np.percentile(self.interpolated_x[:int(self.sample_rate*2.5)], 50)
+		self.interpolated_x[-coalesce_period:] = np.percentile(self.interpolated_x[-int(self.sample_rate*2.5):], 50)
+		self.interpolated_y[:coalesce_period*2] = np.percentile(self.interpolated_y[:int(self.sample_rate*2.5)], 50)
+		self.interpolated_y[-coalesce_period:] = np.percentile(self.interpolated_y[-int(self.sample_rate*2.5):], 50)
 		
+		# detect zero edges (we just created from blinks, plus missing data):
+		zero_edges = np.arange(self.interpolated_pupil.shape[0])[np.diff((self.interpolated_pupil<1))]
+		if zero_edges.shape[0] == 0:
+			pass
+		else:
+			zero_edges = zero_edges[:int(2 * np.floor(zero_edges.shape[0]/2.0))].reshape(-1,2)
+		
+		self.blink_starts = zero_edges[:,0]
+		self.blink_ends = zero_edges[:,1]
+		
+		# check for neighbouring blinks (coalesce_period, default is 500ms), and string them together:
+		start_indices = np.ones(self.blink_starts.shape[0], dtype=bool)
+		end_indices = np.ones(self.blink_ends.shape[0], dtype=bool)
+		for i in range(self.blink_starts.shape[0]):
+			try:
+				if self.blink_starts[i+1] - self.blink_ends[i] <= coalesce_period:
+					start_indices[i+1] = False
+					end_indices[i] = False
+			except IndexError:
+				pass
+		
+		# these are the blink start and end samples to work with:
+		if sum(start_indices) > 0:
+			self.blink_starts = self.blink_starts[start_indices]
+			self.blink_ends = self.blink_ends[end_indices]
+		else:
+			self.blink_starts = None
+			self.blink_ends = None
+		self.blink_starts = self.blink_starts[self.blink_starts>coalesce_period]
+		self.blink_ends = self.blink_ends[self.blink_starts>coalesce_period]
+		
+		# do actual interpolation:
 		if method == 'spline':
 			points_for_interpolation = np.array(np.array(spline_interpolation_points) * self.sample_rate, dtype = int)
 			for bs, be in zip(self.blink_starts, self.blink_ends):
-				# interpolate
 				samples = np.ravel(np.array([bs + points_for_interpolation[0], be + points_for_interpolation[1]]))
 				sample_indices = np.arange(self.raw_pupil.shape[0])[np.sum(np.array([self.timepoints == s for s in samples]), axis = 0)]
 				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_pupil[sample_indices])
-				# replace with interpolated data, from the inside points of the interpolation lists. 
 				self.interpolated_pupil[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
 				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gaze_X[sample_indices])
 				self.interpolated_x[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
 				spline = interpolate.InterpolatedUnivariateSpline(sample_indices,self.raw_gaze_Y[sample_indices])
 				self.interpolated_y[sample_indices[0]:sample_indices[-1]] = spline(np.arange(sample_indices[1],sample_indices[-2]))
-		
 		elif method == 'linear':
-			try:
-				if self.blink_starts != None:
-					points_for_interpolation = np.array([self.blink_starts, self.blink_ends], dtype=int).T + np.array(lin_interpolation_points).T
-					for itp in points_for_interpolation:
-						self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
-						self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
-						self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
-			except:
-				self.interpolated_pupil = np.ones(self.raw_pupil.shape[0])
-				self.interpolated_x = np.ones(self.raw_pupil.shape[0])
-				self.interpolated_y = np.ones(self.raw_pupil.shape[0])
-		
-		# import matplotlib.pyplot as plt
-		# plt.figure()
-		# plt.plot(self.raw_pupil)
-		# plt.plot(self.interpolated_pupil)
-		# plt.show()
-		# shell()
-		
+			if self.blink_starts != None:
+				points_for_interpolation = np.array([self.blink_starts, self.blink_ends], dtype=int).T + np.array(lin_interpolation_points).T
+				for itp in points_for_interpolation:
+					self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
+					self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
+					self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
+					
 	def interpolate_blinks2(self, lin_interpolation_points = [[-100],[100]]):
 		
 		"""
@@ -380,7 +352,7 @@ class EyeSignalOperator(Operator):
 		
 		from Tools.other_scripts import functions_jw as myfuncs
 		self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
-		self.peaks = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=500, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)
+		self.peaks = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=500, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)[:-1] # last peak might not reflect blink...
 		if self.peaks != None:
 			points_for_interpolation = np.array([self.peaks, self.peaks], dtype=int).T + np.array(lin_interpolation_points).T
 			for itp in points_for_interpolation:
@@ -462,27 +434,50 @@ class EyeSignalOperator(Operator):
 	def regress_blinks(self,):
 		
 		# params:
-		self.downsample_rate = 50
+		self.downsample_rate = 100
 		self.new_sample_rate = self.sample_rate / self.downsample_rate
-		interval = 4
+		interval = 5
 		
 		# events:
-		blinks = (self.blink_ends/self.sample_rate) - 0.5
-		sacs = ((self.sac_ends-self.timepoints[0])/self.sample_rate) - 0.5
+		blinks = self.blink_ends / self.sample_rate
+		blinks = blinks[blinks>25]
+		sacs = self.sac_ends_EL / self.sample_rate
+		sacs = sacs[sacs>25]
 		events = [blinks, sacs]
 		
 		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
 		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
-		self.bp_filt_pupil_clean = np.array(do.residuals()).ravel()
+		self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()
+		self.sac_response = np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel()
 		
-		# self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0])
+		# demean:
+		self.blink_response = self.blink_response - self.blink_response[:0.25*self.new_sample_rate].mean()
+		self.sac_response = self.sac_response - self.sac_response[:0.25*self.new_sample_rate].mean()
 		
-		# upsample blink and sac kernels to original sample rate:
+		# fit:
 		
-		self.blink_response = sp.signal.savgol_filter(np.concatenate([ np.repeat(d, 50) for d in np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()]), (self.downsample_rate*2)-1, 3)
-		self.sac_response = sp.signal.savgol_filter(np.concatenate([ np.repeat(d, 50) for d in np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel()]), (self.downsample_rate*2)-1, 3)
-		# self.blink_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
-		# self.sac_response = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
+		from scipy.optimize import curve_fit
+		def single_gamma(x, a1, sh1, sc1,): 
+			return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1)
+		def double_gamma(x, a1, sh1, sc1, a2, sh2, sc2 ): 
+			return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
+		
+		x = np.linspace(0,interval,len(self.blink_response))
+		
+		y = self.blink_response
+		guess = np.array([-0.604, 8.337, 0.115, 0.419, 15.433, 0.178])
+		popt_blink, pcov = curve_fit(double_gamma, x, y, p0=guess, maxfev=10000)
+		self.blink_fit = double_gamma(x, *popt_blink)
+		
+		y = self.sac_response
+		guess = np.array([-0.175, 6.541, 0.172])
+		popt_sac, pcov = curve_fit(single_gamma, x, y, p0=guess, maxfev=10000)
+		self.sac_fit = single_gamma(x, *popt_sac)
+		
+		# upsample:
+		x = np.linspace(0,interval,interval*self.sample_rate)
+		blink_kernel = double_gamma(x, *popt_blink)
+		sac_kernel = single_gamma(x, *popt_sac)
 		
 		# regress out from original timeseries with GLM:
 		event_1 = np.ones((len(blinks),3))
@@ -492,22 +487,74 @@ class EyeSignalOperator(Operator):
 		event_2[:,0] = sacs
 		event_2[:,1] = 0
 		GLM = functions_jw_GLM.GeneralLinearModel(input_object=self.bp_filt_pupil, event_object=[event_1, event_2], sample_dur=1.0/self.sample_rate, new_sample_dur=1.0/self.sample_rate)
-		GLM.configure(IRF=[self.blink_response, self.sac_response], regressor_types=['stick', 'stick'],)
+		GLM.configure(IRF=[blink_kernel, sac_kernel], regressor_types=['stick', 'stick'],)
 		GLM.design_matrix = np.vstack((GLM.design_matrix[0], GLM.design_matrix[3]))
 		GLM.execute()
 		
 		# clean data:
 		self.bp_filt_pupil_clean = GLM.residuals
 		
-		# # compute blink and sac kernels with deconvolution (on downsampled timeseries):
-		# do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil_clean, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
-		# self.bp_filt_pupil_clean = np.array(do.residuals()).ravel()
-		#
-		# # upsample blink and sac kernels to original sample rate:
-		# blink_response_clean = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel(), self.sample_rate*interval)
-		# sac_response_clean = sp.signal.resample(np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel(), self.sample_rate*interval)
-		
 		# final timeseries:
 		self.lp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil
 		self.bp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil.mean()
+		
+		
+	def summary_plot(self):
+		
+		import matplotlib.gridspec as gridspec
+		
+		fig = plt.figure(figsize=(6,10))
+		gs = gridspec.GridSpec(4, 3)
+		ax1 = plt.subplot(gs[0,:])
+		ax2 = plt.subplot(gs[1,:])
+		ax3 = plt.subplot(gs[2,0])
+		ax4 = plt.subplot(gs[2,1])
+		ax5 = plt.subplot(gs[3,:])
+		
+		x = np.linspace(0,self.raw_pupil.shape[0]/self.sample_rate, self.raw_pupil.shape[0])
+		ax1.plot(x, self.raw_pupil, 'b', rasterized=True)
+		ax1.plot(x, self.interpolated_pupil, 'g', rasterized=True)
+		ax1.set_title('Raw and blink interpolated timeseries')
+		ax1.set_ylabel('Pupil size (raw)')
+		ax1.set_xlabel('Time (s)')
+		ax1.legend(['Raw', 'Int + filt'])
+		
+		ax2.plot(self.pupil_diff, rasterized=True)
+		ax2.plot(self.peaks, self.pupil_diff[self.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
+		ax2.set_ylim(ymin=-200, ymax=200)
+		ax2.set_title('Remaining blinks?')
+		ax2.set_ylabel('Diff pupil size (raw)')
+		ax2.set_xlabel('Samples')
+		
+		x = np.linspace(0,self.blink_response.shape[0]/self.new_sample_rate, self.blink_response.shape[0])
+		ax3.plot(x, self.blink_response, label='response')
+		ax3.plot(x, self.blink_fit, label='fit')
+		ax3.legend()
+		ax3.set_title('Blink response')
+		ax3.set_xlabel('Time (s)')
+		ax3.set_ylabel('Pupil size\n(% signal change)')
+		
+		ax4.plot(x, self.sac_response, label='response')
+		ax4.plot(x, self.sac_fit, label='fit')
+		ax4.legend()
+		ax4.set_title('Saccade response')
+		ax4.set_xlabel('Time (s)')
+		ax4.set_ylabel('Pupil size\n(% signal change)')
+		
+		x = np.linspace(0,self.raw_pupil.shape[0]/self.sample_rate, self.raw_pupil.shape[0])
+		ax5.plot(x, self.lp_filt_pupil_psc, 'b', rasterized=True)
+		ax5.plot(x, self.lp_filt_pupil_clean_psc, 'g', rasterized=True)
+		ax5.set_title('Final timeseries')
+		ax5.set_ylabel('Pupil size (% signal change)')
+		ax5.set_xlabel('Time (s)')
+		ax5.legend(['low pass', 'low pass + cleaned up'])
+		
+		plt.tight_layout()
+		
+		return fig
+		
+		
+		
+		
+	
 		
