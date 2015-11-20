@@ -218,6 +218,14 @@ class HDFEyeOperator(Operator):
 					else:
 						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
 					
+					# eye_dict = {'timepoints':pd.Series(np.array(bdf.time)), 'gaze_X':pd.Series(np.array(gaze_X).ravel()), 'gaze_Y':pd.Series(np.array(gaze_Y).ravel()), 'pupil':pd.Series(np.array(pupil).ravel()),}
+					# a = pd.DataFrame(eye_dict)
+					# b = pd.DataFrame(blink_dict)
+					# c = pd.DataFrame(sac_dict)
+					# a.to_csv('/home/degee/eye_dict.csv')
+					# b.to_csv('/home/degee/blink_dict.csv')
+					# c.to_csv('/home/degee/sac_dict.csv')
+					
 					# detect and interpolate blinks:
 					eso.interpolate_blinks(method='linear', coalesce_period=0.5*sample_rate)
 					eso.interpolate_blinks2()

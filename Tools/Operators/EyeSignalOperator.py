@@ -279,8 +279,8 @@ class EyeSignalOperator(Operator):
 		self.interpolated_pupil = copy.copy(self.raw_pupil[:])
 		self.interpolated_x = copy.copy(self.raw_gaze_X)
 		self.interpolated_y = copy.copy(self.raw_gaze_Y)
-		self.interpolated_pupil[:coalesce_period*2] = np.percentile(self.interpolated_pupil[:int(self.sample_rate*2.5)], 90)
-		self.interpolated_pupil[-coalesce_period:] = np.percentile(self.interpolated_pupil[-int(self.sample_rate*2.5):], 90)
+		self.interpolated_pupil[:coalesce_period*2] = max(np.percentile(self.interpolated_pupil[:int(self.sample_rate*2.5)], 90), np.percentile(self.interpolated_pupil, 50))
+		self.interpolated_pupil[-coalesce_period:] = max(np.percentile(self.interpolated_pupil[-int(self.sample_rate*2.5):], 90), np.percentile(self.interpolated_pupil, 50))
 		self.interpolated_x[:coalesce_period*2] = np.percentile(self.interpolated_x[:int(self.sample_rate*2.5)], 50)
 		self.interpolated_x[-coalesce_period:] = np.percentile(self.interpolated_x[-int(self.sample_rate*2.5):], 50)
 		self.interpolated_y[:coalesce_period*2] = np.percentile(self.interpolated_y[:int(self.sample_rate*2.5)], 50)
@@ -388,8 +388,7 @@ class EyeSignalOperator(Operator):
 		
 		# self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
 		self.baseline_filt_pupil = self.lp_filt_pupil - self.bp_filt_pupil
-
-	
+		
 	def zscore_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
 		zscore_pupil z-scores the low-pass filtered pupil size data and the band-pass filtered pupil size data.
@@ -406,7 +405,6 @@ class EyeSignalOperator(Operator):
 		# self.baseline_filt_pupil_zscore = (self.baseline_filt_pupil - self.baseline_filt_pupil.mean()) / self.baseline_filt_pupil.std()
 		
 		exec('self.' + str(dtype) + '_zscore = (self.' + str(dtype) + ' - np.mean(self.' + str(dtype) + ')) / np.std(self.' + str(dtype) + ')')
-		
 		
 	def percent_signal_change_pupil(self, dtype = 'bp_filt_pupil'):
 		"""
@@ -441,8 +439,10 @@ class EyeSignalOperator(Operator):
 		# events:
 		blinks = self.blink_ends / self.sample_rate
 		blinks = blinks[blinks>25]
+		blinks = blinks[blinks<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
 		sacs = self.sac_ends_EL / self.sample_rate
 		sacs = sacs[sacs>25]
+		sacs = sacs[sacs<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
 		events = [blinks, sacs]
 		
 		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
@@ -450,34 +450,123 @@ class EyeSignalOperator(Operator):
 		self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()
 		self.sac_response = np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel()
 		
+		# fix response:
+		# diff_response = np.diff(self.blink_response)
+		# if diff_response[:int(0.2*self.new_sample_rate)].mean() > 0:
+		# 	self.blink_response[0:np.where(diff_response < 0)[0][0]] = self.blink_response[np.where(diff_response < 0)[0][0]]
+		
 		# demean:
-		self.blink_response = self.blink_response - self.blink_response[:0.25*self.new_sample_rate].mean()
-		self.sac_response = self.sac_response - self.sac_response[:0.25*self.new_sample_rate].mean()
+		self.blink_response = self.blink_response - self.blink_response[:int(0.2*self.new_sample_rate)].mean()
+		self.sac_response = self.sac_response - self.sac_response[:int(0.2*self.new_sample_rate)].mean()
 		
 		# fit:
+		from lmfit import minimize, Parameters, Parameter, report_fit
 		
-		from scipy.optimize import curve_fit
-		def single_gamma(x, a1, sh1, sc1,): 
-			return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1)
-		def double_gamma(x, a1, sh1, sc1, a2, sh2, sc2 ): 
+		# define objective function: returns the array to be minimized
+		def double_gamma_ls(params, x, data): 
+			
+			a1 = params['a1'].value
+			sh1 = params['sh1'].value
+			sc1 = params['sc1'].value
+			a2 = params['a2'].value
+			sh2 = params['sh2'].value
+			sc2 = params['sc2'].value
+			
+			model = a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
+			
+			return model - data
+		
+		def double_gamma(params, x): 
+			a1 = params['a1']
+			sh1 = params['sh1']
+			sc1 = params['sc1']
+			a2 = params['a2']
+			sh2 = params['sh2']
+			sc2 = params['sc2']
 			return a1 * sp.stats.gamma.pdf(x, sh1, loc=0.0, scale = sc1) + a2 * sp.stats.gamma.pdf(x, sh2, loc=0.0, scale = sc2)
+		def pupil_IRF(params, x):
+			s1 = params['s1']
+			n1 = params['n1']
+			tmax1 = params['tmax1']
+			
+			return s1 * (x**n1) * (np.e**((-n1*x)/tmax1))
+		def double_pupil_IRF(params, x):
+			s1 = params['s1']
+			s2 = params['s2']
+			n1 = params['n1']
+			n2 = params['n2']
+			tmax1 = params['tmax1']
+			tmax2 = params['tmax2']
+			
+			return s1 * ((x**n1) * (np.e**((-n1*x)/tmax1))) + s2 * ((x**n2) * (np.e**((-n2*x)/tmax2)))
+			
+			
+		def double_pupil_IRF_ls(params, x, data):
+			s1 = params['s1'].value
+			s2 = params['s2'].value
+			n1 = params['n1'].value
+			n2 = params['n2'].value
+			tmax1 = params['tmax1'].value
+			tmax2 = params['tmax2'].value
+			
+			model = s1 * ((x**n1) * (np.e**((-n1*x)/tmax1))) + s2 * ((x**n2) * (np.e**((-n2*x)/tmax2)))
+			
+			return model - data
+			
 		
+		
+		# create data to be fitted
 		x = np.linspace(0,interval,len(self.blink_response))
 		
-		y = self.blink_response
-		guess = np.array([-0.604, 8.337, 0.115, 0.419, 15.433, 0.178])
-		popt_blink, pcov = curve_fit(double_gamma, x, y, p0=guess, maxfev=10000)
-		self.blink_fit = double_gamma(x, *popt_blink)
+		# # create a set of Parameters
+		# params = Parameters()
+		# params.add('a1', value=-1, min=-np.inf, max=-1e-25)
+		# params.add('a2', value=0.4, min=1e-25, max=np.inf)
+		# params.add('sh1', value=8, min=4, max=10)
+		# params.add('sh2', value=15,) #min=10, max=20)
+		# params.add('sc1', value=0.1, min=0, max=1)
+		# params.add('sc2', value=0.2, min=0, max=3)
+		#
+		# # do fit, here with leastsq model
+		# data = self.blink_response
+		# blink_result = minimize(double_gamma_ls, params, args=(x, data))
+		# self.blink_fit = double_gamma(blink_result.values, x)
+		#
+		# data = self.sac_response
+		# sac_result = minimize(double_gamma_ls, params, args=(x, data))
+		# self.sac_fit = double_gamma(sac_result.values, x)
+		#
+		# # upsample:
+		# x = np.linspace(0,interval,interval*self.sample_rate)
+		# blink_kernel = double_gamma(blink_result.values, x)
+		# sac_kernel = double_gamma(sac_result.values, x)
 		
-		y = self.sac_response
-		guess = np.array([-0.175, 6.541, 0.172])
-		popt_sac, pcov = curve_fit(single_gamma, x, y, p0=guess, maxfev=10000)
-		self.sac_fit = single_gamma(x, *popt_sac)
+		# create a set of Parameters
+		params = Parameters()
+		params.add('s1', value=-1, min=-np.inf, max=-1e-25)
+		params.add('s2', value=1, min=1e-25, max=np.inf)
+		params.add('n1', value=10, min=9, max=11)
+		params.add('n2', value=10, min=8, max=12)
+		params.add('tmax1', value=0.9, min=0.5, max=1.5)
+		params.add('tmax2', value=2.5, min=1.5, max=4)
+
+		# do fit, here with leastsq model
+		data = self.blink_response
+		blink_result = minimize(double_pupil_IRF_ls, params, method='powell', args=(x, data))
+		self.blink_fit = double_pupil_IRF(blink_result.values, x)
+		data = self.sac_response
+		sac_result = minimize(double_pupil_IRF_ls, params, method='powell', args=(x, data))
+		self.sac_fit = double_pupil_IRF(sac_result.values, x)
 		
 		# upsample:
 		x = np.linspace(0,interval,interval*self.sample_rate)
-		blink_kernel = double_gamma(x, *popt_blink)
-		sac_kernel = single_gamma(x, *popt_sac)
+		blink_kernel = double_pupil_IRF(blink_result.values, x)
+		sac_kernel = double_pupil_IRF(sac_result.values, x)
+		
+		# use standard values:
+		# standard_values = {'a1':-0.604, 'sh1':8.337, 'sc1':0.115, 'a2':0.419, 'sh2':15.433, 'sc2':0.178}
+		# blink_kernel = double_gamma(standard_values, x)
+		# sac_kernel = double_gamma(standard_values, x)
 		
 		# regress out from original timeseries with GLM:
 		event_1 = np.ones((len(blinks),3))
@@ -490,6 +579,10 @@ class EyeSignalOperator(Operator):
 		GLM.configure(IRF=[blink_kernel, sac_kernel], regressor_types=['stick', 'stick'],)
 		GLM.design_matrix = np.vstack((GLM.design_matrix[0], GLM.design_matrix[3]))
 		GLM.execute()
+		
+		self.GLM_measured = GLM.working_data_array
+		self.GLM_predicted = GLM.predicted
+		self.GLM_r, self.GLM_p = sp.stats.pearsonr(self.GLM_measured, self.GLM_predicted)
 		
 		# clean data:
 		self.bp_filt_pupil_clean = GLM.residuals
@@ -504,12 +597,13 @@ class EyeSignalOperator(Operator):
 		import matplotlib.gridspec as gridspec
 		
 		fig = plt.figure(figsize=(6,10))
-		gs = gridspec.GridSpec(4, 3)
+		gs = gridspec.GridSpec(5, 4)
 		ax1 = plt.subplot(gs[0,:])
 		ax2 = plt.subplot(gs[1,:])
-		ax3 = plt.subplot(gs[2,0])
-		ax4 = plt.subplot(gs[2,1])
+		ax3 = plt.subplot(gs[2,0:2])
+		ax4 = plt.subplot(gs[2,2:4])
 		ax5 = plt.subplot(gs[3,:])
+		ax6 = plt.subplot(gs[4,:])
 		
 		x = np.linspace(0,self.raw_pupil.shape[0]/self.sample_rate, self.raw_pupil.shape[0])
 		ax1.plot(x, self.raw_pupil, 'b', rasterized=True)
@@ -532,22 +626,29 @@ class EyeSignalOperator(Operator):
 		ax3.legend()
 		ax3.set_title('Blink response')
 		ax3.set_xlabel('Time (s)')
-		ax3.set_ylabel('Pupil size\n(% signal change)')
+		ax3.set_ylabel('Pupil size (raw)')
 		
 		ax4.plot(x, self.sac_response, label='response')
 		ax4.plot(x, self.sac_fit, label='fit')
 		ax4.legend()
 		ax4.set_title('Saccade response')
 		ax4.set_xlabel('Time (s)')
-		ax4.set_ylabel('Pupil size\n(% signal change)')
+		ax4.set_ylabel('Pupil size (raw)')
 		
 		x = np.linspace(0,self.raw_pupil.shape[0]/self.sample_rate, self.raw_pupil.shape[0])
-		ax5.plot(x, self.lp_filt_pupil_psc, 'b', rasterized=True)
-		ax5.plot(x, self.lp_filt_pupil_clean_psc, 'g', rasterized=True)
-		ax5.set_title('Final timeseries')
-		ax5.set_ylabel('Pupil size (% signal change)')
+		ax5.plot(x, self.GLM_measured, 'b', rasterized=True)
+		ax5.plot(x, self.GLM_predicted, lw=2, color='g', rasterized=True)
+		ax5.set_title('Nuisance GLM -- R2={}, p={}'.format(round(self.GLM_r,4), round(self.GLM_p,4)))
+		ax5.set_ylabel('Pupil size (raw)')
 		ax5.set_xlabel('Time (s)')
-		ax5.legend(['low pass', 'low pass + cleaned up'])
+		ax5.legend(['measured', 'predicted'])
+		
+		ax6.plot(x, self.lp_filt_pupil_psc, 'b', rasterized=True)
+		ax6.plot(x, self.lp_filt_pupil_clean_psc, 'g', rasterized=True)
+		ax6.set_title('Final timeseries')
+		ax6.set_ylabel('Pupil size (% signal change)')
+		ax6.set_xlabel('Time (s)')
+		ax6.legend(['low pass', 'low pass + cleaned up'])
 		
 		plt.tight_layout()
 		
