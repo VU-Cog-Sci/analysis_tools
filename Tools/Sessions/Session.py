@@ -816,7 +816,7 @@ class Session(PathConstructor):
 		# convert aseg file to nii
 		os.system('mri_convert ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.mgz') + ' ' + os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz')) 
 		
-		flO = FlirtOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz'), referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]], postFix = ['mcf']))
+		flO = FlirtOperator(inputObject = os.path.join(os.environ['SUBJECTS_DIR'], self.subject.standardFSID, 'mri', asegFile + '.nii.gz'), referenceFileName = self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][0]]))
 		flO.configureApply(os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat/'), 'highres2example_func.mat'), outputFileName = os.path.join(self.stageFolder(stage = 'processed/mri/masks'), asegFile + '.nii.gz'))
 		if not os.path.isfile(flO.outputFileName):
 			flO.execute()

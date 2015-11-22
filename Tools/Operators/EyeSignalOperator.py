@@ -29,7 +29,7 @@ from Operator import Operator
 
 from IPython import embed as shell
 
-def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0):
+def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0, minimum_saccade_duration = 0.0075):
 	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
 	
 	This function expects a sequence (N x 2) of xy gaze position or velocity data. 
@@ -39,6 +39,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 		vel_data (numpy.ndarray, optional): a sequence (N x 2) of velocity data (float/integer). Defaults to None.
 		l (float, optional):determines the threshold. Defaults to 5 median-based standard deviations from the median
 		sample_rate (float, optional) - the rate at which eye movements were measured per second). Defaults to 1000.0
+		minimum_saccade_duration (float, optional) - the minimum duration for something to be considered a saccade). Defaults to 0.0075
 	
 	Returns:
 		list of dictionaries, which each correspond to a saccade.
@@ -53,9 +54,7 @@ def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate
 	# If xy_data and vel_data are both None, function can't continue
 	if xy_data is None and vel_data is None:
 		raise ValueError("Supply either xy_data or vel_data")	
-	
-	minimum_saccade_duration = 0.0075 # in s
-	
+		
 	#If xy_data is given, process it
 	if not xy_data is None:
 		xy_data = np.array(xy_data)

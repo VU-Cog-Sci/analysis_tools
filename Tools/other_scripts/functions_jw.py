@@ -31,7 +31,7 @@ import statsmodels.formula.api as sm
 import mne
 import hddm
 import kabuki
-import pypsignifit as psi
+# import pypsignifit as psi
 from itertools import combinations as comb
 
 import pp

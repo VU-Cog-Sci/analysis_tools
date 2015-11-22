@@ -297,7 +297,8 @@ class HDFEyeOperator(Operator):
 		"""eye_during_period returns the identity of the eye that was recorded during a given period"""
 		with pd.get_store(self.inputObject) as h5_file:
 			period_block_nr = self.sample_in_block(sample = time_period[0], block_table = h5_file['%s/blocks'%alias])
-			return h5_file['%s/blocks'%alias]['eye_recorded'][period_block_nr]
+			eye = h5_file['%s/blocks'%alias]['eye_recorded'][period_block_nr]
+		return eye
 	
 	def eye_during_trial(self, trial_nr, alias):
 		"""docstring for signal_from_trial"""
@@ -355,7 +356,11 @@ class HDFEyeOperator(Operator):
 			return None	# assert something, dammit!
 		return self.data_from_time_period(time_period, alias, columns)
 	
-	
+	def saccades_during_period(self, time_period, alias, requested_eye = 'L', l = 5):
+		xy_data = self.signal_during_period(time_period = time_period, alias = alias, signal = 'gaze', requested_eye = requested_eye)
+		vel_data = self.signal_during_period(time_period = time_period, alias = alias, signal = 'vel', requested_eye = requested_eye) 
+		return detect_saccade_from_data(xy_data = xy_data, vel_data = vel_data, l = l, sample_rate = self.sample_rate_during_period(time_period, alias))
+
 	#
 	#	second, based also on trials, using the above functionality
 	#
@@ -395,9 +400,13 @@ class HDFEyeOperator(Operator):
 		return self.signal_during_period(time_period, alias, signal, requested_eye = requested_eye)
 	
 	def saccades_from_trial_phases(self, trial_nr, trial_phases, alias, requested_eye = 'L', time_extensions = [0,0], l = 5):
-		xy_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'gaze', requested_eye = requested_eye, time_extensions = time_extensions)
-		vel_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'vel', requested_eye = requested_eye, time_extensions = time_extensions) 
-		return detect_saccade_from_data(xy_data = xy_data, vel_data = vel_data, l = l, sample_rate = self.sample_rate_during_period(self.time_period_for_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias), alias))
+		time_period = self.time_period_for_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias)
+		time_period = np.array([time_period[0] + time_extensions[0], time_period[1] + time_extensions[1]]).squeeze()
+		return self.saccades_during_period(time_period = time_period, alias = alias, requested_eye = requested_eye, time_extensions = time_extensions, l = l)
+
+		# xy_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'gaze', requested_eye = requested_eye, time_extensions = time_extensions)
+		# vel_data = self.signal_from_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias, signal = 'vel', requested_eye = requested_eye, time_extensions = time_extensions) 
+		# return detect_saccade_from_data(xy_data = xy_data, vel_data = vel_data, l = l, sample_rate = self.sample_rate_during_period(self.time_period_for_trial_phases(trial_nr = trial_nr, trial_phases = trial_phases, alias = alias), alias))
 			
 	#
 	#	read whole dataframes
