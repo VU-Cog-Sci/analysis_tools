@@ -6,7 +6,7 @@ from datetime import *
 from math import *
 import numpy as np
 import numpy.linalg as LA
-import matplotlib.pylab as pl
+import matplotlib.pyplot as plt
 import scipy as sp
 from tables import *
 import pandas as pd
@@ -16,6 +16,7 @@ from Operator import Operator
 from EyeSignalOperator import EyeSignalOperator, detect_saccade_from_data
 
 from IPython import embed as shell 
+
 
 class HDFEyeOperator(Operator):
 	"""
@@ -203,29 +204,46 @@ class HDFEyeOperator(Operator):
 				#
 				for eye in blocks_data_frame.eye_recorded[i]: # this is a string with one or two letters, 'L', 'R' or 'LR'
 				# create dictionairy of data per block:
-					gazeXY = bdf[[s%'gaze' for s in [eye+'_%s_x', eye+'_%s_y',]]]
+					gaze_X = bdf[[s%'gaze' for s in [eye+'_%s_x']]]
+					gaze_Y = bdf[[s%'gaze' for s in [eye+'_%s_y']]]
 					pupil = bdf[[s%'pupil' for s in [eye+'_%s']]]
-					eye_dict = {'timepoints':bdf.time, 'gazeXY':gazeXY, 'pupil':pupil,}
-					
+					eye_dict = {'timepoints':bdf.time, 'gaze_X':gaze_X, 'gaze_Y':gaze_Y, 'pupil':pupil,}
 					# create instance of class EyeSignalOperator, and include the blink data as detected by the Eyelink 1000:
 					if hasattr(self.edf_operator, 'blinks_from_message_file'):
 						blink_dict = self.read_session_data(alias, 'blinks_from_message_file')
 						blink_dict[blink_dict['eye'] == eye]
-						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict,sample_rate=sample_rate)
+						sac_dict = self.read_session_data(alias, 'saccades_from_message_file')
+						sac_dict[sac_dict['eye'] == eye]
+						eso = EyeSignalOperator(inputObject=eye_dict, eyelink_blink_data=blink_dict, eyelink_sac_data=sac_dict, sample_rate=sample_rate)
 					else:
 						eso = EyeSignalOperator(inputObject=eye_dict,sample_rate=sample_rate)
-					# detect blinks (coalese period in samples):
-					eso.blink_detection_pupil(coalesce_period=sample_rate*250./1000.)
-					# interpolate blinks:
-					eso.interpolate_blinks(method='linear')
+					
+					# eye_dict = {'timepoints':pd.Series(np.array(bdf.time)), 'gaze_X':pd.Series(np.array(gaze_X).ravel()), 'gaze_Y':pd.Series(np.array(gaze_Y).ravel()), 'pupil':pd.Series(np.array(pupil).ravel()),}
+					# a = pd.DataFrame(eye_dict)
+					# b = pd.DataFrame(blink_dict)
+					# c = pd.DataFrame(sac_dict)
+					# a.to_csv('/home/degee/eye_dict.csv')
+					# b.to_csv('/home/degee/blink_dict.csv')
+					# c.to_csv('/home/degee/sac_dict.csv')
+					
+					# detect and interpolate blinks:
+					eso.interpolate_blinks(method='linear', coalesce_period=0.5*sample_rate)
 					eso.interpolate_blinks2()
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
+					# regress out blinks:
+					eso.regress_blinks()
 					# z-score filtered pupil data:
-					eso.zscore_pupil()
+					eso.zscore_pupil(dtype='baseline_filt_pupil')
+					eso.zscore_pupil(dtype='lp_filt_pupil')
+					eso.zscore_pupil(dtype='lp_filt_pupil_clean')
+					eso.zscore_pupil(dtype='bp_filt_pupil')
+					eso.zscore_pupil(dtype='bp_filt_pupil_clean')
 					# percent signal change filtered pupil data:
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil')
+					eso.percent_signal_change_pupil(dtype='lp_filt_pupil_clean')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
+					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
 					# now dt the resulting pupil data:
 					eso.dt_pupil()
 					
@@ -239,30 +257,19 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
 					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
-					bdf[eye+'_pupil_bp_psc'] = eso.bp_filt_pupil_psc
 					bdf[eye+'_pupil_baseline'] = eso.baseline_filt_pupil
 					bdf[eye+'_pupil_baseline_zscore'] = eso.baseline_filt_pupil_zscore
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					
-					# plot interpolated pupil time series:
-					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
-					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
-					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
-					pl.ylabel('pupil size (raw)')
-					pl.xlabel('time (s)')
-					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
+					# add downsampled clean data:
+					bdf[eye+'_pupil_lp_clean_zscore'] = eso.lp_filt_pupil_clean_zscore
+					bdf[eye+'_pupil_lp_clean_psc'] = eso.lp_filt_pupil_clean_psc
+					bdf[eye+'_pupil_bp_clean_zscore'] = eso.bp_filt_pupil_clean_zscore
+					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
-					# plot results blink detection next to hdf5:
-					fig = pl.figure()
-					pl.plot(eso.pupil_diff, rasterized=True)
-					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
-					pl.ylim(ymin=-200, ymax=200)
-					pl.ylabel('diff pupil size (raw)')
-					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+					fig = eso.summary_plot()
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'pupil_preprocess_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)

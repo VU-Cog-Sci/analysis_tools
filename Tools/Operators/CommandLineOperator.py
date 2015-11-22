@@ -297,7 +297,33 @@ class BETOperator( CommandLineOperator ):
 		
 		self.runcmd = runcmd
 
+class FASTOperator( CommandLineOperator ):
+	"""
+	Segments an anatomical scan into gray matter / white matter / CSF
+	"""
+	def __init__(self, inputObject, **kwargs):
+		# options for costFunction {mutualinfo,woods,corratio,normcorr,normmi,leastsquares}
+		super(FASTOperator, self).__init__(inputObject = inputObject, cmd = 'fast', **kwargs)
+		if 'sara' or 'aeneas' in os.uname()[1]:
+			pass
+		else:
+			self.cmd = 'export PATH="/usr/local/fsl/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/X11/bin"; fast'
 
+	def configure(self, anat_type='T2', **kwargs):
+		"""
+		configure will run FAST on file in inputObject
+		as specified by parameters in __init__ arguments and here to run.
+		"""
+		runcmd = self.cmd
+		runcmd += ' -g ' 
+		if anat_type == 'T1':
+			runcmd += '-t 1 '
+		elif anat_type == 'T2':
+			runcmd += '-t 2 '
+		runcmd += self.inputFileName
+		
+		self.runcmd = runcmd
+		
 class BBRegisterOperator( CommandLineOperator ):
 	"""
 	BBRegisterOperator invokes bbregister
@@ -754,9 +780,9 @@ class LabelToVolOperator( CommandLineOperator ):
 		for hemi in hemispheres:
 			self.runcmd += self.cmd
 			if self.surfType == 'label':
-				self.runcmd += ' --label '+ self.inputFileName
+				self.runcmd += ' --label '+ self.inputObject
 			elif self.surfType == 'annot':
-				self.runcmd += ' --annot '+ self.inputFileName
+				self.runcmd += ' --annot '+ self.inputObject
 			self.runcmd += ' --temp '+ self.templateFileName
 			self.runcmd += ' --reg '+ self.register
 			self.runcmd += ' --fillthresh ' + str(threshold)
