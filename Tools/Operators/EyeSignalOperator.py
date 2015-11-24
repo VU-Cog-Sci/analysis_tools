@@ -369,7 +369,7 @@ class EyeSignalOperator(Operator):
 		This method is typically called after self.interpolateblinks() and, optionally, self.interpolateblinks2(),
 		consistent with the fact that this method expects the self.interpolated_... variables to exist.
 		"""
-		self.logger.info('Band-pass filtering of pupil signals, hp = %2.3f, lp = 2.3f'%(hp, lp))
+		self.logger.info('Band-pass filtering of pupil signals, hp = %2.3f, lp = %2.3f'%(hp, lp))
 
 		# band-pass filtering of signal, high pass first and then low-pass
 		# High pass:
