@@ -453,6 +453,10 @@ class EyeSignalOperator(Operator):
 		blinks = self.blink_ends / self.sample_rate
 		blinks = blinks[blinks>25]
 		blinks = blinks[blinks<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
+		
+		if blinks.size == 0:
+			blinks = np.array([0.5])
+		
 		sacs = self.sac_ends_EL / self.sample_rate
 		sacs = sacs[sacs>25]
 		sacs = sacs[sacs<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
@@ -563,7 +567,7 @@ class EyeSignalOperator(Operator):
 		params.add('tmax1', value=0.9, min=0.5, max=1.5)
 		params.add('tmax2', value=2.5, min=1.5, max=4)
 
-		# do fit, here with powell model
+		# do fit, here with powell method:
 		data = self.blink_response
 		blink_result = minimize(double_pupil_IRF_ls, params, method='powell', args=(x, data))
 		self.blink_fit = double_pupil_IRF(blink_result.values, x)

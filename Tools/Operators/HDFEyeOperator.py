@@ -284,7 +284,7 @@ class HDFEyeOperator(Operator):
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
-
+					
 					# try time-frequency decomposition of the baseline signal
 					try:
 						eso.time_frequency_decomposition_pupil(
@@ -297,7 +297,7 @@ class HDFEyeOperator(Operator):
 							bdf[eye+'_pupil_filterbank_bp_%2.5f'%freq] = eso.band_pass_filter_bank_pupil[freq]
 					except:
 						pass
-					
+				
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	
