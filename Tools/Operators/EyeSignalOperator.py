@@ -435,8 +435,8 @@ class EyeSignalOperator(Operator):
 
 		# use minimal_frequency for bank of logarithmically frequency-spaced filters
 		frequencies = np.logspace(np.log10(minimal_frequency), np.log10(maximal_frequency), nr_freq_bins)
-		# filtered signal is real part of wavelet-transformed signals
-		self.band_pass_filter_bank_pupil = np.real(mne.time_frequency.cwt_morlet(self.interpolated_pupil[np.newaxis,:], self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, zero_mean=True))[0]
+		# filtered signal is real part of wavelet-transformed signals, saved as dataframe with indexes the frequencies used.
+		self.band_pass_filter_bank_pupil = pd.DataFrame(np.real(mne.time_frequency.cwt_morlet(self.interpolated_pupil[np.newaxis,:], self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, zero_mean=True))[0].T, columns = frequencies)
 
 	
 	def regress_blinks(self,):
