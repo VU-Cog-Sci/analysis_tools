@@ -149,7 +149,17 @@ class HDFEyeOperator(Operator):
 		# first close the hdf5 file to write to it with pandas
 		self.close_hdf_file()
 	
-	def edf_gaze_data_to_hdf(self, alias = None, which_eye = 0, pupil_hp = 0.01, pupil_lp = 6,sample_rate = 1000.):
+	def edf_gaze_data_to_hdf(self, 
+			alias = None, 
+			which_eye = 0, 
+			pupil_hp = 0.01, 
+			pupil_lp = 6,
+			sample_rate = 1000.,
+			minimal_frequency_filterbank = 0.0025, 
+			maximal_frequency_filterbank = 0.1, 
+			nr_freq_bins_filterbank = 9, 
+			n_cycles_filterbank = 1, 
+			):
 		"""
 		edf_gaze_data_to_hdf takes the gaze data
 		that is in the run's edf file, processes it,
@@ -274,6 +284,19 @@ class HDFEyeOperator(Operator):
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+
+					# try time-frequency decomposition of the baseline signal
+					try:
+						eso.time_frequency_decomposition_pupil(
+								minimal_frequency = minimal_frequency_filterbank, 
+								maximal_frequency = maximal_frequency_filterbank, 
+								nr_freq_bins = nr_freq_bins_filterbank, 
+								n_cycles = n_cycles_filterbank
+								)
+						for freq in eso.band_pass_filter_bank_pupil.keys():
+							bdf[eye+'_pupil_filterbank_bp_%2.5f'%freq] = eso.band_pass_filter_bank_pupil[freq]
+					except:
+						pass
 					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
