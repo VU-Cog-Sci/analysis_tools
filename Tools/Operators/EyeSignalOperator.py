@@ -420,13 +420,24 @@ class EyeSignalOperator(Operator):
 		
 		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
 		
-	def time_frequency_decomposition_pupil(self, min_freq = 0.01, max_freq = 3.0, freq_stepsize = 0.25, n_cycles = 7):
+	def time_frequency_decomposition_pupil(self, minimal_frequency = 0.0025, maximal_frequency = 0.1, nr_freq_bins = 7, n_cycles = 1):
 		"""time_frequency_decomposition_pupil uses the mne package to perform a time frequency decomposition on the pupil data after interpolation"""
 		
-		frequencies = np.arange(min_freq, max_freq, freq_stepsize)  # define frequencies of interest
-		n_cycles = frequencies / float(n_cycles)  # different number of cycle per frequency
-		
-		self.pupil_tf, pl = mne.time_frequency.induced_power(np.array([[self.interpolated_pupil]]), self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, decim=3, n_jobs=0, zero_mean=True)
+		# check minimal frequency
+		min_freq_in_data = np.fft.fftfreq(self.timepoints.shape[0], 1.0/self.sample_rate)[1]
+		if minimal_frequency < min_freq_in_data and minimal_frequency != None:
+			self.logger.warning("""time_frequency_decomposition_pupil: 
+									requested minimal_frequency %2.5f smaller than 
+									data allows (%2.5f)"""%(minimal_frequency, min_freq_in_data))
+
+		if minimal_frequency == None:
+			minimal_frequency = min_freq_in_data
+
+		# use minimal_frequency for bank of logarithmically frequency-spaced filters
+		frequencies = np.logspace(np.log10(minimal_frequency), np.log10(maximal_frequency), nr_freq_bins)
+		# filtered signal is real part of wavelet-transformed signals
+		self.band_pass_filter_bank_pupil = np.real(mne.time_frequency.cwt_morlet(self.interpolated_pupil[np.newaxis,:], self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, zero_mean=True))[0]
+
 	
 	def regress_blinks(self,):
 		
