@@ -560,7 +560,7 @@ class EyeSignalOperator(Operator):
 		params.add('tmax1', value=0.9, min=0.5, max=1.5)
 		params.add('tmax2', value=2.5, min=1.5, max=4)
 
-		# do fit, here with leastsq model
+		# do fit, here with powell model
 		data = self.blink_response
 		blink_result = minimize(double_pupil_IRF_ls, params, method='powell', args=(x, data))
 		self.blink_fit = double_pupil_IRF(blink_result.values, x)
@@ -600,7 +600,6 @@ class EyeSignalOperator(Operator):
 		# final timeseries:
 		self.lp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil
 		self.bp_filt_pupil_clean = self.bp_filt_pupil_clean + self.baseline_filt_pupil.mean()
-		
 		
 	def summary_plot(self):
 		
