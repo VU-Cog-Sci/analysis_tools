@@ -246,6 +246,7 @@ class HDFEyeOperator(Operator):
 					# now dt the resulting pupil data:
 					eso.dt_pupil()
 					eso.regress_blinks()
+
 					
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
@@ -293,9 +294,12 @@ class HDFEyeOperator(Operator):
 								nr_freq_bins = nr_freq_bins_filterbank, 
 								n_cycles = n_cycles_filterbank
 								)
+						self.logger.info('Performed T-F analysis')
 						for freq in eso.band_pass_filter_bank_pupil.keys():
+							self.logger.info('Saving T-F analysis %2.5f'%freq)
 							bdf[eye+'_pupil_filterbank_bp_%2.5f'%freq] = eso.band_pass_filter_bank_pupil[freq]
 					except:
+						self.logger.error('Something went wrong with T-F analysis')
 						pass
 				
 				# put in HDF5:
