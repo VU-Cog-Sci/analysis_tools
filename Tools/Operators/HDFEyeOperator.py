@@ -238,15 +238,16 @@ class HDFEyeOperator(Operator):
 					eso.interpolate_blinks2()
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
+					# now dt the resulting pupil data:
+					eso.dt_pupil()
+					eso.regress_blinks()
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
 					# percent signal change filtered pupil data:
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil')
+					eso.percent_signal_change_pupil(dtype='lp_filt_pupil_clean')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
-					# now dt the resulting pupil data:
-					eso.dt_pupil()
-					eso.regress_blinks()
-					
+					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
@@ -263,8 +264,10 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					# blink/saccade regressed versions
-					bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
 					bdf[eye+'_pupil_lp_clean'] = eso.lp_filt_pupil_clean
+					bdf[eye+'_pupil_lp_clean_psc'] = eso.lp_filt_pupil_clean_psc
+					bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
+					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
 					# plot interpolated pupil time series:
 					fig = pl.figure()
