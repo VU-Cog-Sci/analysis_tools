@@ -158,7 +158,9 @@ class HDFEyeOperator(Operator):
 			minimal_frequency_filterbank = 0.0025, 
 			maximal_frequency_filterbank = 0.1, 
 			nr_freq_bins_filterbank = 9, 
-			n_cycles_filterbank = 1, 
+			n_cycles_filterbank = 1,
+			cycle_buffer_filterbank = 3,
+			tf_decomposition_filterbank ='lp_butterworth' 
 			):
 		"""
 		edf_gaze_data_to_hdf takes the gaze data
@@ -248,6 +250,10 @@ class HDFEyeOperator(Operator):
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil_clean')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
+					# now dt the resulting pupil data:
+					eso.dt_pupil()
+					eso.regress_blinks()
+					
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
@@ -294,11 +300,16 @@ class HDFEyeOperator(Operator):
 								minimal_frequency = minimal_frequency_filterbank, 
 								maximal_frequency = maximal_frequency_filterbank, 
 								nr_freq_bins = nr_freq_bins_filterbank, 
-								n_cycles = n_cycles_filterbank
+								n_cycles = n_cycles_filterbank, 
+								cycle_buffer = cycle_buffer_filterbank,
+								tf_decomposition=tf_decomposition_filterbank,
 								)
+						self.logger.info('Performed T-F analysis of type %s'%tf_decomposition_filterbank)
 						for freq in eso.band_pass_filter_bank_pupil.keys():
 							bdf[eye+'_pupil_filterbank_bp_%2.5f'%freq] = eso.band_pass_filter_bank_pupil[freq]
+							self.logger.info('Saved T-F analysis %2.5f'%freq)
 					except:
+						self.logger.error('Something went wrong with T-F analysis of type %s'%tf_decomposition_filterbank)
 						pass
 				
 				# put in HDF5:
