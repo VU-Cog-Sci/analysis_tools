@@ -24,6 +24,8 @@ from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.interpolate as interpolate
 import scipy.stats as stats
 import mne
+import fir
+from lmfit import minimize, Parameters, Parameter, report_fit
 
 from Operator import Operator
 import ArrayOperator
@@ -462,6 +464,14 @@ class EyeSignalOperator(Operator):
 		sacs = sacs[sacs<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
 		events = [blinks, sacs]
 		
+		# compute blink and sac kernels with deconvolution (on downsampled timeseries):
+		a = fir.FIRDeconvolution(signal=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), events=events, event_names=['blinks', 'sacs'], sample_frequency=self.new_sample_rate, deconvolution_frequency=self.new_sample_rate, deconvolution_interval=[0,interval],)
+		a.create_design_matrix()
+		a.regress()
+		a.betas_for_events()
+		self.blink_response_1 = np.array(a.betas_per_event_type[0]).ravel()
+		self.sac_response_1 = np.array(a.betas_per_event_type[1]).ravel()
+		
 		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
 		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
 		self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()
@@ -477,7 +487,7 @@ class EyeSignalOperator(Operator):
 		self.sac_response = self.sac_response - self.sac_response[:int(0.2*self.new_sample_rate)].mean()
 		
 		# fit:
-		from lmfit import minimize, Parameters, Parameter, report_fit
+		# ----
 		
 		# define objective function: returns the array to be minimized
 		def double_gamma_ls(params, x, data): 
@@ -530,8 +540,6 @@ class EyeSignalOperator(Operator):
 			
 			return model - data
 			
-		
-		
 		# create data to be fitted
 		x = np.linspace(0,interval,len(self.blink_response))
 		
