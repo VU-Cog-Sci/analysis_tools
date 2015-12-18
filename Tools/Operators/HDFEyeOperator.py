@@ -275,24 +275,27 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
 					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
-					# plot interpolated pupil time series:
-					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
-					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
-					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
-					pl.ylabel('pupil size (raw)')
-					pl.xlabel('time (s)')
-					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
+					# # plot interpolated pupil time series:
+					# fig = pl.figure()
+					# x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
+					# pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
+					# pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
+					# pl.ylabel('pupil size (raw)')
+					# pl.xlabel('time (s)')
+					# pl.legend(['raw', 'int + filt'])
+					# fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
+					#
+					# # plot results blink detection next to hdf5:
+					# fig = pl.figure()
+					# pl.plot(eso.pupil_diff, rasterized=True)
+					# pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
+					# pl.ylim(ymin=-200, ymax=200)
+					# pl.ylabel('diff pupil size (raw)')
+					# pl.xlabel('samples')
+					# 
 					
-					# plot results blink detection next to hdf5:
-					fig = pl.figure()
-					pl.plot(eso.pupil_diff, rasterized=True)
-					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
-					pl.ylim(ymin=-200, ymax=200)
-					pl.ylabel('diff pupil size (raw)')
-					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+					fig = eso.summary_plot()
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'pupil_preprocess_detection_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# try time-frequency decomposition of the baseline signal
 					try:

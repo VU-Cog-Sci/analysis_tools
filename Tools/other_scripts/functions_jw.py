@@ -27,7 +27,7 @@ import seaborn as sns
 from sklearn import preprocessing
 from sklearn.neighbors import KernelDensity
 from sklearn.grid_search import GridSearchCV
-import statsmodels.formula.api as sm
+import statsmodels.api as sm
 import mne
 import hddm
 import kabuki
@@ -404,7 +404,7 @@ def bootstrap(data, nrand=10000, full_output = False, threshold = 0.0):
 	else:
 		return p_val
 
-def permutationTest(group1, group2, nrand=1000, tail=0, normalize=False):
+def permutationTest(group1, group2, nrand=1000, tail=0, paired=False):
 
 	"""
 	non-parametric permutation test (Efron & Tibshirani, 1998)
@@ -413,29 +413,31 @@ def permutationTest(group1, group2, nrand=1000, tail=0, normalize=False):
 
 	"""
 
-	if normalize:
-		means = np.vstack((group1, group2)).mean(axis=0)
-		group1 = group1 - means
-		group2 = group2 - means
-
 	a = group1
 	b = group2
 	ntra = len(a)
 	ntrb = len(b) 
 	meana = np.mean(a)
 	meanb = np.mean(b)
-	alldat = np.concatenate((a,b))
-
 	triala = np.zeros(nrand)
 	trialb = np.zeros(nrand)
-
-	indices = np.arange(alldat.shape[0])
-
-	for i in range(nrand):
-		random.shuffle(indices)
-		triala[i] = np.mean(alldat[indices[:ntra]])
-		trialb[i] = np.mean(alldat[indices[ntra:]])
-
+	
+	if paired:
+		for i in range(nrand):
+			for j in range(ntra):
+				alldat = np.vstack((a,b)).T
+				alldat[j,:] = alldat[j,np.argsort(np.random.rand(2))]
+			triala[i] = alldat[:,0].mean()
+			trialb[i] = alldat[:,1].mean()
+			
+	else:
+		alldat = np.concatenate((a,b))
+		indices = np.arange(alldat.shape[0])
+		for i in range(nrand):
+			random.shuffle(indices)
+			triala[i] = np.mean(alldat[indices[:ntra]])
+			trialb[i] = np.mean(alldat[indices[ntra:]])
+			
 	if tail == 0:
 		p_value = sum(abs(triala-trialb)>=abs(meana-meanb)) / float(nrand)
 	else:
@@ -592,7 +594,7 @@ def SDT_measures(target, hit, fa):
 	"""
 	Computes d' and criterion
 	"""
-
+	
 	import numpy as np
 	import scipy as sp
 	import matplotlib.pyplot as plt
@@ -601,11 +603,14 @@ def SDT_measures(target, hit, fa):
 	hit = np.array(hit, dtype=bool)
 	fa = np.array(fa, dtype=bool)
 	
-	hit_rate = (np.sum(hit) + 1) / (float(np.sum(target)) + 1)
-	fa_rate = (np.sum(fa) + 1) / (float(np.sum(-target)) + 1)
+	# hit_rate = (np.sum(hit) + 1) / (float(np.sum(target)) + 1)
+	# fa_rate = (np.sum(fa) + 1) / (float(np.sum(-target)) + 1)
+	hit_rate = (np.sum(hit)) / (float(np.sum(target)))
+	fa_rate = (np.sum(fa)) / (float(np.sum(-target)))
+
 	hit_rate_z = stats.norm.isf(1-hit_rate)
 	fa_rate_z = stats.norm.isf(1-fa_rate)
-
+	
 	d = hit_rate_z - fa_rate_z
 	c = -(hit_rate_z + fa_rate_z) / 2.0
 
@@ -708,23 +713,24 @@ def corr_matrix_partial(C):
 
 
 
-def lin_regress_resid(Y,X,cat=False):
-	# shell()
+def lin_regress_resid(Y,X,):
 	
-	# X = X - np.mean(X)
-	# Y = Y - np.mean(Y)
-	
-	d = {
-		'X' : pd.Series(X),
-		'Y' : pd.Series(Y),
-		# 'Z' : pd.Series(Z),
-		}
+	# prepare dataframe:
+	X = list(X)
+	d = {'Y' : Y}
+	for i, x in enumerate(X):
+		d['X{}'.format(i)] = np.array(x, dtype=float)
 	data = pd.DataFrame(d)
 	
-	model = sm.ols(formula='Y ~ X', data=data)
-	fitted = model.fit()
+	# variables of interest:
+	x = data[['X{}'.format(i) for i in range(len(X))]]
+	x = sm.add_constant(x)
+	y = data['Y']
+	
+	# fit:
+	fitted = sm.OLS(y, x).fit()
 	residuals = fitted.resid
-
+	
 	return np.array(residuals)
 
 def pcf3(X,Y,Z):
