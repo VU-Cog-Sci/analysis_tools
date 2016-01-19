@@ -36,10 +36,6 @@ from joblib import Parallel, delayed
 
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
-from joblib import Parallel, delayed
-
-from ..Operators.HDFEyeOperator import HDFEyeOperator
-
 from IPython import embed as shell
 
 class PathConstructor(object):
@@ -998,7 +994,7 @@ class Session(PathConstructor):
 		return this_data_array
 		
 	
-	def roi_data_from_hdf(self, h5file, run = '', roi_wildcard = 'v1', data_type = 'tf_psc_data', postFix = ['mcf']):
+	def roi_data_from_hdf(self, h5file, run = '', roi_wildcard = 'v1', data_type = 'tf_psc_data', postFix = ['mcf'], extension = '.nii.gz'):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
@@ -1006,8 +1002,7 @@ class Session(PathConstructor):
 			this_run_group_name = run
 		# elif type(run) == Tools.Run:
 		else:
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
-		
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix, extension = extension))[1]
 		try:
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
@@ -1247,8 +1242,12 @@ class Session(PathConstructor):
 				if prepare:
 					# load nifti:
 					
-					TR = 2.0
-					# TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
+					# TR = 2.0
+
+					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
+					if TR > 10:	# convert TRs to seconds if in ms
+						TR = TR / 1000.0
+
 					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
 					nr_TRs = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).timepoints
 				
@@ -1368,10 +1367,26 @@ class Session(PathConstructor):
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_stage1')
 					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
 					retroO.execute()
+
+					# convert back from funky hexadecimal to normal floats in text files
+					for data_type_hex in ['time','card','resp']:
+						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+						hco.configure(base + '_%s.txt'%data_type_hex)
+						hco.execute()
+
+					# shell()
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
 					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
 					retroO.execute()
 					
+					# convert back from funky hexadecimal to normal floats in text files
+					for data_type_hex in ['time','card','resp']:
+						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+						hco.configure(base + '_%s.txt'%data_type_hex)
+						hco.execute()
+
 					# run final command:
 					inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
 					outputObject = base

@@ -672,7 +672,8 @@ class VolToSurfOperator( CommandLineOperator ):
 					self.runcmd += " --projfrac " + str(threshold)
 				else:
 					self.runcmd += "  --projfrac-max %d %d %1.2f" % tuple(threshold)
-				self.runcmd += ' --frame ' + str(frames[frame])
+				if frame != '':
+					self.runcmd += ' --frame ' + str(frames[frame])
 				self.runcmd += ' --out_type ' + self.surfType + ' --float2int round --mapmethod nnf '
 				self.runcmd += ' --o ' + self.outputFileName + frame + '-' + hemi + '.mgz'
 				self.runcmd += ' --surf-fwhm ' + str(surfSmoothingFWHM)
@@ -1113,3 +1114,14 @@ class ReorientOperator( CommandLineOperator ):
 	def configure(self, outputFileName = None):
 		self.outputFileName = outputFileName
 		self.runcmd = self.cmd + ' ' + self.inputFileName + ' ' + self.outputFileName
+
+class HexConvOperator(CommandLineOperator):
+	"""docstring for HexConvOperator"""
+	def __init__(self, inputObject, cmd = '$ANALYSIS_HOME/Tools/other_scripts/conv_hex.sh', **kwargs):
+		super(HexConvOperator, self).__init__(inputObject = inputObject, cmd = cmd, **kwargs)
+	
+	def configure(self, outputFileName = None):
+		self.outputFileName = outputFileName
+		self.runcmd = self.cmd + ' ' + self.inputFileName + ' > ' + self.outputFileName
+	
+		
