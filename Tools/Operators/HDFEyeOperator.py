@@ -245,7 +245,7 @@ class HDFEyeOperator(Operator):
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
 					# now dt the resulting pupil data:
 					eso.dt_pupil()
-					eso.regress_blinks()
+					# eso.regress_blinks()
 					
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
@@ -263,11 +263,11 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
 					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
 					# blink/saccade regressed versions
-					bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
-					bdf[eye+'_pupil_lp_clean'] = eso.lp_filt_pupil_clean
+					# bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
+					# bdf[eye+'_pupil_lp_clean'] = eso.lp_filt_pupil_clean
 					
 					# plot interpolated pupil time series:
-					fig = pl.figure()
+					fig = pl.figure(figsize = (16, 2.5))
 					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
 					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
 					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
@@ -277,7 +277,7 @@ class HDFEyeOperator(Operator):
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# plot results blink detection next to hdf5:
-					fig = pl.figure()
+					fig = pl.figure(figsize = (16, 2.5))
 					pl.plot(eso.pupil_diff, rasterized=True)
 					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
 					pl.ylim(ymin=-200, ymax=200)
