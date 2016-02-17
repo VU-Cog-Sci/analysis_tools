@@ -24,6 +24,8 @@ from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.interpolate as interpolate
 import scipy.stats as stats
 import mne
+import fir
+from lmfit import minimize, Parameters, Parameter, report_fit
 
 from Operator import Operator
 import ArrayOperator
@@ -420,12 +422,29 @@ class EyeSignalOperator(Operator):
 		dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable.
 		"""
 		
-		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
+		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )		
+
+	def time_frequency_decomposition_pupil(self, 
+										   minimal_frequency = 0.0025, 
+										   maximal_frequency = 0.1, 
+										   nr_freq_bins = 7, 
+										   n_cycles = 1, 
+										   cycle_buffer = 3, 
+										   tf_decomposition='lp_butterworth'): 
+		"""time_frequency_decomposition_pupil has two options of time frequency decomposition on the pupil  data: 1) morlet wavelet transform from mne package 
+			or 2) low-pass butterworth filters. Before tf-decomposition the minimal frequency in the data is compared to the input minimal_frequency using np.fft.fftfreq. 
+			
+			1) Morlet wavelet transform. Interpolated pupil data is z-scored and zero-padded to avoid edge artifacts during wavelet transformation. After morlet 
+			transform, zero-padding is removed and transformed data is saved in a DataFrame self.band_pass_filter_bank_pupil with wavelet frequencies as columns.
+			
+			2) Low-pass butterworth filters. Low-pass cutoff samples are calculated for each frequency in frequencies. Low-pass filtering is performed and saved in 
+			lp_filter_bank_pupil. Note: low-pass filtered signals are not yet band-pass here, thus, filtered signals with higher frequency cutoffs share lower frequency 
+			information at that point. band_pass_signals calculates the difference between subsequent lp_filter_bank_pupil signals to make independent filter bands and 
+			vstacks the lowest frequency to the datamatrix. Lastly, band_pass_signals are saved in a df in self.band_pass_filter_bank_pupil with low-pass frequencies as columns. 
+			"""
 		
-	def time_frequency_decomposition_pupil(self, minimal_frequency = 0.0025, maximal_frequency = 0.1, nr_freq_bins = 7, n_cycles = 1):
-		"""time_frequency_decomposition_pupil uses the mne package to perform a time frequency decomposition on the pupil data after interpolation"""
 		# check minimal frequency
-		min_freq_in_data = np.fft.fftfreq(self.timepoints.shape[0], 1.0/self.sample_rate)[1]
+		min_freq_in_data = np.fft.fftfreq(self.timepoints.shape[0], 1.0/self.sample_rate)[1] 
 		if minimal_frequency < min_freq_in_data and minimal_frequency != None:
 			self.logger.warning("""time_frequency_decomposition_pupil: 
 									requested minimal_frequency %2.5f smaller than 
@@ -435,12 +454,34 @@ class EyeSignalOperator(Operator):
 			minimal_frequency = min_freq_in_data
 
 		# use minimal_frequency for bank of logarithmically frequency-spaced filters
-		frequencies = np.logspace(np.log10(minimal_frequency), np.log10(maximal_frequency), nr_freq_bins)
+		frequencies = np.logspace(np.log10(maximal_frequency), np.log10(minimal_frequency), nr_freq_bins)
 		self.logger.info('Time_frequency_decomposition_pupil, with filterbank %s'%str(frequencies))
-
-		# filtered signal is real part of wavelet-transformed signals, saved as dataframe with indexes the frequencies used.
-		self.band_pass_filter_bank_pupil = pd.DataFrame(np.real(mne.time_frequency.cwt_morlet(self.interpolated_pupil[np.newaxis,:], self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, zero_mean=True))[0].T, columns = frequencies)
-
+	
+		if tf_decomposition == 'morlet': 
+			#z-score self.interpolated_pupil before morlet decomposition of pupil signal 
+			interpolated_pupil_z = ((self.interpolated_pupil - np.mean(self.interpolated_pupil))/self.interpolated_pupil.std())
+			#zero-pad runs to avoid edge-artifacts 
+			zero_padding_samples = int((1/minimal_frequency)*self.sample_rate*cycle_buffer)
+			padded_interpolated_pupil_z = np.zeros((interpolated_pupil_z.shape[0] + 2*(zero_padding_samples)))
+			padded_interpolated_pupil_z[zero_padding_samples:-zero_padding_samples] = interpolated_pupil_z	
+			#filtered signal is real part of Morlet-transformed signal
+			padded_band_pass_filter_bank_pupil = np.squeeze(np.real(mne.time_frequency.cwt_morlet(padded_interpolated_pupil_z[np.newaxis,:], self.sample_rate, frequencies, use_fft=True, n_cycles=n_cycles, zero_mean=True)))
+			#remove zero-padding and save as dataframe with frequencies as index
+			self.band_pass_filter_bank_pupil = pd.DataFrame(np.array([padded_band_pass_filter_bank_pupil[i][zero_padding_samples:-zero_padding_samples] for i in range(len(padded_band_pass_filter_bank_pupil))]).T,columns=frequencies)
+		
+		elif tf_decomposition == 'lp_butterworth': 
+			lp_filter_bank_pupil=np.zeros((len(frequencies), self.interpolated_pupil.shape[0]))
+			lp_cof_samples = [freq / (self.interpolated_pupil.shape[0] / self.sample_rate / 2) for freq in frequencies]
+			for i, lp_cutoff in enumerate(lp_cof_samples): 
+				blp, alp = sp.signal.butter(3, lp_cutoff) 
+				lp_filt_pupil = sp.signal.filtfilt(blp, alp, self.interpolated_pupil)
+				lp_filter_bank_pupil[i,0:self.interpolated_pupil.shape[0]]=lp_filt_pupil
+			#calculate band passes from the difference between subsequent low pass frequencies (except the last frequency, this one is directly added to the df as the lowest freq in data) 
+			band_pass_signals = np.vstack((np.array(lp_filter_bank_pupil[:-1]) - np.array(lp_filter_bank_pupil[1:]), lp_filter_bank_pupil[-1]))
+			self.band_pass_filter_bank_pupil = pd.DataFrame(band_pass_signals.T, columns=frequencies)
+		
+		else: 
+			print('you did not specify a tf-decomposition')
 	
 	def regress_blinks(self,):
 		
@@ -453,10 +494,22 @@ class EyeSignalOperator(Operator):
 		blinks = self.blink_ends / self.sample_rate
 		blinks = blinks[blinks>25]
 		blinks = blinks[blinks<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
+		
+		if blinks.size == 0:
+			blinks = np.array([0.5])
+		
 		sacs = self.sac_ends_EL / self.sample_rate
 		sacs = sacs[sacs>25]
 		sacs = sacs[sacs<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
 		events = [blinks, sacs]
+		
+		# compute blink and sac kernels with deconvolution (on downsampled timeseries):
+		a = fir.FIRDeconvolution(signal=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), events=events, event_names=['blinks', 'sacs'], sample_frequency=self.new_sample_rate, deconvolution_frequency=self.new_sample_rate, deconvolution_interval=[0,interval],)
+		a.create_design_matrix()
+		a.regress()
+		a.betas_for_events()
+		self.blink_response_1 = np.array(a.betas_per_event_type[0]).ravel()
+		self.sac_response_1 = np.array(a.betas_per_event_type[1]).ravel()
 		
 		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
 		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
@@ -473,7 +526,7 @@ class EyeSignalOperator(Operator):
 		self.sac_response = self.sac_response - self.sac_response[:int(0.2*self.new_sample_rate)].mean()
 		
 		# fit:
-		from lmfit import minimize, Parameters, Parameter, report_fit
+		# ----
 		
 		# define objective function: returns the array to be minimized
 		def double_gamma_ls(params, x, data): 
@@ -526,8 +579,6 @@ class EyeSignalOperator(Operator):
 			
 			return model - data
 			
-		
-		
 		# create data to be fitted
 		x = np.linspace(0,interval,len(self.blink_response))
 		
@@ -563,7 +614,7 @@ class EyeSignalOperator(Operator):
 		params.add('tmax1', value=0.9, min=0.5, max=1.5)
 		params.add('tmax2', value=2.5, min=1.5, max=4)
 
-		# do fit, here with powell model
+		# do fit, here with powell method:
 		data = self.blink_response
 		blink_result = minimize(double_pupil_IRF_ls, params, method='powell', args=(x, data))
 		self.blink_fit = double_pupil_IRF(blink_result.values, x)

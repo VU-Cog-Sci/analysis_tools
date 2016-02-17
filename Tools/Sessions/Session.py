@@ -1556,7 +1556,7 @@ class Session(PathConstructor):
 		# ----------------------------------------
 		# Set-up everything for BO unwarping:    -
 		# ----------------------------------------
-
+		
 		# Rescale the values in the nii file to -pi and pi. Use the -odt option of fslmaths to ensure you have floats:
 		# fslmaths $FUNCDIR/"$SUB"_B0_phase -div 100 -mul 3.141592653589793116 -odt float $FUNCDIR/"$SUB"_B0_phase_rescaled
 		for r in self.conditionDict['B0_anat_phs']:
@@ -1645,7 +1645,7 @@ class Session(PathConstructor):
 					pass
 				
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-				thisFeatFile = '/home/shared/Niels_UvA/Visual_UvA/analysis/feat_B0/design.fsf'
+				thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/B0_design.fsf')
 				REDict = {
 				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), 
 				
