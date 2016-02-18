@@ -1551,7 +1551,7 @@ class Session(PathConstructor):
 				copy_out = fig_dir + '/' + file + str(self.runList[er].ID) + '.png'
 				subprocess.Popen('cp ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
 				
-	def B0_unwarping(self, conditions, wfs, etl, acceleration):
+	def B0_unwarping(self, conditions, wfs, etl, acceleration, epi_TE=27.63, unwarp_direction='y', signal_loss_threshold=10, thisFeatFile=None):
 		
 		# ----------------------------------------
 		# Set-up everything for BO unwarping:    -
@@ -1615,7 +1615,7 @@ class Session(PathConstructor):
 				better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = r ) )
 				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), **{'-F': ''} )
 				better.execute()
-		
+				
 		# ----------------------------------------
 		# Formula:                               -
 		# ----------------------------------------
@@ -1625,13 +1625,7 @@ class Session(PathConstructor):
 		# ----------------------------------------
 		# Do actual B0 unwarping:                -
 		# ----------------------------------------
-	
-		# parameters:
-		effective_echo_spacing = str(effective_echo_spacing)
-		EPI_TE = str(27.63) # where does this comes from?
-		unwarp_direction = 'y'
-		signal_loss_threshold = str(10)
-	
+		
 		# for er in self.scanTypeDict['epi_bold']:
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
@@ -1645,21 +1639,20 @@ class Session(PathConstructor):
 					pass
 				
 				# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-				thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/B0_design.fsf')
+				if thisFeatFile == None:
+					thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/B0_design.fsf')
 				REDict = {
 				'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), 
-				
 				'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']), 
 				'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['NB']), 
-				'---HIGHRES_FILES---':os.path.join(self.stageFolder(stage = 'processed/mri/reg/feat'),'highres.nii.gz' ), 
-				
+				'---HIGHRES_FILES---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['T2_anat'][0]], postFix=['NB']),
 				'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
 				'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
 				'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
-				'---EFFECTIVE_ECHO_SPACING---':effective_echo_spacing,
-				'---EPI_TE---':EPI_TE,
+				'---EFFECTIVE_ECHO_SPACING---':str(effective_echo_spacing),
+				'---EPI_TE---':str(epi_TE),
 				'---UNWARP_DIREC---':unwarp_direction,
-				'---SIGNAL_LOSS_THRESHOLD---':signal_loss_threshold,
+				'---SIGNAL_LOSS_THRESHOLD---':str(signal_loss_threshold),
 				}
 				
 				featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')

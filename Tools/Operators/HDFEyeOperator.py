@@ -158,7 +158,7 @@ class HDFEyeOperator(Operator):
 			minimal_frequency_filterbank = 0.0025, 
 			maximal_frequency_filterbank = 0.1, 
 			nr_freq_bins_filterbank = 9, 
-			n_cycles_filterbank = 1,
+			n_cycles_filterbank = 1, 
 			cycle_buffer_filterbank = 3,
 			tf_decomposition_filterbank ='lp_butterworth' 
 			):
@@ -302,7 +302,7 @@ class HDFEyeOperator(Operator):
 					except:
 						self.logger.error('Something went wrong with T-F analysis of type %s'%tf_decomposition_filterbank)
 						pass
-				
+					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	

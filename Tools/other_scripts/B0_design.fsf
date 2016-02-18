@@ -221,7 +221,7 @@ set fmri(reginitial_highres_search) 90
 set fmri(reginitial_highres_dof) 3
 
 # Registration to main structural
-set fmri(reghighres_yn) 1
+set fmri(reghighres_yn) 0
 
 # Search space for registration to main structural
 # 0   : No search

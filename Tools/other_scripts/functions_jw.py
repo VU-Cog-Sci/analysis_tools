@@ -29,8 +29,8 @@ from sklearn.neighbors import KernelDensity
 from sklearn.grid_search import GridSearchCV
 import statsmodels.formula.api as sm
 import mne
-import hddm
-import kabuki
+# import hddm
+# import kabuki
 # import pypsignifit as psi
 from itertools import combinations as comb
 
@@ -766,17 +766,6 @@ def corr_matrix_partial(C):
 			P_p[j, i] = p_value
 	
 	return P_corr, P_p
-
-
-
-# def lin_regress_resid(Y,X,):
-#
-# 	# fit:
-# 	sm.add_constant(X)
-# 	fitted = sm.OLS(Y, X).fit()
-# 	residuals = fitted.resid
-#
-# 	return np.array(residuals)
 
 def pcf3(X,Y,Z):
 	"""
