@@ -12,28 +12,24 @@ More details.
 
 import os, sys, subprocess, re
 import pickle
-
 import scipy as sp
 import numpy as np
 import pandas as pd
 import numpy.linalg as LA
-from Tools.other_scripts.savitzky_golay import *
 import matplotlib.pyplot as plt
 from math import *
 from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.interpolate as interpolate
-import scipy.stats as stats
 import mne
-import fir
+# import fir
 from lmfit import minimize, Parameters, Parameter, report_fit
+from IPython import embed as shell
 
 from Operator import Operator
 import ArrayOperator
+# from Tools.other_scripts.savitzky_golay import *
 
 from Tools.other_scripts import functions_jw_GLM
-
-
-from IPython import embed as shell
 
 def detect_saccade_from_data(xy_data = None, vel_data = None, l = 5, sample_rate = 1000.0, minimum_saccade_duration = 0.0075):
 	"""Uses the engbert & mergenthaler algorithm (PNAS 2006) to detect saccades.
@@ -422,7 +418,7 @@ class EyeSignalOperator(Operator):
 		dt_pupil takes the temporal derivative of the dtype pupil signal, and internalizes it as a dtype + '_dt' self variable.
 		"""
 		
-		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )		
+		exec('self.' + str(dtype) + '_dt = np.r_[0, np.diff(self.' + str(dtype) + ')]' )
 
 	def time_frequency_decomposition_pupil(self, 
 										   minimal_frequency = 0.0025, 
@@ -503,23 +499,18 @@ class EyeSignalOperator(Operator):
 		sacs = sacs[sacs<((self.timepoints[-1]-self.timepoints[0])/self.sample_rate)-interval]
 		events = [blinks, sacs]
 		
-		# compute blink and sac kernels with deconvolution (on downsampled timeseries):
-		a = fir.FIRDeconvolution(signal=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), events=events, event_names=['blinks', 'sacs'], sample_frequency=self.new_sample_rate, deconvolution_frequency=self.new_sample_rate, deconvolution_interval=[0,interval],)
-		a.create_design_matrix()
-		a.regress()
-		a.betas_for_events()
-		self.blink_response_1 = np.array(a.betas_per_event_type[0]).ravel()
-		self.sac_response_1 = np.array(a.betas_per_event_type[1]).ravel()
+		# # compute blink and sac kernels with deconvolution (on downsampled timeseries):
+		# a = fir.FIRDeconvolution(signal=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), events=events, event_names=['blinks', 'sacs'], sample_frequency=self.new_sample_rate, deconvolution_frequency=self.new_sample_rate, deconvolution_interval=[0,interval],)
+		# a.create_design_matrix()
+		# a.regress()
+		# a.betas_for_events()
+		# self.blink_response = np.array(a.betas_per_event_type[0]).ravel()
+		# self.sac_response = np.array(a.betas_per_event_type[1]).ravel()
 		
-		# compute blink and sac kernels with deconvolution (on downsampled timeseries): 
+		# compute blink and sac kernels with deconvolution (on downsampled timeseries):
 		do = ArrayOperator.DeconvolutionOperator( inputObject=sp.signal.decimate(self.bp_filt_pupil, self.downsample_rate, 1), eventObject=events, TR=(1.0 / self.new_sample_rate), deconvolutionSampleDuration=(1.0 / self.new_sample_rate), deconvolutionInterval=interval, run=True )
 		self.blink_response = np.array(do.deconvolvedTimeCoursesPerEventType[0]).ravel()
 		self.sac_response = np.array(do.deconvolvedTimeCoursesPerEventType[1]).ravel()
-		
-		# fix response:
-		# diff_response = np.diff(self.blink_response)
-		# if diff_response[:int(0.2*self.new_sample_rate)].mean() > 0:
-		# 	self.blink_response[0:np.where(diff_response < 0)[0][0]] = self.blink_response[np.where(diff_response < 0)[0][0]]
 		
 		# demean:
 		self.blink_response = self.blink_response - self.blink_response[:int(0.2*self.new_sample_rate)].mean()

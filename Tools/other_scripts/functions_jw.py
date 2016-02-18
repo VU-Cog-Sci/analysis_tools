@@ -27,7 +27,7 @@ import seaborn as sns
 from sklearn import preprocessing
 from sklearn.neighbors import KernelDensity
 from sklearn.grid_search import GridSearchCV
-import statsmodels.api as sm
+import statsmodels.formula.api as sm
 import mne
 import hddm
 import kabuki
@@ -106,6 +106,54 @@ def common_dist(array_a, array_b, bins=25):
 			indices_a[np.random.choice(np.where(ind_a)[0], sum_a-sum_b, replace=False)] = False
 	return indices_a, indices_b
 
+def add_sigbar(p, yloc, step, color, ax):
+	
+	if yloc == 1:
+		yloc = 10
+	if yloc == 2:
+		yloc = 20
+	
+	sig_indices = np.array(p < 0.05, dtype=int)
+	sig_indices = np.array(p < 0.05, dtype=int)
+	sig_indices[0] = 0
+	sig_indices[-1] = 0
+	s_bar = zip(np.where(np.diff(sig_indices)==1)[0]+1, np.where(np.diff(sig_indices)==-1)[0]+1)
+	for sig in s_bar:
+		ax.hlines(((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], step[int(sig[0])], step[int(sig[1])], lw=2, color=color)
+
+def cluster_sig_bar(arrays, x, yloc, color, ax, threshold=0.5, nrand=5000):
+	
+	if yloc == 1:
+		yloc = 10
+	if yloc == 2:
+		yloc = 20
+	
+	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_test(arrays, n_permutations=nrand)
+	for j, cl in enumerate(clusters):
+		if len(cl) == 0:
+			pass
+		else:
+			if pvals[j] < threshold:
+				for c in cl:
+					sig_bool_indices = np.arange(len(x))[c]
+					ax.plot(x[sig_bool_indices], np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha = 1, linewidth = 2.5)
+
+def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.5, nrand=5000):
+	
+	if yloc == 1:
+		yloc = 10
+	if yloc == 2:
+		yloc = 20
+	
+	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_1samp_test(array, n_permutations=nrand)
+	for j, cl in enumerate(clusters):
+		if len(cl) == 0:
+			pass
+		else:
+			if pvals[j] < threshold:
+				for c in cl:
+					sig_bool_indices = np.arange(len(x))[c]
+					ax.plot(x[sig_bool_indices], np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha = 1, linewidth = 2.5)
 
 def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising', kpsh=False, valley=False, show=False, ax=None):
 
@@ -404,7 +452,7 @@ def bootstrap(data, nrand=10000, full_output = False, threshold = 0.0):
 	else:
 		return p_val
 
-def permutationTest(group1, group2, nrand=1000, tail=0, paired=False):
+def permutationTest(group1, group2, nrand=10000, tail=0, paired=False):
 
 	"""
 	non-parametric permutation test (Efron & Tibshirani, 1998)
@@ -424,8 +472,8 @@ def permutationTest(group1, group2, nrand=1000, tail=0, paired=False):
 	
 	if paired:
 		for i in range(nrand):
+			alldat = np.vstack((a,b)).T
 			for j in range(ntra):
-				alldat = np.vstack((a,b)).T
 				alldat[j,:] = alldat[j,np.argsort(np.random.rand(2))]
 			triala[i] = alldat[:,0].mean()
 			trialb[i] = alldat[:,1].mean()
@@ -493,18 +541,18 @@ def permutationTest_correlation(a, b, tail=0, nrand=10000):
 
 	ntra = a.shape[0]
 	ntrb = b.shape[0]
-	# truecorrdiff = sp.stats.pearsonr(a[:,0],a[:,1])[0] - sp.stats.pearsonr(b[:,0],b[:,1])[0]
-	truecorrdiff = sp.stats.spearmanr(a[:,0],a[:,1])[0] - sp.stats.spearmanr(b[:,0],b[:,1])[0]
+	truecorrdiff = sp.stats.pearsonr(a[:,0],a[:,1])[0] - sp.stats.pearsonr(b[:,0],b[:,1])[0]
+	# truecorrdiff = sp.stats.spearmanr(a[:,0],a[:,1])[0] - sp.stats.spearmanr(b[:,0],b[:,1])[0]
 	alldat = np.vstack((a,b))
 	corrdiffrand = np.zeros(nrand)
 	indices = np.arange(alldat.shape[0])
 
 	for irand in range(nrand):
 		random.shuffle(indices)
-		# randa = sp.stats.pearsonr(alldat[indices[:ntra],0],alldat[indices[:ntra],1])[0]
-		# randb = sp.stats.pearsonr(alldat[indices[ntra:],0],alldat[indices[ntra:],1])[0]
-		randa = sp.stats.spearmanr(alldat[indices[:ntra],0],alldat[indices[:ntra],1])[0]
-		randb = sp.stats.spearmanr(alldat[indices[ntra:],0],alldat[indices[ntra:],1])[0]
+		randa = sp.stats.pearsonr(alldat[indices[:ntra],0],alldat[indices[:ntra],1])[0]
+		randb = sp.stats.pearsonr(alldat[indices[ntra:],0],alldat[indices[ntra:],1])[0]
+		# randa = sp.stats.spearmanr(alldat[indices[:ntra],0],alldat[indices[:ntra],1])[0]
+		# randb = sp.stats.spearmanr(alldat[indices[ntra:],0],alldat[indices[ntra:],1])[0]
 		corrdiffrand[irand] = randa - randb
 	
 	if tail == 0:
@@ -515,7 +563,7 @@ def permutationTest_correlation(a, b, tail=0, nrand=10000):
 	return(truecorrdiff, p_value)
 
 
-def roc_analysis(group1, group2, nrand=1000, tail=1):
+def roc_analysis(group1, group2, nrand=5000, tail=1):
 
 	import scipy as sp
 	import numpy as np
@@ -603,11 +651,19 @@ def SDT_measures(target, hit, fa):
 	hit = np.array(hit, dtype=bool)
 	fa = np.array(fa, dtype=bool)
 	
-	# hit_rate = (np.sum(hit) + 1) / (float(np.sum(target)) + 1)
-	# fa_rate = (np.sum(fa) + 1) / (float(np.sum(-target)) + 1)
 	hit_rate = (np.sum(hit)) / (float(np.sum(target)))
 	fa_rate = (np.sum(fa)) / (float(np.sum(-target)))
+	
+	if hit_rate == 1:
+		hit_rate = hit_rate-0.0001
+	elif hit_rate == 0:
+		hit_rate = hit_rate+0.0001
 
+	if fa_rate == 1:
+		fa_rate = fa_rate-0.0001
+	elif fa_rate == 0:
+		fa_rate = fa_rate+0.0001
+	
 	hit_rate_z = stats.norm.isf(1-hit_rate)
 	fa_rate_z = stats.norm.isf(1-fa_rate)
 	
@@ -632,7 +688,7 @@ def corr_matrix(C, dv='cor'):
 				p_value = 1
 			if dv=='cov':
 				# corr = (np.var(C[:, i]+C[:, j]) - np.var(C[:, i]) - np.var(C[:, j])) / 2.0
-				corr = np.cov(C[:, i], C[:, j])[0][1]
+				corr = np.cov(C[:, i], C[:, j])	
 				p_value = 1
 			if dv=='mean':
 				corr = np.mean((np.mean(C[:, i]), np.mean(C[:, j])))
@@ -713,25 +769,14 @@ def corr_matrix_partial(C):
 
 
 
-def lin_regress_resid(Y,X,):
-	
-	# prepare dataframe:
-	X = list(X)
-	d = {'Y' : Y}
-	for i, x in enumerate(X):
-		d['X{}'.format(i)] = np.array(x, dtype=float)
-	data = pd.DataFrame(d)
-	
-	# variables of interest:
-	x = data[['X{}'.format(i) for i in range(len(X))]]
-	x = sm.add_constant(x)
-	y = data['Y']
-	
-	# fit:
-	fitted = sm.OLS(y, x).fit()
-	residuals = fitted.resid
-	
-	return np.array(residuals)
+# def lin_regress_resid(Y,X,):
+#
+# 	# fit:
+# 	sm.add_constant(X)
+# 	fitted = sm.OLS(Y, X).fit()
+# 	residuals = fitted.resid
+#
+# 	return np.array(residuals)
 
 def pcf3(X,Y,Z):
 	"""
@@ -752,8 +797,30 @@ def pcf3(X,Y,Z):
 	rxz_y = rxz -rxy*rzy/sqrt((1-rxy**2) *(1-rzy**2))
 	ryz_x = ryz -rxy*rxz/sqrt((1-rxy**2) *(1-rxz**2))
 	return [(rxy_z, rxz_y, ryz_x)]
-
-
+	
+def lin_regress_resid(Y,X):
+	
+	# prepare data:
+	d = {'Y' : pd.Series(Y),}
+	for i in range(len(X)):
+		d['X{}'.format(i)] = pd.Series(X[i])
+	data = pd.DataFrame(d)
+	
+	# formula:
+	formula = 'Y ~ X0'
+	if len(X) > 1:
+		for i in range(1,len(X)):
+			formula = formula + ' + X{}'.format(i)
+	
+	# print formula
+	
+	# fit:
+	model = sm.ols(formula=formula, data=data)
+	fitted = model.fit()
+	residuals = fitted.resid
+	
+	return np.array(residuals)
+	
 # import rpy2.robjects as robjects
 # from rpy2.robjects import pandas2ri
 # pandas2ri.activate()
