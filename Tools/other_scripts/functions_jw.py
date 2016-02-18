@@ -404,7 +404,7 @@ def bootstrap(data, nrand=10000, full_output = False, threshold = 0.0):
 	else:
 		return p_val
 
-def permutationTest(group1, group2, nrand=1000, tail=0, normalize=False):
+def permutationTest(group1, group2, nrand=5000, tail=0, paired=False):
 
 	"""
 	non-parametric permutation test (Efron & Tibshirani, 1998)
@@ -413,29 +413,31 @@ def permutationTest(group1, group2, nrand=1000, tail=0, normalize=False):
 
 	"""
 
-	if normalize:
-		means = np.vstack((group1, group2)).mean(axis=0)
-		group1 = group1 - means
-		group2 = group2 - means
-
 	a = group1
 	b = group2
 	ntra = len(a)
 	ntrb = len(b) 
 	meana = np.mean(a)
 	meanb = np.mean(b)
-	alldat = np.concatenate((a,b))
-
 	triala = np.zeros(nrand)
 	trialb = np.zeros(nrand)
-
-	indices = np.arange(alldat.shape[0])
-
-	for i in range(nrand):
-		random.shuffle(indices)
-		triala[i] = np.mean(alldat[indices[:ntra]])
-		trialb[i] = np.mean(alldat[indices[ntra:]])
-
+	
+	if paired:
+		for i in range(nrand):
+			alldat = np.vstack((a,b)).T
+			for j in range(ntra):
+				alldat[j,:] = alldat[j,np.argsort(np.random.rand(2))]
+			triala[i] = alldat[:,0].mean()
+			trialb[i] = alldat[:,1].mean()
+			
+	else:
+		alldat = np.concatenate((a,b))
+		indices = np.arange(alldat.shape[0])
+		for i in range(nrand):
+			random.shuffle(indices)
+			triala[i] = np.mean(alldat[indices[:ntra]])
+			trialb[i] = np.mean(alldat[indices[ntra:]])
+			
 	if tail == 0:
 		p_value = sum(abs(triala-trialb)>=abs(meana-meanb)) / float(nrand)
 	else:
@@ -709,22 +711,25 @@ def corr_matrix_partial(C):
 
 
 def lin_regress_resid(Y,X,cat=False):
-	# shell()
 	
-	# X = X - np.mean(X)
-	# Y = Y - np.mean(Y)
-	
-	d = {
-		'X' : pd.Series(X),
-		'Y' : pd.Series(Y),
-		# 'Z' : pd.Series(Z),
-		}
+	# prepare data:
+	X = list(X)
+	d = {'Y' : pd.Series(Y),}
+	for i in range(len(X)):
+		d['X{}'.format(i)] = pd.Series(X[i])
 	data = pd.DataFrame(d)
 	
-	model = sm.ols(formula='Y ~ X', data=data)
+	# formula:
+	formula = 'Y ~ X0'
+	if len(X) > 1:
+		for i in range(1,len(X)):
+			formula = formula + ' + X{}'.format(i)
+	
+	# fit:
+	model = sm.ols(formula=formula, data=data)
 	fitted = model.fit()
 	residuals = fitted.resid
-
+	
 	return np.array(residuals)
 
 def pcf3(X,Y,Z):
