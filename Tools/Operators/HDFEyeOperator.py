@@ -158,7 +158,7 @@ class HDFEyeOperator(Operator):
 			minimal_frequency_filterbank = 0.0025, 
 			maximal_frequency_filterbank = 0.1, 
 			nr_freq_bins_filterbank = 9, 
-			n_cycles_filterbank = 1,
+			n_cycles_filterbank = 1, 
 			cycle_buffer_filterbank = 3,
 			tf_decomposition_filterbank ='lp_butterworth' 
 			):
@@ -252,7 +252,7 @@ class HDFEyeOperator(Operator):
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
 					# now dt the resulting pupil data:
 					eso.dt_pupil()
-					eso.regress_blinks()
+					# eso.regress_blinks()
 					
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
@@ -276,7 +276,7 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
 					# plot interpolated pupil time series:
-					fig = pl.figure()
+					fig = pl.figure(figsize = (16, 2.5))
 					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
 					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
 					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
@@ -286,14 +286,14 @@ class HDFEyeOperator(Operator):
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# plot results blink detection next to hdf5:
-					fig = pl.figure()
+					fig = pl.figure(figsize = (16, 2.5))
 					pl.plot(eso.pupil_diff, rasterized=True)
 					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
 					pl.ylim(ymin=-200, ymax=200)
 					pl.ylabel('diff pupil size (raw)')
 					pl.xlabel('samples')
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
-					
+
 					# try time-frequency decomposition of the baseline signal
 					try:
 						eso.time_frequency_decomposition_pupil(
@@ -311,7 +311,7 @@ class HDFEyeOperator(Operator):
 					except:
 						self.logger.error('Something went wrong with T-F analysis of type %s'%tf_decomposition_filterbank)
 						pass
-				
+					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	

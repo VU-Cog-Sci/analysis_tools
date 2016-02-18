@@ -29,8 +29,8 @@ from sklearn.neighbors import KernelDensity
 from sklearn.grid_search import GridSearchCV
 import statsmodels.formula.api as sm
 import mne
-import hddm
-import kabuki
+# import hddm
+# import kabuki
 # import pypsignifit as psi
 from itertools import combinations as comb
 
