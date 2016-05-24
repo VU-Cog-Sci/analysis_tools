@@ -334,7 +334,7 @@ class Session(PathConstructor):
 			if hasattr(r, 'physiologyFile'):
 				ExecCommandLine('cp ' + r.physiologyFile.replace('|', '\|') + ' ' + self.runFile(stage = 'processed/hr', run = r, extension = '.log' ) )
 	
-	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
+	def registerSession(self, contrast = 't2', FSsubject = None, prepare_register = True, which_epi_target = 0, postFix = None, deskull = True, bb = True, makeMasks = False, maskList = ['cortex','V1','V2','V3','V3A','V3B','V4'], labelFolder = 'label', MNI = True, run_flirt = True):
 		"""
 		before we run motion correction we register with the freesurfer segmented version of this subject's brain. 
 		For this we use either the inplane anatomical (if present), or we take the first epi_bold of the session,
@@ -369,7 +369,7 @@ class Session(PathConstructor):
 			else:
 				# we have to make do with epi volumes. so, we motion correct the first epi_bold run
 				# prepare the motion corrected first, or selected functional	
-				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][which_epi_target]] ) )
+				mcFirst = MCFlirtOperator( self.runFile(stage = 'processed/mri', run = self.runList[self.scanTypeDict['epi_bold'][which_epi_target]], postFix = postFix ) )
 				mcFirst.configure(outputFileName = self.runFile(stage = 'processed/mri/reg', postFix = ['mcf'], base = 'firstFunc' ))
 				mcFirst.execute()
 				#  and average it over time. 
@@ -1189,7 +1189,7 @@ class Session(PathConstructor):
 		# 	fo()
 		# job_server.destroy()
 		
-		# fix headers:
+		# fix headers:		
 		cmds = []
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
@@ -1546,7 +1546,7 @@ class Session(PathConstructor):
 				copy_out = fig_dir + '/' + file + str(self.runList[er].ID) + '.png'
 				subprocess.Popen('cp ' + copy_in + ' ' + copy_out, shell=True, stdout=PIPE).communicate()[0]
 				
-	def B0_unwarping(self, conditions, wfs, etl, acceleration, unwarp_direction='y', asym=0.005):
+	def B0_unwarping(self, conditions, wfs, etl, acceleration, unwarp_direction='y', asym=0.005, f_value=0.5):
 		
 		"""
 		https://www.spinozacentre.nl/wiki/index.php/NeuroWiki:Current_developments
@@ -1561,8 +1561,9 @@ class Session(PathConstructor):
 		for r in self.conditionDict['B0_anat_phs']:
 			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r])
 			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['rescaled'])
+			extend = round(max(abs(NiftiImage(inputObject).data.ravel())),0)
 			fmO = FSLMathsOperator(inputObject=inputObject)
-			fmO.configurePi(outputFileName=outputObject, div=100, mul=3.141592653589793116)
+			fmO.configurePi(outputFileName=outputObject, div=extend, mul=3.141592653589793116)
 			fmO.execute()
 		
 		# Bet:
@@ -1572,7 +1573,7 @@ class Session(PathConstructor):
 			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r])
 			outputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['brain'])
 			better = BETOperator( inputObject = inputObject )
-			better.configure( outputFileName = outputObject, f_value=0.5, g_value=0 )
+			better.configure( outputFileName = outputObject, f_value=f_value, g_value=0 )
 			better.execute()
 
 			inputObject = self.runFile(stage = 'processed/mri', run = self.runList[r], postFix=['brain', 'mask'])
@@ -1611,7 +1612,7 @@ class Session(PathConstructor):
 				
 				# bet epi's:
 				better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = r ) )
-				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), **{'-F': ''} )
+				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), f_value=f_value, **{'-F': ''} )
 				better.execute()
 				
 				# compute transformation matrix based on magnitude image
@@ -1634,64 +1635,60 @@ class Session(PathConstructor):
 					self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']),
 					self.runFile(stage = 'processed/mri', run = r, postFix = ['B0']),
 					self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix=['rescaled', 'unwrapped', 'trans']),
-					'y',
+					unwarp_direction,
 					str(effective_echo_spacing),
 					str(asym))
 				
 				Popen(command_line, shell=True, stdout=PIPE).communicate()[0]
 		
-		# # ----------------------------------------
-		# # Formula:                               -
-		# # ----------------------------------------
-		#
-		# effective_echo_spacing = ((1000.0 * wfs)/(434.215 * (etl+1))/acceleration)
-		#
-		# # ----------------------------------------
-		# # Do actual B0 unwarping:                -
-		# # ----------------------------------------
-		#
-		# # for er in self.scanTypeDict['epi_bold']:
-		# for cond in conditions:
-		# 	for r in [self.runList[i] for i in self.conditionDict[cond]]:
-		#
-		# 		# remove previous feat directories
-		# 		try:
-		# 			self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
-		# 			os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
-		# 			os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.fsf'))
-		# 		except OSError:
-		# 			pass
-		#
-		# 		# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
-		# 		if thisFeatFile == None:
-		# 			thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/B0_design.fsf')
-		# 		REDict = {
-		# 		'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']),
-		# 		'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']),
-		# 		'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['brain']),
-		# 		# '---HIGHRES_FILES---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['T2_anat'][0]], postFix=['NB']),
-		# 		'---HIGHRES_FILES---':self.runFile(stage = 'processed/mri/reg/feat', base = 'highres',),
-		# 		'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
-		# 		'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
-		# 		'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
-		# 		'---EFFECTIVE_ECHO_SPACING---':str(effective_echo_spacing),
-		# 		'---EPI_TE---':str(epi_TE),
-		# 		'---UNWARP_DIREC---':unwarp_direction,
-		# 		'---SIGNAL_LOSS_THRESHOLD---':str(signal_loss_threshold),
-		# 		}
-		#
-		# 		featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
-		# 		featOp = FEATOperator(inputObject = thisFeatFile)
-		# 		# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
-		# 		if r == [self.runList[i] for i in self.scanTypeDict['epi_bold']][-1]:
-		# 			featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
-		# 		else:
-		# 			featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
-		# 		self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
-		# 		# run feat
-		# 		featOp.execute()
-
-
-
-
-
+			# # ----------------------------------------
+			# # Formula:                               -
+			# # ----------------------------------------
+			#
+			# effective_echo_spacing = ((1000.0 * wfs)/(434.215 * (etl+1))/acceleration)
+			#
+			# # ----------------------------------------
+			# # Do actual B0 unwarping:                -
+			# # ----------------------------------------
+			#
+			# # for er in self.scanTypeDict['epi_bold']:
+			# for cond in conditions:
+			# 	for r in [self.runList[i] for i in self.conditionDict[cond]]:
+			#
+			# 		# remove previous feat directories
+			# 		try:
+			# 			self.logger.debug('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
+			# 			os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.feat'))
+			# 			os.system('rm -rf ' + self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'], extension = '.fsf'))
+			# 		except OSError:
+			# 			pass
+			#
+			# 		# this is where we start up fsl feat analysis after creating the feat .fsf file and the like
+			# 		if thisFeatFile == None:
+			# 			thisFeatFile = os.path.join(os.environ['ANALYSIS_HOME'], 'Tools/other_scripts/B0_design.fsf')
+			# 		REDict = {
+			# 		'---FUNC_FILE---':self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']),
+			# 		'---UNWARP_PHS---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix = ['rescaled', 'unwrapped']),
+			# 		'---UNWARP_MAG---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['brain']),
+			# 		# '---HIGHRES_FILES---':self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['T2_anat'][0]], postFix=['NB']),
+			# 		'---HIGHRES_FILES---':self.runFile(stage = 'processed/mri/reg/feat', base = 'highres',),
+			# 		'---TR---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).rtime),
+			# 		'---NR_TRS---':str(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).timepoints),
+			# 		'---NR_VOXELS---':str(np.prod(np.array(NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix = ['NB'])).getExtent()))),
+			# 		'---EFFECTIVE_ECHO_SPACING---':str(effective_echo_spacing),
+			# 		'---EPI_TE---':str(epi_TE),
+			# 		'---UNWARP_DIREC---':unwarp_direction,
+			# 		'---SIGNAL_LOSS_THRESHOLD---':str(signal_loss_threshold),
+			# 		}
+			#
+			# 		featFileName = self.runFile(stage = 'processed/mri', run = r, extension = '.fsf')
+			# 		featOp = FEATOperator(inputObject = thisFeatFile)
+			# 		# no need to wait for execute because we're running the mappers after this sequence - need (more than) 8 processors for this, though.
+			# 		if r == [self.runList[i] for i in self.scanTypeDict['epi_bold']][-1]:
+			# 			featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = True )
+			# 		else:
+			# 			featOp.configure( REDict = REDict, featFileName = featFileName, waitForExecute = False )
+			# 		self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
+			# 		# run feat
+			# 		featOp.execute()
+			
