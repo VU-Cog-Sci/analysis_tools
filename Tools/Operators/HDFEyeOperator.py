@@ -244,7 +244,11 @@ class HDFEyeOperator(Operator):
 					eso.dt_pupil(dtype='lp_filt_pupil')
 					eso.dt_pupil(dtype='bp_filt_pupil')
 					# regress out blinks and sacs:
-					eso.regress_blinks()
+					try:
+						eso.regress_blinks()
+					except:
+						eso.lp_filt_pupil_clean = eso.lp_filt_pupil.copy()
+						eso.bp_filt_pupil_clean = eso.bp_filt_pupil.copy()
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
 					# zscore filtered pupil data:
