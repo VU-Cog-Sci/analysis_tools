@@ -291,8 +291,12 @@ class EyeSignalOperator(Operator):
 		else:
 			zero_edges = zero_edges[:int(2 * np.floor(zero_edges.shape[0]/2.0))].reshape(-1,2)
 		
-		self.blink_starts = zero_edges[:,0]
-		self.blink_ends = zero_edges[:,1]
+		try:
+			self.blink_starts = zero_edges[:,0]
+			self.blink_ends = zero_edges[:,1]
+		except: # in case there are no blinks!
+			self.blink_starts = np.array([10])
+			self.blink_ends = np.array([20])
 		
 		# check for neighbouring blinks (coalesce_period, default is 500ms), and string them together:
 		start_indices = np.ones(self.blink_starts.shape[0], dtype=bool)
@@ -335,7 +339,7 @@ class EyeSignalOperator(Operator):
 					self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
 					self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
 					
-	def interpolate_blinks2(self, lin_interpolation_points = [[-100],[100]]):
+	def interpolate_blinks2(self, lin_interpolation_points = [[-200],[200]]):
 		
 		"""
 		interpolate_blinks2 performs linear interpolation around peaks in the rate of change of

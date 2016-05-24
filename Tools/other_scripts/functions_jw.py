@@ -25,7 +25,7 @@ from matplotlib.ticker import MultipleLocator
 import matplotlib.patches as patches
 import seaborn as sns
 from sklearn import preprocessing
-from sklearn.neighbors import KernelDensity
+from sklearn.neighbors.kde import KernelDensity
 from sklearn.grid_search import GridSearchCV
 import statsmodels.formula.api as sm
 import mne
@@ -106,6 +106,9 @@ def common_dist(array_a, array_b, bins=25):
 			indices_a[np.random.choice(np.where(ind_a)[0], sum_a-sum_b, replace=False)] = False
 	return indices_a, indices_b
 
+def r_to_t(r, df):
+	return np.sqrt( (df*(r**2)) / (1-(r**2)) ) * np.sign(r)
+
 def add_sigbar(p, yloc, step, color, ax):
 	
 	if yloc == 1:
@@ -138,14 +141,17 @@ def cluster_sig_bar(arrays, x, yloc, color, ax, threshold=0.5, nrand=5000):
 					sig_bool_indices = np.arange(len(x))[c]
 					ax.plot(x[sig_bool_indices], np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha = 1, linewidth = 2.5)
 
-def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.5, nrand=5000):
+def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.05, nrand=5000):
 	
 	if yloc == 1:
 		yloc = 10
 	if yloc == 2:
 		yloc = 20
+	if yloc == 3:
+		yloc = 30
 	
 	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_1samp_test(array, n_permutations=nrand)
+	# shell()
 	for j, cl in enumerate(clusters):
 		if len(cl) == 0:
 			pass
@@ -345,7 +351,7 @@ def is_outlier(points, thresh=3.5):
 def orthogonal_projection(timeseries, to_project_out):
 	
 	# take the norm of vector you want to project out:
-	prj = to_project_out/np.linalg.norm(to_project_out)
+	prj = to_project_out / np.linalg.norm(to_project_out)
 	
 	# project out the reference vector
 	return timeseries - (np.dot(timeseries, prj)*prj)
@@ -563,7 +569,7 @@ def permutationTest_correlation(a, b, tail=0, nrand=10000):
 	return(truecorrdiff, p_value)
 
 
-def roc_analysis(group1, group2, nrand=5000, tail=1):
+def roc_analysis(group1, group2, stats=False, nrand=5000, tail=1):
 
 	import scipy as sp
 	import numpy as np
@@ -589,47 +595,51 @@ def roc_analysis(group1, group2, nrand=5000, tail=1):
 	roc = np.vstack(( [0,0],det[t2,:],[1,1] ))
 	t1 = sp.integrate.cumtrapz(roc[:,0],roc[:,1])
 	out_i = t1[-1]
-
+	
 	# To get the p-value:
+	if stats:
+	
+		trialx = np.zeros(nrand)
+		trialy = np.zeros(nrand)
+		alldat = np.concatenate((x,y))
 
-	trialx = np.zeros(nrand)
-	trialy = np.zeros(nrand)
-	alldat = np.concatenate((x,y))
-
-	fprintf = []
-	randi = []
-	for irand in range(nrand):
-		if not np.remainder(irand,1000):
-			fprintf.append('randomization: %d\n' + str(irand))
+		fprintf = []
+		randi = []
+		for irand in range(nrand):
+			if not np.remainder(irand,1000):
+				fprintf.append('randomization: %d\n' + str(irand))
 		
-		t1 = np.sort(np.random.rand(nx+ny))
-		ind = np.argsort(np.random.rand(nx+ny))
-		ranx = z[ind[0:nx]]
-		rany = z[ind[nx+1:-1]]
-		randc = np.sort( np.concatenate((ranx,rany)) )
+			t1 = np.sort(np.random.rand(nx+ny))
+			ind = np.argsort(np.random.rand(nx+ny))
+			ranx = z[ind[0:nx]]
+			rany = z[ind[nx+1:-1]]
+			randc = np.sort( np.concatenate((ranx,rany)) )
 	
-		randet = np.zeros((randc.shape[0],2))
-		for ic in range(randc.shape[0]):
-			randet[ic,0] = (ranx > randc[ic]).sum() / float(nx)
-			randet[ic,1] = (rany > randc[ic]).sum() / float(ny)
+			randet = np.zeros((randc.shape[0],2))
+			for ic in range(randc.shape[0]):
+				randet[ic,0] = (ranx > randc[ic]).sum() / float(nx)
+				randet[ic,1] = (rany > randc[ic]).sum() / float(ny)
 		
-		t1 = np.sort(randet[:,0])
-		t2 = np.argsort(randet[:,0])
+			t1 = np.sort(randet[:,0])
+			t2 = np.argsort(randet[:,0])
 	
-		ranroc = np.vstack(( [0,0],randet[t2,:],[1,1] ))
-		t1 = sp.integrate.cumtrapz(ranroc[:,0],ranroc[:,1])
+			ranroc = np.vstack(( [0,0],randet[t2,:],[1,1] ))
+			t1 = sp.integrate.cumtrapz(ranroc[:,0],ranroc[:,1])
 	
-		randi.append(t1[-1])
+			randi.append(t1[-1])
 	
-	randi = np.array(randi)
+		randi = np.array(randi)
 
-	if tail == 0: # (test for i != 0.5)
-		out_p = (abs(randi-0.5) >= abs(out_i-0.5)).sum() / float(nrand)
-	if (tail == 1) or (tail == -1): # (test for i > 0.5, and i < 0.5 respectively)
-		out_p = (tail*(randi-0.5) >= tail*(out_i-0.5)).sum() / float(nrand)
+		if tail == 0: # (test for i != 0.5)
+			out_p = (abs(randi-0.5) >= abs(out_i-0.5)).sum() / float(nrand)
+		if (tail == 1) or (tail == -1): # (test for i > 0.5, and i < 0.5 respectively)
+			out_p = (tail*(randi-0.5) >= tail*(out_i-0.5)).sum() / float(nrand)
 	
-	if (float(1) - out_p) < out_p:
-		out_p = float(1) - out_p
+		if (float(1) - out_p) < out_p:
+			out_p = float(1) - out_p
+	
+	else:
+		out_p = np.NaN
 	
 	return(out_i, out_p)
 
@@ -786,8 +796,170 @@ def pcf3(X,Y,Z):
 	rxz_y = rxz -rxy*rzy/sqrt((1-rxy**2) *(1-rzy**2))
 	ryz_x = ryz -rxy*rxz/sqrt((1-rxy**2) *(1-rxz**2))
 	return [(rxy_z, rxz_y, ryz_x)]
+
+def PPI_analysis(X,Y,M, model='ols', simple=True):
 	
-def lin_regress_resid(Y,X):
+	import statsmodels.formula.api as sm
+	
+	X = (X-X.mean()) / X.std()
+	M = (M-M.mean()) / M.std()
+	XM = X*M
+	if model == 'ols':
+		Y = (Y-Y.mean()) / Y.std()
+	
+	d = {'X' : pd.Series(X),
+		'Y' : pd.Series(Y),
+		'M' : pd.Series(M),
+		'XM' : pd.Series(XM),}
+	data = pd.DataFrame(d)
+	
+	# direct:
+	f = 'Y ~ X'
+	if model == 'ols':
+		m = sm.ols(formula=f, data=data)
+	if model == 'logit':
+		m = sm.logit(formula=f, data=data)
+	fit = m.fit()
+	
+	# with modulation:
+	f2 = 'Y ~ X + XM'
+	if model == 'ols':
+		m2 = sm.ols(formula=f2, data=data)
+	if model == 'logit':
+		m2 = sm.logit(formula=f2, data=data)
+	fit2 = m2.fit()
+	
+	c = fit.params['X']
+	c_p = fit2.params['X']
+	interaction = fit2.params['XM']
+	
+	return c, c_p, interaction
+
+def mediation_analysis(X,Y,M, model='ols', simple=True):
+	
+	import statsmodels.formula.api as sm
+	
+	X = (X-X.mean()) / X.std()
+	M = (M-M.mean()) / M.std()
+	if model == 'ols':
+		Y = (Y-Y.mean()) / Y.std()
+
+	d = {'X' : pd.Series(X),
+		'Y' : pd.Series(Y),
+		'M' : pd.Series(M),}
+	data = pd.DataFrame(d)
+	
+	# direct part:
+	f = 'Y ~ X'
+	if model == 'ols':
+		m = sm.ols(formula=f, data=data)
+	if model == 'logit':
+		m = sm.logit(formula=f, data=data)
+	fit = m.fit()
+	bic = fit.bic
+	
+	# indirect part 1:
+	f1 = 'M ~ X'
+	m1 = sm.ols(formula=f1, data=data)
+	fit1 = m1.fit()
+	
+	# indirect part 2:
+	if simple:
+		f2 = 'Y ~ X+M'
+	else:
+		f2 = 'Y ~ X*M'
+	if model == 'ols':
+		m2 = sm.ols(formula=f2, data=data)
+	if model == 'logit':
+		m2 = sm.logit(formula=f2, data=data)
+	fit2 = m2.fit()
+	bic2 = fit2.bic
+	
+	# paths:
+	a = fit1.params['X']
+	b1 = fit2.params['M']
+	c_p = fit2.params['X']
+	c = fit.params['X']
+	
+	# if model == 'logit':
+	# 	c = (np.exp(c) / (1 + np.exp(c))) - 0.5
+	# 	c_p = (np.exp(c_p) / (1 + np.exp(c_p))) - 0.5
+	# 	b1 = (np.exp(b1) / (1 + np.exp(b1))) - 0.5
+	
+	# shell()
+	
+	if simple:
+		return a, b1, c_p, c
+	else:
+		b2 = fit2.params['X:M']
+		return a, b1, b2, c_p, c, bic, bic2
+
+def mediation_analysis_3(X,Y,M,N, model='ols', simple=True):
+	
+	import statsmodels.formula.api as sm
+	
+	X = (X-X.mean()) / X.std()
+	M = (M-M.mean()) / M.std()
+	N = (N-N.mean()) / N.std()
+	if model == 'ols':
+		Y = (Y-Y.mean()) / Y.std()
+	
+	d = {
+		'X' : pd.Series(X),
+		'Y' : pd.Series(Y),
+		'M' : pd.Series(M),
+		'N' : pd.Series(N),
+		}
+	data = pd.DataFrame(d)
+	
+	# direct part:
+	f = 'Y ~ X'
+	if model == 'ols':
+		m = sm.ols(formula=f, data=data)
+	if model == 'logit':
+		m = sm.logit(formula=f, data=data)
+	fit = m.fit()
+	
+	# indirect part 1:
+	f1 = 'N ~ X'
+	m1 = sm.ols(formula=f1, data=data)
+	fit1 = m1.fit()
+	
+	# indirect part 2:
+	if simple:
+		f2 = 'Y ~ X+M'
+	else:
+		f2 = 'Y ~ X*M'
+	if model == 'ols':
+		m2 = sm.ols(formula=f2, data=data)
+	if model == 'logit':
+		m2 = sm.logit(formula=f2, data=data)
+	fit2 = m2.fit()
+	
+	# indirect part 3:
+	if simple:
+		f3 = 'M ~ X+N'
+	else:
+		f3 = 'M ~ X*N'
+	m3 = sm.ols(formula=f3, data=data)
+	fit3 = m3.fit()
+	
+	# paths:
+	a = fit1.params['X']
+	b1 = fit3.params['N']
+	c = fit3.params['X']
+	d1 = fit2.params['M']
+	e_p = fit2.params['X']
+	e = fit.params['X']
+
+	if simple:
+		return a, b1, c, d1, e_p, e
+	else:
+		b2 = fit3.params['X:N']
+		d2 = fit2.params['X:M']
+		return a, b1, b2, c, d1, d2, e_p, e
+
+def lin_regress_resid(Y,X,project_out=False):
 	
 	# prepare data:
 	d = {'Y' : pd.Series(Y),}
@@ -806,7 +978,11 @@ def lin_regress_resid(Y,X):
 	# fit:
 	model = sm.ols(formula=formula, data=data)
 	fitted = model.fit()
-	residuals = fitted.resid
+	
+	if project_out:
+		residuals = fitted.resid + fitted.params['Intercept']
+	else:
+		residuals = fitted.resid
 	
 	return np.array(residuals)
 	
@@ -1688,6 +1864,21 @@ class behavior(object):
 		
 		return (c_correct, c_error, c0, c1, c0_correct, c0_error, c1_correct, c1_error)
 	
+	def behavior_variability(self, split_by=False, split_target=0):
+		
+		if split_by:
+			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
+		else:
+			split_ind = np.ones(len(self.data), dtype=bool)
+		
+		choice_var_0 = np.array([np.mean(self.data.choice[(self.data.subj_idx==s) & (self.data.stimulus == 0) & split_ind]) for i, s in enumerate(self.subjects)])
+		choice_var_1 = np.array([np.mean(self.data.choice[(self.data.subj_idx==s) & (self.data.stimulus == 1) & split_ind]) for i, s in enumerate(self.subjects)])
+		
+		rt_var_0 = np.array([np.std(self.data.rt[(self.data.subj_idx==s) & (self.data.stimulus == 0) & split_ind]) for i, s in enumerate(self.subjects)])
+		rt_var_1 = np.array([np.std(self.data.rt[(self.data.subj_idx==s) & (self.data.stimulus == 1) & split_ind]) for i, s in enumerate(self.subjects)])
+		
+		return choice_var_0, choice_var_1, rt_var_0, rt_var_1
+		
 	def behavior_measures(self, split_by=False, split_target=0):
 		
 		if split_by:
@@ -1711,8 +1902,8 @@ class behavior(object):
 		
 		x_grid = np.linspace(x_grid[0], x_grid[1], x_grid[2])
 		
-		c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / sum(kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth)) * (sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind) / sum((self.data.subj_idx==i) & split_ind)) * 100.0 for i in range(self.nr_subjects)]
-		c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / sum(kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth)) * (sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind) / sum((self.data.subj_idx==i) & split_ind)) * 100.0 for i in range(self.nr_subjects)]
+		c0_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / sum(kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth)) * (sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind) / sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
+		c1_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / sum(kde_sklearn(np.array(self.data.rt[(self.data.choice==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth)) * (sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind) / sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
 		c_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
 		c_error_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.correct==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
 		c0_correct_pdf = [kde_sklearn(np.array(self.data.rt[(self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind]), x_grid, bandwidth=bandwidth) / (1.0 / sum((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)]
@@ -1748,12 +1939,14 @@ class behavior(object):
 		else:
 			split_ind = np.ones(len(self.data), dtype=bool)
 		
+		rt = [np.mean(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		rt_std = [np.std(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
 		rt_correct = [np.mean(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
 		rt_error = [np.mean(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
 		rt_correct_std = [np.std(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
 		rt_error_std = [np.std(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
 		
-		return (rt_correct, rt_error, rt_correct_std, rt_error_std)
+		return (rt, rt_std, rt_correct, rt_error, rt_correct_std, rt_error_std)
 		
 	def pupil_bars(self, pupil='pupil', split_by=False, split_target=False):
 		

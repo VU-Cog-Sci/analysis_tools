@@ -1216,7 +1216,7 @@ class Session(PathConstructor):
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 	
-	def retroicorFSL(self, conditions=['task'], postFix=['B0', 'mcf', 'sgtf'], threshold=1.5, nr_dummies=8, sample_rate=500, gradient_direction='y', card_order=3, resp_order=2, card_resp_order=3, resp_card_order=2, slicedir='z', sliceorder='up', thisFeatFile=None, prepare=False, run=False):
+	def retroicorFSL(self, conditions=['task'], postFix=['B0', 'mcf', 'sgtf'], TR=2.0, threshold=1.5, nr_dummies=8, sample_rate=500, gradient_direction='y', card_order=3, resp_order=2, card_resp_order=3, resp_card_order=2, slicedir='z', sliceorder='up', thisFeatFile=None, prepare=False, run=False):
 		
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
@@ -1245,10 +1245,7 @@ class Session(PathConstructor):
 				# ----------------------------------------
 				
 				if prepare:
-					# load nifti:
 					
-					TR = 2.0
-					# TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
 					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
 					nr_TRs = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).timepoints
 				
@@ -1281,8 +1278,8 @@ class Session(PathConstructor):
 					# shim_slices = np.arange(x.shape[0])[shim_slice_indices]
 					# shim_volumes = shim_slices[0::nr_slices]
 					
-					gap = np.where(np.diff(slice_times) > ((nr_TRs / nr_slices)*10.0))[0][-1]
-						
+					gap = np.where(np.diff(slice_times) > ((nr_TRs / float(nr_slices))*10.0))[0][-1]
+					
 					# dummy slices and volumes:
 					dummy_slice_indices = (np.arange(slice_times.shape[0]) > gap) * (np.arange(slice_times.shape[0]) < gap + (nr_dummies * nr_slices))
 					dummy_slices = np.arange(x.shape[0])[dummy_slice_indices]
@@ -1300,7 +1297,7 @@ class Session(PathConstructor):
 					scan_volumes_timecourse[slice_times[scan_volumes]] = 1
 					dummies_volumes_timecourse = np.zeros(x.shape[0])
 					dummies_volumes_timecourse[slice_times[dummy_volumes]] = 1
-				
+					
 					# save new physio file:
 					physio_new = np.hstack((np.asmatrix(physio[:,4]).T, np.asmatrix(physio[:,5]).T, np.asmatrix(scan_slices_timecourse).T, np.asmatrix(scan_volumes_timecourse).T))
 					np.savetxt(self.runFile(stage = 'processed/hr', run = r, postFix=['new'], extension='.log'), physio_new, fmt = '%3.2f', delimiter = '\t')
@@ -1315,8 +1312,6 @@ class Session(PathConstructor):
 										np.arange(slice_times[scan_slices[-1]]-(8*sample_rate), x.shape[0]),
 										np.arange(slice_times[scan_slices[-10]], slice_times[scan_slices[-5]]),
 										]
-										
-					
 										
 					for i, times in enumerate(plot_timewindow):
 						f = pl.figure(figsize = (15,3))
