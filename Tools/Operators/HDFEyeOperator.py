@@ -158,7 +158,7 @@ class HDFEyeOperator(Operator):
 			minimal_frequency_filterbank = 0.0025, 
 			maximal_frequency_filterbank = 0.1, 
 			nr_freq_bins_filterbank = 9, 
-			n_cycles_filterbank = 1,
+			n_cycles_filterbank = 1, 
 			cycle_buffer_filterbank = 3,
 			tf_decomposition_filterbank ='lp_butterworth' 
 			):
@@ -241,58 +241,55 @@ class HDFEyeOperator(Operator):
 					# low-pass and band-pass pupil data:
 					eso.filter_pupil(hp=pupil_hp, lp=pupil_lp)
 					# now dt the resulting pupil data:
-					eso.dt_pupil()
-					eso.regress_blinks()
+					eso.dt_pupil(dtype='lp_filt_pupil')
+					eso.dt_pupil(dtype='bp_filt_pupil')
+					# regress out blinks and sacs:
+					try:
+						eso.regress_blinks()
+					except:
+						eso.lp_filt_pupil_clean = eso.lp_filt_pupil.copy()
+						eso.bp_filt_pupil_clean = eso.bp_filt_pupil.copy()
 					# z-score filtered pupil data:
 					eso.zscore_pupil()
+					# zscore filtered pupil data:
+					eso.zscore_pupil(dtype='lp_filt_pupil')
+					eso.zscore_pupil(dtype='lp_filt_pupil_clean')
+					eso.zscore_pupil(dtype='bp_filt_pupil')
+					eso.zscore_pupil(dtype='bp_filt_pupil_clean')
 					# percent signal change filtered pupil data:
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil')
 					eso.percent_signal_change_pupil(dtype='lp_filt_pupil_clean')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil')
 					eso.percent_signal_change_pupil(dtype='bp_filt_pupil_clean')
-					# now dt the resulting pupil data:
-					eso.dt_pupil()
-					eso.regress_blinks()
 					
 					# add to existing dataframe:
 					bdf[eye+'_pupil_int'] = eso.interpolated_pupil
 					bdf[eye+'_pupil_hp'] = eso.hp_filt_pupil
+					bdf[eye+'_pupil_baseline'] = eso.baseline_filt_pupil
+					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
+					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
+					
 					bdf[eye+'_pupil_lp'] = eso.lp_filt_pupil
-					# bdf[eye+'_pupil_lp_zscore'] = eso.lp_filt_pupil_zscore
+					bdf[eye+'_pupil_lp_dt'] = eso.lp_filt_pupil_dt
+					bdf[eye+'_pupil_lp_zscore'] = eso.lp_filt_pupil_zscore
 					bdf[eye+'_pupil_lp_psc'] = eso.lp_filt_pupil_psc
-					bdf[eye+'_pupil_lp_diff'] = np.concatenate((np.array([0]),np.diff(eso.lp_filt_pupil)))
+					bdf[eye+'_pupil_lp_clean'] = eso.lp_filt_pupil_clean
+					bdf[eye+'_pupil_lp_clean_zscore'] = eso.lp_filt_pupil_clean_zscore
+					bdf[eye+'_pupil_lp_clean_psc'] = eso.lp_filt_pupil_clean_psc
+					
 					bdf[eye+'_pupil_bp'] = eso.bp_filt_pupil
 					bdf[eye+'_pupil_bp_dt'] = eso.bp_filt_pupil_dt
 					bdf[eye+'_pupil_bp_zscore'] = eso.bp_filt_pupil_zscore
 					bdf[eye+'_pupil_bp_psc'] = eso.bp_filt_pupil_psc
-					bdf[eye+'_pupil_baseline'] = eso.baseline_filt_pupil
-					# bdf[eye+'_pupil_baseline_zscore'] = eso.baseline_filt_pupil_zscore
-					bdf[eye+'_gaze_x_int'] = eso.interpolated_x
-					bdf[eye+'_gaze_y_int'] = eso.interpolated_y
-					# blink/saccade regressed versions
-					bdf[eye+'_pupil_lp_clean'] = eso.lp_filt_pupil_clean
-					bdf[eye+'_pupil_lp_clean_psc'] = eso.lp_filt_pupil_clean_psc
 					bdf[eye+'_pupil_bp_clean'] = eso.bp_filt_pupil_clean
+					bdf[eye+'_pupil_bp_clean_zscore'] = eso.bp_filt_pupil_clean_zscore
 					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
-					# plot interpolated pupil time series:
-					fig = pl.figure()
-					x = np.linspace(0,eso.raw_pupil.shape[0]/sample_rate, eso.raw_pupil.shape[0])
-					pl.plot(x, eso.raw_pupil, 'b', rasterized=True)
-					pl.plot(x, eso.interpolated_pupil, 'g', rasterized=True)
-					pl.ylabel('pupil size (raw)')
-					pl.xlabel('time (s)')
-					pl.legend(['raw', 'int + filt'])
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_1_{}_{}_{}.pdf'.format(alias, i, eye)))
+					# shell()
 					
-					# plot results blink detection next to hdf5:
-					fig = pl.figure()
-					pl.plot(eso.pupil_diff, rasterized=True)
-					pl.plot(eso.peaks, eso.pupil_diff[eso.peaks], '+', mec='r', mew=2, ms=8, rasterized=True)
-					pl.ylim(ymin=-200, ymax=200)
-					pl.ylabel('diff pupil size (raw)')
-					pl.xlabel('samples')
-					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'blink_interpolation_2_{}_{}_{}.pdf'.format(alias, i, eye)))
+					# save summary plot:
+					fig = eso.summary_plot()
+					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'pupil_preprocess_detection_{}_{}_{}.pdf'.format(alias, i, eye)))
 					
 					# try time-frequency decomposition of the baseline signal
 					try:
@@ -311,7 +308,7 @@ class HDFEyeOperator(Operator):
 					except:
 						self.logger.error('Something went wrong with T-F analysis of type %s'%tf_decomposition_filterbank)
 						pass
-				
+					
 				# put in HDF5:
 				h5_file.put("/%s/block_%i"%(alias, i), bdf)
 	
