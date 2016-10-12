@@ -219,7 +219,13 @@ class PercentSignalChangeOperator(ImageOperator):
 	def execute(self):
 		meanImage = self.inputObject.data.mean(axis = 0)
 		pscData = (100.0 * (self.inputObject.data / meanImage)) - 100.0
-		outputFile = NiftiImage(pscData.astype(np.float32), self.inputObject.header)
+		
+		# make sure to remove intensity mapping slope...
+		header = self.inputObject.header
+		header['scl_inter'] = 0
+		header['scl_slope'] = 1 
+		
+		outputFile = NiftiImage(pscData.astype(np.float32), header)
 		outputFile.save(self.outputFileName)
 		
 class MeanBrainSubtractionOperator(ImageOperator):
