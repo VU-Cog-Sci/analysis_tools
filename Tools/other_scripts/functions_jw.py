@@ -124,24 +124,7 @@ def add_sigbar(p, yloc, step, color, ax):
 	for sig in s_bar:
 		ax.hlines(((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], step[int(sig[0])], step[int(sig[1])], lw=2, color=color)
 
-def cluster_sig_bar(arrays, x, yloc, color, ax, threshold=0.5, nrand=5000):
-	
-	if yloc == 1:
-		yloc = 10
-	if yloc == 2:
-		yloc = 20
-	
-	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_test(arrays, n_permutations=nrand)
-	for j, cl in enumerate(clusters):
-		if len(cl) == 0:
-			pass
-		else:
-			if pvals[j] < threshold:
-				for c in cl:
-					sig_bool_indices = np.arange(len(x))[c]
-					ax.plot(x[sig_bool_indices], np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha = 1, linewidth = 2.5)
-
-def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.05, nrand=5000):
+def cluster_sig_bar(array, x, yloc, color, ax, threshold=0.05, nrand=5000, cluster_correct=True):
 	
 	if yloc == 1:
 		yloc = 10
@@ -150,8 +133,7 @@ def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.05, nrand=5000)
 	if yloc == 3:
 		yloc = 30
 	
-	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_1samp_test(array, n_permutations=nrand)
-	# shell()
+	whatever, clusters, pvals, bla = mne.stats.permutation_cluster_test(array, n_permutations=nrand, n_jobs=10)
 	for j, cl in enumerate(clusters):
 		if len(cl) == 0:
 			pass
@@ -159,8 +141,51 @@ def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.05, nrand=5000)
 			if pvals[j] < threshold:
 				for c in cl:
 					sig_bool_indices = np.arange(len(x))[c]
-					ax.plot(x[sig_bool_indices], np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha = 1, linewidth = 2.5)
+					xx = np.array(x[sig_bool_indices])
+					xx[0] = xx[0] - np.diff(x)[0] / 2.0
+					xx[1] = xx[1] + np.diff(x)[0] / 2.0
+					ax.plot(xx, np.ones(len(sig_bool_indices)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha=1, linewidth=2.5)
 
+def cluster_sig_bar_1samp(array, x, yloc, color, ax, threshold=0.05, nrand=5000, cluster_correct=True):
+	
+	# shell()
+	
+	if yloc == 1:
+		yloc = 10
+	if yloc == 2:
+		yloc = 20
+	if yloc == 3:
+		yloc = 30
+	
+	if cluster_correct:
+		whatever, clusters, pvals, bla = mne.stats.permutation_cluster_1samp_test(array, n_permutations=nrand, n_jobs=10)
+		for j, cl in enumerate(clusters):
+			if len(cl) == 0:
+				pass
+			else:
+				if pvals[j] < threshold:
+					for c in cl:
+						sig_bool_indices = np.arange(len(x))[c]
+						xx = np.array(x[sig_bool_indices])
+						try:
+							xx[0] = xx[0] - (np.diff(x)[0] / 2.0)
+							xx[1] = xx[1] + (np.diff(x)[0] / 2.0)
+						except:
+							xx = np.array([xx - (np.diff(x)[0] / 2.0), xx + (np.diff(x)[0] / 2.0),]).ravel()
+						ax.plot(xx, np.ones(len(xx)) * ((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], color, alpha=1, linewidth=2.5)
+	else:
+		p = np.zeros(array.shape[1])
+		for i in range(array.shape[1]):
+			p[i] = sp.stats.wilcoxon(array[:,i], np.zeros(array.shape[0]))[1]
+		sig_indices = np.array(p < 0.05, dtype=int)
+		sig_indices[0] = 0
+		sig_indices[-1] = 0
+		s_bar = zip(np.where(np.diff(sig_indices)==1)[0]+1, np.where(np.diff(sig_indices)==-1)[0])
+		for sig in s_bar:
+			ax.hlines(((ax.get_ylim()[1] - ax.get_ylim()[0]) / yloc)+ax.get_ylim()[0], x[int(sig[0])]-(np.diff(x)[0] / 2.0), x[int(sig[1])]+(np.diff(x)[0] / 2.0), color=color, alpha=1, linewidth=2.5)
+		
+	
+	
 def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising', kpsh=False, valley=False, show=False, ax=None):
 
 	"""Detect peaks in data based on their amplitude and other features.
@@ -662,7 +687,7 @@ def SDT_measures(target, hit, fa):
 	fa = np.array(fa, dtype=bool)
 	
 	hit_rate = (np.sum(hit)) / (float(np.sum(target)))
-	fa_rate = (np.sum(fa)) / (float(np.sum(-target)))
+	fa_rate = (np.sum(fa)) / (float(np.sum(~target)))
 	
 	if hit_rate == 1:
 		hit_rate = hit_rate-0.0001
@@ -835,45 +860,79 @@ def PPI_analysis(X,Y,M, model='ols', simple=True):
 	
 	return c, c_p, interaction
 
-def mediation_analysis(X,Y,M, model='ols', simple=True):
+def mediation_analysis(X, Y, M, eq1='ols', eq2='ols', simple=True, C=None):
 	
 	import statsmodels.formula.api as sm
 	
-	X = (X-X.mean()) / X.std()
-	M = (M-M.mean()) / M.std()
-	if model == 'ols':
+	print
+	print len(np.unique(X))
+	print len(np.unique(M))
+	print len(np.unique(Y))
+	
+	if len(np.unique(X)) > 2:
+		X = (X-X.mean()) / X.std()
+	if len(np.unique(M)) > 2:
+		M = (M-M.mean()) / M.std()
+	if len(np.unique(Y)) > 2:
 		Y = (Y-Y.mean()) / Y.std()
-
-	d = {'X' : pd.Series(X),
-		'Y' : pd.Series(Y),
-		'M' : pd.Series(M),}
+	if len(np.unique(C)) > 2:
+		C = (C-C.mean()) / C.std()
+	
+	if C != None:
+		d = {'X' : pd.Series(X),
+			'Y' : pd.Series(Y),
+			'M' : pd.Series(M),
+			'C' : pd.Series(C),}
+	else:
+		d = {'X' : pd.Series(X),
+			'Y' : pd.Series(Y),
+			'M' : pd.Series(M),}
 	data = pd.DataFrame(d)
 	
 	# direct part:
-	f = 'Y ~ X'
-	if model == 'ols':
+	if C != None:
+		f = 'Y ~ X + C'
+	else:
+		f = 'Y ~ X'
+	if eq2 == 'ols':
 		m = sm.ols(formula=f, data=data)
-	if model == 'logit':
+	elif eq2 == 'logit':
 		m = sm.logit(formula=f, data=data)
 	fit = m.fit()
 	bic = fit.bic
 	
 	# indirect part 1:
-	f1 = 'M ~ X'
-	m1 = sm.ols(formula=f1, data=data)
+	if C != None:
+		f1 = 'M ~ X + C'
+	else:
+		f1 = 'M ~ X'
+	if eq1 == 'ols':
+		m1 = sm.ols(formula=f1, data=data)
+	elif eq1 == 'logit':
+		m1 = sm.logit(formula=f1, data=data)
 	fit1 = m1.fit()
+	bic2a = fit1.bic
 	
 	# indirect part 2:
 	if simple:
-		f2 = 'Y ~ X+M'
+		if C != None:
+			f2 = 'Y ~ X+M+C'
+		else:
+			f2 = 'Y ~ X+M'
 	else:
-		f2 = 'Y ~ X*M'
-	if model == 'ols':
+		if C != None:
+			f2 = 'Y ~ X*M*C'
+		else:
+			f2 = 'Y ~ X*M'
+	
+	if eq2 == 'ols':
 		m2 = sm.ols(formula=f2, data=data)
-	if model == 'logit':
+	elif eq2 == 'logit':
 		m2 = sm.logit(formula=f2, data=data)
 	fit2 = m2.fit()
-	bic2 = fit2.bic
+	bic2b = fit2.bic
+	
+	bic2 = (bic2a + bic2b) / 2.0
 	
 	# paths:
 	a = fit1.params['X']
@@ -881,15 +940,15 @@ def mediation_analysis(X,Y,M, model='ols', simple=True):
 	c_p = fit2.params['X']
 	c = fit.params['X']
 	
-	# if model == 'logit':
-	# 	c = (np.exp(c) / (1 + np.exp(c))) - 0.5
-	# 	c_p = (np.exp(c_p) / (1 + np.exp(c_p))) - 0.5
-	# 	b1 = (np.exp(b1) / (1 + np.exp(b1))) - 0.5
+	# if eq1 == 'logit':
+	# 	c = np.exp(c) / (1 + np.exp(c))
+	# 	c_p = np.exp(c_p) / (1 + np.exp(c_p))
+	# 	b1 = np.exp(b1) / (1 + np.exp(b1))
 	
 	# shell()
 	
 	if simple:
-		return a, b1, c_p, c
+		return a, b1, c_p, c, bic, bic2
 	else:
 		b2 = fit2.params['X:M']
 		return a, b1, b2, c_p, c, bic, bic2
@@ -959,7 +1018,22 @@ def mediation_analysis_3(X,Y,M,N, model='ols', simple=True):
 		d2 = fit2.params['X:M']
 		return a, b1, b2, c, d1, d2, e_p, e
 
-def lin_regress_resid(Y,X,project_out=False):
+def exp_regress_resid(y, x):
+	
+	from lmfit import minimize, Parameters, Parameter, report_fit
+	from lmfit.models import LinearModel, ExponentialModel
+	
+	mod = ExponentialModel() + LinearModel()
+	params = Parameters()
+	params.add('intercept', value=1, min=-np.inf, max=np.inf)
+	params.add('slope', value=0, min=-1e-10, max=1e-10)
+	params.add('amplitude', value=1, min=-np.inf, max=np.inf)
+	params.add('decay', value=1, min=1e-25, max=np.inf)
+	exp_model = mod.fit(y, params, x=x,).eval()
+	
+	return y - exp_model
+	
+def lin_regress_resid(Y,X,project_out=False, eq='ols'):
 	
 	# prepare data:
 	d = {'Y' : pd.Series(Y),}
@@ -973,10 +1047,9 @@ def lin_regress_resid(Y,X,project_out=False):
 		for i in range(1,len(X)):
 			formula = formula + ' + X{}'.format(i)
 	
-	# print formula
-	
 	# fit:
-	model = sm.ols(formula=formula, data=data)
+	if eq == 'ols':
+		model = sm.ols(formula=formula, data=data)
 	fitted = model.fit()
 	
 	if project_out:
@@ -1823,47 +1896,102 @@ class behavior(object):
 		
 		"""
 		data should be in pandas dataframe format, columns for:
+		- choice_a
+		- stimulus
+		- reaction time
 		"""
 		self.data = data
 		self.subjects = np.unique(data.subj_idx)
 		self.nr_subjects = len(self.subjects)
 		
-		self.data['hit'] = ((self.data['choice'] == 1) & (self.data['correct'] == 1))
-		self.data['fa'] = ((self.data['choice'] == 1) & (self.data['correct'] == 0))
+		self.data['choice_a'] = np.array(self.data['choice_a'], dtype=bool)
+		self.data['stimulus'] = np.array(self.data['stimulus'], dtype=bool)
+		self.data['choice_b'] = ~self.data['choice_a']
+		self.data['correct'] = self.data['stimulus'] == self.data['choice_a']
+		self.data['error'] = self.data['stimulus'] != self.data['choice_a']
+		self.data['hit'] = (self.data['choice_a'] == 1) & (self.data['correct'] == 1)
+		self.data['fa'] = (self.data['choice_a'] == 1) & (self.data['correct'] == 0)
+		self.data['miss'] = (self.data['choice_a'] == 0) & (self.data['correct'] == 0)
+		self.data['cr'] = (self.data['choice_a'] == 0) & (self.data['correct'] == 1)
+	
+	# def _sdt_measures(target, hit, fa):
+	def _sdt_measures(self, group):
+		"""
+		Computes d' and criterion
+		"""
+	
+		import numpy as np
+		import scipy as sp
+	
+		target = np.array(group['stimulus'])
+		hit = np.array(group['hit'])
+		fa = np.array(group['fa'])
 		
-	def choice_fractions(self, split_by=False, split_target=0):
+		hit_rate = (np.sum(hit)) / (float(np.sum(target)))
+		fa_rate = (np.sum(fa)) / (float(np.sum(~target)))
+	
+		if hit_rate == 1:
+			hit_rate = hit_rate-0.0001
+		elif hit_rate == 0:
+			hit_rate = hit_rate+0.0001
+
+		if fa_rate == 1:
+			fa_rate = fa_rate-0.0001
+		elif fa_rate == 0:
+			fa_rate = fa_rate+0.0001
+	
+		hit_rate_z = stats.norm.isf(1-hit_rate)
+		fa_rate_z = stats.norm.isf(1-fa_rate)
+	
+		d = hit_rate_z - fa_rate_z
+		c = -(hit_rate_z + fa_rate_z) / 2.0
+
+		return(d, c)
+	
+	def choice_fractions(self, split_by=False, split_target=False):
+		
+		if split_by:
+			split_ind = eval('self.data.' + split_by) == split_target
+		else:
+			split_ind = np.ones(len(self.data), dtype=bool)
+		df = self.data[split_ind]
+		
+		# analysis:
+		grouped = df.groupby('subj_idx')
+		columns = ['rt', 'correct', 'error', 'choice_a', 'choice_b', 'hit', 'fa', 'miss', 'cr',]
+		funcs = [np.median, np.mean, np.mean, np.mean, np.mean, np.mean, np.mean, np.mean, np.mean] 
+		values = []
+		for c, f in zip(columns, funcs):
+			values.append(np.array(grouped[c].apply(f)))
+		values.append(np.vstack(grouped.apply(self._sdt_measures))[:,0])
+		values.append(np.vstack(grouped.apply(self._sdt_measures))[:,1])
+		
+		# make dataframe:
+		measures = ['rt', 'acc', 'error', 'c_a', 'c_b', 'hit', 'fa', 'miss', 'cr', "d'", "crit"]
+		df2 = pd.DataFrame(np.vstack(values).T, columns=measures)
+		
+		# fix columns:
+		if split_by:
+			df2.columns = df2.columns + '_' + str(split_target)
+		
+		# print:
+		for m, v in zip(measures,values):
+			print '{} \t\t --> \t{} ({})'.format(m, round(v.mean(),3), round(sp.stats.sem(v), 3))
+		
+		return df2
+		
+	def response_bias(self, split_by=False, split_target=0):
 		
 		if split_by:
 			split_ind = eval('self.data.' + split_by) == split_target
 		else:
 			split_ind = np.ones(len(self.data), dtype=bool)
 		
-		# split_ind = (self.data.pupil_high == 1)
+		c_choice = np.array([ abs( (sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind))) - 0.5) for i in range(self.nr_subjects)])
+		c_right = np.array([ abs( (sum((self.data.right==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind))) - 0.5) for i in range(self.nr_subjects)])
 		
-		c_correct = np.array([sum((self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		c_error = np.array([sum((self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
+		return c_choice, c_right
 		
-		c0 = np.array([sum((self.data.choice==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		c1 = np.array([sum((self.data.choice==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		
-		c0_correct = np.array([ sum( (self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
-		c0_error = np.array([ sum( (self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
-		c1_correct = np.array([ sum( (self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
-		c1_error = np.array([ sum( (self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind ) / float(sum( (self.data.subj_idx==i) & split_ind) ) for i in range(self.nr_subjects)])
-		
-		# c0_c = c0_correct / (c0_correct + c0_error)
-		# c0_e = c0_error / (c0_correct + c0_error)
-		#
-		# c1_c = c1_correct / (c1_correct + c1_error)
-		# c1_e = c1_error / (c1_correct + c1_error)
-		
-		# c0_correct = np.array([ sum( (self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		# c0_error = np.array([ sum( (self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==0) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		# c1_correct = np.array([ sum( (self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		# c1_error = np.array([ sum( (self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind) / float(sum((self.data.stimulus==1) & (self.data.subj_idx==i) & split_ind)) for i in range(self.nr_subjects)])
-		
-		return (c_correct, c_error, c0, c1, c0_correct, c0_error, c1_correct, c1_error)
-	
 	def behavior_variability(self, split_by=False, split_target=0):
 		
 		if split_by:
@@ -1878,20 +2006,6 @@ class behavior(object):
 		rt_var_1 = np.array([np.std(self.data.rt[(self.data.subj_idx==s) & (self.data.stimulus == 1) & split_ind]) for i, s in enumerate(self.subjects)])
 		
 		return choice_var_0, choice_var_1, rt_var_0, rt_var_1
-		
-	def behavior_measures(self, split_by=False, split_target=0):
-		
-		if split_by:
-			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
-		else:
-			split_ind = np.ones(len(self.data), dtype=bool)
-		
-		rt = np.array([np.median(self.data.rt[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
-		acc = np.array([np.mean(self.data.correct[(self.data.subj_idx==s) & split_ind]) for i, s in enumerate(self.subjects)])
-		d = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[0] for i, s in enumerate(self.subjects)])
-		c = np.array([SDT_measures(self.data.stimulus[(self.data.subj_idx==s) & split_ind], self.data.hit[(self.data.subj_idx==s) & split_ind], self.data.fa[(self.data.subj_idx==s) & split_ind])[1] for i, s in enumerate(self.subjects)])
-		
-		return rt, acc, d, c 
 		
 	def rt_kernel_densities(self, x_grid, bandwidth=0.05, split_by=False, split_target=0):
 		
@@ -1934,17 +2048,22 @@ class behavior(object):
 
 	def rt_mean_var(self, split_by=False, split_target=0):
 		
+		
+		# # to zscores:
+		# for i in range(self.nr_subjects):
+		# 	self.data.rt[(self.data.subj_idx==i)] = (self.data.rt[(self.data.subj_idx==i)] - self.data.rt[(self.data.subj_idx==i)].mean()) / self.data.rt[(self.data.subj_idx==i)].std()
+		
 		if split_by:
 			split_ind = np.array(eval('self.data.' + split_by) == split_target, dtype=bool)
 		else:
 			split_ind = np.ones(len(self.data), dtype=bool)
 		
-		rt = [np.mean(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
-		rt_std = [np.std(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
-		rt_correct = [np.mean(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
-		rt_error = [np.mean(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
-		rt_correct_std = [np.std(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
-		rt_error_std = [np.std(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)]
+		rt = np.array([np.mean(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
+		rt_std = np.array([np.std(np.array(self.data.rt[(self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
+		rt_correct = np.array([np.mean(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
+		rt_error = np.array([np.mean(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
+		rt_correct_std = np.array([np.std(np.array(self.data.rt[(self.data.correct==1) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
+		rt_error_std = np.array([np.std(np.array(self.data.rt[(self.data.correct==0) & (self.data.subj_idx==i) & split_ind])) for i in range(self.nr_subjects)])
 		
 		return (rt, rt_std, rt_correct, rt_error, rt_correct_std, rt_error_std)
 		
@@ -1956,49 +2075,13 @@ class behavior(object):
 			split_ind = np.ones(len(self.data), dtype=bool)
 		p = np.array(eval('self.data.' + pupil))
 		
-		correct = [np.mean(np.array(p[np.array((self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		error = [np.mean(np.array(p[np.array((self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c0 = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c1 = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c0_correct = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c0_error = [np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c1_correct = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
-		c1_error = [np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)]
+		correct = np.array([np.mean(np.array(p[np.array((self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		error = np.array([np.mean(np.array(p[np.array((self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c0 = np.array([np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c1 = np.array([np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c0_correct = np.array([np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c0_error = np.array([np.mean(np.array(p[np.array((self.data.choice==0) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c1_correct = np.array([np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==1) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
+		c1_error = np.array([np.mean(np.array(p[np.array((self.data.choice==1) & (self.data.correct==0) & (self.data.subj_idx==i) & split_ind)])) for i in range(self.nr_subjects)])
 		
 		return (correct, error, c0, c1, c0_correct, c0_error, c1_correct, c1_error)
-		
-	
-	
-	
-	
-	
-	
-	
-	
-
-		
-	
-	
-		
-		
-		
-	
-	
-	
-		
-	
-	
-	
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
