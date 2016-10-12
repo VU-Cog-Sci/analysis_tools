@@ -36,10 +36,6 @@ from joblib import Parallel, delayed
 
 from ..Operators.HDFEyeOperator import HDFEyeOperator
 
-from joblib import Parallel, delayed
-
-from ..Operators.HDFEyeOperator import HDFEyeOperator
-
 from IPython import embed as shell
 
 class PathConstructor(object):
@@ -998,7 +994,7 @@ class Session(PathConstructor):
 		return this_data_array
 		
 	
-	def roi_data_from_hdf(self, h5file, run = '', roi_wildcard = 'v1', data_type = 'tf_psc_data', postFix = ['mcf']):
+	def roi_data_from_hdf(self, h5file, run = '', roi_wildcard = 'v1', data_type = 'tf_psc_data', postFix = ['mcf'], extension = '.nii.gz'):
 		"""
 		drags data from an already opened hdf file into a numpy array, concatenating the data_type data across voxels in the different rois that correspond to the roi_wildcard
 		"""
@@ -1006,8 +1002,7 @@ class Session(PathConstructor):
 			this_run_group_name = run
 		# elif type(run) == Tools.Run:
 		else:
-			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix))[1]
-		
+			this_run_group_name = os.path.split(self.runFile(stage = 'processed/mri', run = run, postFix = postFix, extension = extension))[1]
 		try:
 			thisRunGroup = h5file.get_node(where = '/', name = this_run_group_name, classname='Group')
 			# self.logger.info('group ' + self.runFile(stage = 'processed/mri', run = run, postFix = postFix) + ' opened')
@@ -1189,7 +1184,7 @@ class Session(PathConstructor):
 		# 	fo()
 		# job_server.destroy()
 		
-		# fix headers:		
+		# fix headers:
 		cmds = []
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
@@ -1246,6 +1241,12 @@ class Session(PathConstructor):
 				
 				if prepare:
 					
+					# TR = 2.0
+
+					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
+					if TR > 10:	# convert TRs to seconds if in ms
+						TR = TR / 1000.0
+
 					nr_slices = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).volextent[-1]
 					nr_TRs = NiftiImage(self.runFile(stage = 'processed/mri', run = r)).timepoints
 				
@@ -1279,7 +1280,7 @@ class Session(PathConstructor):
 					# shim_volumes = shim_slices[0::nr_slices]
 					
 					gap = np.where(np.diff(slice_times) > ((nr_TRs / float(nr_slices))*10.0))[0][-1]
-					
+						
 					# dummy slices and volumes:
 					dummy_slice_indices = (np.arange(slice_times.shape[0]) > gap) * (np.arange(slice_times.shape[0]) < gap + (nr_dummies * nr_slices))
 					dummy_slices = np.arange(x.shape[0])[dummy_slice_indices]
@@ -1297,7 +1298,7 @@ class Session(PathConstructor):
 					scan_volumes_timecourse[slice_times[scan_volumes]] = 1
 					dummies_volumes_timecourse = np.zeros(x.shape[0])
 					dummies_volumes_timecourse[slice_times[dummy_volumes]] = 1
-					
+				
 					# save new physio file:
 					physio_new = np.hstack((np.asmatrix(physio[:,4]).T, np.asmatrix(physio[:,5]).T, np.asmatrix(scan_slices_timecourse).T, np.asmatrix(scan_volumes_timecourse).T))
 					np.savetxt(self.runFile(stage = 'processed/hr', run = r, postFix=['new'], extension='.log'), physio_new, fmt = '%3.2f', delimiter = '\t')
@@ -1363,10 +1364,26 @@ class Session(PathConstructor):
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_stage1')
 					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
 					retroO.execute()
+
+					# convert back from funky hexadecimal to normal floats in text files
+					for data_type_hex in ['time','card','resp']:
+						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+						hco.configure(base + '_%s.txt'%data_type_hex)
+						hco.execute()
+
+					# shell()
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
 					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
 					retroO.execute()
 					
+					# convert back from funky hexadecimal to normal floats in text files
+					for data_type_hex in ['time','card','resp']:
+						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+						hco.configure(base + '_%s.txt'%data_type_hex)
+						hco.execute()
+
 					# run final command:
 					inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
 					outputObject = base
@@ -1614,14 +1631,14 @@ class Session(PathConstructor):
 				better = BETOperator( inputObject = self.runFile(stage = 'processed/mri', run = r ) )
 				better.configure( outputFileName = self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']), f_value=f_value, **{'-F': ''} )
 				better.execute()
-				
+		
 				# compute transformation matrix based on magnitude image
 				inputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_mag'][0]], postFix=['brain'])
 				referenceFileName = self.runFile(stage = 'processed/mri', run = r, postFix=['NB'])
 				fO = FlirtOperator(inputObject, referenceFileName)
 				fO.configureRun(sinc=False)
 				fO.execute()
-				
+
 				# transform field map
 				inputObject = self.runFile(stage = 'processed/mri', run = self.runList[self.conditionDict['B0_anat_phs'][0]], postFix=['rescaled', 'unwrapped'])
 				referenceFileName = self.runFile(stage = 'processed/mri', run = r, postFix=['NB'])
@@ -1629,7 +1646,7 @@ class Session(PathConstructor):
 				fO = FlirtOperator(inputObject, referenceFileName)
 				fO.configureApply(transformMatrixFileName=transformMatrixFileName, sinc=False)
 				fO.execute()
-				
+		
 				# do unwarping with FSL Fugue:
 				command_line = 'fugue -i {} -u {} --loadfmap={} --unwarpdir={} --dwell={} --asym={} -m'.format(
 					self.runFile(stage = 'processed/mri', run = r, postFix = ['NB']),
@@ -1638,9 +1655,9 @@ class Session(PathConstructor):
 					unwarp_direction,
 					str(effective_echo_spacing),
 					str(asym))
-				
 				Popen(command_line, shell=True, stdout=PIPE).communicate()[0]
-		
+	
+	
 			# # ----------------------------------------
 			# # Formula:                               -
 			# # ----------------------------------------
@@ -1691,4 +1708,4 @@ class Session(PathConstructor):
 			# 		self.logger.debug('Running feat from ' + thisFeatFile + ' as ' + featFileName)
 			# 		# run feat
 			# 		featOp.execute()
-			
+
