@@ -285,8 +285,6 @@ class HDFEyeOperator(Operator):
 					bdf[eye+'_pupil_bp_clean_zscore'] = eso.bp_filt_pupil_clean_zscore
 					bdf[eye+'_pupil_bp_clean_psc'] = eso.bp_filt_pupil_clean_psc
 					
-					# shell()
-					
 					# save summary plot:
 					fig = eso.summary_plot()
 					fig.savefig(os.path.join(os.path.split(self.inputObject)[0], 'pupil_preprocess_detection_{}_{}_{}.pdf'.format(alias, i, eye)))
