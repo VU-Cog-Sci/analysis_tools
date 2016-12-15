@@ -2116,13 +2116,10 @@ class behavior(object):
         for i in range(len(self.subjects)):
             varX[i,:] = np.arange(n_bins)
             for b in range(n_bins):
-                # varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
-                # group = pd.DataFrame({
-                #     'stimulus' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]]),
-                #     'hit' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]]),
-                #     'fa' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]),
-                #     })
-                d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]])
+                d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]],
+                                    np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]],
+                                    np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]
+                                    )
                 if y1 == 'd':
                     varY[i,b] = d
                 elif y1 == 'c':
@@ -2135,6 +2132,8 @@ class behavior(object):
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['correct'])[bins[i][:,b]].mean()
                 elif y1 == 'rt':
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]].mean()
+        
+        # shell()
         
         def graph(formula, x_range, color='black', alpha=1, ax=None):  
             x = np.array(x_range)  
@@ -2299,53 +2298,51 @@ class behavior(object):
             with model2:
                 trace2 = pm.sample(10000, njobs=5) # draw 5000 posterior samples
             
+            # stats per model:
             p1a = np.min((np.mean(trace1.get_values('h_b1') < 0), np.mean(trace1.get_values('h_b1') > 0)))
             p2a = np.min((np.mean(trace2.get_values('h_b1') < 0), np.mean(trace2.get_values('h_b1') > 0)))
             p2b = np.min((np.mean(trace2.get_values('h_b2') < 0), np.mean(trace2.get_values('h_b2') > 0)))
-            
             waic1 = pm.stats.waic(model=model1, trace=trace1)[0]
             waic2 = pm.stats.waic(model=model2, trace=trace2)[0]
-            
-            if waic1 < waic2:
-                which_model = 1
-            else:
-                which_model = 2
-                
-        fig = plt.figure(figsize=(2,6))
+        
+        # plot:
+        fig = plt.figure(figsize=(4,4))
         x = varX.mean(axis=0)
-        ax = fig.add_subplot(311)
-        if which_model == 1:
-            for i in xrange(9000,10000):
-                point = trace1.point(i)
-                graph('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.0098035, ax=ax)
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            graph('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
-            ax.set_title('b1 = {}, p = {}'.format(round(trace1.get_values('h_b1').mean(), 3), round(p1a, 3),))
-        else:
-            for i in xrange(9000,10000):
-                point = trace2.point(i)
-                graph('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.0098035, ax=ax)
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            graph('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
-            ax.set_title('b2 = {}, p = {}'.format(round(trace2.get_values('h_b2').mean(), 3), round(p2b, 3),))
+        ax = fig.add_subplot(221)
+        for i in xrange(9000,10000):
+            point = trace1.point(i)
+            graph('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
+        ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+        graph('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
+        ax.set_title('waic = {}'.format(round(waic1, 3),))
         ax.set_xlabel(bin_by)
         ax.set_ylabel(y1)
-        
+        ax = fig.add_subplot(222)
+        for i in xrange(9000,10000):
+            point = trace2.point(i)
+            graph('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.01, ax=ax)
+        ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+        graph('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
+        ax.set_title('waic = {}'.format(round(waic2, 3),))
+        ax.set_xlabel(bin_by)
+        ax.set_ylabel(y1)
         if model_comp == 'bayes':
-            ax = fig.add_subplot(312)
+            ax = fig.add_subplot(223)
             sns.kdeplot(trace1.get_values('h_b1'), shade=True, ax=ax)
             plt.axvline(0, lw=0.5, color='black')
-            ax.set_title('waic = {}, p = {}'.format(round(waic1, 3), round(p1a, 3),))
+            ax.set_title('p = {}'.format(round(p1a, 3),))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
-            ax = fig.add_subplot(313)
-            sns.kdeplot(trace2.get_values('h_b2'), shade=True, ax=ax)
+            ax = fig.add_subplot(224)
+            sns.kdeplot(trace2.get_values('h_b1'), shade=True, ax=ax)
             plt.axvline(0, lw=0.5, color='black')
-            ax.set_title('waic = {}, p = {}'.format(round(waic2.mean(), 3), round(p2b, 3),))
+            ax.set_title('p = {} & p = {}'.format(round(p2a, 3), round(p2b, 3)))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
-           
-        sns.despine(offset=5, trim=True)
+            ax = ax.twinx()
+            sns.kdeplot(trace2.get_values('h_b2'), color='g', shade=True, ax=ax)
+            plt.axvline(0, lw=0.5, color='black')
+        sns.despine(offset=5, trim=True, right=True)
         plt.tight_layout()
         
         return fig
