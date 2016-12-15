@@ -2114,16 +2114,14 @@ class behavior(object):
         varX = np.zeros((len(self.subjects), n_bins))
         varY = np.zeros((len(self.subjects), n_bins))
         for i in range(len(self.subjects)):
-            # varX[i,:] = np.arange(n_bins)
+            varX[i,:] = np.arange(n_bins)
             for b in range(n_bins):
-                varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
+                # varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
                 # group = pd.DataFrame({
                 #     'stimulus' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]]),
                 #     'hit' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]]),
                 #     'fa' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]),
                 #     })
-                
-                
                 d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]])
                 if y1 == 'd':
                     varY[i,b] = d
@@ -2276,8 +2274,8 @@ class behavior(object):
                 likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
                 
             with model1:
-                trace1 = pm.sample(10000) # draw 5000 posterior samples
-                
+                trace1 = pm.sample(10000, njobs=5) # draw 5000 posterior samples
+            
             with pm.Model() as model2:
                 
                 # define priors:
@@ -2299,7 +2297,7 @@ class behavior(object):
                 likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
                 
             with model2:
-                trace2 = pm.sample(10000) # draw 5000 posterior samples
+                trace2 = pm.sample(10000, njobs=5) # draw 5000 posterior samples
             
             p1a = np.min((np.mean(trace1.get_values('h_b1') < 0), np.mean(trace1.get_values('h_b1') > 0)))
             p2a = np.min((np.mean(trace2.get_values('h_b1') < 0), np.mean(trace2.get_values('h_b1') > 0)))
