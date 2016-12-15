@@ -42,8 +42,6 @@ import pymc3 as pm
 import theano as thno
 import theano.tensor as T
 
-
-import pp
 from IPython import embed as shell
 
 
@@ -2088,7 +2086,7 @@ class behavior(object):
         return df2
     
     
-    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', y2='c', model_comp='cv'):
+    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', model_comp='bayes'):
         
         var_Y = 'behaviour'
         color1 = 'mediumslateblue'
@@ -2115,17 +2113,18 @@ class behavior(object):
         # compute values to plot:
         varX = np.zeros((len(self.subjects), n_bins))
         varY = np.zeros((len(self.subjects), n_bins))
-        varY2 = np.zeros((len(self.subjects), n_bins))
         for i in range(len(self.subjects)):
-            varX[i,:] = np.arange(n_bins)
+            # varX[i,:] = np.arange(n_bins)
             for b in range(n_bins):
-                # varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
-                group = pd.DataFrame({
-                    'stimulus' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]]),
-                    'hit' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]]),
-                    'fa' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]),
-                    })
-                d, c = self._sdt_measures(group)
+                varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
+                # group = pd.DataFrame({
+                #     'stimulus' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]]),
+                #     'hit' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]]),
+                #     'fa' : pd.Series(np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]),
+                #     })
+                
+                
+                d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]], np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]])
                 if y1 == 'd':
                     varY[i,b] = d
                 elif y1 == 'c':
@@ -2136,17 +2135,13 @@ class behavior(object):
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['choice_a'])[bins[i][:,b]].mean()
                 elif y1 == 'correct':
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['correct'])[bins[i][:,b]].mean()
-                if y2 == 'd':
-                    varY2[i,b] = d
-                elif y2 == 'c':
-                    varY2[i,b] = c
-                elif y2 == 'abs_c':
-                    varY2[i,b] = abs(c)
-                elif y2 == 'choice':
-                    varY2[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['choice_a'])[bins[i][:,b]].mean()
-                elif y2 == 'correct':
-                    varY2[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['correct'])[bins[i][:,b]].mean()
+                elif y1 == 'rt':
+                    varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]].mean()
         
+        def graph(formula, x_range, color='black', alpha=1, ax=None):  
+            x = np.array(x_range)  
+            y = eval(formula)
+            ax.plot(x, y, color=color, alpha=alpha)           
         def plot_traces(traces, retain=1000):
             '''
             Convenience function:
@@ -2230,17 +2225,6 @@ class behavior(object):
             
             # return ax
             
-        # plot mean traces as a function of pupil:
-        fig = plt.figure(figsize=(3,6))
-        x = np.arange(n_bins)+1
-        
-        # ax 1:
-        # ----
-        ax = fig.add_subplot(421)
-        ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-        ax.set_ylabel(var_Y, color=color1)
-        ax.set_xlabel(bin_by)
-        
         # cross-validate across subjects:
         if model_comp == 'cv':
             dics_1 = np.zeros(len(self.subjects))
@@ -2262,312 +2246,106 @@ class behavior(object):
                     coefs.append( sp.polyfit(x, y, 2) )
                 prediction = sp.polyval(np.vstack(coefs).mean(axis=0), varX[train_ind,:].mean(axis=0))
                 dics_2[i] = sum( (y_test-prediction)**2 )
-        
-        shell()
-
-        dft = pd.DataFrame(varY, columns=np.arange(n_bins)).stack().reset_index()
-        dft.columns = ['subject', 'x', 'y']
-        dft['x'] = dft['x'].astype('float')
-        n_subj = 32
-        subjects = dft.subject.unique()
-        subject_idx = dft.subject.values
-
-        # linear model:
-        with pm.Model() as hierarchical_model_1:
-            mu_a = pm.Normal('mu_a', mu=0., sd=10) # Hyperpriors for group nodes
-            sigma_a = pm.HalfNormal('sigma_a', 1) # Hyperpriors for group nodes
-            mu_b = pm.Normal('mu_b', mu=0., sd=10) # Hyperpriors for group nodes
-            sigma_b = pm.HalfNormal('sigma_b', 1) # Hyperpriors for group nodes
-            a = pm.Normal('a', mu=mu_a, sd=sigma_a, shape=n_subj) # Intercept for each subject, distributed around group mean mu_a
-            b = pm.Normal('b', mu=mu_b, sd=sigma_b, shape=n_subj) # Slope for each subject, distributed around group mean mu_a
-            eps = pm.HalfNormal('eps', 1)# Model error
-            radon_est = a[subject_idx] + b[subject_idx] * dft.x.values # Model error
-            radon_like = pm.Normal('radon_like', mu=radon_est, sd=eps, observed=dft.y) # Data likelihood
-        with hierarchical_model_1:
-            niter = 2000
-            start = pm.find_MAP()
-            step = pm.NUTS()
-            hierarchical_trace_1 = pm.sample(niter, step, start, progressbar=True)
-        
-        
-        
-        pm.traceplot(hierarchical_trace_1[500:])
-        dics_1 = pm.stats.dic(hierarchical_trace_1, model=hierarchical_model_1)
-
-        # quadratic model:
-        with pm.Model() as hierarchical_model_2:
-            mu_a = pm.Normal('mu_a', mu=0., sd=10) # Hyperpriors for group nodes
-            sigma_a = pm.HalfNormal('sigma_a', 1) # Hyperpriors for group nodes
-            mu_b = pm.Normal('mu_b', mu=0., sd=10) # Hyperpriors for group nodes
-            sigma_b = pm.HalfNormal('sigma_b', 1) # Hyperpriors for group nodes
-            mu_c = pm.Normal('mu_c', mu=0., sd=10) # Hyperpriors for group nodes
-            sigma_c = pm.HalfNormal('sigma_c', 1) # Hyperpriors for group nodes
-            a = pm.Normal('a', mu=mu_a, sd=sigma_a, shape=n_subj) # Intercept for each subject, distributed around group mean mu_a
-            b = pm.Normal('b', mu=mu_b, sd=sigma_b, shape=n_subj) # Slope for each subject, distributed around group mean mu_a
-            c = pm.Normal('c', mu=mu_c, sd=sigma_c, shape=n_subj) # Quadratic term for each subject, distributed around group mean mu_a
-            eps = pm.HalfNormal('eps', 1) # Model error
-            radon_est = a[subject_idx] + b[subject_idx] * dft.x.values + c[subject_idx] * (dft.x.values)**2 # Model error
-            radon_like = pm.Normal('radon_like', mu=radon_est, sd=eps, observed=dft.y) # Data likelihood
-        with hierarchical_model_2:
-            hierarchical_trace_2 = pm.sample(draws=2500, n_init=20000,)
-        pm.traceplot(hierarchical_trace_2[500:])
-        dics_2 = pm.stats.dic(hierarchical_trace_2, model=hierarchical_model_2)
-
-
-        dics_2 = pm.stats.dic(res_2.trace, model=res_2.model.backend.model)
-        
-        
-        
-        
-        
-        
-        
-        if model_comp == 'bayes':
-            from bambi import Model
-            dft = pd.DataFrame(varY2, columns=np.arange(n_bins)).stack().reset_index()
-            dft.columns = ['subject', 'x', 'y']
-            model_1 = Model(dft)
-            model_2 = Model(dft)
-            res_1 = model_1.fit('y ~ x', random=['1|subject'], samples=2500,)
-            res_2 = model_2.fit('y ~ x + np.power(x,2)', random=['1|subject'], samples=2500,)
-            dics_1 = pm.stats.dic(res_1.trace, model=res_1.model.backend.model)
-            dics_2 = pm.stats.dic(res_2.trace, model=res_2.model.backend.model)
-            traces_1 = res_1.trace.get_values('b_x', 500).ravel()
-            traces_2 = res_2.trace.get_values('b_np.power(x, 2)', 500).ravel()
-            
-            # # shell()
-            #
-            # traces_1 = []
-            # traces_2 = []
-            # dics_1 = np.zeros(len(self.subjects))
-            # dics_2 = np.zeros(len(self.subjects))
-            # for i in range(len(self.subjects)):
-            #
-            # df = pd.DataFrame({'x': varX[i,:].mean(axis=0), 'y': varY2[i,:].mean(axis=0)})
-            # models_lin, traces_lin = run_models(df, 2)
-            #
-            #
-            # traces_1.append(traces_lin['k1'].get_values('x'))
-            # traces_2.append(traces_lin['k2'].get_values('np.power(x, 2)'))
-            # dics_1[i] = pm.stats.dic(traces_lin['k1'], models_lin['k1'])
-            # dics_2[i] = pm.stats.dic(traces_lin['k2'], models_lin['k2'])
-            
-            # from pymc3 import Normal, HalfNormal, NUTS, sample, traceplot, Model, find_MAP, Slice
-            # import pandas as pd
-            # df = pd.DataFrame(varY, columns=np.arange(n_bins)).stack().reset_index()
-            # df.columns = ['subject', 'x', 'y']
-            # df.x = df.x.astype('float')
-            # nsub = 32
-            # df = pd.DataFrame(varY)
-            # k = df.stack().reset_index().rename_axis({"level_0": "subject", "level_1":"pupil", 0: "dp"}, axis="columns")
-            # k.pupil = k.pupil.astype('float')
-            # nsub = 32
-            #
-            # basic_model = Model()
-            # with basic_model:
-            #     # Priors for group level
-            #     beta_group = Normal('beta_group', mu=0, sd=10, shape=2)
-            #     beta_sigma = HalfNormal('sigma_group', sd=1, shape=2)
-            #
-            #     # Priors for unknown model parameters
-            #     alpha = Normal('alpha', mu=0, sd=10)
-            #     beta_lin = Normal('beta_lin', mu=beta_group[0], sd=beta_sigma[0], shape=(nsub,))
-            #     beta_sq = Normal('beta_sq', mu=beta_group[1], sd=beta_sigma[1], shape=(nsub,))
-            #     sigma = HalfNormal('sigma', sd=1)
-            #     shift = Normal('shift', mu=4.5, sd=.005)
-            #
-            #     # Expected value of outcome
-            #     p = df.columns.values.astype(float).ravel()
-            #     mu = (alpha + beta_lin[:, np.newaxis]*(p-shift)**2 + beta_sq[:, np.newaxis]*p).ravel()
-            #
-            #     # Likelihood (sampling distribution) of observations
-            #     Y_obs = Normal('Y_obs', mu=mu.ravel(), sd=sigma, observed=df.values.ravel())
-            #     Y_est = Normal('Y_est', mu=mu.ravel(), sd=sigma, shape=32*10)
-            #
-            #
-            # with basic_model:
-            #     #start = find_MAP()
-            #     # draw 5000 posterior samples
-            #     trace = sample(5000, pm.Metropolis())#, start=start)
-            
-            
-            
-            
-            
-            
-            
-            
-            
-        # # BIC:
-        # x = varX.mean(axis=0)
-        # y = varY2.mean(axis=0)
-        # params = Parameters()
-        # params.add('c', value=0, min=-np.inf, max=np.inf)
-        # params.add('b', value=0, min=-np.inf, max=np.inf)
-        # params.add('a', value=0, min=-np.inf, max=np.inf)
-        # mod = QuadraticModel()
-        # res = mod.fit(y, params, x=x,)
-        # print sum((res.residual**2))
-        # bic_quad = res.aic
-        # params = Parameters()
-        # params.add('slope', value=0, min=-np.inf, max=np.inf)
-        # params.add('intercept', value=0, min=-np.inf, max=np.inf)
-        # mod = LinearModel()
-        # res = mod.fit(y, params, x=x,)
-        # print sum((res.residual**2))
-        # bic_lin = res.aic
-        
-        if dics_2.mean() < dics_1.mean():
-            regression_line = []
-            r1 = np.zeros(len(self.subjects))
-            for i in range(len(self.subjects)):
-                x = varX[i,:]
-                y = varY[i,:]
-                coefs = sp.polyfit(x,y,2)
-                x_line = np.linspace(min(varX[:,:].mean(axis=0))-((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), max(varX[:,:].mean(axis=0))+((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), 50)
-                regression_line.append(sp.polyval(coefs,x_line))
-                r1[i] = coefs[0]
-            p1 = permutationTest(r1, np.zeros(len(r1)), paired=True)[1]
-            regression_line = np.vstack(regression_line)
-            if p1 <= 0.05:
-                ax.plot(x_line, regression_line.mean(axis=0), color=color1, alpha=1)
-                ax.fill_between(x_line, regression_line.mean(axis=0)-sp.stats.sem(regression_line, axis=0), regression_line.mean(axis=0)+sp.stats.sem(regression_line, axis=0), color=color1, alpha=0.2)
-            ax.set_title('c = {}, p = {}'.format(round(r1.mean(), 3), round(p1, 3),))
-        else:
-            regression_line = []
-            r1 = np.zeros(len(self.subjects))
-            for i in range(len(self.subjects)):
-                x = varX[i,:]
-                y = varY[i,:]
-                coefs = sp.polyfit(x,y,1)
-                x_line = np.linspace(min(varX[:,:].mean(axis=0))-((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), max(varX[:,:].mean(axis=0))+((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), 50)
-                regression_line.append(sp.polyval(coefs,x_line))
-                r1[i] = sp.stats.spearmanr(x,y)[0]
-            p1 = permutationTest(r1, np.zeros(len(r1)), paired=True)[1]
-            regression_line = np.vstack(regression_line)
-            if p1 <= 0.05:
-                ax.plot(x_line, regression_line.mean(axis=0), color=color1, alpha=1)
-                ax.fill_between(x_line, regression_line.mean(axis=0)-sp.stats.sem(regression_line, axis=0), regression_line.mean(axis=0)+sp.stats.sem(regression_line, axis=0), color=color1, alpha=0.2)
-            ax.set_title('r = {}, p = {}'.format(round(r1.mean(), 3), round(p1, 3),))
-        
-        if model_comp == 'bayes':
-            
-            ax = fig.add_subplot(423)
-            ax.bar([0,1], [dics_1.mean(), dics_2.mean()], align='center')
-            ax.text(0, dics_1.mean(), str(round(dics_1.mean(),1)), color='r', rotation=90)
-            ax.text(1, dics_2.mean(), str(round(dics_2.mean(),1)), color='r', rotation=90)
-            ax.set_xticks((0,1))
-            ax.set_xticklabels(('1st', '2nd'))
-            ax.set_ylabel('DIC')
-            ax = fig.add_subplot(425)
-            sns.kdeplot(traces_1, shade=True, ax=ax)
-            ax.set_title('1st order coef., p={}'.format(min(np.mean(traces_1>0), 1-np.mean(traces_1>0))))
-            ax.set_xlabel('Coefficient')
-            ax.set_ylabel('Prob. density')
-            plt.axvline(0)
-            ax = fig.add_subplot(427)
-            sns.kdeplot(traces_2, shade=True, ax=ax)
-            ax.set_title('2nd order coef., p={}'.format(min(np.mean(traces_2>0), 1-np.mean(traces_2>0))))
-            ax.set_xlabel('Coefficient')
-            ax.set_ylabel('Prob. density')
-            plt.axvline(0)
-        
-        # ax 2:
-        # ----
-        ax2 = fig.add_subplot(422)
-        ax2.errorbar(varX.mean(axis=0), varY2.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY2, axis=0), fmt='o', markersize=6, color=color2, alpha=1, capsize=0,  elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-        ax2.set_ylabel(var_Y, color=color2)
-        ax2.set_xlabel(bin_by)
-        
-        # cross-validate across subjects:
-        if model_comp == 'cv':
-            dics_1 = np.zeros(len(self.subjects))
-            dics_2 = np.zeros(len(self.subjects))
-            for i in range(len(self.subjects)):
-                train_ind = np.ones(len(self.subjects), dtype=bool)
-                train_ind[i] = False
-                test_ind = np.zeros(len(self.subjects), dtype=bool)
-                test_ind[i] = True
-                x_test = varX[test_ind,:].ravel()
-                y_test = varY2[test_ind,:].ravel()
-                coefs = []
-                for x, y in zip(varX[train_ind,:], varY2[train_ind,:]):
-                    coefs.append( sp.polyfit(x, y, 1) )
-                prediction = sp.polyval(np.vstack(coefs).mean(axis=0), varX[train_ind,:].mean(axis=0))
-                dics_1[i] = sum( (y_test-prediction)**2 )
-                coefs = []
-                for x, y in zip(varX[train_ind,:], varY2[train_ind,:]):
-                    coefs.append( sp.polyfit(x, y, 2) )
-                prediction = sp.polyval(np.vstack(coefs).mean(axis=0), varX[train_ind,:].mean(axis=0))
-                dics_2[i] = sum( (y_test-prediction)**2 )
                 
         if model_comp == 'bayes':
-            from bambi import Model
-            dft = pd.DataFrame(varY2, columns=np.arange(n_bins)).stack().reset_index()
-            dft.columns = ['subject', 'x', 'y']
-            model_1 = Model(dft)
-            model_2 = Model(dft)
-            res_1 = model_1.fit('y ~ x', random=['1|subject'], samples=2500)
-            res_2 = model_2.fit('y ~ x + np.power(x,2)', random=['1|subject'], samples=2500,)
-            dics_1 = pm.stats.dic(res_1.trace, model=res_1.model.backend.model)
-            dics_2 = pm.stats.dic(res_2.trace, model=res_2.model.backend.model)
-            traces_1 = res_1.trace.get_values('b_x', 500).ravel()
-            traces_2 = res_2.trace.get_values('b_np.power(x, 2)', 500).ravel()
-
-        if dics_2.mean() < dics_1.mean():
-            regression_line = []
-            r2 = np.zeros(len(self.subjects))
-            for i in range(len(self.subjects)):
-                x = varX[i,:]
-                y = varY2[i,:]
-                coefs = sp.polyfit(x,y,2)
-                x_line = np.linspace(min(varX[:,:].mean(axis=0))-((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), max(varX[:,:].mean(axis=0))+((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), 50)
-                regression_line.append(sp.polyval(coefs,x_line))
-                r2[i] = coefs[0]
-            p2 = permutationTest(r2, np.zeros(len(r1)), paired=True)[1]
-            regression_line = np.vstack(regression_line)
-            if p2 <= 0.05:
-                ax2.plot(x_line, regression_line.mean(axis=0), color=color2, alpha=1)
-                ax2.fill_between(x_line, regression_line.mean(axis=0)-sp.stats.sem(regression_line, axis=0), regression_line.mean(axis=0)+sp.stats.sem(regression_line, axis=0), color=color2, alpha=0.2)
-            ax2.set_title('c = {}, p = {}'.format(round(r2.mean(), 3), round(p2, 3),))
-
+            
+            # load data:
+            
+            xx = pd.DataFrame(varX).stack().reset_index().rename_axis({"level_0": "subject", "level_1":"x", 0: "y"}, axis="columns")
+            xx.x = xx.x.astype('float')
+            k = pd.DataFrame(varY).stack().reset_index().rename_axis({"level_0": "subject", "level_1":"x", 0: "y"}, axis="columns")
+            k.x = xx.y
+            n_subj = len(np.unique(k.subject))
+            subject_idx = k.subject.values
+            
+            with pm.Model() as model1:
+                
+                # define priors:
+                h_b0 = pm.Normal('h_b0', mu=0, sd=10)
+                sigma_h_b0 = pm.HalfNormal('sigma_h_b0', sd=1)
+                h_b1 = pm.Normal('h_b1', mu=0, sd=10)
+                sigma_h_b1 = pm.HalfNormal('sigma_h_b1', sd=1)
+                b0 = pm.Normal('b0', mu=h_b0, sd=sigma_h_b0, shape=n_subj) # intercept
+                b1 = pm.Normal('b1', mu=h_b1, sd=sigma_h_b1, shape=n_subj) # 1st order coefficient for each subject (slope)
+                
+                ## define Linear model
+                yest = b0[subject_idx] + (b1[subject_idx] * k['x'])
+                
+                ## define Normal likelihood with HalfNormal noise
+                sigma_y = pm.HalfNormal('sigma_y', sd=1)
+                likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
+                
+            with model1:
+                trace1 = pm.sample(10000) # draw 5000 posterior samples
+                
+            with pm.Model() as model2:
+                
+                # define priors:
+                h_b0 = pm.Normal('h_b0', mu=0, sd=10)
+                sigma_h_b0 = pm.HalfNormal('sigma_h_b0', sd=1)
+                h_b1 = pm.Normal('h_b1', mu=0, sd=10)
+                sigma_h_b1 = pm.HalfNormal('sigma_h_b1', sd=1)
+                h_b2 = pm.Normal('h_b2', mu=0, sd=10)
+                sigma_h_b2 = pm.HalfNormal('sigma_h_b2', sd=1)
+                b0 = pm.Normal('b0', mu=h_b0, sd=sigma_h_b0, shape=n_subj) # intercept
+                b1 = pm.Normal('b1', mu=h_b1, sd=sigma_h_b1, shape=n_subj) # 1st order coefficient for each subject (slope)
+                b2 = pm.Normal('b2', mu=h_b2, sd=sigma_h_b2, shape=n_subj) # 2nd order coefficient for each subject
+                
+                ## define Linear model
+                yest = b0[subject_idx] + (b1[subject_idx] * k['x']) + (b2[subject_idx] * np.power(k['x'],2))
+                
+                ## define Normal likelihood with HalfNormal noise
+                sigma_y = pm.HalfNormal('sigma_y', sd=1)
+                likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
+                
+            with model2:
+                trace2 = pm.sample(10000) # draw 5000 posterior samples
+            
+            p1a = np.min((np.mean(trace1.get_values('h_b1') < 0), np.mean(trace1.get_values('h_b1') > 0)))
+            p2a = np.min((np.mean(trace2.get_values('h_b1') < 0), np.mean(trace2.get_values('h_b1') > 0)))
+            p2b = np.min((np.mean(trace2.get_values('h_b2') < 0), np.mean(trace2.get_values('h_b2') > 0)))
+            
+            waic1 = pm.stats.waic(model=model1, trace=trace1)[0]
+            waic2 = pm.stats.waic(model=model2, trace=trace2)[0]
+            
+            if waic1 < waic2:
+                which_model = 1
+            else:
+                which_model = 2
+                
+        fig = plt.figure(figsize=(2,6))
+        x = varX.mean(axis=0)
+        ax = fig.add_subplot(311)
+        if which_model == 1:
+            for i in xrange(9000,10000):
+                point = trace1.point(i)
+                graph('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.0098035, ax=ax)
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            graph('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
+            ax.set_title('b1 = {}, p = {}'.format(round(trace1.get_values('h_b1').mean(), 3), round(p1a, 3),))
         else:
-            regression_line = []
-            r2 = np.zeros(len(self.subjects))
-            for i in range(len(self.subjects)):
-                x = varX[i,:]
-                y = varY2[i,:]
-                coefs = sp.polyfit(x,y,1)
-                x_line = np.linspace(min(varX[:,:].mean(axis=0))-((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), max(varX[:,:].mean(axis=0))+((max(varX[:,:].mean(axis=0))-min(varX[:,:].mean(axis=0))) / 8.0), 50)
-                regression_line.append(sp.polyval(coefs,x_line))
-                r2[i] = sp.stats.spearmanr(x,y)[0]
-            p2 = permutationTest(r2, np.zeros(len(r1)), paired=True)[1]
-            regression_line = np.vstack(regression_line)
-            if p2 <= 0.05:
-                ax2.plot(x_line, regression_line.mean(axis=0), color=color2, alpha=1)
-                ax2.fill_between(x_line, regression_line.mean(axis=0)-sp.stats.sem(regression_line, axis=0), regression_line.mean(axis=0)+sp.stats.sem(regression_line, axis=0), color=color2, alpha=0.2)
-            ax2.set_title('r = {}, p = {}'.format(round(r2.mean(), 3), round(p2, 3),))
+            for i in xrange(9000,10000):
+                point = trace2.point(i)
+                graph('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.0098035, ax=ax)
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            graph('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
+            ax.set_title('b2 = {}, p = {}'.format(round(trace2.get_values('h_b2').mean(), 3), round(p2b, 3),))
+        ax.set_xlabel(bin_by)
+        ax.set_ylabel(y1)
         
         if model_comp == 'bayes':
-            ax = fig.add_subplot(424)
-            ax.bar([0,1], [dics_1.mean(), dics_2.mean()], align='center')
-            ax.text(0, dics_1.mean(), str(round(dics_1.mean(),1)), color='r', rotation=90)
-            ax.text(1, dics_2.mean(), str(round(dics_2.mean(),1)), color='r', rotation=90)
-            ax.set_xticks((0,1))
-            ax.set_xticklabels(('1st', '2nd'))
-            ax.set_ylabel('DIC')
-            ax = fig.add_subplot(426)
-            sns.kdeplot(traces_1, shade=True, ax=ax)
-            ax.set_title('1st order coef., p={}'.format(min(np.mean(traces_1>0), 1-np.mean(traces_1>0))))
+            ax = fig.add_subplot(312)
+            sns.kdeplot(trace1.get_values('h_b1'), shade=True, ax=ax)
+            plt.axvline(0, lw=0.5, color='black')
+            ax.set_title('waic = {}, p = {}'.format(round(waic1, 3), round(p1a, 3),))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
-            plt.axvline(0)
-            ax = fig.add_subplot(428)
-            sns.kdeplot(traces_2, shade=True, ax=ax)
-            ax.set_title('2nd order coef., p={}'.format(min(np.mean(traces_2>0), 1-np.mean(traces_2>0))))
+            ax = fig.add_subplot(313)
+            sns.kdeplot(trace2.get_values('h_b2'), shade=True, ax=ax)
+            plt.axvline(0, lw=0.5, color='black')
+            ax.set_title('waic = {}, p = {}'.format(round(waic2.mean(), 3), round(p2b, 3),))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
-            plt.axvline(0)
            
         sns.despine(offset=5, trim=True)
         plt.tight_layout()
