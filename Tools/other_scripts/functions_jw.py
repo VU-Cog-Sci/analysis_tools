@@ -1917,6 +1917,10 @@ def label_diff(ax,i,j,text,X,Y,Z, values = False):
         kwargs = {'zorder':10, 'size':12, 'ha':'center'}
         ax.annotate('p = ' + str(text), xy=(middle_x,max_value + ((plt.axis()[3] - plt.axis()[2])*(1.15/10))), **kwargs)
 
+def plot_bayes_model(formula, x_range, color='black', alpha=1, ax=None):  
+    x = np.array(x_range)  
+    y = eval(formula)
+    ax.plot(x, y, color=color, alpha=alpha) 
 
 class behavior(object):
     def __init__(self, data):
@@ -2133,99 +2137,56 @@ class behavior(object):
                 elif y1 == 'rt':
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]].mean()
         
-        # shell()
-        
-        def graph(formula, x_range, color='black', alpha=1, ax=None):  
-            x = np.array(x_range)  
-            y = eval(formula)
-            ax.plot(x, y, color=color, alpha=alpha)           
-        def plot_traces(traces, retain=1000):
-            '''
-            Convenience function:
-            Plot traces with overlaid means and values
-            '''
+        if model_comp == 'seq':
             
-            ax = pm.traceplot(traces[-retain:], figsize=(12,len(traces.varnames)*1.5),
-                lines={k: v['mean'] for k, v in pm.df_summary(traces[-retain:]).iterrows()})
-
-            for i, mn in enumerate(pm.df_summary(traces[-retain:])['mean']):
-                ax[i,0].annotate('{:.2f}'.format(mn), xy=(mn,0), xycoords='data'
-                            ,xytext=(5,10), textcoords='offset points', rotation=90
-                            ,va='bottom', fontsize='large', color='#AA0022')
-            return ax
-        def create_poly_modelspec(k=1):
-            '''
-            Convenience function:
-            Create a polynomial modelspec string for patsy
-            '''
-            return ('y ~ 1 + x ' + ' '.join(['+ np.power(x,{})'.format(j) for j in range(2,k+1)])).strip()
-        def run_models(df, upper_order=5):
-            '''
-            Convenience function:
-            Fit a range of pymc3 models of increasing polynomial complexity.
-            Suggest limit to max order 5 since calculation time is exponential.
-            '''
-
-            models, traces = OrderedDict(), OrderedDict()
-
-            for k in range(1,upper_order+1):
-
-                nm = 'k{}'.format(k)
-                fml = create_poly_modelspec(k)
-
-                with pm.Model() as models[nm]:
-
-                    print('\nRunning: {}'.format(nm))
-                    pm.glm.glm(fml, df, family=pm.glm.families.Normal())
-
-                    # For speed, we're using Metropolis here
-                    traces[nm] = pm.sample(5000, pm.Metropolis(),)[1000::5]
-
-            return models, traces
-        def plot_posterior_cr(models, traces, rawdata, xlims, ax, datamodelnm='linear', modelnm='k1'):
-            '''
-            Convenience function:
-            Plot posterior predictions with credible regions shown as filled areas.
-            '''
-
-            ## Get traces and calc posterior prediction for npoints in x
-            npoints = 100
-            mdl = models[modelnm]
-            trc = pm.trace_to_dataframe(traces[modelnm][-1000:])
-            trc = trc[[str(v) for v in mdl.cont_vars[:-1]]]
-
-            ordr = int(modelnm[-1:])
-            x = np.linspace(xlims[0], xlims[1], npoints).reshape((npoints,1))
-            pwrs = np.ones((npoints,ordr+1)) * np.arange(ordr+1)
-            X = x ** pwrs
-            cr = np.dot(X,trc.T)
-
-            ## Calculate credible regions and plot over the datapoints
-            dfp = pd.DataFrame(np.percentile(cr,[2.5, 25, 50, 75, 97.5], axis=1).T
-                                 ,columns=['025','250','500','750','975'])
-            dfp['x'] = x
-
-            pal = sns.color_palette('Greens')
-            ax.set_title('Posterior Predictive Fit -- Data: {} -- Model: {}'.format(
-                                datamodelnm, modelnm),)
-            plt.subplots_adjust(top=0.95)
-
-            ax.fill_between(dfp['x'], dfp['025'], dfp['975'], alpha=0.5
-                              ,color=pal[1], label='CR 95%')
-            ax.fill_between(dfp['x'], dfp['250'], dfp['750'], alpha=0.5
-                              ,color=pal[4], label='CR 50%')
-            ax.plot(dfp['x'], dfp['500'], alpha=0.6, color=pal[5], label='Median')
-            _ = plt.legend()
-            _ = ax.set_xlim(xlims)
-            _ = sns.regplot(x='x', y='y', data=rawdata, fit_reg=False
-                           ,scatter_kws={'alpha':0.7,'s':100, 'lw':2,'edgecolor':'w'}, ax=ax)
+            from sklearn import feature_selection
             
-            # return ax
+            x = varX.mean(axis=0)
+            y = varY.mean(axis=0)
+            coefs0 = sp.polyfit(x, y, 0)
+            model0 = np.matrix(sp.polyval(coefs0, x)).T
+            coefs1 = sp.polyfit(x, y, 1)
+            model1 = np.matrix(sp.polyval(coefs1, x)).T
+            take_out = model0.copy()
+            model1o = model1 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model1)
+            coefs2 = sp.polyfit(x, y, 2)
+            model2 = np.matrix(sp.polyval(coefs2, x)).T
+            take_out = np.matrix(np.array(model0).ravel()*np.array(model1o).ravel()).T
+            model2o = model2 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model2)
+            data = pd.DataFrame(np.hstack((model1o, model2o)), columns=['b1', 'b2'])
+            # data = pd.DataFrame(np.hstack((model0, model1o, model2o)), columns=['b0', 'b1', 'b2'])
+            f_values, p_values = feature_selection.f_regression(data, y, center=True)
+            
+            # p_values = np.zeros((len(self.subjects),2))
+            # f_values = np.zeros((len(self.subjects),2))
+            # for i in range(len(self.subjects)):
+            #     x = varX[i,:]
+            #     y = varY[i,:]
+            #     coefs0 = sp.polyfit(x, y, 0)
+            #     model0 = np.matrix(sp.polyval(coefs0, x)).T
+            #     coefs1 = sp.polyfit(x, y, 1)
+            #     model1 = np.matrix(sp.polyval(coefs1, x)).T
+            #     take_out = model0.copy()
+            #     model1o = model1 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model1)
+            #     coefs2 = sp.polyfit(x, y, 2)
+            #     model2 = np.matrix(sp.polyval(coefs2, x)).T
+            #     take_out = np.matrix(np.array(model0).ravel()*np.array(model1o).ravel()).T
+            #     model2o = model2 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model2)
+            #     data = pd.DataFrame(np.hstack((model1o, model2o)), columns=['b1', 'b2'])
+            #     f_values[i,:], p_values[i,:] = feature_selection.f_regression(data, y, center=True)
+            # sig_subjects = (p_values<0.05).sum(axis=0)
+            
+            
+            # data['y'] = y
+            # for i in range(2):
+            #     print i
+            #     res = pd.stats.ols.OLS(y=data['y'], x=data['b{}'.format(i+1)], intercept=True)
+            #     print res
             
         # cross-validate across subjects:
         if model_comp == 'cv':
-            dics_1 = np.zeros(len(self.subjects))
-            dics_2 = np.zeros(len(self.subjects))
+            sse1 = np.zeros(len(self.subjects))
+            sse2 = np.zeros(len(self.subjects))
             for i in range(len(self.subjects)):
                 train_ind = np.ones(len(self.subjects), dtype=bool)
                 train_ind[i] = False
@@ -2237,13 +2198,30 @@ class behavior(object):
                 for x, y in zip(varX[train_ind,:], varY[train_ind,:]):
                     coefs.append( sp.polyfit(x, y, 1) )
                 prediction = sp.polyval(np.vstack(coefs).mean(axis=0), varX[train_ind,:].mean(axis=0))
-                dics_1[i] = sum( (y_test-prediction)**2 )
+                sse1[i] = sum( (y_test-prediction)**2 )
                 coefs = []
                 for x, y in zip(varX[train_ind,:], varY[train_ind,:]):
                     coefs.append( sp.polyfit(x, y, 2) )
                 prediction = sp.polyval(np.vstack(coefs).mean(axis=0), varX[train_ind,:].mean(axis=0))
-                dics_2[i] = sum( (y_test-prediction)**2 )
-                
+                sse2[i] = sum( (y_test-prediction)**2 )
+        
+        if model_comp == 'cv' or model_comp == 'seq':
+            model1 = np.zeros((len(self.subjects), n_bins))
+            coefs1 = np.zeros(len(self.subjects))
+            model2 = np.zeros((len(self.subjects), n_bins))
+            coefs2a = np.zeros(len(self.subjects))
+            coefs2b = np.zeros(len(self.subjects))
+            for i in range(len(self.subjects)):
+                coefs1[i] = sp.polyfit(varX[i,:], varY[i,:], 1)[0]
+                model1[i,:] = sp.polyval(sp.polyfit(varX[i,:], varY[i,:], 1), varX[i,:])
+                coefs2a[i] = sp.polyfit(varX[i,:], varY[i,:], 2)[0]
+                coefs2b[i] = sp.polyfit(varX[i,:], varY[i,:], 2)[1]
+                model2[i,:] = sp.polyval(sp.polyfit(varX[i,:], varY[i,:], 2), varX[i,:])
+            
+            p1a = permutationTest(coefs1, np.zeros(len(self.subjects)), paired=True)[1]
+            p2a = permutationTest(coefs2a, np.zeros(len(self.subjects)), paired=True)[1]
+            p2b = permutationTest(coefs2b, np.zeros(len(self.subjects)), paired=True)[1]
+              
         if model_comp == 'bayes':
             
             # load data:
@@ -2309,40 +2287,71 @@ class behavior(object):
         fig = plt.figure(figsize=(4,4))
         x = varX.mean(axis=0)
         ax = fig.add_subplot(221)
-        for i in xrange(9000,10000):
-            point = trace1.point(i)
-            graph('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
-        ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-        graph('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
-        ax.set_title('waic = {}'.format(round(waic1, 3),))
+        if model_comp == 'bayes':
+            for i in xrange(9000,10000):
+                point = trace1.point(i)
+                plot_bayes_model('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            plot_bayes_model('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
+            ax.set_title('waic = {}'.format(round(waic1, 3),))
+        elif model_comp == 'cv' or model_comp == 'seq':
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.1)
+            ax.plot(x, model1.mean(axis=0), color=color1)
+        if model_comp == 'cv':
+            ax.set_title('sse = {}'.format(round(sse1.mean(), 3),))
+        elif model_comp == 'seq':
+            ax.set_title('Expansian to linear\nF = {}; p = {}'.format(round(f_values[0], 3), round(p_values[0], 3),))
         ax.set_xlabel(bin_by)
         ax.set_ylabel(y1)
         ax = fig.add_subplot(222)
-        for i in xrange(9000,10000):
-            point = trace2.point(i)
-            graph('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.01, ax=ax)
-        ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-        graph('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
-        ax.set_title('waic = {}'.format(round(waic2, 3),))
+        if model_comp == 'bayes':
+            for i in xrange(9000,10000):
+                point = trace2.point(i)
+                plot_bayes_model('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.01, ax=ax)
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            plot_bayes_model('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
+            ax.set_title('waic = {}'.format(round(waic2, 3),))
+        elif model_comp == 'cv' or model_comp == 'seq':
+            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+            ax.fill_between(x, model2.mean(axis=0)-sp.stats.sem(model2, axis=0), model2.mean(axis=0)+sp.stats.sem(model2, axis=0), color=color1, alpha=0.1)
+            ax.plot(x, model2.mean(axis=0), color=color1)
+        if model_comp == 'cv':
+            ax.set_title('sse = {}'.format(round(sse2.mean(), 3),))
+        elif model_comp == 'seq':
+            ax.set_title('Expansian to quadratic\nF = {}; p = {}'.format(round(f_values[1], 3), round(p_values[1], 3),))
         ax.set_xlabel(bin_by)
         ax.set_ylabel(y1)
+        
+        ax = fig.add_subplot(223)
         if model_comp == 'bayes':
-            ax = fig.add_subplot(223)
             sns.kdeplot(trace1.get_values('h_b1'), shade=True, ax=ax)
             plt.axvline(0, lw=0.5, color='black')
-            ax.set_title('p = {}'.format(round(p1a, 3),))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
-            ax = fig.add_subplot(224)
+        elif model_comp == 'cv' or model_comp == 'seq':
+            for m in model1:
+                plt.plot(x, m)
+            ax.set_xlabel(bin_by)
+            ax.set_ylabel(y1)
+        ax.set_title('p = {}'.format(round(p1a, 3),))
+        ax = fig.add_subplot(224)
+        if model_comp == 'bayes':
             sns.kdeplot(trace2.get_values('h_b1'), shade=True, ax=ax)
             plt.axvline(0, lw=0.5, color='black')
-            ax.set_title('p = {} & p = {}'.format(round(p2a, 3), round(p2b, 3)))
             ax.set_xlabel('Coefficient')
             ax.set_ylabel('Prob. density')
             ax = ax.twinx()
             sns.kdeplot(trace2.get_values('h_b2'), color='g', shade=True, ax=ax)
             plt.axvline(0, lw=0.5, color='black')
-        sns.despine(offset=5, trim=True, right=True)
+        elif model_comp == 'cv' or model_comp == 'seq':
+            for m in model2:
+                plt.plot(x, m)
+            ax.set_xlabel(bin_by)
+            ax.set_ylabel(y1)
+        ax.set_title('p = {} & p = {}'.format(round(p2a, 3), round(p2b, 3)))
+        
+        sns.despine(offset=5, trim=True, right=False)
         plt.tight_layout()
         
         return fig
