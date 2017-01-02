@@ -2090,7 +2090,7 @@ class behavior(object):
         return df2
     
     
-    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', model_comp='bayes'):
+    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', model_comp='bayes', bin_per='session'):
         
         var_Y = 'behaviour'
         color1 = 'mediumslateblue'
@@ -2101,8 +2101,11 @@ class behavior(object):
         for i in range(len(self.subjects)):
             inds_s = np.zeros(( self.data.query('subj_idx=={}'.format(i)).shape[0], n_bins ), dtype=bool)
             trial_nr = 0
-            for s in np.unique(self.data.query('subj_idx=={}'.format(i))['session']):
-                bin_measure = np.array(self.data.query('subj_idx=={} & session=={}'.format(i,s))[bin_by])
+            for s in np.unique(self.data.query('subj_idx=={}'.format(i))[bin_per]):
+                if bin_per == 'session':
+                    bin_measure = np.array(self.data.query('subj_idx=={} & session=={}'.format(i,s))[bin_by])
+                elif bin_per == 'run':
+                    bin_measure = np.array(self.data.query('subj_idx=={} & run=={}'.format(i,s))[bin_by])
                 nr_trials_in_run = len(bin_measure)
                 inds = np.array_split(np.argsort(bin_measure), n_bins)
                 # cuts = np.linspace(min(bin_measure)-0.01, max(bin_measure)+0.01, n_bins+1)
@@ -2120,6 +2123,7 @@ class behavior(object):
         for i in range(len(self.subjects)):
             varX[i,:] = np.arange(n_bins)
             for b in range(n_bins):
+                # varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
                 d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]],
                                     np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]],
                                     np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]
@@ -2140,7 +2144,6 @@ class behavior(object):
         if model_comp == 'seq':
             
             from sklearn import feature_selection
-            
             x = varX.mean(axis=0)
             y = varY.mean(axis=0)
             coefs0 = sp.polyfit(x, y, 0)
@@ -2157,8 +2160,17 @@ class behavior(object):
             # data = pd.DataFrame(np.hstack((model0, model1o, model2o)), columns=['b0', 'b1', 'b2'])
             f_values, p_values = feature_selection.f_regression(data, y, center=True)
             
+            data['y'] = y
+            res1 = pd.stats.ols.OLS(y=data['y'], x=data['b1'], intercept=True)
+            res2 = pd.stats.ols.OLS(y=data['y'], x=data['b2'], intercept=True)
+            print res1.f_stat
+            print res2.f_stat
+            
             # p_values = np.zeros((len(self.subjects),2))
             # f_values = np.zeros((len(self.subjects),2))
+            # residuals0 = np.zeros((len(self.subjects),n_bins))
+            # residuals1 = np.zeros((len(self.subjects),n_bins))
+            # residuals2 = np.zeros((len(self.subjects),n_bins))
             # for i in range(len(self.subjects)):
             #     x = varX[i,:]
             #     y = varY[i,:]
@@ -2174,14 +2186,19 @@ class behavior(object):
             #     model2o = model2 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model2)
             #     data = pd.DataFrame(np.hstack((model1o, model2o)), columns=['b1', 'b2'])
             #     f_values[i,:], p_values[i,:] = feature_selection.f_regression(data, y, center=True)
+            #
+            #     data['y'] = y
+            #     res1 = pd.stats.ols.OLS(y=data['y'], x=data['b1'], intercept=True)
+            #     data['y1'] = res1.resid
+            #     res2 = pd.stats.ols.OLS(y=data['y1'], x=data['b2'], intercept=True)
+            #
+            #     residuals0[i,:] = data['y'] - data['y'].mean()
+            #     residuals1[i,:] = res1.resid
+            #     residuals2[i,:] = res2.resid
+            #
+            #     # print res
+            #
             # sig_subjects = (p_values<0.05).sum(axis=0)
-            
-            
-            # data['y'] = y
-            # for i in range(2):
-            #     print i
-            #     res = pd.stats.ols.OLS(y=data['y'], x=data['b{}'.format(i+1)], intercept=True)
-            #     print res
             
         # cross-validate across subjects:
         if model_comp == 'cv':

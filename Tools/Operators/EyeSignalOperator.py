@@ -20,8 +20,6 @@ import matplotlib.pyplot as plt
 from math import *
 from scipy.signal import butter, lfilter, filtfilt, fftconvolve, resample
 import scipy.interpolate as interpolate
-import mne
-# import fir
 from lmfit import minimize, Parameters, Parameter, report_fit
 from IPython import embed as shell
 
@@ -339,9 +337,7 @@ class EyeSignalOperator(Operator):
         else:
             self.blink_starts = None
             self.blink_ends = None
-        # self.blink_starts = self.blink_starts[self.blink_starts>coalesce_period]
-        # self.blink_ends = self.blink_ends[self.blink_starts>coalesce_period]
-        
+            
         # do actual interpolation:
         if method == 'spline':
             points_for_interpolation = np.array(np.array(spline_interpolation_points) * self.sample_rate, dtype = int)
@@ -362,7 +358,7 @@ class EyeSignalOperator(Operator):
                     self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
                     self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
     
-    def interpolate_blinks2(self, lin_interpolation_points = [[-250],[250]]):
+    def interpolate_blinks2(self, lin_interpolation_points = [[-250],[250]], coalesce_period=750):
         
         """
         interpolate_blinks2 performs linear interpolation around peaks in the rate of change of
@@ -376,16 +372,48 @@ class EyeSignalOperator(Operator):
         """
         
         from Tools.other_scripts import functions_jw as myfuncs
+        
+        # self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
+        # self.peaks = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=500, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)[:-1] # last peak might not reflect blink...
+        # if self.peaks != None:
+        #     points_for_interpolation = np.array([self.peaks, self.peaks], dtype=int).T + np.array(lin_interpolation_points).T
+        #     for itp in points_for_interpolation:
+        #         self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
+        #         self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
+        #         self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
+        
+        self.interpolated_time_points = np.zeros(len(self.interpolated_pupil))
         self.pupil_diff = (np.diff(self.interpolated_pupil) - np.diff(self.interpolated_pupil).mean()) / np.diff(self.interpolated_pupil).std()
-        self.peaks = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=500, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)[:-1] # last peak might not reflect blink...
-        if self.peaks != None:
-            points_for_interpolation = np.array([self.peaks, self.peaks], dtype=int).T + np.array(lin_interpolation_points).T
+        peaks_down = myfuncs.detect_peaks(self.pupil_diff, mph=10, mpd=1, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)
+        peaks_up = myfuncs.detect_peaks(self.pupil_diff*-1, mph=10, mpd=1, threshold=None, edge='rising', kpsh=False, valley=False, show=False, ax=False)
+        self.peaks = np.sort(np.concatenate((peaks_down, peaks_up)))
+        
+        if len(self.peaks) > 0:
+            
+            # prepare:
+            self.peak_starts = np.sort(np.concatenate((self.peaks-1, self.blink_starts)))
+            self.peak_ends = np.sort(np.concatenate((self.peaks+1, self.blink_ends)))
+            start_indices = np.ones(self.peak_starts.shape[0], dtype=bool)
+            end_indices = np.ones(self.peak_ends.shape[0], dtype=bool)
+            for i in range(self.peak_starts.shape[0]):
+                try:
+                    if self.peak_starts[i+1] - self.peak_ends[i] <= coalesce_period:
+                        start_indices[i+1] = False
+                        end_indices[i] = False
+                except IndexError:
+                    pass
+            self.peak_starts = self.peak_starts[start_indices]
+            self.peak_ends = self.peak_ends[end_indices] 
+            
+            # interpolate:
+            points_for_interpolation = np.array([self.peak_starts, self.peak_ends], dtype=int).T + np.array(lin_interpolation_points).T
             for itp in points_for_interpolation:
                 self.interpolated_pupil[itp[0]:itp[-1]] = np.linspace(self.interpolated_pupil[itp[0]], self.interpolated_pupil[itp[-1]], itp[-1]-itp[0])
                 self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
                 self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
-            
-    def filter_pupil(self, hp = 0.01, lp = 4.0):
+                self.interpolated_time_points[itp[0]:itp[-1]] = 1
+                     
+    def filter_pupil(self, hp = 0.01, lp = 10.0):
         """
         band_pass_filter_pupil band pass filters the pupil signal using a butterworth filter of order 3. 
         
@@ -407,40 +435,11 @@ class EyeSignalOperator(Operator):
         # self.hp_filt_pupil = mne.filter.high_pass_filter(x=self.interpolated_pupil.astype('float64'), Fs=self.sample_rate, Fp=hp, filter_length=None, method='iir', iir_params={'ftype':'butter', 'order':3}, picks=None, n_jobs=1, copy=True, verbose=None)
         # self.bp_filt_pupil = self.hp_filt_pupil - (self.interpolated_pupil-self.lp_filt_pupil)
         # self.baseline_filt_pupil = self.lp_filt_pupil - self.bp_filt_pupil
-        
-        # # band-pass filtering of signal, high pass first and then low-pass
-        # # High pass:
-        # hp_cof_sample = hp / (self.interpolated_pupil.shape[0] / self.sample_rate / 2)
-        # bhp, ahp = sp.signal.butter(3, hp_cof_sample, btype='high')
-        # self.hp_filt_pupil = sp.signal.filtfilt(bhp, ahp, self.interpolated_pupil)
-        # # Low pass:
-        # lp_cof_sample = lp / (self.interpolated_pupil.shape[0] / self.sample_rate / 2)
-        # blp, alp = sp.signal.butter(3, lp_cof_sample)
-        # self.lp_filt_pupil = sp.signal.filtfilt(blp, alp, self.interpolated_pupil)
-        # # Band pass:
-        # self.bp_filt_pupil = sp.signal.filtfilt(blp, alp, self.hp_filt_pupil)
-        #
-        # # we may also add a baseline variable which contains the baseline
-        # # by doing 3rd order savitzky-golay filtering, with a width of ~100 s
-        # # we dan use this baseline signal for correlations of phasic and tonic pupil responses, for example
-        #
-        # # self.baseline_filt_pupil = savitzky_golay(self.interpolated_pupil, self.sample_rate / (hp * 0.25), 3)
-        # self.baseline_filt_pupil = self.lp_filt_pupil - self.bp_filt_pupil
-        
+                
     def zscore_pupil(self, dtype = 'bp_filt_pupil'):
         """
-        zscore_pupil z-scores the low-pass filtered pupil size data and the band-pass filtered pupil size data.
-        
-        The results are stored in self.bp_filt_pupil_zscore and self.lp_filt_pupil_zscore.
-        
-        This method is typically called after self.filter_pupil(), consistent with the fact that it
-        expects the self.[...]_filt_pupil variables to exist.
+        zscore_pupil takes z-score of the dtype pupil signal, and internalizes it as a dtype + '_zscore' self variable.
         """
-        
-        # self.bp_filt_pupil_clean_zscore = (self.bp_filt_pupil_clean - self.bp_filt_pupil_clean.mean()) / self.bp_filt_pupil_clean.std()
-        # self.bp_filt_pupil_zscore = (self.bp_filt_pupil - self.bp_filt_pupil.mean()) / self.bp_filt_pupil.std()
-        # self.lp_filt_pupil_zscore = (self.lp_filt_pupil - self.lp_filt_pupil.mean()) / self.lp_filt_pupil.std()
-        # self.baseline_filt_pupil_zscore = (self.baseline_filt_pupil - self.baseline_filt_pupil.mean()) / self.baseline_filt_pupil.std()
         
         exec('self.' + str(dtype) + '_zscore = (self.' + str(dtype) + ' - np.mean(self.' + str(dtype) + ')) / np.std(self.' + str(dtype) + ')')
         
@@ -449,7 +448,6 @@ class EyeSignalOperator(Operator):
         percent_signal_change_pupil takes percent signal change of the dtype pupil signal, and internalizes it as a dtype + '_psc' self variable.
         """
         
-        # exec('self.' + str(dtype) + '_psc = ((self.' + str(dtype) + ' / np.mean(self.baseline_filt_pupil[2000:-2000])) * 100) - 100' )
         exec('self.{}_psc = ((self.{} - self.{}.mean()) / np.mean(self.baseline_filt_pupil[500:-500])) * 100'.format(dtype, dtype, dtype))
         
     def dt_pupil(self, dtype = 'bp_filt_pupil'):
