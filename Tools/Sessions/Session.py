@@ -1211,7 +1211,7 @@ class Session(PathConstructor):
 		fmO.configure(outputFileName = os.path.join(self.stageFolder('processed/mri/masks/anat'), label + '_dilated_mask.nii.gz'), **{'-bin': ''})
 		fmO.execute()
 	
-	def retroicorFSL(self, conditions=['task'], postFix=['B0', 'mcf', 'sgtf'], TR=2.0, threshold=1.5, nr_dummies=8, sample_rate=500, gradient_direction='y', card_order=3, resp_order=2, card_resp_order=3, resp_card_order=2, slicedir='z', sliceorder='up', thisFeatFile=None, prepare=False, run=False):
+	def retroicorFSL(self, conditions=['task'], postFix=['B0', 'mcf', 'sgtf'], TR=2.0, threshold=1.5, nr_dummies=8, sample_rate=500, gradient_direction='y', card_order=4, resp_order=4, card_resp_order=2, resp_card_order=2, slicedir='z', sliceorder='up', thisFeatFile=None, prepare=False, run=False):
 		
 		for cond in conditions:
 			for r in [self.runList[i] for i in self.conditionDict[cond]]:
@@ -1241,9 +1241,8 @@ class Session(PathConstructor):
 				
 				if prepare:
 					
-					# TR = 2.0
-
-					TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
+					TR = 2.0
+					# TR = NiftiImage(self.runFile(stage = 'processed/mri', run = r, postFix=postFix)).rtime
 					if TR > 10:	# convert TRs to seconds if in ms
 						TR = TR / 1000.0
 
@@ -1362,35 +1361,36 @@ class Session(PathConstructor):
 					inputObject = base + '_input.txt'
 					outputObject = base
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_stage1')
-					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
+					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'', '--rvt':' ','--heartrate':' '})
 					retroO.execute()
 
-					# convert back from funky hexadecimal to normal floats in text files
-					for data_type_hex in ['time','card','resp']:
-						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
-						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
-						hco.configure(base + '_%s.txt'%data_type_hex)
-						hco.execute()
-
-					# shell()
+					# # convert back from funky hexadecimal to normal floats in text files
+					# for data_type_hex in ['time','card','resp']:
+					# 	ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+					# 	hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+					# 	hco.configure(base + '_%s.txt'%data_type_hex)
+					# 	hco.execute()
+					
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='popp')
-					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'',})
+					retroO.configure(outputFileName=outputObject, **{'-s':str(sample_rate), '--tr='+str(TR):' ', '--smoothcard='+str(0.1):' ', '--smoothresp='+str(0.1):' ', '--resp='+str(2):' ', '--cardiac='+str(1):' ', '--trigger='+str(4):'', '--rvt':' ','--heartrate':' '})
 					retroO.execute()
 					
-					# convert back from funky hexadecimal to normal floats in text files
-					for data_type_hex in ['time','card','resp']:
-						ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
-						hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
-						hco.configure(base + '_%s.txt'%data_type_hex)
-						hco.execute()
+					# # convert back from funky hexadecimal to normal floats in text files
+					# for data_type_hex in ['time','card','resp']:
+					# 	ExecCommandLine('cp ' + base + '_%s.txt '%data_type_hex + base + '_%s_H.txt'%data_type_hex )
+					# 	hco = HexConvOperator(base + '_%s_H.txt'%data_type_hex)
+					# 	hco.configure(base + '_%s.txt'%data_type_hex)
+					# 	hco.execute()
 
 					# run final command:
 					inputObject = self.runFile(stage = 'processed/mri', run = r, postFix=postFix)
 					outputObject = base
 					card = base + '_card.txt'
 					resp = base + '_resp.txt'
+					hr = base + '_hr.txt'
+					rvt = base + '_rvt.txt'
 					retroO = FSLRETROICOROperator(inputObject=inputObject, cmd='pnm_evs')
-					retroO.configure(outputFileName=outputObject, **{'--tr='+str(TR):' ', '-c':card, '-r':resp, '--oc='+str(card_order):' ', '--or='+str(resp_order):' ', '--multc='+str(card_resp_order):' ', '--multr='+str(resp_card_order):' ', '--slicedir='+slicedir:' ', '--sliceorder='+sliceorder:' ', '-v':''})
+					retroO.configure(outputFileName=outputObject, **{'--tr='+str(TR):' ', '-c':card, '-r':resp, '--oc='+str(card_order):' ', '--or='+str(resp_order):' ', '--multc='+str(card_resp_order):' ', '--multr='+str(resp_card_order):' ', '--slicedir='+slicedir:' ', '--sliceorder='+sliceorder:' ', '-v':' ', '--rvt='+rvt:' ', '--heartrate='+hr:' '})
 					retroO.execute()
 					
 					# grab regressors:

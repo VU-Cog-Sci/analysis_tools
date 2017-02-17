@@ -696,9 +696,41 @@ def roc_analysis(group1, group2, stats=False, nrand=5000, tail=1):
     return(out_i, out_p)
 
 
+def type2roc(correct, confidence):
+    
+    """
+    Taken from Fleming & Lau (2014)
+    Computes metacognitive sensitivity accounting for metacognitive bias.
+    
+    function auroc2 = type2roc(correct, conf, Nratings)
+    
+    Calculate area under type 2 ROC
+    
+    correct - vector of 1 x ntrials, 0 for error, 1 for correct
+    conf - vector of 1 x ntrials of confidence ratings taking values 1:Nratings
+    """
+    
+    correct = np.array(correct, dtype=int)
+    confidence = np.array(confidence, dtype=int)
+    n_ratings = len(np.unique(confidence))
+    
+    hit = np.zeros(n_ratings)
+    fa = np.zeros(n_ratings)
+    for i, c in enumerate(np.unique(confidence)):
+        hit[i] = sum( (confidence==c) & (correct==1) ) + 0.5
+        fa[i] = sum( (confidence==c) & (correct==0) ) + 0.5
+    
+    hit = hit / sum(hit)
+    fa = fa / sum(fa)
+    cum_hit = np.r_[0, np.cumsum(hit)]
+    cum_fa = np.r_[0, np.cumsum(fa)]
 
-
-
+    k = np.zeros(n_ratings)
+    for i, c in enumerate(np.unique(confidence)):
+        k[i] = (cum_hit[i+1] - cum_fa[i])**2 - (cum_hit[i] - cum_fa[i+1])**2
+    
+    return 0.5 + (0.25*sum(k))
+    
 def SDT_measures(target, hit, fa):
 
     """
@@ -2056,6 +2088,95 @@ class behavior(object):
         
         return df2
     
+    def extra_fractions(self, split_by=False, split_target=False, var=None):
+        
+        if split_by:
+            split_ind = eval('self.data.' + split_by) == split_target
+        else:
+            split_ind = np.ones(len(self.data), dtype=bool)
+        df = self.data[split_ind]
+        
+        # analysis:
+        grouped = df.groupby('subj_idx')
+        columns = [var]
+        funcs = [np.mean] 
+        values = []
+        for c, f in zip(columns, funcs):
+            values.append(np.array(grouped[c].apply(f)))
+        
+        # make dataframe:
+        measures = [var]
+        df2 = pd.DataFrame(np.vstack(values).T, columns=measures)
+        
+        # fix columns:
+        if split_by:
+            df2.columns = df2.columns + '_' + str(split_target)
+        
+        return df2
+        
+    def meta_cognitive(self, split_by=False, split_target=False):
+        
+        if split_by:
+            split_ind = eval('self.data.' + split_by) == split_target
+        else:
+            split_ind = np.ones(len(self.data), dtype=bool)
+        df = self.data[split_ind]
+        
+        # analysis:
+        from pymatbridge import Matlab
+        mlab = Matlab()
+        mlab = Matlab(executable='/home/knapen/bin/ml')
+        M_ratio = []
+        meta_ca = []
+        loop = 0
+        for s in np.unique(df['subj_idx']):
+            
+            if loop%8 == 0:
+                mlab.start()
+            
+            print s
+            d = df.query('subj_idx == {}'.format(s))
+            res1 = np.array(mlab.run_func('/home/degee/matlab_meta/trials2counts_a.m', 
+                                np.array(d.stimulus, dtype=int), 
+                                np.array(d.choice_a, dtype=int),
+                                np.array(d.confidence, dtype=int)+1,
+                                # 2,0,0,)['result']).ravel()
+                                2,1,(1/2*2),)['result']).ravel()
+            res2 = np.array(mlab.run_func('/home/degee/matlab_meta/trials2counts_b.m', 
+                                np.array(d.stimulus, dtype=int), 
+                                np.array(d.choice_a, dtype=int),
+                                np.array(d.confidence, dtype=int)+1,
+                                # 2,0,0,)['result']).ravel()
+                                2,1,(1/2*2),)['result']).ravel()
+            
+            res = mlab.run_func('/home/degee/matlab_meta/fit_meta_d_MLE.m', res1, res2, 1)['result']
+            
+            try:
+                M_ratio.append(res['M_ratio'])
+                meta_ca.append(res['meta_ca'])
+            except:
+                shell()
+            
+            if loop%8 == 7:
+                mlab.stop()
+            
+            loop += 1
+        
+        try:
+            mlab.stop()
+        except:
+            pass
+            
+        # make dataframe:
+        measures = ['M_ratio', 'meta_ca']
+        df2 = pd.DataFrame(np.vstack((M_ratio, meta_ca)).T, columns=measures)
+        
+        # fix columns:
+        if split_by:
+            df2.columns = df2.columns + '_' + str(split_target)
+        
+        return df2
+        
     def measure_per_condition(self, measure='pupil_d', split_by=False, split_target=False):
         
         if split_by:
@@ -2089,12 +2210,11 @@ class behavior(object):
         
         return df2
     
-    
-    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', model_comp='bayes', bin_per='session'):
+    def SDT_correlation(self, bin_by='pupil_d', n_bins=5, y1='d', model_comp='bayes', bin_per='session', full_plot=False):
         
         var_Y = 'behaviour'
-        color1 = 'mediumslateblue'
-        color2 = 'black'
+        # color1 = 'mediumslateblue'
+        color1 = 'grey'
         
         # make bins:
         bins = []
@@ -2102,10 +2222,7 @@ class behavior(object):
             inds_s = np.zeros(( self.data.query('subj_idx=={}'.format(i)).shape[0], n_bins ), dtype=bool)
             trial_nr = 0
             for s in np.unique(self.data.query('subj_idx=={}'.format(i))[bin_per]):
-                if bin_per == 'session':
-                    bin_measure = np.array(self.data.query('subj_idx=={} & session=={}'.format(i,s))[bin_by])
-                elif bin_per == 'run':
-                    bin_measure = np.array(self.data.query('subj_idx=={} & run=={}'.format(i,s))[bin_by])
+                bin_measure = np.array(self.data.query('subj_idx=={} & {}=={}'.format(i,bin_per,s))[bin_by])
                 nr_trials_in_run = len(bin_measure)
                 inds = np.array_split(np.argsort(bin_measure), n_bins)
                 # cuts = np.linspace(min(bin_measure)-0.01, max(bin_measure)+0.01, n_bins+1)
@@ -2121,9 +2238,10 @@ class behavior(object):
         varX = np.zeros((len(self.subjects), n_bins))
         varY = np.zeros((len(self.subjects), n_bins))
         for i in range(len(self.subjects)):
-            varX[i,:] = np.arange(n_bins)
+            # varX[i,:] = np.arange(n_bins)
             for b in range(n_bins):
-                # varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
+                
+                varX[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[bin_by])[bins[i][:,b]].mean()
                 d, c = SDT_measures(np.array(self.data.query('subj_idx=={}'.format(i))['stimulus'])[bins[i][:,b]],
                                     np.array(self.data.query('subj_idx=={}'.format(i))['hit'])[bins[i][:,b]],
                                     np.array(self.data.query('subj_idx=={}'.format(i))['fa'])[bins[i][:,b]]
@@ -2139,7 +2257,24 @@ class behavior(object):
                 elif y1 == 'correct':
                     varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['correct'])[bins[i][:,b]].mean()
                 elif y1 == 'rt':
-                    varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]].mean()
+                    varY[i,b] = np.median(np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]])
+                elif y1 == 'rt_var':
+                    varY[i,b] = np.std(np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]]) / np.mean(np.array(self.data.query('subj_idx=={}'.format(i))['rt'])[bins[i][:,b]])
+                else:
+                    varY[i,b] = np.array(self.data.query('subj_idx=={}'.format(i))[y1])[bins[i][:,b]].mean()
+                    
+        # shell()
+        
+        # plt_nr = 1
+        # fig = plt.figure(figsize=(6,6))
+        # for i in range(len(self.subjects)):
+        #     ax = fig.add_subplot(4,4,plt_nr)
+        #     ax.errorbar(varX[i,:], varY[i,:], fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
+        #     plt.axvline(0, color='k', lw=0.5)
+        #     plt_nr += 1
+        # sns.despine(offset=5, trim=True,)
+        # plt.tight_layout()
+        # fig.savefig('/home/degee/RTs.pdf')
         
         if model_comp == 'seq':
             
@@ -2226,23 +2361,26 @@ class behavior(object):
             model1 = np.zeros((len(self.subjects), n_bins))
             coefs1 = np.zeros(len(self.subjects))
             model2 = np.zeros((len(self.subjects), n_bins))
+            rs1 = np.zeros(len(self.subjects))
             coefs2a = np.zeros(len(self.subjects))
             coefs2b = np.zeros(len(self.subjects))
             for i in range(len(self.subjects)):
+                rs1[i] = sp.stats.pearsonr(varX[i,:], varY[i,:])[0]
                 coefs1[i] = sp.polyfit(varX[i,:], varY[i,:], 1)[0]
                 model1[i,:] = sp.polyval(sp.polyfit(varX[i,:], varY[i,:], 1), varX[i,:])
                 coefs2a[i] = sp.polyfit(varX[i,:], varY[i,:], 2)[0]
                 coefs2b[i] = sp.polyfit(varX[i,:], varY[i,:], 2)[1]
                 model2[i,:] = sp.polyval(sp.polyfit(varX[i,:], varY[i,:], 2), varX[i,:])
             
-            p1a = permutationTest(coefs1, np.zeros(len(self.subjects)), paired=True)[1]
+            # shell()
+            
+            p1a = permutationTest(rs1, np.zeros(len(self.subjects)), paired=True)[1]
             p2a = permutationTest(coefs2a, np.zeros(len(self.subjects)), paired=True)[1]
             p2b = permutationTest(coefs2b, np.zeros(len(self.subjects)), paired=True)[1]
-              
+            
         if model_comp == 'bayes':
             
             # load data:
-            
             xx = pd.DataFrame(varX).stack().reset_index().rename_axis({"level_0": "subject", "level_1":"x", 0: "y"}, axis="columns")
             xx.x = xx.x.astype('float')
             k = pd.DataFrame(varY).stack().reset_index().rename_axis({"level_0": "subject", "level_1":"x", 0: "y"}, axis="columns")
@@ -2268,7 +2406,7 @@ class behavior(object):
                 likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
                 
             with model1:
-                trace1 = pm.sample(10000, njobs=5) # draw 5000 posterior samples
+                trace1 = pm.sample(10000, njobs=5)
             
             with pm.Model() as model2:
                 
@@ -2291,88 +2429,139 @@ class behavior(object):
                 likelihood = pm.Normal('likelihood', mu=yest, sd=sigma_y, observed=k['y'])
                 
             with model2:
-                trace2 = pm.sample(10000, njobs=5) # draw 5000 posterior samples
+                trace2 = pm.sample(10000, njobs=5)
             
             # stats per model:
-            p1a = np.min((np.mean(trace1.get_values('h_b1') < 0), np.mean(trace1.get_values('h_b1') > 0)))
-            p2a = np.min((np.mean(trace2.get_values('h_b1') < 0), np.mean(trace2.get_values('h_b1') > 0)))
-            p2b = np.min((np.mean(trace2.get_values('h_b2') < 0), np.mean(trace2.get_values('h_b2') > 0)))
-            waic1 = pm.stats.waic(model=model1, trace=trace1)[0]
-            waic2 = pm.stats.waic(model=model2, trace=trace2)[0]
-        
+            p1a = np.min((np.mean(trace1.get_values('h_b1')[2500:] < 0), np.mean(trace1.get_values('h_b1')[2500:] > 0)))
+            p2a = np.min((np.mean(trace2.get_values('h_b1')[2500:] < 0), np.mean(trace2.get_values('h_b1')[2500:] > 0)))
+            p2b = np.min((np.mean(trace2.get_values('h_b2')[2500:] < 0), np.mean(trace2.get_values('h_b2')[2500:] > 0)))
+            waic1 = pm.stats.dic(model=model1, trace=trace1)
+            waic2 = pm.stats.dic(model=model2, trace=trace2)
+            
+            # sequential regression:
+            from sklearn import feature_selection
+            x = varX.mean(axis=0)
+            y = varY.mean(axis=0)
+            model0 = np.matrix(sp.polyval(sp.polyfit(x, y, 0), x)).T
+            model1 = np.matrix(trace1.get_values('h_b0').mean() + (trace1.get_values('h_b1').mean()*x)).T
+            model2 = np.matrix(trace2.get_values('h_b0').mean() + (trace2.get_values('h_b1').mean()*x) + (trace2.get_values('h_b2').mean()*(x**2))).T
+            take_out = model0.copy()
+            model1o = model1 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model1)
+            take_out = np.matrix(np.array(model0).ravel()*np.array(model1o).ravel()).T
+            model2o = model2 - ((take_out*((take_out.T * take_out)**-1)) * take_out.T * model2)
+            data = pd.DataFrame(np.hstack((model1o, model2o)), columns=['b1', 'b2'])
+            f_values, p_values = feature_selection.f_regression(data, y, center=True)
+            
+            # data['y'] = y
+            # res1 = pd.stats.ols.OLS(y=data['y'], x=data['b1'], intercept=True)
+            # res2 = pd.stats.ols.OLS(y=data['y'], x=data['b2'], intercept=True)
+            # print res1.f_stat
+            # print res2.f_stat
+            
         # plot:
-        fig = plt.figure(figsize=(4,4))
-        x = varX.mean(axis=0)
-        ax = fig.add_subplot(221)
-        if model_comp == 'bayes':
-            for i in xrange(9000,10000):
-                point = trace1.point(i)
-                plot_bayes_model('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            plot_bayes_model('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
-            ax.set_title('waic = {}'.format(round(waic1, 3),))
-        elif model_comp == 'cv' or model_comp == 'seq':
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.1)
-            ax.plot(x, model1.mean(axis=0), color=color1)
-        if model_comp == 'cv':
-            ax.set_title('sse = {}'.format(round(sse1.mean(), 3),))
-        elif model_comp == 'seq':
-            ax.set_title('Expansian to linear\nF = {}; p = {}'.format(round(f_values[0], 3), round(p_values[0], 3),))
-        ax.set_xlabel(bin_by)
-        ax.set_ylabel(y1)
-        ax = fig.add_subplot(222)
-        if model_comp == 'bayes':
-            for i in xrange(9000,10000):
-                point = trace2.point(i)
-                plot_bayes_model('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.01, ax=ax)
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            plot_bayes_model('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
-            ax.set_title('waic = {}'.format(round(waic2, 3),))
-        elif model_comp == 'cv' or model_comp == 'seq':
-            ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, markeredgecolor='w', markeredgewidth=0.5)
-            ax.fill_between(x, model2.mean(axis=0)-sp.stats.sem(model2, axis=0), model2.mean(axis=0)+sp.stats.sem(model2, axis=0), color=color1, alpha=0.1)
-            ax.plot(x, model2.mean(axis=0), color=color1)
-        if model_comp == 'cv':
-            ax.set_title('sse = {}'.format(round(sse2.mean(), 3),))
-        elif model_comp == 'seq':
-            ax.set_title('Expansian to quadratic\nF = {}; p = {}'.format(round(f_values[1], 3), round(p_values[1], 3),))
-        ax.set_xlabel(bin_by)
-        ax.set_ylabel(y1)
+        if full_plot:
         
-        ax = fig.add_subplot(223)
-        if model_comp == 'bayes':
-            sns.kdeplot(trace1.get_values('h_b1'), shade=True, ax=ax)
-            plt.axvline(0, lw=0.5, color='black')
-            ax.set_xlabel('Coefficient')
-            ax.set_ylabel('Prob. density')
-        elif model_comp == 'cv' or model_comp == 'seq':
-            for m in model1:
-                plt.plot(x, m)
+            fig = plt.figure(figsize=(3.5,4))
+            x = varX.mean(axis=0)
+            ax = fig.add_subplot(221)
+            if model_comp == 'bayes':
+                for i in xrange(9000,10000):
+                    point = trace1.point(i)
+                    plot_bayes_model('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+                plot_bayes_model('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
+                ax.set_title('waic1 = {}\nwaic2 = {}'.format(round(waic1, 3),round(waic2, 3)))
+            elif model_comp == 'cv' or model_comp == 'seq':
+                ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.25)
+                ax.plot(x, model1.mean(axis=0), color='black')
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+            if model_comp == 'cv':
+                ax.set_title('sse = {}'.format(round(sse1.mean(), 3),))
+            elif model_comp == 'seq':
+                ax.set_title('r = {}; p = {}\nto 1st: F={}; p={}'.format(round(rs1.mean(),3), round(p1a, 3), round(f_values[0], 3), round(p_values[0], 3),))
             ax.set_xlabel(bin_by)
             ax.set_ylabel(y1)
-        ax.set_title('p = {}'.format(round(p1a, 3),))
-        ax = fig.add_subplot(224)
-        if model_comp == 'bayes':
-            sns.kdeplot(trace2.get_values('h_b1'), shade=True, ax=ax)
-            plt.axvline(0, lw=0.5, color='black')
-            ax.set_xlabel('Coefficient')
-            ax.set_ylabel('Prob. density')
-            ax = ax.twinx()
-            sns.kdeplot(trace2.get_values('h_b2'), color='g', shade=True, ax=ax)
-            plt.axvline(0, lw=0.5, color='black')
-        elif model_comp == 'cv' or model_comp == 'seq':
-            for m in model2:
-                plt.plot(x, m)
+            ax = fig.add_subplot(222)
+            if model_comp == 'bayes':
+                for i in xrange(9000,10000):
+                    point = trace2.point(i)
+                    plot_bayes_model('{} + {}*x + {}*(x**2)'.format(point['h_b0'], point['h_b1'], point['h_b2']), x, color='black', alpha=.01, ax=ax)
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+                plot_bayes_model('{} + {}*x + {}*(x**2)'.format(trace2.get_values('h_b0').mean(), trace2.get_values('h_b1').mean(), trace2.get_values('h_b2').mean()), x, color='red', alpha=1.0, ax=ax)
+                ax.set_title('waic = {}'.format(round(waic2, 3),))
+            elif model_comp == 'cv' or model_comp == 'seq':
+                ax.fill_between(x, model2.mean(axis=0)-sp.stats.sem(model2, axis=0), model2.mean(axis=0)+sp.stats.sem(model2, axis=0), color=color1, alpha=0.25)
+                ax.plot(x, model2.mean(axis=0), color='black')
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+            if model_comp == 'cv':
+                ax.set_title('sse = {}'.format(round(sse2.mean(), 3),))
+            elif model_comp == 'bayes':
+                ax.set_title('Expansian to quadratic\nF = {}; p = {}'.format(round(f_values[1], 3), round(p_values[1], 3)))
+            elif model_comp == 'seq':
+                ax.set_title('p={}; p={}\nto 2nd: F={}; p={}'.format(round(p2a, 3), round(p2b, 3), round(f_values[1], 3), round(p_values[1], 3),))
             ax.set_xlabel(bin_by)
             ax.set_ylabel(y1)
-        ax.set_title('p = {} & p = {}'.format(round(p2a, 3), round(p2b, 3)))
         
-        sns.despine(offset=5, trim=True, right=False)
+            ax = fig.add_subplot(223)
+            if model_comp == 'bayes':
+                sns.kdeplot(trace1.get_values('h_b1'), shade=True, ax=ax)
+                plt.axvline(0, lw=0.5, color='black')
+                ax.set_xlabel('Coefficient')
+                ax.set_ylabel('Prob. density')
+                ax.set_title('p={}'.format(round(p1a, 3),))
+            elif model_comp == 'cv' or model_comp == 'seq':
+                # for x, m in zip(varX, model1):
+                for m in model1:
+                    plt.plot(x, m)
+                ax.set_xlabel(bin_by)
+                ax.set_ylabel(y1)
+            ax = fig.add_subplot(224)
+            if model_comp == 'bayes':
+                sns.kdeplot(trace2.get_values('h_b1'), shade=True, ax=ax)
+                plt.axvline(0, lw=0.5, color='black')
+                ax.set_title('p={}; p={}'.format(round(p2a, 3), round(p2b, 3),))
+                ax.set_xlabel('Coefficient')
+                ax.set_ylabel('Prob. density')
+                ax = ax.twinx()
+                sns.kdeplot(trace2.get_values('h_b2'), color='g', shade=True, ax=ax)
+                plt.axvline(0, lw=0.5, color='black')
+            elif model_comp == 'cv' or model_comp == 'seq':
+                # for x, m in zip(varX, model2):
+                for m in model2:
+                    plt.plot(x, m)
+                ax.set_xlabel(bin_by)
+                ax.set_ylabel(y1)
+            sns.despine(offset=5, trim=True, right=False)
+            
+            
+        else:
+            fig = plt.figure(figsize=(1.5,2))
+            x = varX.mean(axis=0)
+            ax = fig.add_subplot(111)
+            if model_comp == 'bayes':
+                for i in xrange(9000,10000):
+                    point = trace1.point(i)
+                    plot_bayes_model('{} + {}*x'.format(point['h_b0'], point['h_b1']), x, color='black', alpha=.01, ax=ax)
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+                plot_bayes_model('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
+                ax.set_title('waic1 = {}\nwaic2 = {}'.format(round(waic1, 3),round(waic2, 3)))
+            elif model_comp == 'cv' or model_comp == 'seq':
+                ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.25)
+                ax.plot(x, model1.mean(axis=0), color='black')
+                ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
+            if model_comp == 'cv':
+                ax.set_title('sse = {}'.format(round(sse1.mean(), 3),))
+            elif model_comp == 'seq':
+                # ax.set_title('r={}; p={}\nto 1st: F={}; p={}'.format(round(rs1.mean(),3), round(p1a, 3), round(f_values[0], 3), round(p_values[0], 3),))
+                ax.set_title('r = {}; p = {}'.format(round(rs1.mean(),3), round(p1a, 3),))
+            ax.set_xlabel(bin_by)
+            ax.set_ylabel(y1)
+            sns.despine(offset=5, trim=True)
+        
         plt.tight_layout()
         
-        return fig
-            
+        return fig, rs1
+        
     def response_bias(self, split_by=False, split_target=0):
         
         if split_by:
