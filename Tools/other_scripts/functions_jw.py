@@ -2535,6 +2535,7 @@ class behavior(object):
             
             
         else:
+            
             fig = plt.figure(figsize=(1.5,2))
             x = varX.mean(axis=0)
             ax = fig.add_subplot(111)
@@ -2546,14 +2547,21 @@ class behavior(object):
                 plot_bayes_model('{} + {}*x'.format(trace1.get_values('h_b0').mean(), trace1.get_values('h_b1').mean()), x, color='red', alpha=1.0, ax=ax)
                 ax.set_title('waic1 = {}\nwaic2 = {}'.format(round(waic1, 3),round(waic2, 3)))
             elif model_comp == 'cv' or model_comp == 'seq':
-                ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.25)
-                ax.plot(x, model1.mean(axis=0), color='black')
+                if p_values[1] < 0.05:
+                    ax.fill_between(x, model2.mean(axis=0)-sp.stats.sem(model2, axis=0), model2.mean(axis=0)+sp.stats.sem(model2, axis=0), color=color1, alpha=0.25)
+                    ax.plot(x, model2.mean(axis=0), color='black')
+                else:
+                    ax.fill_between(x, model1.mean(axis=0)-sp.stats.sem(model1, axis=0), model1.mean(axis=0)+sp.stats.sem(model1, axis=0), color=color1, alpha=0.25)
+                    ax.plot(x, model1.mean(axis=0), color='black')
                 ax.errorbar(varX.mean(axis=0), varY.mean(axis=0), xerr=sp.stats.sem(varX, axis=0), yerr=sp.stats.sem(varY, axis=0), fmt='o', markersize=6, color=color1, alpha=1, capsize=0, elinewidth=0.5, ecolor='black', markeredgecolor='black', markeredgewidth=0.5)
             if model_comp == 'cv':
                 ax.set_title('sse = {}'.format(round(sse1.mean(), 3),))
             elif model_comp == 'seq':
                 # ax.set_title('r={}; p={}\nto 1st: F={}; p={}'.format(round(rs1.mean(),3), round(p1a, 3), round(f_values[0], 3), round(p_values[0], 3),))
-                ax.set_title('r = {}; p = {}'.format(round(rs1.mean(),3), round(p1a, 3),))
+                if p_values[1] < 0.05:
+                    ax.set_title('c = {}; p = {}'.format(round(coefs2a.mean(),3), round(p2a, 3),))
+                else:
+                    ax.set_title('r = {}; p = {}'.format(round(rs1.mean(),3), round(p1a, 3),))
             ax.set_xlabel(bin_by)
             ax.set_ylabel(y1)
             sns.despine(offset=5, trim=True)
