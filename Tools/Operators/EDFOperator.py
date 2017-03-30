@@ -315,40 +315,9 @@ class EDFOperator( Operator ):
             self.logger.info('no parameter information in edf file')
             
     
-    # def read_key_events(self,
-    #     key_re = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
-    #
-    #     """read_key_events reads experimental events from the message file"""
-    #
-    #     self.logger.info('reading key_events from %s', os.path.split(self.message_file)[-1])
-    #     self.get_message_string()
-    #     if not hasattr(self, 'nr_trials'):
-    #         self.read_trials()
-    #
-    #     events = []
-    #     this_length = 0
-    #     for i in range(self.nr_trials):
-    #         this_key_re = key_re.replace(' X ', ' ' + str(i) + ' ')
-    #         event_strings = re.findall(re.compile(this_key_re), self.message_string)
-    #         if len(event_strings) > 0:
-    #             if len(event_strings[0]) == 8:
-    #                 events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'exp_timestamp':float(e[7])} for e in event_strings])
-    #                 this_length = 8
-    #             elif len(event_strings[0]) == 3:
-    #                 events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'exp_timestamp':float(e[2])} for e in event_strings])
-    #                 this_length = 3
-    #     if len(events) > 0:
-    #         self.events = list(chain.from_iterable(events))
-    #         #
-    #         # add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
-    #         #
-    #         if this_length == 8:
-    #             self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('exp_timestamp', np.float64)])
-    #         elif this_length == 3:
-    #             self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('exp_timestamp', np.float64)])
-    
     def read_key_events(self,
-        key_re = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(.*?) {\'key\': (\d+)(, \'unicode\': u\'l\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
+        key_re = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(\S*?) {\'scancode\': (\d+), \'key\': (\d+)(, \'unicode\': u\'\S*?\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
+
         """read_key_events reads experimental events from the message file"""
 
         self.logger.info('reading key_events from %s', os.path.split(self.message_file)[-1])
@@ -362,8 +331,8 @@ class EDFOperator( Operator ):
             this_key_re = key_re.replace(' X ', ' ' + str(i) + ' ')
             event_strings = re.findall(re.compile(this_key_re), self.message_string)
             if len(event_strings) > 0:
-                if len(event_strings[0]) == 7:
-                    events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':100,'key':int(e[3]),'modifier':int(e[5]), 'exp_timestamp':float(e[6])} for e in event_strings])
+                if len(event_strings[0]) == 8:
+                    events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':int(e[3]),'key':int(e[4]),'modifier':int(e[6]), 'exp_timestamp':float(e[7])} for e in event_strings])
                     this_length = 8
                 elif len(event_strings[0]) == 3:
                     events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'exp_timestamp':float(e[2])} for e in event_strings])
@@ -377,6 +346,37 @@ class EDFOperator( Operator ):
                 self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('exp_timestamp', np.float64)])
             elif this_length == 3:
                 self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('exp_timestamp', np.float64)])
+    
+    # def read_key_events(self,
+    #     key_re = 'MSG\t([\d\.]+)\ttrial X event \<Event\((\d)-Key(.*?) {\'key\': (\d+)(, \'unicode\': u\'l\',|,) \'mod\': (\d+)}\)\> at (\d+.\d)'):
+    #     """read_key_events reads experimental events from the message file"""
+    #
+    #     self.logger.info('reading key_events from %s', os.path.split(self.message_file)[-1])
+    #     self.get_message_string()
+    #     if not hasattr(self, 'nr_trials'):
+    #         self.read_trials()
+    #
+    #     events = []
+    #     this_length = 0
+    #     for i in range(self.nr_trials):
+    #         this_key_re = key_re.replace(' X ', ' ' + str(i) + ' ')
+    #         event_strings = re.findall(re.compile(this_key_re), self.message_string)
+    #         if len(event_strings) > 0:
+    #             if len(event_strings[0]) == 7:
+    #                 events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]),'up_down':e[2],'scancode':100,'key':int(e[3]),'modifier':int(e[5]), 'exp_timestamp':float(e[6])} for e in event_strings])
+    #                 this_length = 8
+    #             elif len(event_strings[0]) == 3:
+    #                 events.append([{'EL_timestamp':float(e[0]),'event_type':int(e[1]), 'exp_timestamp':float(e[2])} for e in event_strings])
+    #                 this_length = 3
+    #     if len(events) > 0:
+    #         self.events = list(chain.from_iterable(events))
+    #         #
+    #         # add types to eventTypeDictionary that specify the relevant trial and time in trial for this event - per run.
+    #         #
+    #         if this_length == 8:
+    #             self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('up_down', '|S25'), ('scancode', np.float64), ('key', np.float64), ('modifier', np.float64), ('exp_timestamp', np.float64)])
+    #         elif this_length == 3:
+    #             self.event_type_dictionary = np.dtype([('EL_timestamp', np.float64), ('event_type', np.float64), ('exp_timestamp', np.float64)])
     
     def read_eyelink_events(self,
         sacc_re = 'ESACC\t(\S+)[\s\t]+(-?\d*\.?\d*)\t(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+.?\d+)',

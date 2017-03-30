@@ -259,7 +259,7 @@ class EyeSignalOperator(Operator):
             self.sample_rate = 1000.0
 
     
-    def interpolate_blinks(self, method='linear', lin_interpolation_points=[[-250],[250]], spline_interpolation_points=[[-0.15,-0.075], [0.075,0.15]], coalesce_period=750):
+    def interpolate_blinks(self, method='linear', lin_interpolation_points=[[-150],[150]], spline_interpolation_points=[[-0.15,-0.075], [0.075,0.15]], coalesce_period=500):
         """
         interpolate_blinks interpolates blink periods with method, which can be spline or linear.
         Use after self.blink_detection_pupil().
@@ -278,7 +278,7 @@ class EyeSignalOperator(Operator):
         # blinks to work with -- preferably eyelink!
         if hasattr(self, 'eyelink_blink_data'):
             for i in range(len(self.blink_starts_EL)):
-                self.raw_pupil[self.blink_starts_EL[i]:self.blink_ends_EL[i]] = 0 # set all eyelink-identified blinks to 0:
+                self.raw_pupil[int(self.blink_starts_EL[i]):int(self.blink_ends_EL[i])] = 0 # set all eyelink-identified blinks to 0:
         # else:
         #     self.blinks_indices = pd.rolling_mean(np.array(self.raw_pupil < threshold_level, dtype = float), int(coalesce_period)) > 0
         #     self.blinks_indices = np.array(self.blinks_indices, dtype=int)
@@ -358,7 +358,7 @@ class EyeSignalOperator(Operator):
                     self.interpolated_x[itp[0]:itp[-1]] = np.linspace(self.interpolated_x[itp[0]], self.interpolated_x[itp[-1]], itp[-1]-itp[0])
                     self.interpolated_y[itp[0]:itp[-1]] = np.linspace(self.interpolated_y[itp[0]], self.interpolated_y[itp[-1]], itp[-1]-itp[0])
     
-    def interpolate_blinks2(self, lin_interpolation_points = [[-250],[250]], coalesce_period=750):
+    def interpolate_blinks2(self, lin_interpolation_points = [[-150],[150]], coalesce_period=500):
         
         """
         interpolate_blinks2 performs linear interpolation around peaks in the rate of change of
